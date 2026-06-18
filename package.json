@@ -1,0 +1,30 @@
+{
+  "name": "hermes-swarm",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hermes Swarm Monorepo",
+  "scripts": {
+    "build": "nx run-many --target=build",
+    "test": "nx run-many --target=test",
+    "lint": "nx run-many --target=lint",
+    "clean": "nx run-many --target=clean",
+    "graph": "nx graph"
+  },
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@10.30.2",
+  "devDependencies": {
+    "@nx/js": "^23.0.0",
+    "@types/node": "^22.19.21",
+    "nx": "^23.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "nx"
+    ]
+  }
+}
