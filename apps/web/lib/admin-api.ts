@@ -1,45 +1,32 @@
-export type TenantStatus = "active" | "suspended";
 export type OrganizationStatus = "active" | "suspended";
 export type UserStatus = "active" | "disabled";
 
-export type Tenant = {
-  id: string;
-  name: string;
-  slug: string;
-  status: TenantStatus;
-  subdomain: string | null;
-};
-
 export type Organization = {
   id: string;
-  isDefault: boolean;
   name: string;
   slug: string;
   status: OrganizationStatus;
-  tenantId: string;
+  subdomain: string | null;
 };
 
 export type User = {
+  id: string;
   displayName: string;
   email: string;
   firstName: string | null;
-  id: string;
   lastName: string | null;
+  username: string | null;
+  mobile: string | null;
+  imageUrl: string | null;
+  preferredLanguage: string;
+  emailVerified: boolean;
+  timeZone: string | null;
   roleId: string | null;
   status: UserStatus;
-  tenantId: string;
+  organizationId: string | null;
   type: "service" | "user";
-  username: string | null;
-};
-
-export type UserOrganization = {
-  id: string;
-  isActive: boolean;
-  isDefault: boolean;
-  organizationId: string;
-  preferences: Record<string, unknown> | null;
-  tenantId: string;
-  userId: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Role = {
@@ -47,21 +34,21 @@ export type Role = {
   isSystem: boolean;
   label: string;
   name: string;
-  tenantId: string;
+  organizationId: string;
 };
 
 export type RolePermission = {
-  enabled: boolean;
   id: string;
+  enabled: boolean;
   permission: string;
   roleId: string;
-  tenantId: string;
+  organizationId: string;
 };
 
-export type TenantSetting = {
+export type OrganizationSetting = {
   id: string;
   name: string;
-  tenantId: string;
+  organizationId: string;
   value: string | null;
 };
 
@@ -76,23 +63,20 @@ export type Menu = {
 };
 
 export type CurrentUser = {
-  membership: UserOrganization;
   organization: Organization;
   permissions: string[];
   role: Role | null;
-  tenant: Tenant;
   user: User;
 };
 
-export type TenantSnapshot = {
+export type Snapshot = {
   currentUser: CurrentUser;
   menus: Menu[];
+  organization: Organization;
   organizations: Organization[];
   rolePermissions: RolePermission[];
   roles: Role[];
-  tenantSettings: TenantSetting[];
-  tenants: Tenant[];
-  userOrganizations: UserOrganization[];
+  settings: OrganizationSetting[];
   users: User[];
 };
 
@@ -100,11 +84,10 @@ export type PublicBootstrap = {
   menus: Menu[];
   onboardingRequired: boolean;
   organizations: Organization[];
-  tenants: Tenant[];
 };
 
 export type LoginResponse = {
-  snapshot: TenantSnapshot;
+  snapshot: Snapshot;
   token: string;
 };
 
@@ -113,15 +96,12 @@ export type OnboardingPayload = {
   adminName: string;
   adminPassword: string;
   organizationName: string;
-  tenantName: string;
-  tenantSlug?: string;
+  organizationSlug?: string;
 };
 
 export type LoginPayload = {
   email: string;
-  organizationId: string;
   password: string;
-  tenantId: string;
 };
 
 const API_BASE_URL =
@@ -165,22 +145,22 @@ export function getPublicBootstrap() {
   return fetchAdmin<PublicBootstrap>("/bootstrap");
 }
 
-export function loginAdmin(payload: LoginPayload) {
+export function login(payload: LoginPayload) {
   return fetchAdmin<LoginResponse>("/login", {
     body: payload,
     method: "POST",
   });
 }
 
-export function onboardAdmin(payload: OnboardingPayload) {
+export function onboard(payload: OnboardingPayload) {
   return fetchAdmin<LoginResponse>("/onboarding", {
     body: payload,
     method: "POST",
   });
 }
 
-export function getTenantSnapshot(token: string) {
-  return fetchAdmin<TenantSnapshot>("/tenant-admin", { token });
+export function getSnapshot(token: string) {
+  return fetchAdmin<Snapshot>("/snapshot", { token });
 }
 
 export function buildMenuPermission(menuCode: string, action: "manage" | "view") {

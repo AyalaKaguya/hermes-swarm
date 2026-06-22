@@ -1,23 +1,22 @@
 export const TENANCY_MENU_PERMISSION_PREFIX = "menu";
 
 export const DEFAULT_ADMIN_MENUS = [
-  { code: "tenants", label: "租户管理", path: "/organizations", sortOrder: 10 },
   {
     code: "organizations",
     label: "组织管理",
     path: "/organizations",
-    sortOrder: 20,
+    sortOrder: 10,
   },
-  { code: "users", label: "用户管理", path: "/organizations", sortOrder: 30 },
-  { code: "roles", label: "角色管理", path: "/organizations", sortOrder: 40 },
-  { code: "menus", label: "菜单管理", path: "/organizations", sortOrder: 50 },
+  { code: "users", label: "用户管理", path: "/organizations", sortOrder: 20 },
+  { code: "roles", label: "角色管理", path: "/organizations", sortOrder: 30 },
+  { code: "menus", label: "菜单管理", path: "/organizations", sortOrder: 40 },
   {
     code: "permissions",
     label: "权限配置",
     path: "/organizations",
-    sortOrder: 60,
+    sortOrder: 50,
   },
-  { code: "settings", label: "系统配置", path: "/organizations", sortOrder: 70 },
+  { code: "settings", label: "系统配置", path: "/organizations", sortOrder: 60 },
 ] as const;
 
 export const SYSTEM_ROLES = [

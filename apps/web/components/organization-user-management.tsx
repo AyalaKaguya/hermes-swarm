@@ -7,12 +7,12 @@ import { AppShell } from "@/components/app-shell";
 import {
   buildMenuPermission,
   fetchAdmin,
-  getTenantSnapshot,
+  getSnapshot,
 } from "@/lib/admin-api";
 import type {
   Organization,
   Role,
-  TenantSnapshot,
+  Snapshot,
   User,
 } from "@/lib/admin-api";
 import {
@@ -27,16 +27,14 @@ type PermissionDraft = Record<string, boolean>;
 
 export function OrganizationUserManagement() {
   const router = useRouter();
-  const [snapshot, setSnapshot] = useState<TenantSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [storedSession, setStoredSession] = useState<UserSession | null>(null);
   const [resolvedSession, setResolvedSession] =
     useState<ResolvedSession | null>(null);
-  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("");
   const [selectedUserRoleId, setSelectedUserRoleId] = useState("");
   const [permissionDraft, setPermissionDraft] = useState<PermissionDraft>({});
-  const [organizationName, setOrganizationName] = useState("");
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] = useState("");
@@ -46,11 +44,6 @@ export function OrganizationUserManagement() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const canViewTenants = hasMenuAccess(
-    snapshotOrEmpty(snapshot),
-    resolvedSession,
-    "tenants",
-  );
   const canViewOrganizations = hasMenuAccess(
     snapshotOrEmpty(snapshot),
     resolvedSession,
@@ -95,49 +88,13 @@ export function OrganizationUserManagement() {
     "settings",
   );
 
-  const visibleOrganizations = useMemo(() => {
-    if (!snapshot || !resolvedSession) {
-      return [];
-    }
-    if (canManageOrganizations) {
-      return snapshot.organizations;
-    }
-
-    const allowedOrganizationIds = new Set(
-      snapshot.userOrganizations
-        .filter(
-          (membership) =>
-            membership.userId === resolvedSession.user.id &&
-            membership.isActive,
-        )
-        .map((membership) => membership.organizationId),
-    );
-    return snapshot.organizations.filter((organization) =>
-      allowedOrganizationIds.has(organization.id),
-    );
-  }, [canManageOrganizations, resolvedSession, snapshot]);
-
   const usersInOrganization = useMemo(() => {
-    if (!snapshot || !selectedOrganizationId) {
-      return [];
-    }
-
-    const userIds = new Set(
-      snapshot.userOrganizations
-        .filter(
-          (membership) =>
-            membership.organizationId === selectedOrganizationId &&
-            membership.isActive,
-        )
-        .map((membership) => membership.userId),
+    if (!snapshot) return [];
+    return snapshot.users.filter(
+      (user) => user.organizationId === resolvedSession?.organization.id,
     );
+  }, [snapshot, resolvedSession]);
 
-    return snapshot.users.filter((user) => userIds.has(user.id));
-  }, [selectedOrganizationId, snapshot]);
-
-  const selectedOrganization = visibleOrganizations.find(
-    (organization) => organization.id === selectedOrganizationId,
-  );
   const selectedUser = usersInOrganization.find(
     (user) => user.id === selectedUserId,
   );
@@ -156,28 +113,11 @@ export function OrganizationUserManagement() {
     setStoredSession(session);
 
     try {
-      const data = await getTenantSnapshot(session.token);
+      const data = await getSnapshot(session.token);
       const nextResolvedSession = resolveSession(data);
 
       setSnapshot(data);
       setResolvedSession(nextResolvedSession);
-      setSelectedOrganizationId((current) => {
-        const nextVisibleOrganizations = data.organizations.filter((organization) =>
-          hasMenuAccess(data, nextResolvedSession, "organizations", "manage")
-            ? true
-            : data.userOrganizations.some(
-                (membership) =>
-                  membership.userId === nextResolvedSession.user.id &&
-                  membership.organizationId === organization.id &&
-                  membership.isActive,
-              ),
-        );
-        return nextVisibleOrganizations.some(
-          (organization) => organization.id === current,
-        )
-          ? current
-          : nextResolvedSession.organization.id;
-      });
       setSelectedRoleId((current) =>
         data.roles.some((role) => role.id === current)
           ? current
@@ -205,20 +145,16 @@ export function OrganizationUserManagement() {
 
   useEffect(() => {
     void loadSnapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!selectedOrganizationId) {
-      setSelectedUserId("");
-      return;
-    }
-
     setSelectedUserId((current) =>
       usersInOrganization.some((user) => user.id === current)
         ? current
         : usersInOrganization[0]?.id ?? "",
     );
-  }, [selectedOrganizationId, usersInOrganization]);
+  }, [usersInOrganization]);
 
   useEffect(() => {
     setSelectedUserRoleId(selectedUser?.roleId ?? "");
@@ -250,32 +186,11 @@ export function OrganizationUserManagement() {
     router.replace("/login");
   }
 
-  async function createOrganization(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!organizationName.trim() || !canManageOrganizations) {
-      return;
-    }
-
-    await mutate("/organizations", {
-      body: { name: organizationName },
-      method: "POST",
-      success: "组织已创建",
-    });
-    setOrganizationName("");
-  }
-
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (
-      !selectedOrganizationId ||
-      !userName.trim() ||
-      !userEmail.trim() ||
-      !canManageUsers
-    ) {
-      return;
-    }
+    if (!userName.trim() || !userEmail.trim() || !canManageUsers) return;
 
-    await mutate(`/organizations/${selectedOrganizationId}/users`, {
+    await mutate("/users", {
       body: {
         displayName: userName,
         email: userEmail,
@@ -290,26 +205,10 @@ export function OrganizationUserManagement() {
     setUserPassword("");
   }
 
-  async function toggleOrganizationStatus(organization: Organization) {
-    if (!canManageOrganizations) {
-      return;
-    }
-
-    await mutate(`/organizations/${organization.id}`, {
-      body: {
-        status: organization.status === "active" ? "suspended" : "active",
-      },
-      method: "PATCH",
-      success: "组织状态已更新",
-    });
-  }
-
   async function toggleUserStatus(user: User) {
-    if (!canManageUsers || !selectedOrganizationId) {
-      return;
-    }
+    if (!canManageUsers) return;
 
-    await mutate(`/organizations/${selectedOrganizationId}/users/${user.id}`, {
+    await mutate(`/users/${user.id}`, {
       body: { status: user.status === "active" ? "disabled" : "active" },
       method: "PATCH",
       success: "用户状态已更新",
@@ -317,11 +216,9 @@ export function OrganizationUserManagement() {
   }
 
   async function saveSelectedUserRole() {
-    if (!selectedUser || !selectedOrganizationId || !canManageUsers) {
-      return;
-    }
+    if (!selectedUser || !canManageUsers) return;
 
-    await mutate(`/organizations/${selectedOrganizationId}/users/${selectedUser.id}`, {
+    await mutate(`/users/${selectedUser.id}`, {
       body: { roleId: selectedUserRoleId || null },
       method: "PATCH",
       success: "用户角色已更新",
@@ -333,9 +230,7 @@ export function OrganizationUserManagement() {
   }
 
   async function saveRolePermissions() {
-    if (!snapshot || !selectedRoleId || !canManagePermissions) {
-      return;
-    }
+    if (!snapshot || !selectedRoleId || !canManagePermissions) return;
 
     await mutate(`/roles/${selectedRoleId}/permissions`, {
       body: {
@@ -382,17 +277,16 @@ export function OrganizationUserManagement() {
   }
 
   const hasPageAccess =
-    canViewTenants ||
     canViewOrganizations ||
     canViewUsers ||
     canViewRoles ||
     canViewPermissions ||
     canViewSettings;
 
-  const tenant = snapshot?.currentUser.tenant;
+  const organization = snapshot?.organization ?? resolvedSession?.organization;
   const roles = snapshot?.roles ?? [];
   const menus = snapshot?.menus ?? [];
-  const settings = snapshot?.tenantSettings ?? [];
+  const settings = snapshot?.settings ?? [];
 
   return (
     <AppShell
@@ -405,16 +299,16 @@ export function OrganizationUserManagement() {
       <section className="page-header">
         <div>
           <p className="eyebrow">Hermes Swarm</p>
-          <h1>租户与用户基础设施</h1>
+          <h1>组织与用户管理</h1>
         </div>
       </section>
 
       <section className="console-status" aria-live="polite">
         <div>
-          <strong>{tenant?.name ?? "未登录"}</strong>
+          <strong>{organization?.name ?? "未登录"}</strong>
           <span>
             {resolvedSession
-              ? `${resolvedSession.organization.name} / ${resolvedSession.user.displayName}`
+              ? `${resolvedSession.user.displayName}`
               : "未确认用户"}
           </span>
         </div>
@@ -435,93 +329,30 @@ export function OrganizationUserManagement() {
       {hasPageAccess && (
         <div className="tenant-console">
           <section className="admin-grid">
-            {canViewTenants && (
-              <div className="panel admin-panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">Tenant</p>
-                    <h2>租户</h2>
-                  </div>
-                </div>
-                <div className="session-detail">
-                  <span>名称</span>
-                  <strong>{tenant?.name ?? "-"}</strong>
-                </div>
-                <div className="session-detail">
-                  <span>标识</span>
-                  <strong>{tenant?.slug ?? "-"}</strong>
-                </div>
-                <div className="session-detail">
-                  <span>状态</span>
-                  <strong>{tenant?.status ?? "-"}</strong>
-                </div>
-              </div>
-            )}
-
             {canViewOrganizations && (
               <div className="panel admin-panel">
                 <div className="panel-heading">
                   <div>
-                    <p className="eyebrow">Organizations</p>
+                    <p className="eyebrow">Organization</p>
                     <h2>组织</h2>
                   </div>
-                  <span className="count-badge">
-                    {visibleOrganizations.length}
-                  </span>
                 </div>
-                {canManageOrganizations && (
-                  <form className="compact-form" onSubmit={createOrganization}>
-                    <input
-                      aria-label="组织名称"
-                      onChange={(event) =>
-                        setOrganizationName(event.target.value)
-                      }
-                      placeholder="组织名称"
-                      value={organizationName}
-                    />
-                    <button
-                      className="primary-action"
-                      disabled={saving}
-                      type="submit"
-                    >
-                      新建
-                    </button>
-                  </form>
-                )}
-                <div className="select-list">
-                  {visibleOrganizations.map((organization) => (
-                    <button
-                      className={
-                        organization.id === selectedOrganizationId
-                          ? "select-card selected"
-                          : "select-card"
-                      }
-                      key={organization.id}
-                      onClick={() => setSelectedOrganizationId(organization.id)}
-                      type="button"
-                    >
-                      <span>
-                        <strong>{organization.name}</strong>
-                        <small>{organization.slug}</small>
-                      </span>
-                      <em className={organization.status}>
-                        {organization.status}
-                      </em>
-                    </button>
-                  ))}
+                <div className="session-detail">
+                  <span>名称</span>
+                  <strong>{organization?.name ?? "-"}</strong>
                 </div>
-                {selectedOrganization && canManageOrganizations && (
-                  <button
-                    className="text-button full-width"
-                    disabled={saving}
-                    onClick={() => toggleOrganizationStatus(selectedOrganization)}
-                    type="button"
-                  >
-                    {selectedOrganization.status === "active"
-                      ? "暂停组织"
-                      : "启用组织"}
-                  </button>
-                )}
+                <div className="session-detail">
+                  <span>标识</span>
+                  <strong>{organization?.slug ?? "-"}</strong>
+                </div>
+                <div className="session-detail">
+                  <span>状态</span>
+                  <strong>{organization?.status ?? "-"}</strong>
+                </div>
+                <div className="session-detail">
+                  <span>子域名</span>
+                  <strong>{organization?.subdomain ?? "-"}</strong>
+                </div>
               </div>
             )}
 
@@ -532,7 +363,9 @@ export function OrganizationUserManagement() {
                     <p className="eyebrow">Users</p>
                     <h2>用户</h2>
                   </div>
-                  <span className="count-badge">{usersInOrganization.length}</span>
+                  <span className="count-badge">
+                    {usersInOrganization.length}
+                  </span>
                 </div>
                 {canManageUsers && (
                   <form className="stack-form" onSubmit={createUser}>
@@ -569,7 +402,7 @@ export function OrganizationUserManagement() {
                     </select>
                     <button
                       className="primary-action"
-                      disabled={!selectedOrganizationId || saving}
+                      disabled={saving}
                       type="submit"
                     >
                       新建用户
@@ -636,7 +469,7 @@ export function OrganizationUserManagement() {
             )}
           </section>
 
-          {(canViewRoles || canViewPermissions || canViewSettings) && (
+          {(canViewRoles || canViewSettings) && (
             <section className="admin-grid secondary-grid">
               {canViewRoles && (
                 <div className="panel admin-panel session-panel">
@@ -727,7 +560,9 @@ export function OrganizationUserManagement() {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">Permissions</p>
-                  <h2>角色权限{selectedRole ? ` / ${selectedRole.label}` : ""}</h2>
+                  <h2>
+                    角色权限{selectedRole ? ` / ${selectedRole.label}` : ""}
+                  </h2>
                 </div>
                 {canManagePermissions && (
                   <button
@@ -808,59 +643,52 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "操作失败";
 }
 
-function snapshotOrEmpty(snapshot: TenantSnapshot | null): TenantSnapshot {
-  if (snapshot) {
-    return snapshot;
-  }
+function snapshotOrEmpty(snapshot: Snapshot | null): Snapshot {
+  if (snapshot) return snapshot;
 
   return {
     currentUser: {
-      membership: {
-        id: "",
-        isActive: false,
-        isDefault: false,
-        organizationId: "",
-        preferences: null,
-        tenantId: "",
-        userId: "",
-      },
       organization: {
-        id: "",
-        isDefault: false,
-        name: "",
-        slug: "",
-        status: "suspended",
-        tenantId: "",
-      },
-      permissions: [],
-      role: null,
-      tenant: {
         id: "",
         name: "",
         slug: "",
         status: "suspended",
         subdomain: null,
       },
+      permissions: [],
+      role: null,
       user: {
+        id: "",
         displayName: "",
         email: "",
         firstName: null,
-        id: "",
         lastName: null,
+        username: null,
+        mobile: null,
+        imageUrl: null,
+        preferredLanguage: "zh-CN",
+        emailVerified: false,
+        timeZone: null,
         roleId: null,
         status: "disabled",
-        tenantId: "",
+        organizationId: null,
         type: "user",
-        username: null,
+        createdAt: "",
+        updatedAt: "",
       },
     },
     menus: [],
+    organization: {
+      id: "",
+      name: "",
+      slug: "",
+      status: "suspended",
+      subdomain: null,
+    },
     organizations: [],
     rolePermissions: [],
     roles: [],
-    tenantSettings: [],
-    tenants: [],
-    userOrganizations: [],
+    settings: [],
     users: [],
   };
 }

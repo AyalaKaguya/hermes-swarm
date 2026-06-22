@@ -1,4 +1,4 @@
-import type { CurrentUser, TenantSnapshot } from "./admin-api";
+import type { CurrentUser, Snapshot } from "./admin-api";
 import { buildMenuPermission } from "./admin-api";
 
 export type UserSession = {
@@ -38,12 +38,12 @@ export function clearStoredSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
-export function resolveSession(snapshot: TenantSnapshot): ResolvedSession {
+export function resolveSession(snapshot: Snapshot): ResolvedSession {
   return snapshot.currentUser;
 }
 
 export function hasMenuAccess(
-  _snapshot: TenantSnapshot,
+  _snapshot: Snapshot,
   resolvedSession: ResolvedSession | null,
   menuCode: string,
   action: "manage" | "view" = "view",
@@ -62,11 +62,10 @@ export function hasMenuAccess(
 }
 
 export function hasAnyManagementAccess(
-  snapshot: TenantSnapshot,
+  snapshot: Snapshot,
   resolvedSession: ResolvedSession | null,
 ) {
   return (
-    hasMenuAccess(snapshot, resolvedSession, "tenants") ||
     hasMenuAccess(snapshot, resolvedSession, "organizations") ||
     hasMenuAccess(snapshot, resolvedSession, "users") ||
     hasMenuAccess(snapshot, resolvedSession, "roles") ||

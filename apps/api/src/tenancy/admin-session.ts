@@ -1,24 +1,24 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { AdminSessionTokenPayload } from "./tenancy.types.js";
+import type { AuthSessionTokenPayload } from "./tenancy.types.js";
 
 const TOKEN_VERSION = "v1";
-const DEFAULT_ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 12;
+const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12;
 
-export function createAdminSessionToken(
-  payload: Omit<AdminSessionTokenPayload, "exp">,
+export function createAuthSessionToken(
+  payload: Omit<AuthSessionTokenPayload, "exp">,
 ) {
   const expiresAt =
-    Math.floor(Date.now() / 1000) + DEFAULT_ADMIN_SESSION_TTL_SECONDS;
+    Math.floor(Date.now() / 1000) + DEFAULT_SESSION_TTL_SECONDS;
   const encodedPayload = encodeBase64Url(
-    JSON.stringify({ ...payload, exp: expiresAt } satisfies AdminSessionTokenPayload),
+    JSON.stringify({ ...payload, exp: expiresAt } satisfies AuthSessionTokenPayload),
   );
   const signature = sign(encodedPayload);
   return `${TOKEN_VERSION}.${encodedPayload}.${signature}`;
 }
 
-export function parseAdminSessionToken(
+export function parseAuthSessionToken(
   token: string | undefined,
-): AdminSessionTokenPayload | null {
+): AuthSessionTokenPayload | null {
   if (!token) {
     return null;
   }
@@ -36,9 +36,8 @@ export function parseAdminSessionToken(
   try {
     const payload = JSON.parse(
       Buffer.from(encodedPayload, "base64url").toString("utf8"),
-    ) as Partial<AdminSessionTokenPayload>;
+    ) as Partial<AuthSessionTokenPayload>;
     if (
-      !payload.tenantId ||
       !payload.organizationId ||
       !payload.userId ||
       !payload.exp ||
@@ -49,7 +48,6 @@ export function parseAdminSessionToken(
     return {
       exp: payload.exp,
       organizationId: payload.organizationId,
-      tenantId: payload.tenantId,
       userId: payload.userId,
     };
   } catch {
@@ -58,7 +56,7 @@ export function parseAdminSessionToken(
 }
 
 function sign(encodedPayload: string) {
-  return createHmac("sha256", getAdminSessionSecret())
+  return createHmac("sha256", getSessionSecret())
     .update(encodedPayload)
     .digest("base64url");
 }
@@ -76,10 +74,10 @@ function encodeBase64Url(value: string) {
   return Buffer.from(value).toString("base64url");
 }
 
-function getAdminSessionSecret() {
+function getSessionSecret() {
   return (
-    process.env.ADMIN_SESSION_SECRET ||
+    process.env.AUTH_SESSION_SECRET ||
     process.env.JWT_SECRET ||
-    "hermes-swarm-local-admin-secret"
+    "hermes-swarm-local-auth-secret"
   );
 }

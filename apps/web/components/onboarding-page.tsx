@@ -3,15 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { getPublicBootstrap, onboardAdmin } from "@/lib/admin-api";
+import { getPublicBootstrap, onboard } from "@/lib/admin-api";
 import { storeSession } from "@/lib/session";
 
 export function OnboardingPage() {
   const router = useRouter();
-  const [tenantName, setTenantName] = useState("Hermes");
-  const [tenantSlug, setTenantSlug] = useState("hermes");
-  const [organizationName, setOrganizationName] = useState("Default Organization");
-  const [adminName, setAdminName] = useState("Tenant Admin");
+  const [organizationName, setOrganizationName] = useState("Hermes");
+  const [organizationSlug, setOrganizationSlug] = useState("hermes");
+  const [adminName, setAdminName] = useState("Admin");
   const [adminEmail, setAdminEmail] = useState("admin@hermes.local");
   const [adminPassword, setAdminPassword] = useState("admin123456");
   const [loading, setLoading] = useState(true);
@@ -45,13 +44,12 @@ export function OnboardingPage() {
     setError("");
 
     try {
-      const response = await onboardAdmin({
+      const response = await onboard({
         adminEmail,
         adminName,
         adminPassword,
         organizationName,
-        tenantName,
-        tenantSlug,
+        organizationSlug,
       });
 
       storeSession({ token: response.token });
@@ -79,24 +77,17 @@ export function OnboardingPage() {
         <form className="auth-form" onSubmit={submit}>
           <div className="form-grid">
             <label>
-              <span>租户名称</span>
-              <input
-                onChange={(event) => setTenantName(event.target.value)}
-                value={tenantName}
-              />
-            </label>
-            <label>
-              <span>租户标识</span>
-              <input
-                onChange={(event) => setTenantSlug(event.target.value)}
-                value={tenantSlug}
-              />
-            </label>
-            <label>
               <span>组织名称</span>
               <input
                 onChange={(event) => setOrganizationName(event.target.value)}
                 value={organizationName}
+              />
+            </label>
+            <label>
+              <span>组织标识</span>
+              <input
+                onChange={(event) => setOrganizationSlug(event.target.value)}
+                value={organizationSlug}
               />
             </label>
             <label>

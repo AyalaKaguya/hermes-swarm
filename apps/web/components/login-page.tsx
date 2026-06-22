@@ -1,12 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import {
-  getPublicBootstrap,
-  loginAdmin,
-} from "@/lib/admin-api";
+import { getPublicBootstrap, login } from "@/lib/admin-api";
 import type { PublicBootstrap } from "@/lib/admin-api";
 import {
   clearStoredSession,
@@ -19,30 +16,15 @@ const emptyBootstrap: PublicBootstrap = {
   menus: [],
   onboardingRequired: false,
   organizations: [],
-  tenants: [],
 };
 
 export function LoginPage() {
   const router = useRouter();
   const [bootstrap, setBootstrap] = useState<PublicBootstrap>(emptyBootstrap);
-  const [tenantId, setTenantId] = useState("");
-  const [organizationId, setOrganizationId] = useState("");
   const [email, setEmail] = useState("admin@hermes.local");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const activeTenants = bootstrap.tenants.filter(
-    (tenant) => tenant.status === "active",
-  );
-  const activeOrganizations = useMemo(
-    () =>
-      bootstrap.organizations.filter(
-        (organization) =>
-          organization.tenantId === tenantId && organization.status === "active",
-      ),
-    [bootstrap.organizations, tenantId],
-  );
 
   useEffect(() => {
     clearStoredSession();
@@ -58,16 +40,6 @@ export function LoginPage() {
           return;
         }
         setBootstrap(data);
-        const firstTenantId =
-          data.tenants.find((tenant) => tenant.status === "active")?.id ?? "";
-        setTenantId(firstTenantId);
-        setOrganizationId(
-          data.organizations.find(
-            (organization) =>
-              organization.tenantId === firstTenantId &&
-              organization.status === "active",
-          )?.id ?? "",
-        );
       } catch (loadError) {
         setError(getErrorMessage(loadError));
       } finally {
@@ -78,25 +50,12 @@ export function LoginPage() {
     void load();
   }, [router]);
 
-  useEffect(() => {
-    setOrganizationId((current) =>
-      activeOrganizations.some((organization) => organization.id === current)
-        ? current
-        : activeOrganizations[0]?.id ?? "",
-    );
-  }, [activeOrganizations]);
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
     try {
-      const response = await loginAdmin({
-        email,
-        organizationId,
-        password,
-        tenantId,
-      });
+      const response = await login({ email, password });
       const resolvedSession = resolveSession(response.snapshot);
 
       if (!hasAnyManagementAccess(response.snapshot, resolvedSession)) {
@@ -126,36 +85,6 @@ export function LoginPage() {
 
         <form className="auth-form" onSubmit={submit}>
           <label>
-            <span>租户</span>
-            <select
-              disabled={loading}
-              onChange={(event) => setTenantId(event.target.value)}
-              value={tenantId}
-            >
-              {activeTenants.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  {tenant.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            <span>组织</span>
-            <select
-              disabled={loading || activeOrganizations.length === 0}
-              onChange={(event) => setOrganizationId(event.target.value)}
-              value={organizationId}
-            >
-              {activeOrganizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
             <span>邮箱</span>
             <input
               autoComplete="email"
@@ -181,7 +110,7 @@ export function LoginPage() {
 
           <button
             className="primary-action full-width"
-            disabled={loading || !tenantId || !organizationId}
+            disabled={loading || !email || !password}
             type="submit"
           >
             登录
@@ -189,7 +118,7 @@ export function LoginPage() {
         </form>
 
         <div className="auth-links">
-          <a href="/onboarding">初始化租户</a>
+          <a href="/onboarding">初始化组织</a>
         </div>
       </section>
     </main>

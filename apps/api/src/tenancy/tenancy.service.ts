@@ -9,44 +9,38 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { randomBytes, pbkdf2Sync, timingSafeEqual } from "node:crypto";
-import { In, IsNull, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import {
   DEFAULT_ADMIN_MENUS,
   Menu,
   Organization,
+  OrganizationSetting,
   OrganizationStatus,
   Role,
   RolePermission,
   SYSTEM_ROLES,
-  Tenant,
-  TenantSetting,
-  TenantStatus,
   User,
-  UserOrganization,
   UserStatus,
   buildMenuPermissionKey,
   defaultPermissionsForRole,
 } from "@hermes-swarm/core";
 import {
-  AdminContext,
-  AdminLoginPayload,
+  AuthContext,
   CreateMenuPayload,
   CreateOrganizationPayload,
-  CreateTenantPayload,
   CreateUserPayload,
+  LoginPayload,
   OnboardingPayload,
   ReplaceRolePermissionsPayload,
   UpdateMenuPayload,
   UpdateOrganizationPayload,
-  UpdateTenantPayload,
   UpdateUserPayload,
 } from "./tenancy.types.js";
 import {
-  createAdminSessionToken,
-  parseAdminSessionToken,
+  createAuthSessionToken,
+  parseAuthSessionToken,
 } from "./admin-session.js";
 
-const TENANT_STATUSES: TenantStatus[] = ["active", "suspended"];
 const ORGANIZATION_STATUSES: OrganizationStatus[] = ["active", "suspended"];
 const USER_STATUSES: UserStatus[] = ["active", "disabled"];
 const DEFAULT_ADMIN_PASSWORD = "admin123456";
@@ -57,46 +51,44 @@ const PASSWORD_KEY_LENGTH = 32;
 @Injectable()
 export class TenancyService implements OnModuleInit {
   constructor(
-    @InjectRepository(Tenant)
-    private readonly tenantRepository: Repository<Tenant>,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    @InjectRepository(UserOrganization)
-    private readonly userOrganizationRepository: Repository<UserOrganization>,
     @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
-    @InjectRepository(TenantSetting)
-    private readonly tenantSettingRepository: Repository<TenantSetting>,
+    @InjectRepository(OrganizationSetting)
+    private readonly organizationSettingRepository: Repository<OrganizationSetting>,
     @InjectRepository(Menu)
     private readonly menuRepository: Repository<Menu>,
   ) {}
 
   async onModuleInit() {
     await this.ensureMenus();
-    await this.ensureInfrastructureForExistingTenants();
+    await this.ensureInfrastructureForExistingOrganizations();
   }
 
+  // --- Public bootstrap ---------------------------------------------------
+
   async getPublicBootstrap() {
-    const [tenantCount, userCount, tenants, organizations, menus] =
+    const [orgCount, userCount, organizations, menus] =
       await Promise.all([
-        this.tenantRepository.count(),
+        this.organizationRepository.count(),
         this.userRepository.count(),
-        this.tenantRepository.find({ order: { createdAt: "ASC" } }),
         this.organizationRepository.find({ order: { createdAt: "ASC" } }),
         this.listMenus(),
       ]);
 
     return {
-      onboardingRequired: tenantCount === 0 || userCount === 0,
-      tenants: tenants.map(toTenantDto),
+      onboardingRequired: orgCount === 0 || userCount === 0,
       organizations: organizations.map(toOrganizationDto),
       menus: menus.map(toMenuDto),
     };
   }
+
+  // --- Onboarding (initial org + admin) -----------------------------------
 
   async onboard(payload: OnboardingPayload) {
     const hasUsers = (await this.userRepository.count()) > 0;
@@ -104,27 +96,23 @@ export class TenancyService implements OnModuleInit {
       throw new ConflictException("系统已经初始化，请使用登录入口");
     }
 
-    const tenantName = requireText(payload.tenantName, "租户名称");
-    const tenantSlug = normalizeSlug(payload.tenantSlug || tenantName, "tenant");
-    await this.assertUniqueTenantSlug(tenantSlug);
+    const orgName = requireText(payload.organizationName, "组织名称");
+    const orgSlug = normalizeSlug(payload.organizationSlug || orgName, "org");
 
-    const tenant = await this.tenantRepository.save(
-      this.tenantRepository.create({
-        name: tenantName,
-        slug: tenantSlug,
+    await this.assertUniqueOrganizationSlug(orgSlug);
+
+    const organization = await this.organizationRepository.save(
+      this.organizationRepository.create({
+        name: orgName,
+        slug: orgSlug,
         status: "active",
-        subdomain: tenantSlug,
+        subdomain: orgSlug,
       }),
     );
 
-    await this.ensureTenantInfrastructure(tenant.id);
+    await this.ensureOrganizationInfrastructure(organization.id);
 
-    const organization = await this.createOrReuseDefaultOrganization(
-      tenant.id,
-      payload.organizationName || `${tenantName} Organization`,
-    );
-
-    const ownerRole = await this.getSystemRoleOrThrow(tenant.id, "owner");
+    const ownerRole = await this.getSystemRoleOrThrow(organization.id, "owner");
     const user = await this.userRepository.save(
       this.userRepository.create({
         displayName: requireText(payload.adminName, "管理员名称"),
@@ -134,106 +122,75 @@ export class TenancyService implements OnModuleInit {
         ),
         roleId: ownerRole.id,
         status: "active",
-        tenantId: tenant.id,
-        type: "user",
-      }),
-    );
-
-    await this.userOrganizationRepository.save(
-      this.userOrganizationRepository.create({
-        isActive: true,
-        isDefault: true,
         organizationId: organization.id,
-        preferences: null,
-        tenantId: tenant.id,
-        userId: user.id,
+        type: "user",
+        preferredLanguage: "zh-CN",
       }),
     );
 
-    return this.createLoginResponse(tenant.id, organization.id, user.id);
+    return this.createLoginResponse(organization.id, user.id);
   }
 
-  async login(payload: AdminLoginPayload) {
-    const tenantId = requireText(payload.tenantId, "租户");
-    const organizationId = requireText(payload.organizationId, "组织");
+  // --- Login (email + password, no org selection) -------------------------
+
+  async login(payload: LoginPayload) {
     const email = normalizeEmail(payload.email);
     const password = requireText(payload.password, "密码");
 
-    const [tenant, organization, user] = await Promise.all([
-      this.tenantRepository.findOne({ where: { id: tenantId } }),
-      this.organizationRepository.findOne({
-        where: { id: organizationId, tenantId },
-      }),
-      this.userRepository.findOne({
-        where: { email, tenantId },
-      }),
-    ]);
+    const user = await this.userRepository.findOne({
+      where: { email },
+    });
 
-    if (!tenant || tenant.status !== "active") {
-      throw new UnauthorizedException("租户不可用");
-    }
-    if (!organization || organization.status !== "active") {
-      throw new UnauthorizedException("组织不可用");
-    }
     if (!user || user.status !== "active") {
       throw new UnauthorizedException("用户名或密码不正确");
     }
     if (!verifyPassword(password, user.passwordHash)) {
       throw new UnauthorizedException("用户名或密码不正确");
     }
-
-    const membership = await this.userOrganizationRepository.findOne({
-      where: { organizationId, tenantId, userId: user.id },
-    });
-
-    if (!membership?.isActive) {
-      throw new UnauthorizedException("用户不属于该组织");
+    if (!user.organizationId) {
+      throw new UnauthorizedException("用户未关联任何组织");
     }
 
-    return this.createLoginResponse(tenant.id, organization.id, user.id);
+    const organization = await this.organizationRepository.findOne({
+      where: { id: user.organizationId },
+    });
+
+    if (!organization || organization.status !== "active") {
+      throw new UnauthorizedException("组织不可用");
+    }
+
+    return this.createLoginResponse(organization.id, user.id);
   }
 
-  async requireAdminContext(authorization: string | undefined) {
-    const tokenPayload = parseAdminSessionToken(parseBearerToken(authorization));
+  // --- Auth context -------------------------------------------------------
+
+  async requireAuthContext(authorization: string | undefined): Promise<AuthContext> {
+    const tokenPayload = parseAuthSessionToken(parseBearerToken(authorization));
     if (!tokenPayload) {
       throw new UnauthorizedException("登录已失效");
     }
 
-    const [tenant, organization, user, membership] = await Promise.all([
-      this.tenantRepository.findOne({ where: { id: tokenPayload.tenantId } }),
+    const [organization, user] = await Promise.all([
       this.organizationRepository.findOne({
-        where: {
-          id: tokenPayload.organizationId,
-          tenantId: tokenPayload.tenantId,
-        },
+        where: { id: tokenPayload.organizationId },
       }),
       this.userRepository.findOne({
         where: {
           id: tokenPayload.userId,
-          tenantId: tokenPayload.tenantId,
-        },
-      }),
-      this.userOrganizationRepository.findOne({
-        where: {
           organizationId: tokenPayload.organizationId,
-          tenantId: tokenPayload.tenantId,
-          userId: tokenPayload.userId,
         },
       }),
     ]);
 
-    if (!tenant || tenant.status !== "active") {
-      throw new UnauthorizedException("租户不可用");
-    }
     if (!organization || organization.status !== "active") {
       throw new UnauthorizedException("组织不可用");
     }
-    if (!user || user.status !== "active" || !membership?.isActive) {
+    if (!user || user.status !== "active") {
       throw new UnauthorizedException("用户不可用");
     }
 
     const permissions = await this.getEnabledPermissions(
-      tokenPayload.tenantId,
+      tokenPayload.organizationId,
       user.roleId,
     );
 
@@ -241,246 +198,132 @@ export class TenancyService implements OnModuleInit {
       organizationId: organization.id,
       permissions,
       roleId: user.roleId,
-      tenantId: tenant.id,
       userId: user.id,
-    } satisfies AdminContext;
+    };
   }
 
-  async getSnapshot(context: AdminContext) {
-    await this.ensureTenantInfrastructure(context.tenantId);
+  // --- Snapshot (full org state) ------------------------------------------
+
+  async getSnapshot(context: AuthContext) {
+    await this.ensureOrganizationInfrastructure(context.organizationId);
 
     const [
-      tenant,
-      organizations,
+      organization,
       users,
-      userOrganizations,
       roles,
       rolePermissions,
-      tenantSettings,
+      organizationSettings,
       menus,
     ] = await Promise.all([
-      this.tenantRepository.findOne({ where: { id: context.tenantId } }),
-      this.organizationRepository.find({
-        where: { tenantId: context.tenantId },
-        order: { createdAt: "ASC" },
+      this.organizationRepository.findOne({
+        where: { id: context.organizationId },
       }),
       this.userRepository.find({
-        where: { tenantId: context.tenantId },
-        order: { createdAt: "ASC" },
-      }),
-      this.userOrganizationRepository.find({
-        where: { tenantId: context.tenantId },
+        where: { organizationId: context.organizationId },
         order: { createdAt: "ASC" },
       }),
       this.roleRepository.find({
-        where: { tenantId: context.tenantId },
+        where: { organizationId: context.organizationId },
         order: { createdAt: "ASC" },
       }),
       this.rolePermissionRepository.find({
-        where: { tenantId: context.tenantId },
+        where: { organizationId: context.organizationId },
         order: { roleId: "ASC", permission: "ASC" },
       }),
-      this.tenantSettingRepository.find({
-        where: { tenantId: context.tenantId },
+      this.organizationSettingRepository.find({
+        where: { organizationId: context.organizationId },
         order: { name: "ASC" },
       }),
       this.listMenus(),
     ]);
 
-    if (!tenant) {
-      throw new UnauthorizedException("租户不可用");
+    if (!organization) {
+      throw new UnauthorizedException("组织不可用");
     }
 
-    const currentOrganization = organizations.find(
-      (organization) => organization.id === context.organizationId,
-    );
-    const currentUser = users.find((user) => user.id === context.userId);
-    const currentMembership = userOrganizations.find(
-      (membership) =>
-        membership.organizationId === context.organizationId &&
-        membership.userId === context.userId,
-    );
-    const currentRole = roles.find((role) => role.id === context.roleId) ?? null;
+    const currentUser = users.find((u) => u.id === context.userId);
+    const currentRole = roles.find((r) => r.id === context.roleId) ?? null;
 
-    if (!currentOrganization || !currentUser || !currentMembership) {
+    if (!currentUser) {
       throw new UnauthorizedException("登录已失效");
     }
 
     return {
       currentUser: {
-        membership: toUserOrganizationDto(currentMembership),
-        organization: toOrganizationDto(currentOrganization),
+        organization: toOrganizationDto(organization),
         permissions: context.permissions,
         role: currentRole ? toRoleDto(currentRole) : null,
-        tenant: toTenantDto(tenant),
         user: toUserDto(currentUser),
       },
       menus: menus.map(toMenuDto),
-      organizations: organizations.map(toOrganizationDto),
+      organization: toOrganizationDto(organization),
+      organizations: [toOrganizationDto(organization)],
       rolePermissions: rolePermissions.map(toRolePermissionDto),
       roles: roles.map(toRoleDto),
-      tenantSettings: tenantSettings.map(toTenantSettingDto),
-      tenants: [toTenantDto(tenant)],
-      userOrganizations: userOrganizations.map(toUserOrganizationDto),
+      settings: organizationSettings.map(toOrganizationSettingDto),
       users: users.map(toUserDto),
     };
   }
 
-  async listTenants(context: AdminContext) {
-    this.assertPermission(context, "tenants", "view");
-    const tenant = await this.tenantRepository.findOne({
-      where: { id: context.tenantId },
+  // --- Organizations ------------------------------------------------------
+
+  async getCurrentOrganization(context: AuthContext) {
+    const org = await this.organizationRepository.findOne({
+      where: { id: context.organizationId },
     });
-    return tenant ? [toTenantDto(tenant)] : [];
-  }
-
-  async createTenant(context: AdminContext, payload: CreateTenantPayload) {
-    this.assertPermission(context, "tenants", "manage");
-    const name = requireText(payload.name, "租户名称");
-    const slug = normalizeSlug(payload.slug || name, "tenant");
-    await this.assertUniqueTenantSlug(slug);
-    const tenant = await this.tenantRepository.save(
-      this.tenantRepository.create({
-        name,
-        slug,
-        status: normalizeTenantStatus(payload.status),
-        subdomain: payload.subdomain?.trim() || null,
-      }),
-    );
-    await this.ensureTenantInfrastructure(tenant.id);
-    return toTenantDto(tenant);
-  }
-
-  async updateTenant(
-    context: AdminContext,
-    tenantId: string,
-    payload: UpdateTenantPayload,
-  ) {
-    this.assertPermission(context, "tenants", "manage");
-    if (tenantId !== context.tenantId) {
-      throw new ForbiddenException("不能修改其他租户");
-    }
-
-    const tenant = await this.getTenantOrThrow(tenantId);
-
-    if (payload.name !== undefined) {
-      tenant.name = requireText(payload.name, "租户名称");
-    }
-    if (payload.slug !== undefined) {
-      const nextSlug = normalizeSlug(payload.slug, "tenant");
-      if (nextSlug !== tenant.slug) {
-        await this.assertUniqueTenantSlug(nextSlug);
-      }
-      tenant.slug = nextSlug;
-    }
-    if (payload.subdomain !== undefined) {
-      tenant.subdomain = payload.subdomain?.trim() || null;
-    }
-    if (payload.status !== undefined) {
-      tenant.status = normalizeTenantStatus(payload.status);
-    }
-
-    return toTenantDto(await this.tenantRepository.save(tenant));
-  }
-
-  async listOrganizations(context: AdminContext) {
-    this.assertPermission(context, "organizations", "view");
-    const organizations = await this.organizationRepository.find({
-      where: { tenantId: context.tenantId },
-      order: { createdAt: "ASC" },
-    });
-    return organizations.map(toOrganizationDto);
-  }
-
-  async createOrganization(
-    context: AdminContext,
-    payload: CreateOrganizationPayload,
-  ) {
-    this.assertPermission(context, "organizations", "manage");
-    const name = requireText(payload.name, "组织名称");
-    const slug = normalizeSlug(payload.slug || name, "organization");
-    const status = normalizeOrganizationStatus(payload.status);
-
-    await this.assertUniqueOrganizationSlug(context.tenantId, slug);
-
-    const organization = await this.organizationRepository.save(
-      this.organizationRepository.create({
-        isDefault: false,
-        name,
-        slug,
-        status,
-        tenantId: context.tenantId,
-      }),
-    );
-
-    return toOrganizationDto(organization);
+    return org ? toOrganizationDto(org) : null;
   }
 
   async updateOrganization(
-    context: AdminContext,
-    organizationId: string,
+    context: AuthContext,
     payload: UpdateOrganizationPayload,
   ) {
     this.assertPermission(context, "organizations", "manage");
-    const organization = await this.getOrganizationOrThrow(
-      context.tenantId,
-      organizationId,
-    );
+    const org = await this.getOrganizationOrThrow(context.organizationId);
 
     if (payload.name !== undefined) {
-      organization.name = requireText(payload.name, "组织名称");
+      org.name = requireText(payload.name, "组织名称");
     }
     if (payload.slug !== undefined) {
-      const nextSlug = normalizeSlug(payload.slug, "organization");
-      if (nextSlug !== organization.slug) {
-        await this.assertUniqueOrganizationSlug(context.tenantId, nextSlug);
+      const nextSlug = normalizeSlug(payload.slug, "org");
+      if (nextSlug !== org.slug) {
+        await this.assertUniqueOrganizationSlug(nextSlug);
       }
-      organization.slug = nextSlug;
+      org.slug = nextSlug;
+    }
+    if (payload.subdomain !== undefined) {
+      org.subdomain = payload.subdomain?.trim() || null;
     }
     if (payload.status !== undefined) {
-      organization.status = normalizeOrganizationStatus(payload.status);
+      org.status = normalizeOrganizationStatus(payload.status);
     }
 
-    return toOrganizationDto(
-      await this.organizationRepository.save(organization),
-    );
+    return toOrganizationDto(await this.organizationRepository.save(org));
   }
 
-  async listUsers(context: AdminContext, organizationId: string) {
+  // --- Users --------------------------------------------------------------
+
+  async listUsers(context: AuthContext) {
     this.assertPermission(context, "users", "view");
-    await this.getOrganizationOrThrow(context.tenantId, organizationId);
-    const memberships = await this.userOrganizationRepository.find({
-      where: { organizationId, tenantId: context.tenantId },
-    });
-
-    if (memberships.length === 0) {
-      return [];
-    }
-
     const users = await this.userRepository.find({
-      where: {
-        id: In(memberships.map((membership) => membership.userId)),
-        tenantId: context.tenantId,
-      },
+      where: { organizationId: context.organizationId },
       order: { createdAt: "ASC" },
     });
-
     return users.map(toUserDto);
   }
 
-  async createUser(
-    context: AdminContext,
-    organizationId: string,
-    payload: CreateUserPayload,
-  ) {
+  async createUser(context: AuthContext, payload: CreateUserPayload) {
     this.assertPermission(context, "users", "manage");
-    await this.getOrganizationOrThrow(context.tenantId, organizationId);
 
     const displayName = requireText(payload.displayName, "用户名称");
     const email = normalizeEmail(payload.email);
-    await this.assertUniqueUserEmail(context.tenantId, email);
+    await this.assertUniqueUserEmail(context.organizationId, email);
 
-    const roleId = await this.normalizeRoleId(context.tenantId, payload.roleId);
+    const roleId = await this.normalizeRoleId(
+      context.organizationId,
+      payload.roleId,
+    );
+
     const user = await this.userRepository.save(
       this.userRepository.create({
         displayName,
@@ -490,19 +333,9 @@ export class TenancyService implements OnModuleInit {
         ),
         roleId,
         status: normalizeUserStatus(payload.status),
-        tenantId: context.tenantId,
+        organizationId: context.organizationId,
         type: "user",
-      }),
-    );
-
-    await this.userOrganizationRepository.save(
-      this.userOrganizationRepository.create({
-        isActive: true,
-        isDefault: true,
-        organizationId,
-        preferences: null,
-        tenantId: context.tenantId,
-        userId: user.id,
+        preferredLanguage: "zh-CN",
       }),
     );
 
@@ -510,17 +343,12 @@ export class TenancyService implements OnModuleInit {
   }
 
   async updateUser(
-    context: AdminContext,
-    organizationId: string,
+    context: AuthContext,
     userId: string,
     payload: UpdateUserPayload,
   ) {
     this.assertPermission(context, "users", "manage");
-    const user = await this.getUserInOrganizationOrThrow(
-      context.tenantId,
-      organizationId,
-      userId,
-    );
+    const user = await this.getUserOrThrow(context.organizationId, userId);
 
     if (payload.displayName !== undefined) {
       user.displayName = requireText(payload.displayName, "用户名称");
@@ -528,7 +356,7 @@ export class TenancyService implements OnModuleInit {
     if (payload.email !== undefined) {
       const nextEmail = normalizeEmail(payload.email);
       if (nextEmail !== user.email) {
-        await this.assertUniqueUserEmail(context.tenantId, nextEmail);
+        await this.assertUniqueUserEmail(context.organizationId, nextEmail);
       }
       user.email = nextEmail;
     }
@@ -536,7 +364,10 @@ export class TenancyService implements OnModuleInit {
       user.passwordHash = hashPassword(requirePassword(payload.password));
     }
     if (payload.roleId !== undefined) {
-      user.roleId = await this.normalizeRoleId(context.tenantId, payload.roleId);
+      user.roleId = await this.normalizeRoleId(
+        context.organizationId,
+        payload.roleId,
+      );
     }
     if (payload.status !== undefined) {
       user.status = normalizeUserStatus(payload.status);
@@ -545,22 +376,24 @@ export class TenancyService implements OnModuleInit {
     return toUserDto(await this.userRepository.save(user));
   }
 
-  async listRoles(context: AdminContext) {
+  // --- Roles --------------------------------------------------------------
+
+  async listRoles(context: AuthContext) {
     this.assertPermission(context, "roles", "view");
     const roles = await this.roleRepository.find({
-      where: { tenantId: context.tenantId },
+      where: { organizationId: context.organizationId },
       order: { createdAt: "ASC" },
     });
     return roles.map(toRoleDto);
   }
 
   async replaceRolePermissions(
-    context: AdminContext,
+    context: AuthContext,
     roleId: string,
     payload: ReplaceRolePermissionsPayload,
   ) {
     this.assertPermission(context, "permissions", "manage");
-    const role = await this.getRoleOrThrow(context.tenantId, roleId);
+    const role = await this.getRoleOrThrow(context.organizationId, roleId);
     const normalized = normalizeRolePermissions(payload.permissions);
     const allowedPermissions = new Set(this.listKnownMenuPermissions());
 
@@ -572,7 +405,7 @@ export class TenancyService implements OnModuleInit {
 
     await this.rolePermissionRepository.delete({
       roleId: role.id,
-      tenantId: context.tenantId,
+      organizationId: context.organizationId,
     });
 
     const saved = await this.rolePermissionRepository.save(
@@ -581,7 +414,7 @@ export class TenancyService implements OnModuleInit {
           enabled: permission.enabled,
           permission: permission.permission,
           roleId: role.id,
-          tenantId: context.tenantId,
+          organizationId: context.organizationId,
         }),
       ),
     );
@@ -589,13 +422,26 @@ export class TenancyService implements OnModuleInit {
     return saved.map(toRolePermissionDto);
   }
 
+  // --- Organization settings ----------------------------------------------
+
+  async listSettings(context: AuthContext) {
+    this.assertPermission(context, "settings", "view");
+    const settings = await this.organizationSettingRepository.find({
+      where: { organizationId: context.organizationId },
+      order: { name: "ASC" },
+    });
+    return settings.map(toOrganizationSettingDto);
+  }
+
+  // --- Menus --------------------------------------------------------------
+
   listMenus() {
     return this.menuRepository.find({
       order: { sortOrder: "ASC", createdAt: "ASC" },
     });
   }
 
-  async createMenu(context: AdminContext, payload: CreateMenuPayload) {
+  async createMenu(context: AuthContext, payload: CreateMenuPayload) {
     this.assertPermission(context, "menus", "manage");
     const code = normalizeMenuCode(payload.code);
     const label = requireText(payload.label, "菜单名称");
@@ -619,7 +465,7 @@ export class TenancyService implements OnModuleInit {
   }
 
   async updateMenu(
-    context: AdminContext,
+    context: AuthContext,
     menuId: string,
     payload: UpdateMenuPayload,
   ) {
@@ -661,15 +507,11 @@ export class TenancyService implements OnModuleInit {
     return toMenuDto(saved);
   }
 
-  private async createLoginResponse(
-    tenantId: string,
-    organizationId: string,
-    userId: string,
-  ) {
-    const context = await this.requireAdminContext(
-      `Bearer ${createAdminSessionToken({ organizationId, tenantId, userId })}`,
-    );
-    const token = createAdminSessionToken({ organizationId, tenantId, userId });
+  // --- Private helpers ----------------------------------------------------
+
+  private async createLoginResponse(organizationId: string, userId: string) {
+    const token = createAuthSessionToken({ organizationId, userId });
+    const context = await this.requireAuthContext(`Bearer ${token}`);
     return {
       token,
       snapshot: await this.getSnapshot(context),
@@ -699,19 +541,19 @@ export class TenancyService implements OnModuleInit {
     }
   }
 
-  private async ensureInfrastructureForExistingTenants() {
-    const tenants = await this.tenantRepository.find();
-    for (const tenant of tenants) {
-      await this.ensureTenantInfrastructure(tenant.id);
+  private async ensureInfrastructureForExistingOrganizations() {
+    const organizations = await this.organizationRepository.find();
+    for (const org of organizations) {
+      await this.ensureOrganizationInfrastructure(org.id);
     }
   }
 
-  private async ensureTenantInfrastructure(tenantId: string) {
+  private async ensureOrganizationInfrastructure(organizationId: string) {
     const allMenuPermissions = this.listKnownMenuPermissions();
 
     for (const systemRole of SYSTEM_ROLES) {
       let role = await this.roleRepository.findOne({
-        where: { name: systemRole.name, tenantId },
+        where: { name: systemRole.name, organizationId },
       });
       if (!role) {
         role = await this.roleRepository.save(
@@ -719,20 +561,20 @@ export class TenancyService implements OnModuleInit {
             isSystem: systemRole.isSystem,
             label: systemRole.label,
             name: systemRole.name,
-            tenantId,
+            organizationId,
           }),
         );
       }
 
       const enabledDefaults = new Set(defaultPermissionsForRole(systemRole.name));
       const existingPermissions = await this.rolePermissionRepository.find({
-        where: { roleId: role.id, tenantId },
+        where: { roleId: role.id, organizationId },
       });
       const existingPermissionNames = new Set(
-        existingPermissions.map((permission) => permission.permission),
+        existingPermissions.map((p) => p.permission),
       );
       const missingPermissions = allMenuPermissions.filter(
-        (permission) => !existingPermissionNames.has(permission),
+        (p) => !existingPermissionNames.has(p),
       );
 
       if (missingPermissions.length > 0) {
@@ -742,81 +584,49 @@ export class TenancyService implements OnModuleInit {
               enabled: enabledDefaults.has(permission),
               permission,
               roleId: role.id,
-              tenantId,
+              organizationId,
             }),
           ),
         );
       }
     }
 
-    await this.ensureTenantSetting(
-      tenantId,
+    await this.ensureOrganizationSetting(
+      organizationId,
       "auth.passwordPolicy.minLength",
       "8",
     );
   }
 
-  private async ensureTenantSetting(
-    tenantId: string,
+  private async ensureOrganizationSetting(
+    organizationId: string,
     name: string,
     value: string,
   ) {
-    const existing = await this.tenantSettingRepository.findOne({
-      where: { name, tenantId },
+    const existing = await this.organizationSettingRepository.findOne({
+      where: { name, organizationId },
     });
     if (!existing) {
-      await this.tenantSettingRepository.save(
-        this.tenantSettingRepository.create({ name, tenantId, value }),
+      await this.organizationSettingRepository.save(
+        this.organizationSettingRepository.create({
+          name,
+          organizationId,
+          value,
+        }),
       );
     }
   }
 
-  private async createOrReuseDefaultOrganization(
-    tenantId: string,
-    organizationName: string,
-  ) {
-    const name = requireText(organizationName, "组织名称");
-    const slug = normalizeSlug(name, "organization");
-    let organization =
-      (await this.organizationRepository.findOne({
-        where: { slug, tenantId },
-      })) ??
-      (await this.organizationRepository.findOne({
-        where: { slug, tenantId: IsNull() },
-      }));
-
-    if (!organization) {
-      organization = this.organizationRepository.create({
-        isDefault: true,
-        name,
-        slug,
-        status: "active",
-        tenantId,
-      });
-    } else {
-      organization.isDefault = true;
-      organization.name = organization.name || name;
-      organization.status = "active";
-      organization.tenantId = tenantId;
-    }
-
-    return this.organizationRepository.save(organization);
-  }
-
-  private async getEnabledPermissions(tenantId: string, roleId: string | null) {
-    if (!roleId) {
-      return [];
-    }
-
+  private async getEnabledPermissions(organizationId: string, roleId: string | null) {
+    if (!roleId) return [];
     const permissions = await this.rolePermissionRepository.find({
-      where: { enabled: true, roleId, tenantId },
+      where: { enabled: true, roleId, organizationId },
     });
-
-    return permissions.map((permission) => permission.permission);
+    return permissions.map((p) => p.permission);
   }
 
   private assertPermission(
-    context: AdminContext,
+    context: AuthContext,
     menuCode: string,
     action: "manage" | "view",
   ) {
@@ -845,7 +655,11 @@ export class TenancyService implements OnModuleInit {
       for (const action of ["view", "manage"] as const) {
         const permission = buildMenuPermissionKey(menuCode, action);
         const existing = await this.rolePermissionRepository.findOne({
-          where: { permission, roleId: role.id, tenantId: role.tenantId },
+          where: {
+            permission,
+            roleId: role.id,
+            organizationId: role.organizationId,
+          },
         });
         if (!existing) {
           await this.rolePermissionRepository.save(
@@ -853,7 +667,7 @@ export class TenancyService implements OnModuleInit {
               enabled: enabledDefaults.has(permission),
               permission,
               roleId: role.id,
-              tenantId: role.tenantId,
+              organizationId: role.organizationId,
             }),
           );
         }
@@ -868,9 +682,9 @@ export class TenancyService implements OnModuleInit {
       where: [{ permission: previousView }, { permission: previousManage }],
     });
 
-    for (const permission of permissions) {
-      permission.permission =
-        permission.permission === previousView
+    for (const p of permissions) {
+      p.permission =
+        p.permission === previousView
           ? buildMenuPermissionKey(nextCode, "view")
           : buildMenuPermissionKey(nextCode, "manage");
     }
@@ -880,141 +694,92 @@ export class TenancyService implements OnModuleInit {
     }
   }
 
-  private async getTenantOrThrow(tenantId: string) {
-    const tenant = await this.tenantRepository.findOne({ where: { id: tenantId } });
-    if (!tenant) {
-      throw new NotFoundException("租户不存在");
-    }
-    return tenant;
+  // --- Data access helpers ------------------------------------------------
+
+  private async getOrganizationOrThrow(organizationId: string) {
+    const org = await this.organizationRepository.findOne({
+      where: { id: organizationId },
+    });
+    if (!org) throw new NotFoundException("组织不存在");
+    return org;
   }
 
-  private async getOrganizationOrThrow(tenantId: string, organizationId: string) {
-    const organization = await this.organizationRepository.findOne({
-      where: { id: organizationId, tenantId },
-    });
-    if (!organization) {
-      throw new NotFoundException("组织不存在");
-    }
-    return organization;
-  }
-
-  private async getUserInOrganizationOrThrow(
-    tenantId: string,
-    organizationId: string,
-    userId: string,
-  ) {
-    const membership = await this.userOrganizationRepository.findOne({
-      where: { organizationId, tenantId, userId },
-    });
-    if (!membership) {
-      throw new NotFoundException("用户不存在或不属于该组织");
-    }
-
+  private async getUserOrThrow(organizationId: string, userId: string) {
     const user = await this.userRepository.findOne({
-      where: { id: userId, tenantId },
+      where: { id: userId, organizationId },
     });
-    if (!user) {
-      throw new NotFoundException("用户不存在");
-    }
-
+    if (!user) throw new NotFoundException("用户不存在");
     return user;
   }
 
-  private async getRoleOrThrow(tenantId: string, roleId: string) {
+  private async getRoleOrThrow(organizationId: string, roleId: string) {
     const role = await this.roleRepository.findOne({
-      where: { id: roleId, tenantId },
+      where: { id: roleId, organizationId },
     });
-    if (!role) {
-      throw new NotFoundException("角色不存在");
-    }
+    if (!role) throw new NotFoundException("角色不存在");
     return role;
   }
 
-  private async getSystemRoleOrThrow(tenantId: string, roleName: string) {
+  private async getSystemRoleOrThrow(organizationId: string, roleName: string) {
     const role = await this.roleRepository.findOne({
-      where: { name: roleName, tenantId },
+      where: { name: roleName, organizationId },
     });
-    if (!role) {
-      throw new NotFoundException("系统角色不存在");
-    }
+    if (!role) throw new NotFoundException("系统角色不存在");
     return role;
   }
 
   private async normalizeRoleId(
-    tenantId: string,
+    organizationId: string,
     roleId: string | null | undefined,
   ) {
-    if (roleId === null) {
-      return null;
-    }
-    if (roleId) {
-      return (await this.getRoleOrThrow(tenantId, roleId)).id;
-    }
-    return (await this.getSystemRoleOrThrow(tenantId, "member")).id;
+    if (roleId === null) return null;
+    if (roleId) return (await this.getRoleOrThrow(organizationId, roleId)).id;
+    return (await this.getSystemRoleOrThrow(organizationId, "member")).id;
   }
 
   private async getMenuOrThrow(menuId: string) {
     const menu = await this.menuRepository.findOne({ where: { id: menuId } });
-    if (!menu) {
-      throw new NotFoundException("菜单不存在");
-    }
+    if (!menu) throw new NotFoundException("菜单不存在");
     return menu;
   }
 
   private async normalizeParentId(parentId: string | null | undefined) {
-    if (!parentId) {
-      return null;
-    }
+    if (!parentId) return null;
     await this.getMenuOrThrow(parentId);
     return parentId;
   }
 
-  private async assertUniqueTenantSlug(slug: string) {
-    const existing = await this.tenantRepository.findOne({ where: { slug } });
-    if (existing) {
-      throw new ConflictException("租户标识已存在");
-    }
-  }
-
-  private async assertUniqueOrganizationSlug(tenantId: string, slug: string) {
+  private async assertUniqueOrganizationSlug(slug: string) {
     const existing = await this.organizationRepository.findOne({
-      where: { slug, tenantId },
+      where: { slug },
     });
-    if (existing) {
-      throw new ConflictException("组织标识已存在");
-    }
+    if (existing) throw new ConflictException("组织标识已存在");
   }
 
-  private async assertUniqueUserEmail(tenantId: string, email: string) {
+  private async assertUniqueUserEmail(organizationId: string, email: string) {
     const existing = await this.userRepository.findOne({
-      where: { email, tenantId },
+      where: { email, organizationId },
     });
-    if (existing) {
-      throw new ConflictException("该租户下邮箱已存在");
-    }
+    if (existing) throw new ConflictException("该组织下邮箱已存在");
   }
 
   private async assertUniqueMenuCode(code: string) {
     const existing = await this.menuRepository.findOne({ where: { code } });
-    if (existing) {
-      throw new ConflictException("菜单编码已存在");
-    }
+    if (existing) throw new ConflictException("菜单编码已存在");
   }
 }
 
+// --- Pure helper functions ------------------------------------------------
+
 function requireText(value: string | undefined, label: string) {
   const text = value?.trim();
-  if (!text) {
-    throw new BadRequestException(`${label}不能为空`);
-  }
+  if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }
 
 function requirePassword(value: string | undefined) {
   const password = requireText(value, "密码");
-  if (password.length < 8) {
-    throw new BadRequestException("密码至少需要 8 位");
-  }
+  if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
   return password;
 }
 
@@ -1038,9 +803,7 @@ function normalizeEmail(value: string | undefined) {
 
 function normalizeMenuCode(value: string | undefined) {
   const code = value?.trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, "-");
-  if (!code) {
-    throw new BadRequestException("菜单编码不能为空");
-  }
+  if (!code) throw new BadRequestException("菜单编码不能为空");
   return code;
 }
 
@@ -1050,28 +813,14 @@ function normalizeMenuPath(value: string | undefined) {
 }
 
 function normalizeSortOrder(value: number | undefined) {
-  if (value === undefined || Number.isNaN(Number(value))) {
-    return 0;
-  }
+  if (value === undefined || Number.isNaN(Number(value))) return 0;
   return Number(value);
-}
-
-function normalizeTenantStatus(status: TenantStatus | undefined): TenantStatus {
-  if (!status) {
-    return "active";
-  }
-  if (!TENANT_STATUSES.includes(status)) {
-    throw new BadRequestException("租户状态不合法");
-  }
-  return status;
 }
 
 function normalizeOrganizationStatus(
   status: OrganizationStatus | undefined,
 ): OrganizationStatus {
-  if (!status) {
-    return "active";
-  }
+  if (!status) return "active";
   if (!ORGANIZATION_STATUSES.includes(status)) {
     throw new BadRequestException("组织状态不合法");
   }
@@ -1079,9 +828,7 @@ function normalizeOrganizationStatus(
 }
 
 function normalizeUserStatus(status: UserStatus | undefined): UserStatus {
-  if (!status) {
-    return "active";
-  }
+  if (!status) return "active";
   if (!USER_STATUSES.includes(status)) {
     throw new BadRequestException("用户状态不合法");
   }
@@ -1092,19 +839,93 @@ function normalizeRolePermissions(
   permissions: ReplaceRolePermissionsPayload["permissions"],
 ) {
   const unique = new Map<string, { enabled: boolean; permission: string }>();
-
-  for (const permission of permissions ?? []) {
-    const permissionName = permission.permission?.trim();
-    if (!permissionName) {
-      throw new BadRequestException("权限项不能为空");
-    }
-    unique.set(permissionName, {
-      enabled: Boolean(permission.enabled),
-      permission: permissionName,
-    });
+  for (const p of permissions ?? []) {
+    const name = p.permission?.trim();
+    if (!name) throw new BadRequestException("权限项不能为空");
+    unique.set(name, { enabled: Boolean(p.enabled), permission: name });
   }
-
   return [...unique.values()];
+}
+
+function parseBearerToken(authorization: string | undefined) {
+  const [scheme, token] = authorization?.split(" ") ?? [];
+  if (scheme?.toLowerCase() !== "bearer" || !token) return undefined;
+  return token;
+}
+
+// --- DTO mappers ---------------------------------------------------------
+
+function toOrganizationDto(org: Organization) {
+  return {
+    id: org.id,
+    name: org.name,
+    slug: org.slug,
+    status: org.status,
+    subdomain: org.subdomain,
+  };
+}
+
+function toUserDto(user: User) {
+  return {
+    id: user.id,
+    displayName: user.displayName,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    username: user.username,
+    mobile: user.mobile,
+    imageUrl: user.imageUrl,
+    preferredLanguage: user.preferredLanguage,
+    emailVerified: user.emailVerified,
+    timeZone: user.timeZone,
+    roleId: user.roleId,
+    status: user.status,
+    organizationId: user.organizationId,
+    type: user.type,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
+
+function toRoleDto(role: Role) {
+  return {
+    id: role.id,
+    isSystem: role.isSystem,
+    label: role.label,
+    name: role.name,
+    organizationId: role.organizationId,
+  };
+}
+
+function toRolePermissionDto(permission: RolePermission) {
+  return {
+    id: permission.id,
+    enabled: permission.enabled,
+    permission: permission.permission,
+    roleId: permission.roleId,
+    organizationId: permission.organizationId,
+  };
+}
+
+function toOrganizationSettingDto(setting: OrganizationSetting) {
+  return {
+    id: setting.id,
+    name: setting.name,
+    organizationId: setting.organizationId,
+    value: setting.value,
+  };
+}
+
+function toMenuDto(menu: Menu) {
+  return {
+    id: menu.id,
+    code: menu.code,
+    label: menu.label,
+    path: menu.path,
+    parentId: menu.parentId,
+    sortOrder: menu.sortOrder,
+    isActive: menu.isActive,
+  };
 }
 
 function hashPassword(password: string) {
@@ -1120,9 +941,7 @@ function hashPassword(password: string) {
 }
 
 function verifyPassword(password: string, storedHash: string | null | undefined) {
-  if (!storedHash) {
-    return false;
-  }
+  if (!storedHash) return false;
 
   const [prefix, iterationsValue, salt, hash] = storedHash.split("$");
   if (prefix !== PASSWORD_HASH_PREFIX || !iterationsValue || !salt || !hash) {
@@ -1130,9 +949,7 @@ function verifyPassword(password: string, storedHash: string | null | undefined)
   }
 
   const iterations = Number(iterationsValue);
-  if (!Number.isInteger(iterations) || iterations <= 0) {
-    return false;
-  }
+  if (!Number.isInteger(iterations) || iterations <= 0) return false;
 
   const expected = Buffer.from(hash, "base64url");
   const actual = pbkdf2Sync(
@@ -1144,101 +961,4 @@ function verifyPassword(password: string, storedHash: string | null | undefined)
   );
 
   return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
-
-function parseBearerToken(authorization: string | undefined) {
-  const [scheme, token] = authorization?.split(" ") ?? [];
-  if (scheme?.toLowerCase() !== "bearer" || !token) {
-    return undefined;
-  }
-  return token;
-}
-
-function toTenantDto(tenant: Tenant) {
-  return {
-    id: tenant.id,
-    name: tenant.name,
-    slug: tenant.slug,
-    status: tenant.status,
-    subdomain: tenant.subdomain,
-  };
-}
-
-function toOrganizationDto(organization: Organization) {
-  return {
-    id: organization.id,
-    isDefault: organization.isDefault,
-    name: organization.name,
-    slug: organization.slug,
-    status: organization.status,
-    tenantId: organization.tenantId,
-  };
-}
-
-function toUserDto(user: User) {
-  return {
-    displayName: user.displayName,
-    email: user.email,
-    firstName: user.firstName,
-    id: user.id,
-    lastName: user.lastName,
-    roleId: user.roleId,
-    status: user.status,
-    tenantId: user.tenantId,
-    type: user.type,
-    username: user.username,
-  };
-}
-
-function toUserOrganizationDto(membership: UserOrganization) {
-  return {
-    id: membership.id,
-    isActive: membership.isActive,
-    isDefault: membership.isDefault,
-    organizationId: membership.organizationId,
-    preferences: membership.preferences,
-    tenantId: membership.tenantId,
-    userId: membership.userId,
-  };
-}
-
-function toRoleDto(role: Role) {
-  return {
-    id: role.id,
-    isSystem: role.isSystem,
-    label: role.label,
-    name: role.name,
-    tenantId: role.tenantId,
-  };
-}
-
-function toRolePermissionDto(permission: RolePermission) {
-  return {
-    enabled: permission.enabled,
-    id: permission.id,
-    permission: permission.permission,
-    roleId: permission.roleId,
-    tenantId: permission.tenantId,
-  };
-}
-
-function toTenantSettingDto(setting: TenantSetting) {
-  return {
-    id: setting.id,
-    name: setting.name,
-    tenantId: setting.tenantId,
-    value: setting.value,
-  };
-}
-
-function toMenuDto(menu: Menu) {
-  return {
-    code: menu.code,
-    id: menu.id,
-    isActive: menu.isActive,
-    label: menu.label,
-    parentId: menu.parentId,
-    path: menu.path,
-    sortOrder: menu.sortOrder,
-  };
 }

@@ -13,20 +13,10 @@ export {
   Organization,
   type OrganizationStatus,
 } from "./entities/organization.entity.js";
+export { OrganizationBaseEntity } from "./entities/organization-base.entity.js";
+export { OrganizationSetting } from "./entities/organization-setting.entity.js";
 export {
   RolePermission,
 } from "./entities/role-permission.entity.js";
 export { Role } from "./entities/role.entity.js";
-export { TenantBaseEntity } from "./entities/tenant-base.entity.js";
-export {
-  TenantOrganizationBaseEntity,
-} from "./entities/tenant-organization-base.entity.js";
-export {
-  TenantSetting,
-} from "./entities/tenant-setting.entity.js";
-export { Tenant, type TenantStatus } from "./entities/tenant.entity.js";
-export {
-  UserOrganization,
-  type UserOrganizationPreferences,
-} from "./entities/user-organization.entity.js";
-export { User, type UserStatus, type UserType } from "./entities/user.entity.js";
+export { User, type UserStatus, type UserType, type PreferredLanguage } from "./entities/user.entity.js";

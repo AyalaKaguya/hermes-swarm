@@ -1,8 +1,10 @@
--- Base tables for the development multi-tenant model.
+-- Merged tenancy model: Organization is the single top-level container.
+-- Former "tenants" table is absorbed into "organizations".
+-- UserOrganization join is removed: users have direct organization_id.
 
 \c hermes;
 
-CREATE TABLE IF NOT EXISTS tenants (
+CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(120) NOT NULL,
   slug VARCHAR(80) NOT NULL UNIQUE,
@@ -12,32 +14,20 @@ CREATE TABLE IF NOT EXISTS tenants (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-  name VARCHAR(120) NOT NULL,
-  slug VARCHAR(80) NOT NULL,
-  is_default BOOLEAN NOT NULL DEFAULT false,
-  status VARCHAR(24) NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT organizations_tenant_slug_unique UNIQUE (tenant_id, slug)
-);
-
 CREATE TABLE IF NOT EXISTS roles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(80) NOT NULL,
   label VARCHAR(120) NOT NULL,
   is_system BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT roles_tenant_name_unique UNIQUE (tenant_id, name)
+  CONSTRAINT roles_organization_name_unique UNIQUE (organization_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
   type VARCHAR(24) NOT NULL DEFAULT 'user',
   display_name VARCHAR(120) NOT NULL,
@@ -45,32 +35,24 @@ CREATE TABLE IF NOT EXISTS users (
   last_name VARCHAR(80),
   email VARCHAR(160) NOT NULL,
   username VARCHAR(80),
-  password_hash VARCHAR(240) NOT NULL,
+  mobile VARCHAR(32),
+  password_hash VARCHAR(240),
+  refresh_token VARCHAR(240),
+  image_url VARCHAR(500),
+  preferred_language VARCHAR(16) NOT NULL DEFAULT 'zh-CN',
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  time_zone VARCHAR(40),
+  third_party_id VARCHAR(120),
   status VARCHAR(24) NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT users_tenant_email_unique UNIQUE (tenant_id, email)
-);
-
-CREATE TABLE IF NOT EXISTS user_organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  is_default BOOLEAN NOT NULL DEFAULT true,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  preferences JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT user_organizations_user_organization_unique UNIQUE (
-    user_id,
-    organization_id
-  )
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT users_organization_email_unique UNIQUE (organization_id, email)
 );
 
 CREATE TABLE IF NOT EXISTS role_permissions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   permission VARCHAR(160) NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT false,
@@ -82,14 +64,14 @@ CREATE TABLE IF NOT EXISTS role_permissions (
   )
 );
 
-CREATE TABLE IF NOT EXISTS tenant_settings (
+CREATE TABLE IF NOT EXISTS organization_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
   value TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT tenant_settings_tenant_name_unique UNIQUE (tenant_id, name)
+  CONSTRAINT organization_settings_org_name_unique UNIQUE (organization_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS menus (
@@ -104,20 +86,18 @@ CREATE TABLE IF NOT EXISTS menus (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS organizations_tenant_id_idx ON organizations(tenant_id);
-CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON users(tenant_id);
+CREATE INDEX IF NOT EXISTS organizations_slug_idx ON organizations(slug);
+CREATE INDEX IF NOT EXISTS users_organization_id_idx ON users(organization_id);
 CREATE INDEX IF NOT EXISTS users_role_id_idx ON users(role_id);
-CREATE INDEX IF NOT EXISTS user_organizations_tenant_id_idx ON user_organizations(tenant_id);
-CREATE INDEX IF NOT EXISTS user_organizations_organization_id_idx ON user_organizations(organization_id);
-CREATE INDEX IF NOT EXISTS user_organizations_user_id_idx ON user_organizations(user_id);
-CREATE INDEX IF NOT EXISTS roles_tenant_id_idx ON roles(tenant_id);
-CREATE INDEX IF NOT EXISTS role_permissions_tenant_id_idx ON role_permissions(tenant_id);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+CREATE INDEX IF NOT EXISTS roles_organization_id_idx ON roles(organization_id);
+CREATE INDEX IF NOT EXISTS role_permissions_organization_id_idx ON role_permissions(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_role_id_idx ON role_permissions(role_id);
-CREATE INDEX IF NOT EXISTS tenant_settings_tenant_id_idx ON tenant_settings(tenant_id);
+CREATE INDEX IF NOT EXISTS organization_settings_organization_id_idx ON organization_settings(organization_id);
 
 \c hermes_dev;
 
-CREATE TABLE IF NOT EXISTS tenants (
+CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(120) NOT NULL,
   slug VARCHAR(80) NOT NULL UNIQUE,
@@ -127,32 +107,20 @@ CREATE TABLE IF NOT EXISTS tenants (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-  name VARCHAR(120) NOT NULL,
-  slug VARCHAR(80) NOT NULL,
-  is_default BOOLEAN NOT NULL DEFAULT false,
-  status VARCHAR(24) NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT organizations_tenant_slug_unique UNIQUE (tenant_id, slug)
-);
-
 CREATE TABLE IF NOT EXISTS roles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(80) NOT NULL,
   label VARCHAR(120) NOT NULL,
   is_system BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT roles_tenant_name_unique UNIQUE (tenant_id, name)
+  CONSTRAINT roles_organization_name_unique UNIQUE (organization_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
   type VARCHAR(24) NOT NULL DEFAULT 'user',
   display_name VARCHAR(120) NOT NULL,
@@ -160,32 +128,24 @@ CREATE TABLE IF NOT EXISTS users (
   last_name VARCHAR(80),
   email VARCHAR(160) NOT NULL,
   username VARCHAR(80),
-  password_hash VARCHAR(240) NOT NULL,
+  mobile VARCHAR(32),
+  password_hash VARCHAR(240),
+  refresh_token VARCHAR(240),
+  image_url VARCHAR(500),
+  preferred_language VARCHAR(16) NOT NULL DEFAULT 'zh-CN',
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  time_zone VARCHAR(40),
+  third_party_id VARCHAR(120),
   status VARCHAR(24) NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT users_tenant_email_unique UNIQUE (tenant_id, email)
-);
-
-CREATE TABLE IF NOT EXISTS user_organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  is_default BOOLEAN NOT NULL DEFAULT true,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  preferences JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT user_organizations_user_organization_unique UNIQUE (
-    user_id,
-    organization_id
-  )
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT users_organization_email_unique UNIQUE (organization_id, email)
 );
 
 CREATE TABLE IF NOT EXISTS role_permissions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   permission VARCHAR(160) NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT false,
@@ -197,14 +157,14 @@ CREATE TABLE IF NOT EXISTS role_permissions (
   )
 );
 
-CREATE TABLE IF NOT EXISTS tenant_settings (
+CREATE TABLE IF NOT EXISTS organization_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
   value TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT tenant_settings_tenant_name_unique UNIQUE (tenant_id, name)
+  CONSTRAINT organization_settings_org_name_unique UNIQUE (organization_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS menus (
@@ -219,20 +179,18 @@ CREATE TABLE IF NOT EXISTS menus (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS organizations_tenant_id_idx ON organizations(tenant_id);
-CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON users(tenant_id);
+CREATE INDEX IF NOT EXISTS organizations_slug_idx ON organizations(slug);
+CREATE INDEX IF NOT EXISTS users_organization_id_idx ON users(organization_id);
 CREATE INDEX IF NOT EXISTS users_role_id_idx ON users(role_id);
-CREATE INDEX IF NOT EXISTS user_organizations_tenant_id_idx ON user_organizations(tenant_id);
-CREATE INDEX IF NOT EXISTS user_organizations_organization_id_idx ON user_organizations(organization_id);
-CREATE INDEX IF NOT EXISTS user_organizations_user_id_idx ON user_organizations(user_id);
-CREATE INDEX IF NOT EXISTS roles_tenant_id_idx ON roles(tenant_id);
-CREATE INDEX IF NOT EXISTS role_permissions_tenant_id_idx ON role_permissions(tenant_id);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+CREATE INDEX IF NOT EXISTS roles_organization_id_idx ON roles(organization_id);
+CREATE INDEX IF NOT EXISTS role_permissions_organization_id_idx ON role_permissions(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_role_id_idx ON role_permissions(role_id);
-CREATE INDEX IF NOT EXISTS tenant_settings_tenant_id_idx ON tenant_settings(tenant_id);
+CREATE INDEX IF NOT EXISTS organization_settings_organization_id_idx ON organization_settings(organization_id);
 
 \c hermes_test;
 
-CREATE TABLE IF NOT EXISTS tenants (
+CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(120) NOT NULL,
   slug VARCHAR(80) NOT NULL UNIQUE,
@@ -242,32 +200,20 @@ CREATE TABLE IF NOT EXISTS tenants (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-  name VARCHAR(120) NOT NULL,
-  slug VARCHAR(80) NOT NULL,
-  is_default BOOLEAN NOT NULL DEFAULT false,
-  status VARCHAR(24) NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT organizations_tenant_slug_unique UNIQUE (tenant_id, slug)
-);
-
 CREATE TABLE IF NOT EXISTS roles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(80) NOT NULL,
   label VARCHAR(120) NOT NULL,
   is_system BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT roles_tenant_name_unique UNIQUE (tenant_id, name)
+  CONSTRAINT roles_organization_name_unique UNIQUE (organization_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
   type VARCHAR(24) NOT NULL DEFAULT 'user',
   display_name VARCHAR(120) NOT NULL,
@@ -275,32 +221,24 @@ CREATE TABLE IF NOT EXISTS users (
   last_name VARCHAR(80),
   email VARCHAR(160) NOT NULL,
   username VARCHAR(80),
-  password_hash VARCHAR(240) NOT NULL,
+  mobile VARCHAR(32),
+  password_hash VARCHAR(240),
+  refresh_token VARCHAR(240),
+  image_url VARCHAR(500),
+  preferred_language VARCHAR(16) NOT NULL DEFAULT 'zh-CN',
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  time_zone VARCHAR(40),
+  third_party_id VARCHAR(120),
   status VARCHAR(24) NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT users_tenant_email_unique UNIQUE (tenant_id, email)
-);
-
-CREATE TABLE IF NOT EXISTS user_organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  is_default BOOLEAN NOT NULL DEFAULT true,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  preferences JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT user_organizations_user_organization_unique UNIQUE (
-    user_id,
-    organization_id
-  )
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT users_organization_email_unique UNIQUE (organization_id, email)
 );
 
 CREATE TABLE IF NOT EXISTS role_permissions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   permission VARCHAR(160) NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT false,
@@ -312,14 +250,14 @@ CREATE TABLE IF NOT EXISTS role_permissions (
   )
 );
 
-CREATE TABLE IF NOT EXISTS tenant_settings (
+CREATE TABLE IF NOT EXISTS organization_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
   value TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT tenant_settings_tenant_name_unique UNIQUE (tenant_id, name)
+  CONSTRAINT organization_settings_org_name_unique UNIQUE (organization_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS menus (
@@ -334,13 +272,11 @@ CREATE TABLE IF NOT EXISTS menus (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS organizations_tenant_id_idx ON organizations(tenant_id);
-CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON users(tenant_id);
+CREATE INDEX IF NOT EXISTS organizations_slug_idx ON organizations(slug);
+CREATE INDEX IF NOT EXISTS users_organization_id_idx ON users(organization_id);
 CREATE INDEX IF NOT EXISTS users_role_id_idx ON users(role_id);
-CREATE INDEX IF NOT EXISTS user_organizations_tenant_id_idx ON user_organizations(tenant_id);
-CREATE INDEX IF NOT EXISTS user_organizations_organization_id_idx ON user_organizations(organization_id);
-CREATE INDEX IF NOT EXISTS user_organizations_user_id_idx ON user_organizations(user_id);
-CREATE INDEX IF NOT EXISTS roles_tenant_id_idx ON roles(tenant_id);
-CREATE INDEX IF NOT EXISTS role_permissions_tenant_id_idx ON role_permissions(tenant_id);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+CREATE INDEX IF NOT EXISTS roles_organization_id_idx ON roles(organization_id);
+CREATE INDEX IF NOT EXISTS role_permissions_organization_id_idx ON role_permissions(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_role_id_idx ON role_permissions(role_id);
-CREATE INDEX IF NOT EXISTS tenant_settings_tenant_id_idx ON tenant_settings(tenant_id);
+CREATE INDEX IF NOT EXISTS organization_settings_organization_id_idx ON organization_settings(organization_id);

@@ -1,29 +1,24 @@
 import type {
   OrganizationStatus,
-  TenantStatus,
   UserStatus,
 } from "@hermes-swarm/core";
 
-export type AdminSessionTokenPayload = {
+export type AuthSessionTokenPayload = {
   exp: number;
   organizationId: string;
-  tenantId: string;
   userId: string;
 };
 
-export type AdminContext = {
+export type AuthContext = {
   organizationId: string;
   permissions: string[];
   roleId: string | null;
-  tenantId: string;
   userId: string;
 };
 
-export type AdminLoginPayload = {
+export type LoginPayload = {
   email?: string;
-  organizationId?: string;
   password?: string;
-  tenantId?: string;
 };
 
 export type OnboardingPayload = {
@@ -31,23 +26,14 @@ export type OnboardingPayload = {
   adminName?: string;
   adminPassword?: string;
   organizationName?: string;
-  tenantName?: string;
-  tenantSlug?: string;
+  organizationSlug?: string;
 };
-
-export type CreateTenantPayload = {
-  name?: string;
-  slug?: string;
-  status?: TenantStatus;
-  subdomain?: string | null;
-};
-
-export type UpdateTenantPayload = Partial<CreateTenantPayload>;
 
 export type CreateOrganizationPayload = {
   name?: string;
   slug?: string;
   status?: OrganizationStatus;
+  subdomain?: string | null;
 };
 
 export type UpdateOrganizationPayload = Partial<CreateOrganizationPayload>;

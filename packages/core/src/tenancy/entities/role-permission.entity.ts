@@ -1,10 +1,10 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
 import type { Role } from "./role.entity.js";
-import { TenantBaseEntity } from "./tenant-base.entity.js";
+import { OrganizationBaseEntity } from "./organization-base.entity.js";
 
 @Entity({ name: "role_permissions" })
 @Index(["roleId", "permission"], { unique: true })
-export class RolePermission extends TenantBaseEntity {
+export class RolePermission extends OrganizationBaseEntity {
   @Column({ name: "role_id", type: "uuid" })
   @Index()
   roleId!: string;

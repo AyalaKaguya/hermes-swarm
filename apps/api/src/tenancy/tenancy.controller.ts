@@ -9,16 +9,13 @@ import {
   Put,
 } from "@nestjs/common";
 import {
-  AdminLoginPayload,
   CreateMenuPayload,
-  CreateOrganizationPayload,
-  CreateTenantPayload,
   CreateUserPayload,
+  LoginPayload,
   OnboardingPayload,
   ReplaceRolePermissionsPayload,
   UpdateMenuPayload,
   UpdateOrganizationPayload,
-  UpdateTenantPayload,
   UpdateUserPayload,
 } from "./tenancy.types.js";
 import { TenancyService } from "./tenancy.service.js";
@@ -38,108 +35,59 @@ export class TenancyController {
   }
 
   @Post("login")
-  login(@Body() payload: AdminLoginPayload) {
+  login(@Body() payload: LoginPayload) {
     return this.tenancyService.login(payload);
   }
 
-  @Get("tenant-admin")
+  @Get("snapshot")
   async getSnapshot(@Headers("authorization") authorization?: string) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
+    const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.getSnapshot(context);
   }
 
-  @Get("tenants")
-  async listTenants(@Headers("authorization") authorization?: string) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.listTenants(context);
+  @Get("organization")
+  async getOrganization(@Headers("authorization") authorization?: string) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.getCurrentOrganization(context);
   }
 
-  @Post("tenants")
-  async createTenant(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: CreateTenantPayload,
-  ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.createTenant(context, payload);
-  }
-
-  @Patch("tenants/:tenantId")
-  async updateTenant(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("tenantId") tenantId: string,
-    @Body() payload: UpdateTenantPayload,
-  ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.updateTenant(context, tenantId, payload);
-  }
-
-  @Get("organizations")
-  async listOrganizations(@Headers("authorization") authorization?: string) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.listOrganizations(context);
-  }
-
-  @Post("organizations")
-  async createOrganization(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: CreateOrganizationPayload,
-  ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.createOrganization(context, payload);
-  }
-
-  @Patch("organizations/:organizationId")
+  @Patch("organization")
   async updateOrganization(
     @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
     @Body() payload: UpdateOrganizationPayload,
   ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.updateOrganization(
-      context,
-      organizationId,
-      payload,
-    );
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.updateOrganization(context, payload);
   }
 
-  @Get("organizations/:organizationId/users")
-  async listUsers(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
-  ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.listUsers(context, organizationId);
+  @Get("users")
+  async listUsers(@Headers("authorization") authorization?: string) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.listUsers(context);
   }
 
-  @Post("organizations/:organizationId/users")
+  @Post("users")
   async createUser(
     @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
     @Body() payload: CreateUserPayload,
   ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.createUser(context, organizationId, payload);
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.createUser(context, payload);
   }
 
-  @Patch("organizations/:organizationId/users/:userId")
+  @Patch("users/:userId")
   async updateUser(
     @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
     @Param("userId") userId: string,
     @Body() payload: UpdateUserPayload,
   ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
-    return this.tenancyService.updateUser(
-      context,
-      organizationId,
-      userId,
-      payload,
-    );
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.updateUser(context, userId, payload);
   }
 
   @Get("roles")
   async listRoles(@Headers("authorization") authorization?: string) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
+    const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.listRoles(context);
   }
 
@@ -149,13 +97,19 @@ export class TenancyController {
     @Param("roleId") roleId: string,
     @Body() payload: ReplaceRolePermissionsPayload,
   ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
+    const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.replaceRolePermissions(context, roleId, payload);
+  }
+
+  @Get("settings")
+  async listSettings(@Headers("authorization") authorization?: string) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.listSettings(context);
   }
 
   @Get("menus")
   async listMenus(@Headers("authorization") authorization?: string) {
-    await this.tenancyService.requireAdminContext(authorization);
+    await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.listMenus();
   }
 
@@ -164,7 +118,7 @@ export class TenancyController {
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: CreateMenuPayload,
   ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
+    const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.createMenu(context, payload);
   }
 
@@ -174,7 +128,7 @@ export class TenancyController {
     @Param("menuId") menuId: string,
     @Body() payload: UpdateMenuPayload,
   ) {
-    const context = await this.tenancyService.requireAdminContext(authorization);
+    const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.updateMenu(context, menuId, payload);
   }
 }

@@ -3,12 +3,10 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Menu,
   Organization,
+  OrganizationSetting,
   Role,
   RolePermission,
-  Tenant,
-  TenantSetting,
   User,
-  UserOrganization,
 } from "@hermes-swarm/core";
 import { TenancyController } from "./tenancy.controller.js";
 import { TenancyService } from "./tenancy.service.js";
@@ -16,13 +14,11 @@ import { TenancyService } from "./tenancy.service.js";
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Tenant,
       Organization,
       User,
-      UserOrganization,
       Role,
       RolePermission,
-      TenantSetting,
+      OrganizationSetting,
       Menu,
     ]),
   ],
