@@ -1,0 +1,42 @@
+{
+  "name": "@hermes-swarm/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tenancy": {
+      "types": "./dist/tenancy/index.d.ts",
+      "import": "./dist/tenancy/index.js"
+    },
+    "./tenancy/entities": {
+      "types": "./dist/tenancy/entities/index.d.ts",
+      "import": "./dist/tenancy/entities/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "import": "./dist/config/index.js"
+    },
+    "./config/database": {
+      "types": "./dist/config/database.d.ts",
+      "import": "./dist/config/database.js"
+    },
+    "./config/redis": {
+      "types": "./dist/config/redis.d.ts",
+      "import": "./dist/config/redis.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "typeorm": "^1.0.0"
+  }
+}

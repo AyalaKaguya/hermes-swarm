@@ -9,7 +9,7 @@ hermes-swarm/
 ├── apps/
 │   └── api/                  # NestJS API server (health endpoint + future services)
 ├── packages/
-│   └── config/               # Shared database & Redis config utilities
+│   └── core/                 # Shared core business entities and config utilities
 ├── devenv/                   # Local dev infrastructure (Docker)
 │   ├── compose.yml           # PostgreSQL 17 + Redis 7
 │   └── postgres/init/        # Database initialization scripts

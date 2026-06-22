@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { getPostgresUrl } from "@hermes-swarm/config/database";
+import { getPostgresUrl } from "@hermes-swarm/core/config/database";
 
 @Module({
   imports: [

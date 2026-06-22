@@ -2,6 +2,7 @@
   "name": "@hermes-swarm/api",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc",
@@ -11,7 +12,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@hermes-swarm/config": "workspace:*",
+    "@hermes-swarm/core": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",

@@ -4,7 +4,10 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "moduleResolution": "Node16",
-    "module": "Node16"
+    "module": "Node16",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false,
+    "strictPropertyInitialization": false
   },
   "include": ["src/**/*"]
 }

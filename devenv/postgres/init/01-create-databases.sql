@@ -6,6 +6,12 @@ CREATE DATABASE hermes_test;
 GRANT ALL PRIVILEGES ON DATABASE hermes_dev TO hermes;
 GRANT ALL PRIVILEGES ON DATABASE hermes_test TO hermes;
 
+-- Connect to the default application database and create extensions
+\c hermes;
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
 -- Connect to hermes_dev and create extensions
 \c hermes_dev;
 
