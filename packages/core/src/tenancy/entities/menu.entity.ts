@@ -9,7 +9,6 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
-import { MenuPermission } from "./menu-permission.entity.js";
 
 @Entity({ name: "menus" })
 @Index(["code"], { unique: true })
@@ -50,7 +49,4 @@ export class Menu {
 
   @UpdateDateColumn({ name: "updated_at", type: "timestamp with time zone" })
   updatedAt!: Date;
-
-  @OneToMany(() => MenuPermission, (permission) => permission.menu)
-  permissions!: MenuPermission[];
 }

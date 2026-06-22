@@ -1,6 +1,18 @@
-const navItems = ["租户", "组织", "用户", "权限"];
+import type { ReactNode } from "react";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+const navItems = [
+  { href: "/organizations", key: "organizations", label: "组织用户" },
+];
+
+export function AppShell({
+  activeItem = "organizations",
+  actions,
+  children,
+}: {
+  activeItem?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="主导航">
@@ -14,12 +26,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <nav>
-          {navItems.map((item, index) => (
-            <a className={index === 0 ? "active" : ""} href="#" key={item}>
-              {item}
+          {navItems.map((item) => (
+            <a
+              className={item.key === activeItem ? "active" : ""}
+              href={item.href}
+              key={item.key}
+            >
+              {item.label}
             </a>
           ))}
         </nav>
+        {actions && <div className="sidebar-actions">{actions}</div>}
       </aside>
       <main className="main-content">{children}</main>
     </div>
