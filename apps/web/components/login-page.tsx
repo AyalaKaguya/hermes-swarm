@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { getPublicBootstrap, login } from "@/lib/admin-api";
-import type { PublicBootstrap } from "@/lib/admin-api";
 import {
   clearStoredSession,
   hasAnyManagementAccess,
@@ -12,17 +11,10 @@ import {
   storeSession,
 } from "@/lib/session";
 
-const emptyBootstrap: PublicBootstrap = {
-  menus: [],
-  onboardingRequired: false,
-  organizations: [],
-};
-
 export function LoginPage() {
   const router = useRouter();
-  const [bootstrap, setBootstrap] = useState<PublicBootstrap>(emptyBootstrap);
   const [email, setEmail] = useState("admin@hermes.local");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState("admin123456");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -39,7 +31,6 @@ export function LoginPage() {
           router.replace("/onboarding");
           return;
         }
-        setBootstrap(data);
       } catch (loadError) {
         setError(getErrorMessage(loadError));
       } finally {
@@ -116,10 +107,6 @@ export function LoginPage() {
             登录
           </button>
         </form>
-
-        <div className="auth-links">
-          <a href="/onboarding">初始化组织</a>
-        </div>
       </section>
     </main>
   );

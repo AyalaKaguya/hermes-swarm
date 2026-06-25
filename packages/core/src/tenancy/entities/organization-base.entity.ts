@@ -5,12 +5,12 @@ import { BaseEntity } from "./base.entity.js";
 export abstract class OrganizationBaseEntity extends BaseEntity {
   @Column({ name: "organization_id", type: "uuid", nullable: true })
   @Index()
-  organizationId!: string;
+  organizationId!: string | null;
 
   @ManyToOne("Organization", {
     nullable: true,
     onDelete: "CASCADE",
   })
   @JoinColumn({ name: "organization_id" })
-  organization!: Organization;
+  organization!: Organization | null;
 }
