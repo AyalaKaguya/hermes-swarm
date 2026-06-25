@@ -30,10 +30,26 @@ export type OnboardingPayload = {
 };
 
 export type CreateOrganizationPayload = {
+  banner?: string | null;
+  brandColor?: string | null;
+  clientFocus?: string | null;
+  currency?: string | null;
+  dateFormat?: string | null;
+  imageUrl?: string | null;
+  isDefault?: boolean;
   name?: string;
+  officialName?: string | null;
+  overview?: string | null;
+  preferredLanguage?: string | null;
+  profileLink?: string | null;
+  regionCode?: string | null;
+  shortDescription?: string | null;
   slug?: string;
   status?: OrganizationStatus;
   subdomain?: string | null;
+  timeZone?: string | null;
+  totalEmployees?: number | null;
+  website?: string | null;
 };
 
 export type UpdateOrganizationPayload = Partial<CreateOrganizationPayload>;
@@ -41,12 +57,35 @@ export type UpdateOrganizationPayload = Partial<CreateOrganizationPayload>;
 export type CreateUserPayload = {
   displayName?: string;
   email?: string;
+  imageUrl?: string | null;
   password?: string;
   roleId?: string | null;
   status?: UserStatus;
 };
 
 export type UpdateUserPayload = Partial<CreateUserPayload>;
+
+export type SearchUsersQuery = {
+  search?: string;
+};
+
+export type UpdateUserPasswordPayload = {
+  currentPassword?: string;
+  password?: string;
+};
+
+export type UpdatePreferredLanguagePayload = {
+  preferredLanguage?: string;
+};
+
+export type SaveSettingsPayload =
+  | Record<string, string | number | boolean | null | undefined>
+  | {
+      settings?: Array<{
+        name?: string;
+        value?: string | number | boolean | null;
+      }>;
+    };
 
 export type CreateMenuPayload = {
   code?: string;

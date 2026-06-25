@@ -8,7 +8,6 @@ import {
   RolePermission,
   User,
 } from "@hermes-swarm/core";
-import { TenancyController } from "./tenancy.controller.js";
 import { TenancyService } from "./tenancy.service.js";
 
 @Module({
@@ -22,7 +21,7 @@ import { TenancyService } from "./tenancy.service.js";
       Menu,
     ]),
   ],
-  controllers: [TenancyController],
   providers: [TenancyService],
+  exports: [TenancyService],
 })
 export class TenancyModule {}

@@ -4,6 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { AppShell } from "@/components/app-shell";
+import type {
+  AppShellNavItem,
+  AppShellNavSection,
+} from "@/components/app-shell";
+import { UserAvatar } from "@/components/user-avatar";
 import {
   buildMenuPermission,
   fetchAdmin,
@@ -11,6 +16,7 @@ import {
 } from "@/lib/admin-api";
 import type {
   Organization,
+  Menu,
   Role,
   Snapshot,
   User,
@@ -25,6 +31,18 @@ import type { ResolvedSession, UserSession } from "@/lib/session";
 
 type PermissionDraft = Record<string, boolean>;
 
+const ORGANIZATION_MENU_CODES = new Set(["organizations", "users"]);
+const SYSTEM_MENU_CODES = new Set(["roles", "menus", "permissions", "settings"]);
+const MENU_SECTION_IDS: Record<string, string> = {
+  menus: "menus",
+  organizations: "organizations",
+  permissions: "permissions",
+  roles: "roles",
+  settings: "settings",
+  users: "users",
+};
+const SYSTEM_ADMIN_ROLES = new Set(["admin", "owner"]);
+
 export function OrganizationUserManagement() {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -34,11 +52,14 @@ export function OrganizationUserManagement() {
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("");
   const [selectedUserRoleId, setSelectedUserRoleId] = useState("");
+  const [activeMenuCode, setActiveMenuCode] = useState("organizations");
   const [permissionDraft, setPermissionDraft] = useState<PermissionDraft>({});
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const [userAvatarUrl, setUserAvatarUrl] = useState("");
   const [userPassword, setUserPassword] = useState("");
   const [userRoleId, setUserRoleId] = useState("");
+  const [selectedUserAvatarUrl, setSelectedUserAvatarUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -48,12 +69,6 @@ export function OrganizationUserManagement() {
     snapshotOrEmpty(snapshot),
     resolvedSession,
     "organizations",
-  );
-  const canManageOrganizations = hasMenuAccess(
-    snapshotOrEmpty(snapshot),
-    resolvedSession,
-    "organizations",
-    "manage",
   );
   const canViewUsers = hasMenuAccess(
     snapshotOrEmpty(snapshot),
@@ -70,6 +85,17 @@ export function OrganizationUserManagement() {
     snapshotOrEmpty(snapshot),
     resolvedSession,
     "roles",
+  );
+  const canViewMenus = hasMenuAccess(
+    snapshotOrEmpty(snapshot),
+    resolvedSession,
+    "menus",
+  );
+  const canManageMenus = hasMenuAccess(
+    snapshotOrEmpty(snapshot),
+    resolvedSession,
+    "menus",
+    "manage",
   );
   const canViewPermissions = hasMenuAccess(
     snapshotOrEmpty(snapshot),
@@ -158,6 +184,7 @@ export function OrganizationUserManagement() {
 
   useEffect(() => {
     setSelectedUserRoleId(selectedUser?.roleId ?? "");
+    setSelectedUserAvatarUrl(selectedUser?.imageUrl ?? "");
   }, [selectedUser]);
 
   useEffect(() => {
@@ -194,6 +221,7 @@ export function OrganizationUserManagement() {
       body: {
         displayName: userName,
         email: userEmail,
+        imageUrl: userAvatarUrl || null,
         password: userPassword || undefined,
         roleId: userRoleId || undefined,
       },
@@ -202,6 +230,7 @@ export function OrganizationUserManagement() {
     });
     setUserName("");
     setUserEmail("");
+    setUserAvatarUrl("");
     setUserPassword("");
   }
 
@@ -219,9 +248,22 @@ export function OrganizationUserManagement() {
     if (!selectedUser || !canManageUsers) return;
 
     await mutate(`/users/${selectedUser.id}`, {
-      body: { roleId: selectedUserRoleId || null },
+      body: {
+        imageUrl: selectedUserAvatarUrl || null,
+        roleId: selectedUserRoleId || null,
+      },
       method: "PATCH",
-      success: "用户角色已更新",
+      success: "用户信息已更新",
+    });
+  }
+
+  async function toggleMenuActive(menu: Menu) {
+    if (!canManageMenus) return;
+
+    await mutate(`/menus/${menu.id}`, {
+      body: { isActive: !menu.isActive },
+      method: "PATCH",
+      success: menu.isActive ? "菜单已隐藏" : "菜单已显示",
     });
   }
 
@@ -280,6 +322,7 @@ export function OrganizationUserManagement() {
     canViewOrganizations ||
     canViewUsers ||
     canViewRoles ||
+    canViewMenus ||
     canViewPermissions ||
     canViewSettings;
 
@@ -287,6 +330,40 @@ export function OrganizationUserManagement() {
   const roles = snapshot?.roles ?? [];
   const menus = snapshot?.menus ?? [];
   const settings = snapshot?.settings ?? [];
+  const isSystemAdministrator = SYSTEM_ADMIN_ROLES.has(
+    resolvedSession?.role?.name ?? "",
+  );
+  const navSections = buildNavSections({
+    isSystemAdministrator,
+    menus,
+    resolvedSession,
+    snapshot: snapshotOrEmpty(snapshot),
+  });
+  const navItems = navSections.flatMap((section) => section.items);
+  const navItemKeys = navItems.map((item) => item.key).join("|");
+  const activeMenu = navItems.find((item) => item.key === activeMenuCode);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const initialCode = getMenuCodeFromHash(window.location.hash);
+    if (initialCode) {
+      setActiveMenuCode(initialCode);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (navItems.length === 0) return;
+    if (navItems.some((item) => item.key === activeMenuCode)) return;
+    setActiveMenuCode(navItems[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navItemKeys, activeMenuCode]);
+
+  function navigateToMenu(item: AppShellNavItem) {
+    setActiveMenuCode(item.key);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", item.href);
+    }
+  }
 
   return (
     <AppShell
@@ -295,11 +372,17 @@ export function OrganizationUserManagement() {
           退出
         </button>
       }
+      activeItem={activeMenuCode}
+      navSections={navSections}
+      onNavigate={navigateToMenu}
+      organizationName={organization?.name}
+      roleLabel={resolvedSession?.role?.label}
+      user={resolvedSession?.user}
     >
       <section className="page-header">
         <div>
           <p className="eyebrow">Hermes Swarm</p>
-          <h1>组织与用户管理</h1>
+          <h1>{activeMenu?.label ?? "组织与用户管理"}</h1>
         </div>
       </section>
 
@@ -328,9 +411,10 @@ export function OrganizationUserManagement() {
 
       {hasPageAccess && (
         <div className="tenant-console">
-          <section className="admin-grid">
-            {canViewOrganizations && (
-              <div className="panel admin-panel">
+          {["organizations", "users"].includes(activeMenuCode) && (
+            <section className="admin-grid active-grid">
+              {canViewOrganizations && activeMenuCode === "organizations" && (
+              <div className="panel admin-panel" id="organizations">
                 <div className="panel-heading">
                   <div>
                     <p className="eyebrow">Organization</p>
@@ -356,8 +440,8 @@ export function OrganizationUserManagement() {
               </div>
             )}
 
-            {canViewUsers && (
-              <div className="panel admin-panel">
+              {canViewUsers && activeMenuCode === "users" && (
+              <div className="panel admin-panel users-panel" id="users">
                 <div className="panel-heading">
                   <div>
                     <p className="eyebrow">Users</p>
@@ -381,6 +465,12 @@ export function OrganizationUserManagement() {
                       placeholder="user@example.com"
                       type="email"
                       value={userEmail}
+                    />
+                    <input
+                      aria-label="头像 URL"
+                      onChange={(event) => setUserAvatarUrl(event.target.value)}
+                      placeholder="头像 URL，可留空"
+                      value={userAvatarUrl}
                     />
                     <input
                       aria-label="初始密码"
@@ -421,11 +511,14 @@ export function OrganizationUserManagement() {
                       onClick={() => setSelectedUserId(user.id)}
                       type="button"
                     >
-                      <span>
-                        <strong>{user.displayName}</strong>
-                        <small>
-                          {user.email} / {getRoleLabel(roles, user.roleId)}
-                        </small>
+                      <span className="select-card-main">
+                        <UserAvatar size="sm" user={user} />
+                        <span>
+                          <strong>{user.displayName}</strong>
+                          <small>
+                            {user.email} / {getRoleLabel(roles, user.roleId)}
+                          </small>
+                        </span>
                       </span>
                       <em className={user.status}>{user.status}</em>
                     </button>
@@ -447,13 +540,21 @@ export function OrganizationUserManagement() {
                         </option>
                       ))}
                     </select>
+                    <input
+                      aria-label="调整用户头像 URL"
+                      onChange={(event) =>
+                        setSelectedUserAvatarUrl(event.target.value)
+                      }
+                      placeholder="头像 URL，可留空"
+                      value={selectedUserAvatarUrl}
+                    />
                     <button
                       className="text-button full-width"
                       disabled={saving}
                       onClick={saveSelectedUserRole}
                       type="button"
                     >
-                      保存角色
+                      保存用户
                     </button>
                     <button
                       className="text-button full-width"
@@ -467,12 +568,13 @@ export function OrganizationUserManagement() {
                 )}
               </div>
             )}
-          </section>
+            </section>
+          )}
 
-          {(canViewRoles || canViewSettings) && (
-            <section className="admin-grid secondary-grid">
-              {canViewRoles && (
-                <div className="panel admin-panel session-panel">
+          {["roles", "menus", "settings"].includes(activeMenuCode) && (
+            <section className="admin-grid active-grid secondary-grid">
+              {canViewRoles && activeMenuCode === "roles" && (
+                <div className="panel admin-panel session-panel" id="roles">
                   <div className="panel-heading">
                     <div>
                       <p className="eyebrow">Roles</p>
@@ -505,8 +607,46 @@ export function OrganizationUserManagement() {
                 </div>
               )}
 
-              {canViewSettings && (
-                <div className="panel admin-panel session-panel">
+              {canViewMenus && activeMenuCode === "menus" && (
+                <div className="panel admin-panel session-panel" id="menus">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">Menus</p>
+                      <h2>菜单</h2>
+                    </div>
+                    <span className="count-badge">{menus.length}</span>
+                  </div>
+                  <div className="menu-list">
+                    {menus.map((menu) => (
+                      <div className="menu-row" key={menu.id}>
+                        <span>
+                          <strong>{menu.label}</strong>
+                          <small>
+                            {menu.code} / {menu.path}
+                          </small>
+                        </span>
+                        {canManageMenus ? (
+                          <button
+                            className="text-button"
+                            disabled={saving}
+                            onClick={() => toggleMenuActive(menu)}
+                            type="button"
+                          >
+                            {menu.isActive ? "隐藏" : "显示"}
+                          </button>
+                        ) : (
+                          <em className={menu.isActive ? "active" : "disabled"}>
+                            {menu.isActive ? "visible" : "hidden"}
+                          </em>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {canViewSettings && activeMenuCode === "settings" && (
+                <div className="panel admin-panel session-panel" id="settings">
                   <div className="panel-heading">
                     <div>
                       <p className="eyebrow">Settings</p>
@@ -532,6 +672,13 @@ export function OrganizationUserManagement() {
                     <h2>当前身份</h2>
                   </div>
                 </div>
+                <div className="identity-card">
+                  <UserAvatar size="lg" user={resolvedSession?.user} />
+                  <div>
+                    <strong>{resolvedSession?.user.displayName ?? "-"}</strong>
+                    <span>{resolvedSession?.user.email ?? "-"}</span>
+                  </div>
+                </div>
                 <div className="session-detail">
                   <span>组织</span>
                   <strong>{resolvedSession?.organization.name ?? "-"}</strong>
@@ -555,8 +702,8 @@ export function OrganizationUserManagement() {
             </section>
           )}
 
-          {canViewPermissions && (
-            <section className="panel permission-panel">
+          {canViewPermissions && activeMenuCode === "permissions" && (
+            <section className="panel permission-panel" id="permissions">
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">Permissions</p>
@@ -629,9 +776,112 @@ export function OrganizationUserManagement() {
               </div>
             </section>
           )}
+
+          {activeMenu &&
+            ![
+              "menus",
+              "organizations",
+              "permissions",
+              "roles",
+              "settings",
+              "users",
+            ].includes(activeMenu.key) && (
+              <section className="panel empty-state">
+                <p className="eyebrow">Menu</p>
+                <h2>{activeMenu.label}</h2>
+                <p>该菜单已按权限显示，但还没有绑定 React 前端视图。</p>
+              </section>
+            )}
         </div>
       )}
     </AppShell>
+  );
+}
+
+function buildNavSections({
+  isSystemAdministrator,
+  menus,
+  resolvedSession,
+  snapshot,
+}: {
+  isSystemAdministrator: boolean;
+  menus: Menu[];
+  resolvedSession: ResolvedSession | null;
+  snapshot: Snapshot;
+}) {
+  const visibleMenus = menus
+    .filter(
+      (menu) =>
+        menu.isActive && hasMenuAccess(snapshot, resolvedSession, menu.code),
+    )
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const organizationItems = visibleMenus
+    .filter((menu) => ORGANIZATION_MENU_CODES.has(menu.code))
+    .map(toNavItem);
+  const systemItems = visibleMenus
+    .filter((menu) => SYSTEM_MENU_CODES.has(menu.code))
+    .map(toNavItem);
+  const extensionItems = visibleMenus
+    .filter(
+      (menu) =>
+        !ORGANIZATION_MENU_CODES.has(menu.code) &&
+        !SYSTEM_MENU_CODES.has(menu.code),
+    )
+    .map(toNavItem);
+
+  const sections: AppShellNavSection[] = [];
+
+  if (organizationItems.length > 0) {
+    sections.push({
+      items: organizationItems,
+      key: "organization",
+      label: "组织工作台",
+    });
+  }
+
+  if (systemItems.length > 0) {
+    sections.push({
+      badge: isSystemAdministrator ? "Admin" : undefined,
+      items: systemItems,
+      key: "system",
+      label: "系统管理",
+    });
+  }
+
+  if (extensionItems.length > 0) {
+    sections.push({
+      items: extensionItems,
+      key: "extensions",
+      label: "扩展入口",
+    });
+  }
+
+  return sections;
+}
+
+function toNavItem(menu: Menu) {
+  return {
+    href: buildMenuHref(menu),
+    key: menu.code,
+    label: menu.label,
+  };
+}
+
+function buildMenuHref(menu: Menu) {
+  const basePath = menu.path || "/organizations";
+  if (basePath !== "/organizations") {
+    return basePath;
+  }
+
+  return `${basePath}#${MENU_SECTION_IDS[menu.code] ?? menu.code}`;
+}
+
+function getMenuCodeFromHash(hash: string) {
+  const sectionId = hash.replace(/^#/, "");
+  return (
+    Object.entries(MENU_SECTION_IDS).find(([, value]) => value === sectionId)?.[0] ??
+    ""
   );
 }
 

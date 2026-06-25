@@ -69,6 +69,7 @@ export function hasAnyManagementAccess(
     hasMenuAccess(snapshot, resolvedSession, "organizations") ||
     hasMenuAccess(snapshot, resolvedSession, "users") ||
     hasMenuAccess(snapshot, resolvedSession, "roles") ||
+    hasMenuAccess(snapshot, resolvedSession, "menus") ||
     hasMenuAccess(snapshot, resolvedSession, "permissions") ||
     hasMenuAccess(snapshot, resolvedSession, "settings")
   );

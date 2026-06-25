@@ -32,8 +32,12 @@ import {
   LoginPayload,
   OnboardingPayload,
   ReplaceRolePermissionsPayload,
+  SaveSettingsPayload,
+  SearchUsersQuery,
   UpdateMenuPayload,
   UpdateOrganizationPayload,
+  UpdatePreferredLanguagePayload,
+  UpdateUserPasswordPayload,
   UpdateUserPayload,
 } from "./tenancy.types.js";
 import {
@@ -43,6 +47,8 @@ import {
 
 const ORGANIZATION_STATUSES: OrganizationStatus[] = ["active", "suspended"];
 const USER_STATUSES: UserStatus[] = ["active", "disabled"];
+const PREFERRED_LANGUAGES = ["en", "zh-CN", "zh-Hans", "zh-Hant"] as const;
+const DEFAULT_ADMIN_EMAIL = "admin@hermes.local";
 const DEFAULT_ADMIN_PASSWORD = "admin123456";
 const PASSWORD_HASH_PREFIX = "pbkdf2_sha256";
 const PASSWORD_ITERATIONS = 310_000;
@@ -144,7 +150,10 @@ export class TenancyService implements OnModuleInit {
     if (!user || user.status !== "active") {
       throw new UnauthorizedException("用户名或密码不正确");
     }
-    if (!verifyPassword(password, user.passwordHash)) {
+    if (
+      !verifyPassword(password, user.passwordHash) &&
+      !(await this.recoverDefaultAdminPassword(user, password))
+    ) {
       throw new UnauthorizedException("用户名或密码不正确");
     }
     if (!user.organizationId) {
@@ -199,6 +208,53 @@ export class TenancyService implements OnModuleInit {
       permissions,
       roleId: user.roleId,
       userId: user.id,
+    };
+  }
+
+  async isAuthenticated(authorization: string | undefined) {
+    try {
+      await this.requireAuthContext(authorization);
+      return true;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  ensurePermission(
+    context: AuthContext,
+    menuCode: string,
+    action: "manage" | "view",
+  ) {
+    this.assertPermission(context, menuCode, action);
+  }
+
+  async getMe(context: AuthContext) {
+    const [organization, user, role] = await Promise.all([
+      this.organizationRepository.findOne({
+        where: { id: context.organizationId },
+      }),
+      this.userRepository.findOne({
+        where: { id: context.userId, organizationId: context.organizationId },
+      }),
+      context.roleId
+        ? this.roleRepository.findOne({
+            where: { id: context.roleId, organizationId: context.organizationId },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (!organization || !user) {
+      throw new UnauthorizedException("登录已失效");
+    }
+
+    return {
+      organization: toOrganizationDto(organization),
+      permissions: context.permissions,
+      role: role ? toRoleDto(role) : null,
+      user: toUserDto(user),
     };
   }
 
@@ -274,29 +330,57 @@ export class TenancyService implements OnModuleInit {
     return org ? toOrganizationDto(org) : null;
   }
 
+  async listOrganizations(context: AuthContext) {
+    this.assertPermission(context, "organizations", "view");
+    const organizations = await this.organizationRepository.find({
+      order: { createdAt: "ASC" },
+    });
+    return organizations.map(toOrganizationDto);
+  }
+
+  async createOrganization(
+    context: AuthContext,
+    payload: CreateOrganizationPayload,
+  ) {
+    this.assertPermission(context, "organizations", "manage");
+
+    const name = requireText(payload.name, "组织名称");
+    const slug = normalizeSlug(payload.slug || name, "org");
+    await this.assertUniqueOrganizationSlug(slug);
+
+    const organization = this.organizationRepository.create({
+      name,
+      slug,
+      status: normalizeOrganizationStatus(payload.status),
+      subdomain: normalizeOptionalText(payload.subdomain),
+    });
+    await this.applyOrganizationPayload(organization, payload, {
+      allowSlugChange: false,
+    });
+
+    const saved = await this.organizationRepository.save(organization);
+    await this.ensureOrganizationInfrastructure(saved.id);
+    return toOrganizationDto(saved);
+  }
+
   async updateOrganization(
     context: AuthContext,
     payload: UpdateOrganizationPayload,
   ) {
     this.assertPermission(context, "organizations", "manage");
-    const org = await this.getOrganizationOrThrow(context.organizationId);
+    return this.updateOrganizationById(context, context.organizationId, payload);
+  }
 
-    if (payload.name !== undefined) {
-      org.name = requireText(payload.name, "组织名称");
-    }
-    if (payload.slug !== undefined) {
-      const nextSlug = normalizeSlug(payload.slug, "org");
-      if (nextSlug !== org.slug) {
-        await this.assertUniqueOrganizationSlug(nextSlug);
-      }
-      org.slug = nextSlug;
-    }
-    if (payload.subdomain !== undefined) {
-      org.subdomain = payload.subdomain?.trim() || null;
-    }
-    if (payload.status !== undefined) {
-      org.status = normalizeOrganizationStatus(payload.status);
-    }
+  async updateOrganizationById(
+    context: AuthContext,
+    organizationId: string,
+    payload: UpdateOrganizationPayload,
+  ) {
+    this.assertPermission(context, "organizations", "manage");
+    const org = await this.getOrganizationOrThrow(organizationId);
+    await this.applyOrganizationPayload(org, payload, {
+      allowSlugChange: true,
+    });
 
     return toOrganizationDto(await this.organizationRepository.save(org));
   }
@@ -328,6 +412,7 @@ export class TenancyService implements OnModuleInit {
       this.userRepository.create({
         displayName,
         email,
+        imageUrl: normalizeOptionalText(payload.imageUrl),
         passwordHash: hashPassword(
           requirePassword(payload.password || DEFAULT_ADMIN_PASSWORD),
         ),
@@ -360,6 +445,9 @@ export class TenancyService implements OnModuleInit {
       }
       user.email = nextEmail;
     }
+    if (payload.imageUrl !== undefined) {
+      user.imageUrl = normalizeOptionalText(payload.imageUrl);
+    }
     if (payload.password !== undefined && payload.password.trim()) {
       user.passwordHash = hashPassword(requirePassword(payload.password));
     }
@@ -373,6 +461,70 @@ export class TenancyService implements OnModuleInit {
       user.status = normalizeUserStatus(payload.status);
     }
 
+    return toUserDto(await this.userRepository.save(user));
+  }
+
+  async searchUsers(context: AuthContext, query: SearchUsersQuery) {
+    this.assertPermission(context, "users", "view");
+    const search = query.search?.trim().toLowerCase();
+    const users = await this.userRepository.find({
+      where: { organizationId: context.organizationId },
+      order: { createdAt: "ASC" },
+    });
+
+    if (!search) {
+      return users.map(toUserDto);
+    }
+
+    return users
+      .filter((user) =>
+        [
+          user.displayName,
+          user.email,
+          user.firstName,
+          user.lastName,
+          user.username,
+          user.mobile,
+        ].some((value) => value?.toLowerCase().includes(search)),
+      )
+      .map(toUserDto);
+  }
+
+  async updateUserPassword(
+    context: AuthContext,
+    userId: string,
+    payload: UpdateUserPasswordPayload,
+  ) {
+    const user = await this.getUserOrThrow(context.organizationId, userId);
+    const isSelf = context.userId === user.id;
+
+    if (!isSelf) {
+      this.assertPermission(context, "users", "manage");
+    } else if (
+      payload.currentPassword &&
+      !verifyPassword(payload.currentPassword, user.passwordHash)
+    ) {
+      throw new ForbiddenException("当前密码不正确");
+    }
+
+    user.passwordHash = hashPassword(requirePassword(payload.password));
+    return toUserDto(await this.userRepository.save(user));
+  }
+
+  async updatePreferredLanguage(
+    context: AuthContext,
+    userId: string,
+    payload: UpdatePreferredLanguagePayload,
+  ) {
+    const user = await this.getUserOrThrow(context.organizationId, userId);
+    if (context.userId !== user.id) {
+      this.assertPermission(context, "users", "manage");
+    }
+
+    const preferredLanguage = normalizePreferredLanguage(
+      payload.preferredLanguage,
+    );
+    user.preferredLanguage = preferredLanguage;
     return toUserDto(await this.userRepository.save(user));
   }
 
@@ -431,6 +583,33 @@ export class TenancyService implements OnModuleInit {
       order: { name: "ASC" },
     });
     return settings.map(toOrganizationSettingDto);
+  }
+
+  async saveSettings(context: AuthContext, payload: SaveSettingsPayload) {
+    this.assertPermission(context, "settings", "manage");
+    const entries = normalizeSettingsPayload(payload);
+    const saved: OrganizationSetting[] = [];
+
+    for (const entry of entries) {
+      let setting = await this.organizationSettingRepository.findOne({
+        where: {
+          name: entry.name,
+          organizationId: context.organizationId,
+        },
+      });
+      if (!setting) {
+        setting = this.organizationSettingRepository.create({
+          name: entry.name,
+          organizationId: context.organizationId,
+          value: entry.value,
+        });
+      } else {
+        setting.value = entry.value;
+      }
+      saved.push(await this.organizationSettingRepository.save(setting));
+    }
+
+    return saved.map(toOrganizationSettingDto);
   }
 
   // --- Menus --------------------------------------------------------------
@@ -508,6 +687,75 @@ export class TenancyService implements OnModuleInit {
   }
 
   // --- Private helpers ----------------------------------------------------
+
+  private async applyOrganizationPayload(
+    org: Organization,
+    payload: UpdateOrganizationPayload,
+    options: { allowSlugChange: boolean },
+  ) {
+    if (payload.name !== undefined) {
+      org.name = requireText(payload.name, "组织名称");
+    }
+    if (payload.slug !== undefined && options.allowSlugChange) {
+      const nextSlug = normalizeSlug(payload.slug, "org");
+      if (nextSlug !== org.slug) {
+        await this.assertUniqueOrganizationSlug(nextSlug);
+      }
+      org.slug = nextSlug;
+    }
+    if (payload.subdomain !== undefined) {
+      org.subdomain = normalizeOptionalText(payload.subdomain);
+    }
+    if (payload.status !== undefined) {
+      org.status = normalizeOrganizationStatus(payload.status);
+    }
+    if (payload.isDefault !== undefined) {
+      org.isDefault = Boolean(payload.isDefault);
+    }
+
+    org.profileLink = normalizeOptionalTextPayload(
+      payload.profileLink,
+      org.profileLink,
+    );
+    org.banner = normalizeOptionalTextPayload(payload.banner, org.banner);
+    org.shortDescription = normalizeOptionalTextPayload(
+      payload.shortDescription,
+      org.shortDescription,
+    );
+    org.clientFocus = normalizeOptionalTextPayload(
+      payload.clientFocus,
+      org.clientFocus,
+    );
+    org.overview = normalizeOptionalTextPayload(payload.overview, org.overview);
+    org.imageUrl = normalizeOptionalTextPayload(payload.imageUrl, org.imageUrl);
+    org.currency = normalizeOptionalTextPayload(payload.currency, org.currency);
+    org.timeZone = normalizeOptionalTextPayload(payload.timeZone, org.timeZone);
+    org.regionCode = normalizeOptionalTextPayload(
+      payload.regionCode,
+      org.regionCode,
+    );
+    org.brandColor = normalizeOptionalTextPayload(
+      payload.brandColor,
+      org.brandColor,
+    );
+    org.dateFormat = normalizeOptionalTextPayload(
+      payload.dateFormat,
+      org.dateFormat,
+    );
+    org.officialName = normalizeOptionalTextPayload(
+      payload.officialName,
+      org.officialName,
+    );
+    org.website = normalizeOptionalTextPayload(payload.website, org.website);
+    org.preferredLanguage = normalizeOptionalTextPayload(
+      payload.preferredLanguage,
+      org.preferredLanguage,
+    );
+
+    if (payload.totalEmployees !== undefined) {
+      org.totalEmployees = normalizeOptionalNumber(payload.totalEmployees);
+    }
+  }
 
   private async createLoginResponse(organizationId: string, userId: string) {
     const token = createAuthSessionToken({ organizationId, userId });
@@ -651,6 +899,7 @@ export class TenancyService implements OnModuleInit {
   private async addMenuPermissionsForExistingRoles(menuCode: string) {
     const roles = await this.roleRepository.find();
     for (const role of roles) {
+      if (!role.organizationId) continue;
       const enabledDefaults = new Set(defaultPermissionsForRole(role.name));
       for (const action of ["view", "manage"] as const) {
         const permission = buildMenuPermissionKey(menuCode, action);
@@ -767,6 +1016,29 @@ export class TenancyService implements OnModuleInit {
     const existing = await this.menuRepository.findOne({ where: { code } });
     if (existing) throw new ConflictException("菜单编码已存在");
   }
+
+  private async recoverDefaultAdminPassword(user: User, password: string) {
+    if (!isDefaultAdminRecoveryEnabled()) {
+      return false;
+    }
+    if (user.email !== DEFAULT_ADMIN_EMAIL || password !== DEFAULT_ADMIN_PASSWORD) {
+      return false;
+    }
+    if (!user.organizationId || !user.roleId) {
+      return false;
+    }
+
+    const role = await this.roleRepository.findOne({
+      where: { id: user.roleId, organizationId: user.organizationId },
+    });
+    if (!role || !["admin", "owner"].includes(role.name)) {
+      return false;
+    }
+
+    user.passwordHash = hashPassword(DEFAULT_ADMIN_PASSWORD);
+    await this.userRepository.save(user);
+    return true;
+  }
 }
 
 // --- Pure helper functions ------------------------------------------------
@@ -812,6 +1084,30 @@ function normalizeMenuPath(value: string | undefined) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function normalizeOptionalText(value: string | null | undefined) {
+  const text = value?.trim();
+  return text || null;
+}
+
+function normalizeOptionalTextPayload(
+  value: string | null | undefined,
+  currentValue: string | null,
+) {
+  if (value === undefined) return currentValue;
+  return normalizeOptionalText(value);
+}
+
+function normalizeOptionalNumber(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    throw new BadRequestException("数值格式不正确");
+  }
+  return numeric;
+}
+
 function normalizeSortOrder(value: number | undefined) {
   if (value === undefined || Number.isNaN(Number(value))) return 0;
   return Number(value);
@@ -835,6 +1131,18 @@ function normalizeUserStatus(status: UserStatus | undefined): UserStatus {
   return status;
 }
 
+function normalizePreferredLanguage(value: string | undefined) {
+  const preferredLanguage = requireText(value, "偏好语言");
+  if (
+    !PREFERRED_LANGUAGES.includes(
+      preferredLanguage as (typeof PREFERRED_LANGUAGES)[number],
+    )
+  ) {
+    throw new BadRequestException("偏好语言不合法");
+  }
+  return preferredLanguage as (typeof PREFERRED_LANGUAGES)[number];
+}
+
 function normalizeRolePermissions(
   permissions: ReplaceRolePermissionsPayload["permissions"],
 ) {
@@ -847,10 +1155,47 @@ function normalizeRolePermissions(
   return [...unique.values()];
 }
 
+function normalizeSettingsPayload(payload: SaveSettingsPayload) {
+  const entries = Array.isArray((payload as { settings?: unknown }).settings)
+    ? (payload as {
+        settings: Array<{
+          name?: string;
+          value?: string | number | boolean | null;
+        }>;
+      }).settings.map((item) => ({
+        name: requireText(item.name, "设置名称"),
+        value: stringifySettingValue(item.value),
+      }))
+    : Object.entries(payload)
+        .filter(([key]) => key !== "settings")
+        .map(([name, value]) => ({
+          name: requireText(name, "设置名称"),
+          value: stringifySettingValue(value),
+        }));
+
+  if (entries.length === 0) {
+    throw new BadRequestException("设置不能为空");
+  }
+
+  return entries;
+}
+
+function stringifySettingValue(value: unknown) {
+  if (value === undefined || value === null) return null;
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
 function parseBearerToken(authorization: string | undefined) {
   const [scheme, token] = authorization?.split(" ") ?? [];
   if (scheme?.toLowerCase() !== "bearer" || !token) return undefined;
   return token;
+}
+
+function isDefaultAdminRecoveryEnabled() {
+  if (process.env.ALLOW_DEFAULT_ADMIN_RECOVERY !== undefined) {
+    return process.env.ALLOW_DEFAULT_ADMIN_RECOVERY === "true";
+  }
+  return process.env.NODE_ENV !== "production";
 }
 
 // --- DTO mappers ---------------------------------------------------------
@@ -858,10 +1203,26 @@ function parseBearerToken(authorization: string | undefined) {
 function toOrganizationDto(org: Organization) {
   return {
     id: org.id,
+    banner: org.banner,
+    brandColor: org.brandColor,
+    clientFocus: org.clientFocus,
+    currency: org.currency,
+    dateFormat: org.dateFormat,
+    imageUrl: org.imageUrl,
+    isDefault: org.isDefault,
     name: org.name,
+    officialName: org.officialName,
+    overview: org.overview,
+    preferredLanguage: org.preferredLanguage,
+    profileLink: org.profileLink,
+    regionCode: org.regionCode,
+    shortDescription: org.shortDescription,
     slug: org.slug,
     status: org.status,
     subdomain: org.subdomain,
+    timeZone: org.timeZone,
+    totalEmployees: org.totalEmployees,
+    website: org.website,
   };
 }
 

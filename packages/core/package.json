@@ -29,6 +29,22 @@
     "./config/redis": {
       "types": "./dist/config/redis.d.ts",
       "import": "./dist/config/redis.js"
+    },
+    "./mail": {
+      "types": "./dist/mail/index.d.ts",
+      "import": "./dist/mail/index.js"
+    },
+    "./mail/entities": {
+      "types": "./dist/mail/entities/index.d.ts",
+      "import": "./dist/mail/entities/index.js"
+    },
+    "./settings": {
+      "types": "./dist/settings/index.d.ts",
+      "import": "./dist/settings/index.js"
+    },
+    "./settings/entities": {
+      "types": "./dist/settings/entities/index.d.ts",
+      "import": "./dist/settings/entities/index.js"
     }
   },
   "scripts": {
