@@ -55,6 +55,10 @@ const PASSWORD_ITERATIONS = 310_000;
 const PASSWORD_KEY_LENGTH = 32;
 
 @Injectable()
+/**
+ * Central application service for migrated admin tenancy capabilities:
+ * onboarding, auth context, users, organizations, roles, menus, and settings.
+ */
 export class TenancyService implements OnModuleInit {
   constructor(
     @InjectRepository(Organization)
@@ -76,8 +80,9 @@ export class TenancyService implements OnModuleInit {
     await this.ensureInfrastructureForExistingOrganizations();
   }
 
-  // --- Public bootstrap ---------------------------------------------------
-
+  /**
+   * Returns unauthenticated startup data for onboarding and menu discovery.
+   */
   async getPublicBootstrap() {
     const [orgCount, userCount, organizations, menus] =
       await Promise.all([
@@ -94,8 +99,10 @@ export class TenancyService implements OnModuleInit {
     };
   }
 
-  // --- Onboarding (initial org + admin) -----------------------------------
-
+  /**
+   * Creates the first active organization, provisions its roles, and creates
+   * the owner account.
+   */
   async onboard(payload: OnboardingPayload) {
     const hasUsers = (await this.userRepository.count()) > 0;
     if (hasUsers) {
@@ -137,8 +144,9 @@ export class TenancyService implements OnModuleInit {
     return this.createLoginResponse(organization.id, user.id);
   }
 
-  // --- Login (email + password, no org selection) -------------------------
-
+  /**
+   * Authenticates an active user by email and password.
+   */
   async login(payload: LoginPayload) {
     const email = normalizeEmail(payload.email);
     const password = requireText(payload.password, "密码");
@@ -171,8 +179,9 @@ export class TenancyService implements OnModuleInit {
     return this.createLoginResponse(organization.id, user.id);
   }
 
-  // --- Auth context -------------------------------------------------------
-
+  /**
+   * Parses and verifies a bearer session token into a reusable auth context.
+   */
   async requireAuthContext(authorization: string | undefined): Promise<AuthContext> {
     const tokenPayload = parseAuthSessionToken(parseBearerToken(authorization));
     if (!tokenPayload) {
@@ -211,6 +220,9 @@ export class TenancyService implements OnModuleInit {
     };
   }
 
+  /**
+   * Returns a boolean auth check suitable for lightweight health-style calls.
+   */
   async isAuthenticated(authorization: string | undefined) {
     try {
       await this.requireAuthContext(authorization);
@@ -223,6 +235,9 @@ export class TenancyService implements OnModuleInit {
     }
   }
 
+  /**
+   * Enforces a menu permission against an already-resolved auth context.
+   */
   ensurePermission(
     context: AuthContext,
     menuCode: string,
@@ -231,6 +246,9 @@ export class TenancyService implements OnModuleInit {
     this.assertPermission(context, menuCode, action);
   }
 
+  /**
+   * Returns the current user, role, permissions, and organization.
+   */
   async getMe(context: AuthContext) {
     const [organization, user, role] = await Promise.all([
       this.organizationRepository.findOne({
@@ -258,8 +276,9 @@ export class TenancyService implements OnModuleInit {
     };
   }
 
-  // --- Snapshot (full org state) ------------------------------------------
-
+  /**
+   * Loads the full admin snapshot consumed by the management frontend.
+   */
   async getSnapshot(context: AuthContext) {
     await this.ensureOrganizationInfrastructure(context.organizationId);
 
@@ -321,8 +340,9 @@ export class TenancyService implements OnModuleInit {
     };
   }
 
-  // --- Organizations ------------------------------------------------------
-
+  /**
+   * Returns the active organization for the current auth context.
+   */
   async getCurrentOrganization(context: AuthContext) {
     const org = await this.organizationRepository.findOne({
       where: { id: context.organizationId },
@@ -330,6 +350,9 @@ export class TenancyService implements OnModuleInit {
     return org ? toOrganizationDto(org) : null;
   }
 
+  /**
+   * Lists all organizations after checking organization view permission.
+   */
   async listOrganizations(context: AuthContext) {
     this.assertPermission(context, "organizations", "view");
     const organizations = await this.organizationRepository.find({
@@ -338,6 +361,9 @@ export class TenancyService implements OnModuleInit {
     return organizations.map(toOrganizationDto);
   }
 
+  /**
+   * Creates an organization and provisions its default admin infrastructure.
+   */
   async createOrganization(
     context: AuthContext,
     payload: CreateOrganizationPayload,
@@ -363,6 +389,9 @@ export class TenancyService implements OnModuleInit {
     return toOrganizationDto(saved);
   }
 
+  /**
+   * Updates the organization attached to the current session.
+   */
   async updateOrganization(
     context: AuthContext,
     payload: UpdateOrganizationPayload,
@@ -371,6 +400,9 @@ export class TenancyService implements OnModuleInit {
     return this.updateOrganizationById(context, context.organizationId, payload);
   }
 
+  /**
+   * Updates an organization selected explicitly by id.
+   */
   async updateOrganizationById(
     context: AuthContext,
     organizationId: string,
@@ -385,8 +417,9 @@ export class TenancyService implements OnModuleInit {
     return toOrganizationDto(await this.organizationRepository.save(org));
   }
 
-  // --- Users --------------------------------------------------------------
-
+  /**
+   * Lists users in the current organization.
+   */
   async listUsers(context: AuthContext) {
     this.assertPermission(context, "users", "view");
     const users = await this.userRepository.find({
@@ -396,6 +429,9 @@ export class TenancyService implements OnModuleInit {
     return users.map(toUserDto);
   }
 
+  /**
+   * Creates a user in the current organization.
+   */
   async createUser(context: AuthContext, payload: CreateUserPayload) {
     this.assertPermission(context, "users", "manage");
 
@@ -427,6 +463,9 @@ export class TenancyService implements OnModuleInit {
     return toUserDto(user);
   }
 
+  /**
+   * Updates user profile, role, status, and optional password fields.
+   */
   async updateUser(
     context: AuthContext,
     userId: string,
@@ -464,6 +503,9 @@ export class TenancyService implements OnModuleInit {
     return toUserDto(await this.userRepository.save(user));
   }
 
+  /**
+   * Searches current-organization users by common identity fields.
+   */
   async searchUsers(context: AuthContext, query: SearchUsersQuery) {
     this.assertPermission(context, "users", "view");
     const search = query.search?.trim().toLowerCase();
@@ -490,6 +532,9 @@ export class TenancyService implements OnModuleInit {
       .map(toUserDto);
   }
 
+  /**
+   * Updates a user password with admin or self-service authorization rules.
+   */
   async updateUserPassword(
     context: AuthContext,
     userId: string,
@@ -511,6 +556,9 @@ export class TenancyService implements OnModuleInit {
     return toUserDto(await this.userRepository.save(user));
   }
 
+  /**
+   * Updates a user's preferred language.
+   */
   async updatePreferredLanguage(
     context: AuthContext,
     userId: string,
@@ -528,8 +576,9 @@ export class TenancyService implements OnModuleInit {
     return toUserDto(await this.userRepository.save(user));
   }
 
-  // --- Roles --------------------------------------------------------------
-
+  /**
+   * Lists roles available in the current organization.
+   */
   async listRoles(context: AuthContext) {
     this.assertPermission(context, "roles", "view");
     const roles = await this.roleRepository.find({
@@ -539,6 +588,9 @@ export class TenancyService implements OnModuleInit {
     return roles.map(toRoleDto);
   }
 
+  /**
+   * Replaces enabled permissions for a role after validating menu keys.
+   */
   async replaceRolePermissions(
     context: AuthContext,
     roleId: string,
@@ -574,8 +626,9 @@ export class TenancyService implements OnModuleInit {
     return saved.map(toRolePermissionDto);
   }
 
-  // --- Organization settings ----------------------------------------------
-
+  /**
+   * Lists organization-scoped settings.
+   */
   async listSettings(context: AuthContext) {
     this.assertPermission(context, "settings", "view");
     const settings = await this.organizationSettingRepository.find({
@@ -585,6 +638,9 @@ export class TenancyService implements OnModuleInit {
     return settings.map(toOrganizationSettingDto);
   }
 
+  /**
+   * Saves organization-scoped settings from normalized input payloads.
+   */
   async saveSettings(context: AuthContext, payload: SaveSettingsPayload) {
     this.assertPermission(context, "settings", "manage");
     const entries = normalizeSettingsPayload(payload);
@@ -612,14 +668,18 @@ export class TenancyService implements OnModuleInit {
     return saved.map(toOrganizationSettingDto);
   }
 
-  // --- Menus --------------------------------------------------------------
-
+  /**
+   * Lists admin menus in display order.
+   */
   listMenus() {
     return this.menuRepository.find({
       order: { sortOrder: "ASC", createdAt: "ASC" },
     });
   }
 
+  /**
+   * Creates an admin menu and adds its permissions to existing roles.
+   */
   async createMenu(context: AuthContext, payload: CreateMenuPayload) {
     this.assertPermission(context, "menus", "manage");
     const code = normalizeMenuCode(payload.code);
@@ -643,6 +703,9 @@ export class TenancyService implements OnModuleInit {
     return toMenuDto(menu);
   }
 
+  /**
+   * Updates an admin menu and keeps permission keys synchronized.
+   */
   async updateMenu(
     context: AuthContext,
     menuId: string,
@@ -686,8 +749,9 @@ export class TenancyService implements OnModuleInit {
     return toMenuDto(saved);
   }
 
-  // --- Private helpers ----------------------------------------------------
-
+  /**
+   * Applies mutable organization profile fields to an entity.
+   */
   private async applyOrganizationPayload(
     org: Organization,
     payload: UpdateOrganizationPayload,
@@ -757,6 +821,9 @@ export class TenancyService implements OnModuleInit {
     }
   }
 
+  /**
+   * Creates a session token and returns the authenticated admin snapshot.
+   */
   private async createLoginResponse(organizationId: string, userId: string) {
     const token = createAuthSessionToken({ organizationId, userId });
     const context = await this.requireAuthContext(`Bearer ${token}`);
@@ -943,8 +1010,9 @@ export class TenancyService implements OnModuleInit {
     }
   }
 
-  // --- Data access helpers ------------------------------------------------
-
+  /**
+   * Loads an organization or raises a not-found response.
+   */
   private async getOrganizationOrThrow(organizationId: string) {
     const org = await this.organizationRepository.findOne({
       where: { id: organizationId },
@@ -953,6 +1021,9 @@ export class TenancyService implements OnModuleInit {
     return org;
   }
 
+  /**
+   * Loads a user scoped to an organization or raises a not-found response.
+   */
   private async getUserOrThrow(organizationId: string, userId: string) {
     const user = await this.userRepository.findOne({
       where: { id: userId, organizationId },
@@ -961,6 +1032,9 @@ export class TenancyService implements OnModuleInit {
     return user;
   }
 
+  /**
+   * Loads a role scoped to an organization or raises a not-found response.
+   */
   private async getRoleOrThrow(organizationId: string, roleId: string) {
     const role = await this.roleRepository.findOne({
       where: { id: roleId, organizationId },
@@ -969,6 +1043,9 @@ export class TenancyService implements OnModuleInit {
     return role;
   }
 
+  /**
+   * Loads a named system role for an organization.
+   */
   private async getSystemRoleOrThrow(organizationId: string, roleName: string) {
     const role = await this.roleRepository.findOne({
       where: { name: roleName, organizationId },
@@ -977,6 +1054,9 @@ export class TenancyService implements OnModuleInit {
     return role;
   }
 
+  /**
+   * Resolves a role id from explicit, null, or default member input.
+   */
   private async normalizeRoleId(
     organizationId: string,
     roleId: string | null | undefined,
@@ -986,18 +1066,27 @@ export class TenancyService implements OnModuleInit {
     return (await this.getSystemRoleOrThrow(organizationId, "member")).id;
   }
 
+  /**
+   * Loads a menu by id or raises a not-found response.
+   */
   private async getMenuOrThrow(menuId: string) {
     const menu = await this.menuRepository.findOne({ where: { id: menuId } });
     if (!menu) throw new NotFoundException("菜单不存在");
     return menu;
   }
 
+  /**
+   * Validates and normalizes an optional parent menu id.
+   */
   private async normalizeParentId(parentId: string | null | undefined) {
     if (!parentId) return null;
     await this.getMenuOrThrow(parentId);
     return parentId;
   }
 
+  /**
+   * Ensures an organization slug is not already in use.
+   */
   private async assertUniqueOrganizationSlug(slug: string) {
     const existing = await this.organizationRepository.findOne({
       where: { slug },
@@ -1005,6 +1094,9 @@ export class TenancyService implements OnModuleInit {
     if (existing) throw new ConflictException("组织标识已存在");
   }
 
+  /**
+   * Ensures an email is unique inside an organization.
+   */
   private async assertUniqueUserEmail(organizationId: string, email: string) {
     const existing = await this.userRepository.findOne({
       where: { email, organizationId },
@@ -1012,11 +1104,17 @@ export class TenancyService implements OnModuleInit {
     if (existing) throw new ConflictException("该组织下邮箱已存在");
   }
 
+  /**
+   * Ensures a menu code is globally unique.
+   */
   private async assertUniqueMenuCode(code: string) {
     const existing = await this.menuRepository.findOne({ where: { code } });
     if (existing) throw new ConflictException("菜单编码已存在");
   }
 
+  /**
+   * Allows a development-only default admin password recovery path.
+   */
   private async recoverDefaultAdminPassword(user: User, password: string) {
     if (!isDefaultAdminRecoveryEnabled()) {
       return false;
@@ -1041,20 +1139,27 @@ export class TenancyService implements OnModuleInit {
   }
 }
 
-// --- Pure helper functions ------------------------------------------------
-
+/**
+ * Validates required text input and returns its trimmed value.
+ */
 function requireText(value: string | undefined, label: string) {
   const text = value?.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }
 
+/**
+ * Validates password input against the admin minimum policy.
+ */
 function requirePassword(value: string | undefined) {
   const password = requireText(value, "密码");
   if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
   return password;
 }
 
+/**
+ * Converts arbitrary organization text into a URL-safe slug.
+ */
 function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
   const slug = value
     ?.trim()
@@ -1065,6 +1170,9 @@ function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
   return slug || `${fallbackPrefix}-${randomBytes(3).toString("hex")}`;
 }
 
+/**
+ * Normalizes and validates email addresses for login and user management.
+ */
 function normalizeEmail(value: string | undefined) {
   const email = value?.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1073,22 +1181,34 @@ function normalizeEmail(value: string | undefined) {
   return email;
 }
 
+/**
+ * Normalizes a menu code for permission key generation.
+ */
 function normalizeMenuCode(value: string | undefined) {
   const code = value?.trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, "-");
   if (!code) throw new BadRequestException("菜单编码不能为空");
   return code;
 }
 
+/**
+ * Normalizes menu paths to leading-slash absolute paths.
+ */
 function normalizeMenuPath(value: string | undefined) {
   const path = requireText(value, "菜单路径");
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+/**
+ * Trims optional text and stores empty values as null.
+ */
 function normalizeOptionalText(value: string | null | undefined) {
   const text = value?.trim();
   return text || null;
 }
 
+/**
+ * Applies optional text payload values without overwriting omitted fields.
+ */
 function normalizeOptionalTextPayload(
   value: string | null | undefined,
   currentValue: string | null,
@@ -1097,6 +1217,9 @@ function normalizeOptionalTextPayload(
   return normalizeOptionalText(value);
 }
 
+/**
+ * Converts optional numeric input to a nullable number.
+ */
 function normalizeOptionalNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -1108,11 +1231,17 @@ function normalizeOptionalNumber(value: number | string | null | undefined) {
   return numeric;
 }
 
+/**
+ * Normalizes menu sort order values.
+ */
 function normalizeSortOrder(value: number | undefined) {
   if (value === undefined || Number.isNaN(Number(value))) return 0;
   return Number(value);
 }
 
+/**
+ * Validates organization lifecycle status.
+ */
 function normalizeOrganizationStatus(
   status: OrganizationStatus | undefined,
 ): OrganizationStatus {
@@ -1123,6 +1252,9 @@ function normalizeOrganizationStatus(
   return status;
 }
 
+/**
+ * Validates user lifecycle status.
+ */
 function normalizeUserStatus(status: UserStatus | undefined): UserStatus {
   if (!status) return "active";
   if (!USER_STATUSES.includes(status)) {
@@ -1131,6 +1263,9 @@ function normalizeUserStatus(status: UserStatus | undefined): UserStatus {
   return status;
 }
 
+/**
+ * Validates preferred language against supported admin language codes.
+ */
 function normalizePreferredLanguage(value: string | undefined) {
   const preferredLanguage = requireText(value, "偏好语言");
   if (
@@ -1143,6 +1278,9 @@ function normalizePreferredLanguage(value: string | undefined) {
   return preferredLanguage as (typeof PREFERRED_LANGUAGES)[number];
 }
 
+/**
+ * Deduplicates and validates role permission payload entries.
+ */
 function normalizeRolePermissions(
   permissions: ReplaceRolePermissionsPayload["permissions"],
 ) {
@@ -1155,6 +1293,9 @@ function normalizeRolePermissions(
   return [...unique.values()];
 }
 
+/**
+ * Normalizes settings input from xpert-style arrays or key-value maps.
+ */
 function normalizeSettingsPayload(payload: SaveSettingsPayload) {
   const entries = Array.isArray((payload as { settings?: unknown }).settings)
     ? (payload as {
@@ -1180,17 +1321,26 @@ function normalizeSettingsPayload(payload: SaveSettingsPayload) {
   return entries;
 }
 
+/**
+ * Serializes primitive and structured setting values for text storage.
+ */
 function stringifySettingValue(value: unknown) {
   if (value === undefined || value === null) return null;
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
+/**
+ * Extracts a bearer token from an authorization header.
+ */
 function parseBearerToken(authorization: string | undefined) {
   const [scheme, token] = authorization?.split(" ") ?? [];
   if (scheme?.toLowerCase() !== "bearer" || !token) return undefined;
   return token;
 }
 
+/**
+ * Indicates whether default admin recovery can run in this environment.
+ */
 function isDefaultAdminRecoveryEnabled() {
   if (process.env.ALLOW_DEFAULT_ADMIN_RECOVERY !== undefined) {
     return process.env.ALLOW_DEFAULT_ADMIN_RECOVERY === "true";
@@ -1198,8 +1348,9 @@ function isDefaultAdminRecoveryEnabled() {
   return process.env.NODE_ENV !== "production";
 }
 
-// --- DTO mappers ---------------------------------------------------------
-
+/**
+ * Projects organization entities into admin API DTOs.
+ */
 function toOrganizationDto(org: Organization) {
   return {
     id: org.id,
@@ -1226,6 +1377,9 @@ function toOrganizationDto(org: Organization) {
   };
 }
 
+/**
+ * Projects user entities into the admin snapshot and user management response.
+ */
 function toUserDto(user: User) {
   return {
     id: user.id,
@@ -1248,6 +1402,9 @@ function toUserDto(user: User) {
   };
 }
 
+/**
+ * Projects role entities into admin responses.
+ */
 function toRoleDto(role: Role) {
   return {
     id: role.id,
@@ -1258,6 +1415,9 @@ function toRoleDto(role: Role) {
   };
 }
 
+/**
+ * Projects role permission entities into admin responses.
+ */
 function toRolePermissionDto(permission: RolePermission) {
   return {
     id: permission.id,
@@ -1268,6 +1428,9 @@ function toRolePermissionDto(permission: RolePermission) {
   };
 }
 
+/**
+ * Projects organization setting entities into admin responses.
+ */
 function toOrganizationSettingDto(setting: OrganizationSetting) {
   return {
     id: setting.id,
@@ -1277,6 +1440,9 @@ function toOrganizationSettingDto(setting: OrganizationSetting) {
   };
 }
 
+/**
+ * Projects menu entities into admin responses.
+ */
 function toMenuDto(menu: Menu) {
   return {
     id: menu.id,
@@ -1289,6 +1455,9 @@ function toMenuDto(menu: Menu) {
   };
 }
 
+/**
+ * Hashes a password with PBKDF2 for the lightweight admin session model.
+ */
 function hashPassword(password: string) {
   const salt = randomBytes(16).toString("base64url");
   const hash = pbkdf2Sync(
@@ -1301,6 +1470,9 @@ function hashPassword(password: string) {
   return `${PASSWORD_HASH_PREFIX}$${PASSWORD_ITERATIONS}$${salt}$${hash}`;
 }
 
+/**
+ * Verifies a PBKDF2 password hash created by this module.
+ */
 function verifyPassword(password: string, storedHash: string | null | undefined) {
   if (!storedHash) return false;
 

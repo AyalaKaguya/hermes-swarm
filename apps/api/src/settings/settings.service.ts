@@ -6,6 +6,10 @@ import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
 import { TenancyService } from "../tenancy/tenancy.service.js";
 
 @Injectable()
+/**
+ * Persists migrated organization-level and global system settings using the
+ * existing tenancy settings plus the new shared SystemSetting entity.
+ */
 export class SettingsService {
   constructor(
     @InjectRepository(SystemSetting)
@@ -13,11 +17,17 @@ export class SettingsService {
     private readonly tenancyService: TenancyService,
   ) {}
 
+  /**
+   * Lists settings scoped to the authenticated admin's current organization.
+   */
   async listOrganizationSettings(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.listSettings(context);
   }
 
+  /**
+   * Saves organization settings from either key-value or array payload shapes.
+   */
   async saveOrganizationSettings(
     authorization: string | undefined,
     payload: SaveSettingsPayload,
@@ -26,6 +36,9 @@ export class SettingsService {
     return this.tenancyService.saveSettings(context, payload);
   }
 
+  /**
+   * Lists global system settings after verifying settings view permission.
+   */
   async listSystemSettings(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "settings", "view");
@@ -35,6 +48,9 @@ export class SettingsService {
     return settings.map(toSystemSettingDto);
   }
 
+  /**
+   * Creates or updates global system settings after settings manage permission.
+   */
   async saveSystemSettings(
     authorization: string | undefined,
     payload: SaveSettingsPayload,
@@ -64,6 +80,9 @@ export class SettingsService {
   }
 }
 
+/**
+ * Projects the shared SystemSetting entity into the admin API response shape.
+ */
 function toSystemSettingDto(setting: SystemSetting) {
   return {
     id: setting.id,
@@ -73,6 +92,9 @@ function toSystemSettingDto(setting: SystemSetting) {
   };
 }
 
+/**
+ * Normalizes xpert-style setting arrays and plain key-value maps.
+ */
 function normalizeSettingsPayload(payload: SaveSettingsPayload) {
   const entries = Array.isArray((payload as { settings?: unknown }).settings)
     ? (payload as {
@@ -98,6 +120,9 @@ function normalizeSettingsPayload(payload: SaveSettingsPayload) {
   return entries;
 }
 
+/**
+ * Validates and trims a setting name.
+ */
 function requireName(value: string | undefined) {
   const text = value?.trim();
   if (!text) {
@@ -106,6 +131,9 @@ function requireName(value: string | undefined) {
   return text;
 }
 
+/**
+ * Stores primitive and structured setting values in the text-backed column.
+ */
 function stringifySettingValue(value: unknown) {
   if (value === undefined || value === null) return null;
   return typeof value === "string" ? value : JSON.stringify(value);
