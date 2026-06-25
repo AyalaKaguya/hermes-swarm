@@ -110,8 +110,8 @@ export function AppShell({
           </div>
           <div>
             <span>当前范围</span>
-            <strong>{organizationName ?? "组织范围"}</strong>
-            <small>{roleLabel || "管理控制台"}</small>
+            <strong>组织范围</strong>
+            <small>{organizationName ?? "管理控制台"}</small>
           </div>
         </div>
         <nav className="sidebar-nav">
@@ -141,7 +141,7 @@ export function AppShell({
             <UserAvatar size="sm" user={user} />
             <div>
               <strong>{user?.displayName ?? "未登录"}</strong>
-              <span>{roleLabel || organizationName || "管理控制台"}</span>
+              <span>{user?.email ?? organizationName ?? "管理控制台"}</span>
             </div>
           </div>
           {actions}

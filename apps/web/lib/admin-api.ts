@@ -45,6 +45,19 @@ export type RolePermission = {
   organizationId: string;
 };
 
+export type InviteStatus = "invited" | "accepted" | "expired" | "revoked";
+
+export type Invite = {
+  id: string;
+  email: string;
+  status: InviteStatus;
+  createdAt: string;
+  actionDate: string | null;
+  expireDate: string | null;
+  roleId: string | null;
+  invitedById: string | null;
+};
+
 export type OrganizationSetting = {
   id: string;
   name: string;
@@ -138,6 +151,10 @@ export async function fetchAdmin<T>(
     throw new Error(message || `请求失败：${response.status}`);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }
 
@@ -161,6 +178,24 @@ export function onboard(payload: OnboardingPayload) {
 
 export function getSnapshot(token: string) {
   return fetchAdmin<Snapshot>("/snapshot", { token });
+}
+
+export function getInvites(token: string) {
+  return fetchAdmin<Invite[]>("/invites", { token });
+}
+
+export function resendInvite(token: string, inviteId: string) {
+  return fetchAdmin<Invite>(`/invites/${inviteId}/resend`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function deleteInvite(token: string, inviteId: string) {
+  return fetchAdmin<void>(`/invites/${inviteId}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export function buildMenuPermission(menuCode: string, action: "manage" | "view") {

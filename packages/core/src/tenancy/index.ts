@@ -19,6 +19,7 @@ export { OrganizationBaseEntity } from "./entities/organization-base.entity.js";
 export { OrganizationContact } from "./entities/organization-contact.entity.js";
 export { OrganizationLanguage } from "./entities/organization-language.entity.js";
 export { OrganizationSetting } from "./entities/organization-setting.entity.js";
+export { PasswordReset } from "./entities/password-reset.entity.js";
 export {
   RolePermission,
 } from "./entities/role-permission.entity.js";
