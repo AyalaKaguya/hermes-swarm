@@ -4,6 +4,9 @@ import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
 import { IsNull, Repository } from "typeorm";
 import { TenancyService } from "../tenancy/tenancy.service.js";
 
+/**
+ * Payload accepted when creating or updating custom SMTP settings.
+ */
 type SmtpPayload = {
   fromAddress?: string | null;
   host?: string;
@@ -14,6 +17,9 @@ type SmtpPayload = {
   username?: string | null;
 };
 
+/**
+ * Payload accepted when creating or updating customizable email templates.
+ */
 type EmailTemplatePayload = {
   hbs?: string;
   languageCode?: string;
@@ -23,6 +29,9 @@ type EmailTemplatePayload = {
   subject?: string | null;
 };
 
+/**
+ * Payload accepted when recording a sent, queued, skipped, or failed email.
+ */
 type EmailLogPayload = {
   content?: string | null;
   email?: string;
@@ -34,6 +43,10 @@ type EmailLogPayload = {
 };
 
 @Injectable()
+/**
+ * Implements the migrated mail settings surface: SMTP configuration, template
+ * CRUD, validation, and sent-email log records.
+ */
 export class MailService {
   constructor(
     @InjectRepository(CustomSmtp)
@@ -45,6 +58,9 @@ export class MailService {
     private readonly tenancyService: TenancyService,
   ) {}
 
+  /**
+   * Returns the organization SMTP configuration, falling back to global config.
+   */
   async getSmtp(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "settings", "view");
@@ -52,6 +68,9 @@ export class MailService {
     return record ? toSmtpDto(record) : null;
   }
 
+  /**
+   * Creates or updates the SMTP configuration for the current organization.
+   */
   async saveSmtp(authorization: string | undefined, payload: SmtpPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "settings", "manage");
@@ -62,12 +81,18 @@ export class MailService {
     return toSmtpDto(await this.smtpRepository.save(entity));
   }
 
+  /**
+   * Validates SMTP input shape without sending mail or requiring nodemailer.
+   */
   async validateSmtp(authorization: string | undefined, payload: SmtpPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "settings", "manage");
     return validateSmtpPayload(payload);
   }
 
+  /**
+   * Lists organization-specific and global email templates.
+   */
   async listTemplates(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "settings", "view");
@@ -78,6 +103,9 @@ export class MailService {
     return templates.map(toTemplateDto);
   }
 
+  /**
+   * Creates a customizable email template for the current organization.
+   */
   async createTemplate(
     authorization: string | undefined,
     payload: EmailTemplatePayload,
@@ -95,6 +123,9 @@ export class MailService {
     return toTemplateDto(await this.emailTemplateRepository.save(template));
   }
 
+  /**
+   * Updates a customizable email template by id.
+   */
   async updateTemplate(
     authorization: string | undefined,
     templateId: string,
@@ -117,6 +148,9 @@ export class MailService {
     return toTemplateDto(await this.emailTemplateRepository.save(template));
   }
 
+  /**
+   * Lists sent-email records for the current organization.
+   */
   async listLogs(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "settings", "view");
@@ -127,6 +161,9 @@ export class MailService {
     return logs.map(toLogDto);
   }
 
+  /**
+   * Creates an email log record for migrated mail workflows.
+   */
   async createLog(authorization: string | undefined, payload: EmailLogPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "settings", "manage");
@@ -142,6 +179,9 @@ export class MailService {
     return toLogDto(await this.emailLogRepository.save(log));
   }
 
+  /**
+   * Finds the best SMTP record for an organization, with global fallback.
+   */
   private async findSmtpRecord(organizationId: string) {
     return this.smtpRepository.findOne({
       where: [{ organizationId }, { organizationId: IsNull() }],
@@ -149,6 +189,9 @@ export class MailService {
     });
   }
 
+  /**
+   * Returns an existing SMTP record or an unsaved organization default.
+   */
   private async findOrCreateSmtpRecord(organizationId: string) {
     const existing = await this.findSmtpRecord(organizationId);
     return (
@@ -166,6 +209,9 @@ export class MailService {
   }
 }
 
+/**
+ * Applies partial SMTP input onto an entity while preserving unspecified fields.
+ */
 function applySmtpPayload(entity: CustomSmtp, payload: SmtpPayload) {
   if (payload.fromAddress !== undefined) entity.fromAddress = normalizeOptionalText(payload.fromAddress);
   if (payload.host !== undefined) entity.host = requireText(payload.host, "SMTP Host");
@@ -175,6 +221,9 @@ function applySmtpPayload(entity: CustomSmtp, payload: SmtpPayload) {
   if (payload.password !== undefined) entity.password = normalizeOptionalText(payload.password);
 }
 
+/**
+ * Validates SMTP host and port fields and returns a safe public summary.
+ */
 function validateSmtpPayload(payload: SmtpPayload) {
   const host = payload.host?.trim();
   const port = normalizePort(payload.port ?? 587);
@@ -191,6 +240,9 @@ function validateSmtpPayload(payload: SmtpPayload) {
   };
 }
 
+/**
+ * Removes sensitive SMTP fields from API responses.
+ */
 function toSmtpDto(entity: CustomSmtp) {
   return {
     fromAddress: entity.fromAddress,
@@ -204,6 +256,9 @@ function toSmtpDto(entity: CustomSmtp) {
   };
 }
 
+/**
+ * Projects email template entities into API responses.
+ */
 function toTemplateDto(entity: EmailTemplate) {
   return {
     hbs: entity.hbs,
@@ -216,6 +271,9 @@ function toTemplateDto(entity: EmailTemplate) {
   };
 }
 
+/**
+ * Projects sent-email log entities into API responses.
+ */
 function toLogDto(entity: EmailLog) {
   return {
     content: entity.content,
@@ -229,6 +287,9 @@ function toLogDto(entity: EmailLog) {
   };
 }
 
+/**
+ * Validates required text input with a localized field label.
+ */
 function requireText(value: string | undefined, label: string) {
   const text = value?.trim();
   if (!text) {
@@ -237,11 +298,17 @@ function requireText(value: string | undefined, label: string) {
   return text;
 }
 
+/**
+ * Trims optional text and stores empty values as null.
+ */
 function normalizeOptionalText(value: string | null | undefined) {
   const text = value?.trim();
   return text || null;
 }
 
+/**
+ * Normalizes and validates SMTP port numbers.
+ */
 function normalizePort(value: number | string | undefined) {
   const port = Number(value);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {

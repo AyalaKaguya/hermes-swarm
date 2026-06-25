@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { AppIcon } from "@/components/app-icon";
 import { UserAvatar } from "@/components/user-avatar";
 import type { User } from "@/lib/admin-api";
 
 export type AppShellNavItem = {
   badge?: string;
+  icon?: import("@/components/app-icon").AppIconName;
   href: string;
   key: string;
   label: string;
@@ -22,9 +24,11 @@ export type AppShellNavSection = {
 
 const fallbackNavSections: AppShellNavSection[] = [
   {
-    items: [{ href: "/organizations", key: "organizations", label: "组织用户" }],
+    items: [
+      { href: "/organizations", icon: "users", key: "organizations", label: "用户" },
+    ],
     key: "workspace",
-    label: "工作台",
+    label: "组织范围",
   },
 ];
 
@@ -63,17 +67,54 @@ export function AppShell({
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="主导航">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            H
-          </div>
-          <div>
-            <strong>Hermes</strong>
-            <span>Swarm</span>
+      <aside className="sidebar sidebar-rail" aria-label="快速导航">
+        <button className="sidebar-rail-toggle" type="button">
+          <AppIcon name="panel" />
+        </button>
+        <div className="sidebar-rail-group">
+          <button className="sidebar-rail-item active" type="button">
+            <AppIcon name="building" />
+          </button>
+          <button className="sidebar-rail-item" type="button">
+            <AppIcon name="bot" />
+          </button>
+          <button className="sidebar-rail-item" type="button">
+            <AppIcon name="chart" />
+          </button>
+          <button className="sidebar-rail-item" type="button">
+            <AppIcon name="layers" />
+          </button>
+          <button className="sidebar-rail-item" type="button">
+            <AppIcon name="grid" />
+          </button>
+          <button className="sidebar-rail-item" type="button">
+            <AppIcon name="database" />
+          </button>
+        </div>
+        <div className="sidebar-rail-bottom">
+          <button className="sidebar-rail-item" type="button">
+            <AppIcon name="bell" />
+          </button>
+          <button className="sidebar-rail-item" type="button">
+            <AppIcon name="settings" />
+          </button>
+          <div className="sidebar-rail-avatar">
+            <UserAvatar size="sm" user={user} />
           </div>
         </div>
-        <nav>
+      </aside>
+      <aside className="sidebar sidebar-panel" aria-label="主导航">
+        <div className="scope-card">
+          <div className="scope-card-icon" aria-hidden="true">
+            <AppIcon name="building" />
+          </div>
+          <div>
+            <span>当前范围</span>
+            <strong>{organizationName ?? "组织范围"}</strong>
+            <small>{roleLabel || "管理控制台"}</small>
+          </div>
+        </div>
+        <nav className="sidebar-nav">
           {sections.map((section) => (
             <div className="nav-section" key={section.key}>
               <div className="nav-section-label">
@@ -107,16 +148,7 @@ export function AppShell({
         </div>
       </aside>
       <main className="main-content">
-        <header className="topbar">
-          <div>
-            <span>{organizationName ?? "Hermes Swarm"}</span>
-            <strong>{roleLabel ?? "Console"}</strong>
-          </div>
-          <div className="topbar-user">
-            <UserAvatar size="md" user={user} />
-            <span>{user?.email ?? "未确认用户"}</span>
-          </div>
-        </header>
+        <div className="topbar-spacer" aria-hidden="true" />
         {children}
       </main>
     </div>
@@ -146,6 +178,7 @@ function NavItem({
         onClick={() => onNavigate(item)}
         type="button"
       >
+        <AppIcon className="nav-item-icon" name={item.icon ?? "users"} />
         {content}
       </button>
     );
@@ -153,6 +186,7 @@ function NavItem({
 
   return (
     <a className={active ? "active" : ""} href={item.href}>
+      <AppIcon className="nav-item-icon" name={item.icon ?? "users"} />
       {content}
     </a>
   );

@@ -8,12 +8,16 @@ export {
   type SystemRoleName,
 } from "./permissions.js";
 export { BaseEntity } from "./entities/base.entity.js";
+export { EmailVerification } from "./entities/email-verification.entity.js";
+export { Invite, type InviteStatus } from "./entities/invite.entity.js";
 export { Menu } from "./entities/menu.entity.js";
 export {
   Organization,
   type OrganizationStatus,
 } from "./entities/organization.entity.js";
 export { OrganizationBaseEntity } from "./entities/organization-base.entity.js";
+export { OrganizationContact } from "./entities/organization-contact.entity.js";
+export { OrganizationLanguage } from "./entities/organization-language.entity.js";
 export { OrganizationSetting } from "./entities/organization-setting.entity.js";
 export {
   RolePermission,
