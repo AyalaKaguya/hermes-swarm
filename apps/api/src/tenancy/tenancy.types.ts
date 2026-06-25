@@ -182,7 +182,26 @@ export type InviteDto = {
   email: string;
   token?: string;
   status: "invited" | "accepted" | "expired" | "revoked";
+  createdAt: Date;
+  actionDate: Date | null;
   expireDate: Date | null;
   roleId: string | null;
   invitedById: string | null;
+};
+
+/**
+ * Payload for requesting a password reset by email.
+ */
+export type RequestPasswordResetPayload = {
+  email?: string;
+};
+
+/**
+ * Payload for resetting a password with a token.
+ */
+export type ResetPasswordPayload = {
+  email?: string;
+  token?: string;
+  password?: string;
+  confirmPassword?: string;
 };

@@ -50,7 +50,7 @@ a {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 68px 260px minmax(0, 1fr);
+  grid-template-columns: 72px 296px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--background);
 }
@@ -296,17 +296,14 @@ a {
 }
 
 .main-content {
-  width: min(100%, 1600px);
+  width: 100%;
   min-width: 0;
-  padding: 18px 18px 24px;
+  padding: 30px 18px 24px;
   background: #ffffff;
 }
 
 .topbar-spacer {
-  min-height: 44px;
-  margin-bottom: 12px;
-  padding: 0 0 12px;
-  border-bottom: 1px solid var(--border);
+  display: none;
 }
 
 .page-shell {
@@ -377,7 +374,7 @@ a {
 
 .toolbar-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   padding-top: 4px;
@@ -408,14 +405,16 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
 }
 
 .role-filter span {
   color: var(--text);
+  white-space: nowrap;
 }
 
 .role-filter select {
-  min-width: 240px;
+  min-width: 250px;
   min-height: 38px;
   padding: 0 12px;
   border: 1px solid var(--border);
@@ -425,7 +424,7 @@ a {
 
 .user-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 360px));
+  grid-template-columns: repeat(auto-fit, minmax(290px, 400px));
   gap: 16px;
   align-content: start;
 }
@@ -433,9 +432,9 @@ a {
 .user-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: 112px;
-  padding: 14px 16px;
+  gap: 12px;
+  min-height: 116px;
+  padding: 16px 18px;
   border: 1px solid var(--border-strong);
   border-radius: 14px;
   background: #f6f6f8;
@@ -444,16 +443,36 @@ a {
 }
 
 .user-card.active {
-  border-color: rgba(46, 107, 246, 0.45);
+  border-color: var(--border-strong);
 }
 
-.user-card-header {
+.user-card-person {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  min-height: 42px;
+}
+
+.user-card-avatar {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 999px;
+  color: #8b92a2;
+  background: #e1e4ea;
+}
+
+.user-card-avatar svg {
+  width: 18px;
+  height: 18px;
 }
 
 .user-status-dot {
+  position: absolute;
+  right: -2px;
+  bottom: 4px;
   width: 10px;
   height: 10px;
   border-radius: 999px;
@@ -487,13 +506,135 @@ a {
 }
 
 .user-card-role em {
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 8px;
-  color: #d12727;
-  background: #fff1f1;
+  color: #d72727;
+  background: #ffffff;
+  border: 1px solid rgba(215, 39, 39, 0.18);
   font-style: normal;
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.invite-table-wrap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.invite-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.invite-table th,
+.invite-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.invite-table th {
+  color: var(--muted);
+  background: var(--surface-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.invite-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.invite-user-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.invite-user-inline .user-card-avatar {
+  width: 32px;
+  height: 32px;
+}
+
+.invite-user-inline .user-status-dot {
+  width: 8px;
+  height: 8px;
+  bottom: 3px;
+}
+
+.invite-user-inline strong,
+.invite-user-inline small {
+  display: block;
+}
+
+.invite-user-inline strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.invite-user-inline small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.invite-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.invite-status span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.invite-status-accepted span {
+  background: var(--success);
+}
+
+.invite-status-expired span,
+.invite-status-revoked span {
+  background: var(--warning);
+}
+
+.invite-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.invite-actions button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #4b5563;
+  background: transparent;
+}
+
+.invite-actions button:hover {
+  background: var(--surface-soft);
+}
+
+.invite-actions svg {
+  width: 16px;
+  height: 16px;
 }
 
 .invite-placeholder,

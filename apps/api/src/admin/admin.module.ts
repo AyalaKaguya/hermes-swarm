@@ -3,6 +3,7 @@ import { AuthModule } from "../auth/auth.module.js";
 import { MailModule } from "../mail/mail.module.js";
 import { OrganizationsModule } from "../organizations/organizations.module.js";
 import { InviteModule } from "../invite/invite.module.js";
+import { PasswordResetModule } from "../password-reset/password-reset.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { TenancyModule } from "../tenancy/tenancy.module.js";
 import { UsersModule } from "../users/users.module.js";
@@ -17,6 +18,7 @@ import { AdminController } from "./admin.controller.js";
     SettingsModule,
     InviteModule,
     MailModule,
+    PasswordResetModule,
   ],
   controllers: [AdminController],
 })

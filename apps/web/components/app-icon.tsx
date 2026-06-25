@@ -16,10 +16,12 @@ export type AppIconName =
   | "menu"
   | "panel"
   | "plug"
+  | "refresh"
   | "search"
   | "settings"
   | "sparkles"
   | "switch"
+  | "trash"
   | "user"
   | "users";
 
@@ -117,6 +119,13 @@ export function AppIcon({
           <path d="M10 5v4m4-4v4" />
         </>
       )}
+      {name === "refresh" && (
+        <>
+          <path d="M20 12a8 8 0 0 1-13.7 5.6" />
+          <path d="M4 12A8 8 0 0 1 17.7 6.4" />
+          <path d="M7 18H4v-3M17 6h3v3" />
+        </>
+      )}
       {name === "search" && (
         <>
           <circle cx="11" cy="11" r="5.5" />
@@ -139,6 +148,12 @@ export function AppIcon({
         <>
           <rect x="4" y="7" width="16" height="10" rx="5" />
           <circle cx="9" cy="12" r="2.8" />
+        </>
+      )}
+      {name === "trash" && (
+        <>
+          <path d="M4 7h16M10 11v6M14 11v6" />
+          <path d="M9 7V5h6v2M6 7l1 13h10l1-13" />
         </>
       )}
       {name === "user" && (

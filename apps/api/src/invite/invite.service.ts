@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { randomBytes, pbkdf2Sync } from "node:crypto";
-import { sign, verify } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { MoreThanOrEqual, Repository } from "typeorm";
 import { Invite, Organization, Role, User } from "@hermes-swarm/core";
 import { TenancyService } from "../tenancy/tenancy.service.js";
@@ -35,6 +35,8 @@ function toInviteDto(invite: Invite): InviteDto {
     id: invite.id,
     email: invite.email,
     status: invite.status,
+    createdAt: invite.createdAt,
+    actionDate: invite.actionDate,
     expireDate: invite.expireDate,
     roleId: invite.roleId,
     invitedById: invite.invitedById,
@@ -110,7 +112,7 @@ export class InviteService {
     const invites: Invite[] = [];
 
     for (const email of emailsToCreate) {
-      const token = sign(
+      const token = jwt.sign(
         { email, organizationId: context.organizationId },
         INVITE_JWT_SECRET,
       );
@@ -151,7 +153,7 @@ export class InviteService {
 
     let payload: { email: string; organizationId: string };
     try {
-      payload = verify(token, INVITE_JWT_SECRET) as typeof payload;
+      payload = jwt.verify(token, INVITE_JWT_SECRET) as typeof payload;
     } catch {
       throw new BadRequestException("邀请链接无效或已过期");
     }
@@ -285,7 +287,7 @@ export class InviteService {
     });
     if (!invite) throw new NotFoundException("邀请不存在");
 
-    const token = sign(
+    const token = jwt.sign(
       { email: invite.email, organizationId: context.organizationId },
       INVITE_JWT_SECRET,
     );
