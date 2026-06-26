@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import {
   type User,
 } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 export default function GroupsPage() {
   const [groups, setGroups] = useState<GroupDto[]>([]);
@@ -128,7 +130,10 @@ export default function GroupsPage() {
         <CardTitle>用户组</CardTitle>
         <Dialog onOpenChange={setCreateOpen} open={createOpen}>
           <DialogTrigger asChild>
-            <Button size="sm">添加用户组</Button>
+            <Button size="sm">
+              <AppIcon className="size-3.5" name="layers" />
+              添加用户组
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>添加用户组</DialogTitle></DialogHeader>
@@ -149,18 +154,21 @@ export default function GroupsPage() {
             {groups.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-muted-foreground">暂无用户组</div>
             ) : groups.map((group) => (
-              <button
-                className={`flex w-full items-center justify-between border-b px-4 py-3 text-left text-sm last:border-b-0 hover:bg-muted/60 ${group.id === selectedGroupId ? "bg-muted" : ""}`}
+              <Button
+                className={cn(
+                  "h-auto w-full justify-between rounded-none border-b px-4 py-3 text-left last:border-b-0",
+                  group.id === selectedGroupId && "bg-muted text-foreground",
+                )}
                 key={group.id}
                 onClick={() => setSelectedGroupId(group.id)}
-                type="button"
+                variant="ghost"
               >
                 <span>
                   <span className="block font-medium">{group.name}</span>
                   <span className="text-xs text-muted-foreground">{group.description || "无描述"}</span>
                 </span>
                 <Badge variant="secondary">{group.memberCount}</Badge>
-              </button>
+              </Button>
             ))}
           </div>
 

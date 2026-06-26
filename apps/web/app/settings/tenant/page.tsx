@@ -59,20 +59,24 @@ export default function TenantPage() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>租户信息</CardTitle>
-        <CardDescription>管理组织基本信息和标识</CardDescription>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+        <div>
+          <CardTitle>租户信息</CardTitle>
+          <CardDescription>管理组织基本信息和标识</CardDescription>
+        </div>
+        <Badge variant={org.status === "active" ? "default" : "secondary"}>
+          {org.status === "active" ? "活跃" : "已暂停"}
+        </Badge>
       </CardHeader>
       <CardContent>
-        {msg && !error && <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
+        {msg && !error && <div className="mb-4 rounded-md border bg-muted/40 px-4 py-2 text-sm text-foreground">{msg}</div>}
         {error && <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
-        <div className="grid gap-4 max-w-lg">
+        <div className="grid max-w-xl gap-4">
           <div className="grid gap-2"><Label>组织名称</Label><Input onChange={(e) => setName(e.target.value)} value={name} /></div>
           <div className="grid gap-2"><Label>标识符 (slug)</Label><Input onChange={(e) => setSlug(e.target.value)} value={slug} /></div>
           <div className="grid gap-2"><Label>子域名</Label><Input onChange={(e) => setSubdomain(e.target.value)} placeholder="可选" value={subdomain} /></div>
           <Separator />
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>状态: <Badge variant={org.status === "active" ? "default" : "secondary"}>{org.status === "active" ? "活跃" : "已暂停"}</Badge></span>
+          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
             <span>ID: <code className="text-xs">{org.id}</code></span>
           </div>
           <Button onClick={save} disabled={saving} className="w-fit">{saving ? "保存中..." : "保存"}</Button>

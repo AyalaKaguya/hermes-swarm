@@ -1,10 +1,10 @@
 "use client";
 
-import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getSnapshot, type Role, type RolePermission, type Menu } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
@@ -104,21 +104,23 @@ export default function RolesPage() {
                     <TableCell className="text-sm text-muted-foreground">{role.name}</TableCell>
                     <TableCell><Badge variant={role.isSystem ? "secondary" : "outline"}>{role.isSystem ? "系统" : "自定义"}</Badge></TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
-                        <button
-                          className="text-xs text-primary hover:underline"
+                      <div className="flex justify-end gap-1">
+                        <Button
                           onClick={() => setExpandedRole(isExpanded ? null : role.id)}
+                          size="xs"
+                          variant="ghost"
                         >
                           {isExpanded ? "收起" : "权限"}
-                        </button>
+                        </Button>
                         {localPerms[role.id] && (
-                          <button
-                            className="text-xs text-primary hover:underline"
+                          <Button
                             disabled={saving === role.id}
                             onClick={() => savePermissions(role.id)}
+                            size="xs"
+                            variant="outline"
                           >
                             {saving === role.id ? "保存中..." : "保存"}
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </TableCell>
@@ -126,18 +128,18 @@ export default function RolesPage() {
                   {isExpanded && (
                     <TableRow>
                       <TableCell colSpan={4} className="pt-0">
-                        <div className="rounded-md border bg-muted/30 p-4">
-                          <div className="grid grid-cols-[200px_1fr] gap-4">
+                        <div className="rounded-md border bg-muted/30 p-3">
+                          <div className="grid grid-cols-[minmax(140px,200px)_1fr] gap-3 px-1">
                             <div className="text-xs font-medium text-muted-foreground">菜单</div>
-                            <div className="grid grid-cols-2 gap-4 text-xs font-medium text-muted-foreground">
+                            <div className="grid max-w-48 grid-cols-2 gap-3 text-xs font-medium text-muted-foreground">
                               <span>查看</span>
                               <span>管理</span>
                             </div>
                           </div>
                           {menus.map(menu => (
-                            <div key={menu.code} className="grid grid-cols-[200px_1fr] gap-4 py-1.5 border-t border-border/40 items-center">
+                            <div key={menu.code} className="grid grid-cols-[minmax(140px,200px)_1fr] items-center gap-3 border-t border-border/40 px-1 py-1.5">
                               <span className="text-sm">{menu.label}</span>
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid max-w-48 grid-cols-2 gap-3">
                                 <Checkbox
                                   checked={isChecked(role.id, menu.code, "view")}
                                   disabled={role.isSystem}

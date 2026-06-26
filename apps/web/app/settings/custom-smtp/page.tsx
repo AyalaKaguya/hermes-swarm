@@ -92,14 +92,21 @@ export default function CustomSmtpPage() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>自定义 SMTP</CardTitle>
-        <CardDescription>配置组织级别的邮件发送服务器</CardDescription>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+        <div>
+          <CardTitle>自定义 SMTP</CardTitle>
+          <CardDescription>配置组织级别的邮件发送服务器</CardDescription>
+        </div>
+        {config?.isValidated && (
+          <span className="rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+            已验证
+          </span>
+        )}
       </CardHeader>
       <CardContent>
         {error && <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
-        {msg && !error && <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
-        <div className="grid gap-4 max-w-lg">
+        {msg && !error && <div className="mb-4 rounded-md border bg-muted/40 px-4 py-2 text-sm text-foreground">{msg}</div>}
+        <div className="grid max-w-xl gap-4">
           <div className="grid gap-2"><Label>SMTP 服务器</Label><Input onChange={(e) => setHost(e.target.value)} placeholder="smtp.example.com" value={host} /></div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2"><Label>端口</Label><Input onChange={(e) => setPort(e.target.value)} placeholder="587" value={port} /></div>
@@ -110,8 +117,7 @@ export default function CustomSmtpPage() {
           <div className="grid gap-2"><Label>用户名</Label><Input onChange={(e) => setUsername(e.target.value)} placeholder="user@example.com" value={username} /></div>
           <div className="grid gap-2"><Label>密码</Label><Input onChange={(e) => setPassword(e.target.value)} placeholder="留空不修改" type="password" value={password} /></div>
           <div className="grid gap-2"><Label>发件人地址</Label><Input onChange={(e) => setFromAddress(e.target.value)} placeholder="noreply@example.com" value={fromAddress} /></div>
-          {config?.isValidated && <p className="text-xs text-green-600">当前配置已验证 ✓</p>}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={save} disabled={saving || !host.trim()}>{saving ? "保存中..." : "保存配置"}</Button>
             <Button onClick={validate} disabled={validating || !host.trim()} variant="outline">{validating ? "验证中..." : "测试连接"}</Button>
           </div>

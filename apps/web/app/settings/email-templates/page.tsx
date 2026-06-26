@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { AppIcon } from "@/components/app-icon";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +38,7 @@ export default function EmailTemplatesPage() {
   const [languageFilter, setLanguageFilter] = useState<LanguageFilter>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editTemplate, setEditTemplate] = useState<EmailTemplateDto | null>(null);
+  const [deleteTemplate, setDeleteTemplate] = useState<EmailTemplateDto | null>(null);
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
@@ -56,6 +59,7 @@ export default function EmailTemplatesPage() {
     try {
       await deleteEmailTemplate(token, templateId);
       setMsg("已删除");
+      setDeleteTemplate(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
@@ -73,55 +77,55 @@ export default function EmailTemplatesPage() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div>
           <CardTitle>邮件模板</CardTitle>
           <CardDescription>管理组织邮件模板</CardDescription>
         </div>
         <Dialog onOpenChange={setCreateOpen} open={createOpen}>
           <DialogTrigger asChild>
-            <Button size="sm">添加模板</Button>
+            <Button size="sm">
+              <AppIcon className="size-3.5" name="file" />
+              添加模板
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>创建邮件模板</DialogTitle></DialogHeader>
-            <CreateTemplateForm token={token} onDone={() => { setCreateOpen(false); load(); }} />
+            <CreateTemplateForm token={token} onDone={() => { setCreateOpen(false); void load(); }} />
           </DialogContent>
         </Dialog>
       </CardHeader>
       <CardContent>
-        {msg && !error && <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{msg}</div>}
+        {msg && !error && <div className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">{msg}</div>}
 
-        {/* Language filter tabs */}
         {availableLanguages.length > 0 && (
-          <div className="flex gap-1.5 mb-4">
+          <div className="mb-4 flex flex-wrap gap-1.5">
             {(["all", ...availableLanguages] as LanguageFilter[]).map(lang => (
-              <Badge
+              <Button
                 key={lang}
-                className="cursor-pointer"
                 onClick={() => setLanguageFilter(lang)}
-                variant={languageFilter === lang ? "default" : "outline"}
+                size="xs"
+                variant={languageFilter === lang ? "secondary" : "ghost"}
               >
                 {LANGUAGE_LABELS[lang] || lang}
-              </Badge>
+              </Button>
             ))}
           </div>
         )}
 
-        {/* Card grid */}
         {filtered.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
             暂无邮件模板。点击"添加模板"创建第一个。
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map(t => (
               <div
                 key={t.id}
-                className="group relative rounded-lg border bg-card p-4 hover:border-primary/50 transition-colors cursor-pointer"
-                onClick={() => setEditTemplate(t)}
+                className="flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:border-primary/50"
               >
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-start justify-between">
+                <div className="flex flex-1 flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="font-semibold text-sm">{t.name}</div>
                     <Badge className="text-xs" variant="outline">{t.languageCode}</Badge>
                   </div>
@@ -142,18 +146,18 @@ export default function EmailTemplatesPage() {
                     {t.organizationId ? "组织模板" : "全局模板"}
                   </div>
                 </div>
-                <div className="absolute right-2 bottom-2 hidden group-hover:flex gap-1">
+                <div className="mt-3 flex justify-end gap-1">
                   <Button
                     onClick={(e) => { e.stopPropagation(); setEditTemplate(t); }}
-                    size="sm"
+                    size="xs"
                     variant="ghost"
                   >
                     编辑
                   </Button>
                   <Button
-                    onClick={(e) => { e.stopPropagation(); remove(t.id); }}
-                    size="sm"
-                    variant="ghost"
+                    onClick={(e) => { e.stopPropagation(); setDeleteTemplate(t); }}
+                    size="xs"
+                    variant="destructive"
                   >
                     删除
                   </Button>
@@ -172,11 +176,24 @@ export default function EmailTemplatesPage() {
             <EditTemplateForm
               template={editTemplate}
               token={token}
-              onDone={() => { setEditTemplate(null); load(); }}
+              onDone={() => { setEditTemplate(null); void load(); }}
             />
           </DialogContent>
         </Dialog>
       )}
+
+      <ConfirmActionDialog
+        confirmLabel="删除"
+        description={`删除模板「${deleteTemplate?.name ?? ""}」后，相关邮件将无法再使用该模板。`}
+        onConfirm={() => {
+          if (deleteTemplate) void remove(deleteTemplate.id);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTemplate(null);
+        }}
+        open={Boolean(deleteTemplate)}
+        title="删除邮件模板"
+      />
     </Card>
   );
 }
