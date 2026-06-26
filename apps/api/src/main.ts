@@ -22,7 +22,7 @@ async function bootstrap() {
     credentials: true,
   });
   app.setGlobalPrefix("api");
-  const port = process.env.API_PORT ?? 3100;
+  const port = process.env.API_PORT ?? 3200;
   await app.listen(port);
   console.log(`🚀 API running on http://localhost:${port}/api`);
 }

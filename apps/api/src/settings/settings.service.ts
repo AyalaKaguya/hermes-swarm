@@ -41,7 +41,7 @@ export class SettingsService {
    */
   async listSystemSettings(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "view");
+    this.tenancyService.ensurePermission(context, "features", "view");
     const settings = await this.systemSettingRepository.find({
       order: { name: "ASC" },
     });
@@ -56,7 +56,7 @@ export class SettingsService {
     payload: SaveSettingsPayload,
   ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "manage");
+    this.tenancyService.ensurePermission(context, "features", "manage");
     const entries = normalizeSettingsPayload(payload);
     const saved: SystemSetting[] = [];
 

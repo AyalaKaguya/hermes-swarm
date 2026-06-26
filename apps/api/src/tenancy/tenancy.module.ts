@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  Group,
   Menu,
   Organization,
   OrganizationSetting,
@@ -8,20 +9,24 @@ import {
   RolePermission,
   User,
 } from "@hermes-swarm/core";
+import { GroupsController } from "./groups.controller.js";
+import { GroupsService } from "./groups.service.js";
 import { TenancyService } from "./tenancy.service.js";
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
+      Group,
+      Menu,
       Organization,
-      User,
+      OrganizationSetting,
       Role,
       RolePermission,
-      OrganizationSetting,
-      Menu,
+      User,
     ]),
   ],
-  providers: [TenancyService],
+  controllers: [GroupsController],
+  providers: [GroupsService, TenancyService],
   exports: [TenancyService],
 })
 export class TenancyModule {}

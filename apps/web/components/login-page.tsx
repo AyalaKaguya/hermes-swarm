@@ -55,7 +55,7 @@ export function LoginPage() {
       }
 
       storeSession({ token: response.token });
-      router.replace("/organizations");
+      router.replace("/home");
     } catch (loginError) {
       setError(getErrorMessage(loginError));
     }

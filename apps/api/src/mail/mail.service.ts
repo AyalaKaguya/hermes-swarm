@@ -63,7 +63,7 @@ export class MailService {
    */
   async getSmtp(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "view");
+    this.tenancyService.ensurePermission(context, "custom-smtp", "view");
     const record = await this.findSmtpRecord(context.organizationId);
     return record ? toSmtpDto(record) : null;
   }
@@ -73,7 +73,7 @@ export class MailService {
    */
   async saveSmtp(authorization: string | undefined, payload: SmtpPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "manage");
+    this.tenancyService.ensurePermission(context, "custom-smtp", "manage");
     const entity = await this.findOrCreateSmtpRecord(context.organizationId);
     applySmtpPayload(entity, payload);
     entity.organizationId = context.organizationId;
@@ -86,7 +86,7 @@ export class MailService {
    */
   async validateSmtp(authorization: string | undefined, payload: SmtpPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "manage");
+    this.tenancyService.ensurePermission(context, "custom-smtp", "manage");
     return validateSmtpPayload(payload);
   }
 
@@ -95,7 +95,7 @@ export class MailService {
    */
   async listTemplates(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "view");
+    this.tenancyService.ensurePermission(context, "email-templates", "view");
     const templates = await this.emailTemplateRepository.find({
       where: [{ organizationId: context.organizationId }, { organizationId: IsNull() }],
       order: { name: "ASC", languageCode: "ASC" },
@@ -111,7 +111,7 @@ export class MailService {
     payload: EmailTemplatePayload,
   ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "manage");
+    this.tenancyService.ensurePermission(context, "email-templates", "manage");
     const template = this.emailTemplateRepository.create({
       hbs: requireText(payload.hbs, "模板内容"),
       languageCode: requireText(payload.languageCode, "语言编码"),
@@ -132,7 +132,7 @@ export class MailService {
     payload: EmailTemplatePayload,
   ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "manage");
+    this.tenancyService.ensurePermission(context, "email-templates", "manage");
     const template = await this.emailTemplateRepository.findOne({
       where: { id: templateId },
     });
@@ -149,11 +149,27 @@ export class MailService {
   }
 
   /**
+   * Deletes an email template by id.
+   */
+  async deleteTemplate(authorization: string | undefined, templateId: string) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    this.tenancyService.ensurePermission(context, "email-templates", "manage");
+    const template = await this.emailTemplateRepository.findOne({
+      where: { id: templateId },
+    });
+    if (!template) {
+      throw new NotFoundException("邮件模板不存在");
+    }
+    await this.emailTemplateRepository.remove(template);
+    return { id: templateId };
+  }
+
+  /**
    * Lists sent-email records for the current organization.
    */
   async listLogs(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "view");
+    this.tenancyService.ensurePermission(context, "email-templates", "view");
     const logs = await this.emailLogRepository.find({
       where: { organizationId: context.organizationId },
       order: { createdAt: "DESC" },
@@ -166,7 +182,7 @@ export class MailService {
    */
   async createLog(authorization: string | undefined, payload: EmailLogPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "settings", "manage");
+    this.tenancyService.ensurePermission(context, "email-templates", "manage");
     const log = this.emailLogRepository.create({
       content: normalizeOptionalText(payload.content),
       email: requireText(payload.email, "收件邮箱"),

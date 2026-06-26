@@ -118,7 +118,7 @@ export type LoginPayload = {
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3100/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3200/api";
 const ADMIN_API_BASE_URL = `${API_BASE_URL.replace(/\/$/, "")}/admin`;
 
 export async function fetchAdmin<T>(
@@ -200,4 +200,193 @@ export function deleteInvite(token: string, inviteId: string) {
 
 export function buildMenuPermission(menuCode: string, action: "manage" | "view") {
   return `menu:${menuCode}:${action}`;
+}
+
+export function fetchMe(token: string) {
+  return fetchAdmin<CurrentUser>("/auth/me", { token });
+}
+
+export function updateUser(token: string, userId: string, payload: {
+  displayName?: string;
+  email?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  imageUrl?: string | null;
+}) {
+  return fetchAdmin<User>(`/users/${userId}`, { body: payload, method: "PATCH", token });
+}
+
+export function updateUserPassword(token: string, userId: string, payload: {
+  currentPassword: string;
+  password: string;
+}) {
+  return fetchAdmin<void>(`/users/${userId}/password`, { body: payload, method: "POST", token });
+}
+
+export type SmtpConfig = {
+  fromAddress: string | null;
+  host: string;
+  id: string;
+  isValidated: boolean;
+  organizationId: string;
+  port: number;
+  secure: boolean;
+  username: string | null;
+};
+
+export type EmailTemplateDto = {
+  hbs: string;
+  id: string;
+  languageCode: string;
+  mjml: string | null;
+  name: string;
+  organizationId: string | null;
+  subject: string | null;
+};
+
+export type GroupDto = {
+  id: string;
+  name: string;
+  description: string | null;
+  organizationId: string;
+  memberIds: string[];
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SystemSettingDto = {
+  id: string;
+  name: string;
+  scope: string;
+  value: string | null;
+};
+
+export type CreateInviteResult = {
+  items: Invite[];
+  total: number;
+  ignored: number;
+};
+
+export function getSmtpConfig(token: string) {
+  return fetchAdmin<SmtpConfig | null>("/mail/smtp", { token });
+}
+
+export function saveSmtpConfig(token: string, payload: {
+  fromAddress?: string | null;
+  host?: string;
+  password?: string | null;
+  port?: number;
+  secure?: boolean;
+  username?: string | null;
+}) {
+  return fetchAdmin<SmtpConfig>("/mail/smtp", { body: payload, method: "PUT", token });
+}
+
+export function validateSmtpConfig(token: string, payload: {
+  fromAddress?: string | null;
+  host?: string;
+  password?: string | null;
+  port?: number;
+  secure?: boolean;
+  username?: string | null;
+}) {
+  return fetchAdmin<{ ok: boolean }>("/mail/smtp/validate", { body: payload, method: "POST", token });
+}
+
+export function createUser(token: string, payload: {
+  displayName?: string;
+  email?: string;
+  password?: string;
+  roleId?: string | null;
+  status?: UserStatus;
+}) {
+  return fetchAdmin<User>("/users", { body: payload, method: "POST", token });
+}
+
+export function updateManagedUser(token: string, userId: string, payload: {
+  displayName?: string;
+  email?: string;
+  roleId?: string | null;
+  status?: UserStatus;
+}) {
+  return fetchAdmin<User>(`/users/${userId}`, { body: payload, method: "PATCH", token });
+}
+
+export function createInvites(token: string, payload: {
+  emailIds: string[];
+  roleId?: string;
+}) {
+  return fetchAdmin<CreateInviteResult>("/invites", { body: payload, method: "POST", token });
+}
+
+export function listEmailTemplates(token: string) {
+  return fetchAdmin<EmailTemplateDto[]>("/mail/templates", { token });
+}
+
+export function createEmailTemplate(token: string, payload: {
+  hbs: string;
+  languageCode: string;
+  mjml?: string | null;
+  name: string;
+  subject?: string | null;
+}) {
+  return fetchAdmin<EmailTemplateDto>("/mail/templates", { body: payload, method: "POST", token });
+}
+
+export function updateEmailTemplate(token: string, templateId: string, payload: Partial<{
+  hbs: string;
+  languageCode: string;
+  mjml: string | null;
+  name: string;
+  subject: string | null;
+}>) {
+  return fetchAdmin<EmailTemplateDto>(`/mail/templates/${templateId}`, { body: payload, method: "PATCH", token });
+}
+
+export function deleteEmailTemplate(token: string, templateId: string) {
+  return fetchAdmin<void>(`/mail/templates/${templateId}`, { method: "DELETE", token });
+}
+
+export function listSystemSettings(token: string) {
+  return fetchAdmin<SystemSettingDto[]>("/system-settings", { token });
+}
+
+export function saveSystemSettings(
+  token: string,
+  settings:
+    | Record<string, string | number | boolean | null>
+    | { settings: Array<{ name: string; value: string | number | boolean | null }> },
+) {
+  return fetchAdmin<SystemSettingDto[]>("/system-settings", { body: settings, method: "PUT", token });
+}
+
+export function listGroups(token: string) {
+  return fetchAdmin<GroupDto[]>("/groups", { token });
+}
+
+export function createGroup(token: string, payload: {
+  name: string;
+  description?: string | null;
+}) {
+  return fetchAdmin<GroupDto>("/groups", { body: payload, method: "POST", token });
+}
+
+export function updateGroup(token: string, groupId: string, payload: {
+  name?: string;
+  description?: string | null;
+}) {
+  return fetchAdmin<GroupDto>(`/groups/${groupId}`, { body: payload, method: "PATCH", token });
+}
+
+export function updateGroupMembers(token: string, groupId: string, userIds: string[]) {
+  return fetchAdmin<GroupDto>(`/groups/${groupId}/members`, {
+    body: { userIds },
+    method: "PUT",
+    token,
+  });
+}
+
+export function deleteGroup(token: string, groupId: string) {
+  return fetchAdmin<void>(`/groups/${groupId}`, { method: "DELETE", token });
 }
