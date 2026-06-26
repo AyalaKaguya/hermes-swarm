@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSnapshot, type Organization } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
+import Link from "next/link";
 
 export default function Page() {
   const [org, setOrg] = useState<Organization | null>(null);
@@ -46,7 +48,14 @@ export default function Page() {
                 <div className="space-y-2"><Label>名称</Label><Input defaultValue={org.name} readOnly /></div>
                 <div className="space-y-2"><Label>标识 (Slug)</Label><Input defaultValue={org.slug} readOnly /></div>
                 <div className="space-y-2"><Label>子域名</Label><Input defaultValue={org.subdomain ?? ""} readOnly /></div>
-                <div className="space-y-2"><Label>状态</Label><Input defaultValue={org.status === "active" ? "启用" : "已停用"} readOnly /></div>
+                <div className="space-y-2">
+                  <Label>状态</Label>
+                  <div>
+                    <Badge variant={org.status === "active" ? "default" : "destructive"}>
+                      {org.status === "active" ? "启用" : "已停用"}
+                    </Badge>
+                  </div>
+                </div>
               </CardContent>
             </Card>
             <Card><CardHeader className="pb-3"><CardTitle className="text-base">概览</CardTitle></CardHeader>
@@ -57,9 +66,33 @@ export default function Page() {
           </div>
         </TabsContent>
 
-        <TabsContent className="mt-4" value="members"><Card><CardContent className="py-8 text-center text-sm text-muted-foreground">成员管理由「用户」设置页面提供。<br />请前往 设置 → 用户 管理组织成员。</CardContent></Card></TabsContent>
+        <TabsContent className="mt-4" value="members">
+          <Card>
+            <CardContent className="flex items-center justify-between gap-4 py-6">
+              <div>
+                <div className="text-sm font-medium">组织成员</div>
+                <div className="text-xs text-muted-foreground">用户、角色与邀请记录</div>
+              </div>
+              <Button asChild size="sm">
+                <Link href="/settings/users">打开用户</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        <TabsContent className="mt-4" value="settings"><Card><CardContent className="py-8 text-center text-sm text-muted-foreground">组织设置由「功能」页面提供。<br />请前往 设置 → 功能 管理系统配置项。</CardContent></Card></TabsContent>
+        <TabsContent className="mt-4" value="settings">
+          <Card>
+            <CardContent className="flex items-center justify-between gap-4 py-6">
+              <div>
+                <div className="text-sm font-medium">功能设置</div>
+                <div className="text-xs text-muted-foreground">组织级功能开关与系统配置</div>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/settings/features">打开功能</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );

@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -11,105 +17,408 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchMe, updateUser, updateUserPassword, type User } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 
+type ProfileForm = {
+  displayName: string;
+  email: string;
+  firstName: string;
+  imageUrl: string;
+  lastName: string;
+};
+
+type PasswordForm = {
+  confirmPassword: string;
+  currentPassword: string;
+  password: string;
+};
+
+const EMPTY_PASSWORD: PasswordForm = {
+  confirmPassword: "",
+  currentPassword: "",
+  password: "",
+};
+
 export default function AccountPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-
-  const [profile, setProfile] = useState({ displayName: "", email: "", firstName: "", lastName: "", imageUrl: "" });
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState<string | null>(null);
+  const [password, setPassword] = useState<PasswordForm>(EMPTY_PASSWORD);
+  const [profile, setProfile] = useState<ProfileForm>(emptyProfile());
+  const [savingPassword, setSavingPassword] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
-
-  const [pw, setPw] = useState({ currentPassword: "", password: "", confirmPassword: "" });
-  const [savingPw, setSavingPw] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) { setLoading(false); return; }
+    if (!session?.token) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const me = await fetchMe(session.token);
       setUser(me.user);
-      setProfile({ displayName: me.user.displayName ?? "", email: me.user.email ?? "", firstName: me.user.firstName ?? "", lastName: me.user.lastName ?? "", imageUrl: me.user.imageUrl ?? "" });
-    } catch (err) { setError(err instanceof Error ? err.message : "加载失败"); }
-    finally { setLoading(false); }
+      setProfile(toProfileForm(me.user));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const profileDirty = useMemo(() => {
+    if (!user) return false;
+    const saved = toProfileForm(user);
+    return (
+      profile.displayName !== saved.displayName ||
+      profile.email !== saved.email ||
+      profile.firstName !== saved.firstName ||
+      profile.lastName !== saved.lastName ||
+      profile.imageUrl !== saved.imageUrl
+    );
+  }, [profile, user]);
+
+  function resetProfile() {
+    if (!user) return;
+    setProfile(toProfileForm(user));
+    setError(null);
+    setMessage(null);
+  }
+
+  function resetPassword() {
+    setPassword(EMPTY_PASSWORD);
+    setError(null);
+    setMessage(null);
+  }
 
   async function saveProfile() {
-    const session = getStoredSession(); if (!session?.token || !user) return;
-    setSavingProfile(true); setError(null); setSaveMsg(null);
+    const session = getStoredSession();
+    if (!session?.token || !user) return;
+
+    setSavingProfile(true);
+    setError(null);
+    setMessage(null);
+
     try {
-      const updated = await updateUser(session.token, user.id, { displayName: profile.displayName, email: profile.email, firstName: profile.firstName || null, lastName: profile.lastName || null, imageUrl: profile.imageUrl || null });
-      setUser(updated); setSaveMsg("已保存");
-    } catch (err) { setError(err instanceof Error ? err.message : "保存失败"); }
-    finally { setSavingProfile(false); }
+      const updated = await updateUser(session.token, user.id, {
+        displayName: profile.displayName,
+        email: profile.email,
+        firstName: profile.firstName || null,
+        imageUrl: profile.imageUrl || null,
+        lastName: profile.lastName || null,
+      });
+      setUser(updated);
+      setProfile(toProfileForm(updated));
+      setMessage("个人资料已保存");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   async function savePassword() {
-    const session = getStoredSession(); if (!session?.token || !user) return;
-    if (!pw.currentPassword) { setError("请输入当前密码"); return; }
-    if (pw.password.length < 8) { setError("新密码至少 8 位"); return; }
-    if (pw.password !== pw.confirmPassword) { setError("两次密码不一致"); return; }
-    setSavingPw(true); setError(null); setSaveMsg(null);
+    const session = getStoredSession();
+    if (!session?.token || !user) return;
+
+    const validationError = validatePassword(password);
+    if (validationError) {
+      setError(validationError);
+      setMessage(null);
+      return;
+    }
+
+    setSavingPassword(true);
+    setError(null);
+    setMessage(null);
+
     try {
-      await updateUserPassword(session.token, user.id, { currentPassword: pw.currentPassword, password: pw.password });
-      setPw({ currentPassword: "", password: "", confirmPassword: "" }); setSaveMsg("密码已更新");
-    } catch (err) { setError(err instanceof Error ? err.message : "修改失败"); }
-    finally { setSavingPw(false); }
+      await updateUserPassword(session.token, user.id, {
+        currentPassword: password.currentPassword,
+        password: password.password,
+      });
+      setPassword(EMPTY_PASSWORD);
+      setMessage("密码已更新");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "修改失败");
+    } finally {
+      setSavingPassword(false);
+    }
   }
 
-  if (loading) return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
-  if (!user) return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">请先登录</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        加载中...
+      </div>
+    );
+  }
 
-  const initials = (user.displayName ?? user.email ?? "U").charAt(0).toUpperCase();
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        请先登录
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex flex-col items-center gap-3 py-4">
-        <Avatar className="h-16 w-16"><AvatarFallback className="text-lg">{initials}</AvatarFallback></Avatar>
-        <span className="text-sm text-muted-foreground">{user.email}</span>
-      </div>
+    <div className="mx-auto grid w-full max-w-3xl gap-4">
+      <Card size="sm">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <UserAvatar size="lg" user={user} />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">
+                {user.displayName || user.email}
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {user.email}
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {user.status === "active" ? "账号正常" : "账号已停用"}
+          </div>
+        </CardContent>
+      </Card>
 
-      <Separator />
-
-      {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
-      {saveMsg && <div className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{saveMsg}</div>}
+      {error && (
+        <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {message}
+        </div>
+      )}
 
       <Tabs defaultValue="profile">
-        <TabsList className="w-full justify-center">
+        <TabsList className="w-fit">
           <TabsTrigger value="profile">个人资料</TabsTrigger>
           <TabsTrigger value="password">密码</TabsTrigger>
         </TabsList>
 
-        <TabsContent className="mt-4 space-y-4" value="profile">
+        <TabsContent className="mt-2" value="profile">
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-base">个人资料</CardTitle><CardDescription>编辑您的个人信息</CardDescription></CardHeader>
+            <CardHeader>
+              <CardTitle>个人资料</CardTitle>
+              <CardDescription>维护你的名称、邮箱和头像信息</CardDescription>
+            </CardHeader>
             <CardContent className="grid gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><Label htmlFor="dn">显示名称</Label><Input id="dn" onChange={(e) => setProfile(p => ({...p, displayName: e.target.value}))} value={profile.displayName} /></div>
-                <div className="space-y-2"><Label htmlFor="em">邮箱</Label><Input id="em" onChange={(e) => setProfile(p => ({...p, email: e.target.value}))} type="email" value={profile.email} /></div>
-                <div className="space-y-2"><Label htmlFor="fn">名</Label><Input id="fn" onChange={(e) => setProfile(p => ({...p, firstName: e.target.value}))} value={profile.firstName} /></div>
-                <div className="space-y-2"><Label htmlFor="ln">姓</Label><Input id="ln" onChange={(e) => setProfile(p => ({...p, lastName: e.target.value}))} value={profile.lastName} /></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="显示名称" htmlFor="account-display-name">
+                  <Input
+                    id="account-display-name"
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        displayName: event.target.value,
+                      }))
+                    }
+                    value={profile.displayName}
+                  />
+                </Field>
+                <Field label="邮箱" htmlFor="account-email">
+                  <Input
+                    id="account-email"
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    type="email"
+                    value={profile.email}
+                  />
+                </Field>
+                <Field label="名" htmlFor="account-first-name">
+                  <Input
+                    id="account-first-name"
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        firstName: event.target.value,
+                      }))
+                    }
+                    value={profile.firstName}
+                  />
+                </Field>
+                <Field label="姓" htmlFor="account-last-name">
+                  <Input
+                    id="account-last-name"
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        lastName: event.target.value,
+                      }))
+                    }
+                    value={profile.lastName}
+                  />
+                </Field>
               </div>
-              <div className="space-y-2"><Label htmlFor="iu">头像 URL</Label><Input id="iu" onChange={(e) => setProfile(p => ({...p, imageUrl: e.target.value}))} placeholder="https://..." type="url" value={profile.imageUrl} /></div>
-              <div className="flex gap-2 justify-end"><Button disabled={savingProfile} onClick={saveProfile} size="sm">{savingProfile ? "保存中..." : "保存"}</Button></div>
+
+              <Field label="头像 URL" htmlFor="account-image-url">
+                <Input
+                  id="account-image-url"
+                  onChange={(event) =>
+                    setProfile((current) => ({
+                      ...current,
+                      imageUrl: event.target.value,
+                    }))
+                  }
+                  placeholder="https://..."
+                  type="url"
+                  value={profile.imageUrl}
+                />
+              </Field>
+
+              <Separator />
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  disabled={!profileDirty || savingProfile}
+                  onClick={resetProfile}
+                  type="button"
+                  variant="outline"
+                >
+                  重置
+                </Button>
+                <Button
+                  disabled={!profileDirty || savingProfile}
+                  onClick={saveProfile}
+                  type="button"
+                >
+                  {savingProfile ? "保存中..." : "保存"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent className="mt-4" value="password">
+        <TabsContent className="mt-2" value="password">
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-base">修改密码</CardTitle><CardDescription>更新您的登录密码</CardDescription></CardHeader>
-            <CardContent className="grid gap-4 max-w-md">
-              <div className="space-y-2"><Label htmlFor="cp">当前密码</Label><Input autoComplete="current-password" id="cp" onChange={(e) => setPw(p => ({...p, currentPassword: e.target.value}))} type="password" value={pw.currentPassword} /></div>
-              <div className="space-y-2"><Label htmlFor="np">新密码</Label><Input autoComplete="new-password" id="np" onChange={(e) => setPw(p => ({...p, password: e.target.value}))} placeholder="至少 8 位" type="password" value={pw.password} /></div>
-              <div className="space-y-2"><Label htmlFor="cpw">确认密码</Label><Input autoComplete="new-password" id="cpw" onChange={(e) => setPw(p => ({...p, confirmPassword: e.target.value}))} type="password" value={pw.confirmPassword} /></div>
-              <div className="flex gap-2 justify-end"><Button disabled={savingPw} onClick={savePassword} size="sm">{savingPw ? "保存中..." : "修改密码"}</Button></div>
+            <CardHeader>
+              <CardTitle>修改密码</CardTitle>
+              <CardDescription>更新当前账号的登录密码</CardDescription>
+            </CardHeader>
+            <CardContent className="grid max-w-md gap-4">
+              <Field label="当前密码" htmlFor="account-current-password">
+                <Input
+                  autoComplete="current-password"
+                  id="account-current-password"
+                  onChange={(event) =>
+                    setPassword((current) => ({
+                      ...current,
+                      currentPassword: event.target.value,
+                    }))
+                  }
+                  type="password"
+                  value={password.currentPassword}
+                />
+              </Field>
+              <Field label="新密码" htmlFor="account-new-password">
+                <Input
+                  autoComplete="new-password"
+                  id="account-new-password"
+                  onChange={(event) =>
+                    setPassword((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  placeholder="至少 8 位"
+                  type="password"
+                  value={password.password}
+                />
+              </Field>
+              <Field label="确认密码" htmlFor="account-confirm-password">
+                <Input
+                  autoComplete="new-password"
+                  id="account-confirm-password"
+                  onChange={(event) =>
+                    setPassword((current) => ({
+                      ...current,
+                      confirmPassword: event.target.value,
+                    }))
+                  }
+                  type="password"
+                  value={password.confirmPassword}
+                />
+              </Field>
+
+              <Separator />
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  disabled={savingPassword}
+                  onClick={resetPassword}
+                  type="button"
+                  variant="outline"
+                >
+                  重置
+                </Button>
+                <Button
+                  disabled={savingPassword}
+                  onClick={savePassword}
+                  type="button"
+                >
+                  {savingPassword ? "保存中..." : "修改密码"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
+}
+
+function Field({
+  children,
+  htmlFor,
+  label,
+}: {
+  children: ReactNode;
+  htmlFor: string;
+  label: string;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function emptyProfile(): ProfileForm {
+  return {
+    displayName: "",
+    email: "",
+    firstName: "",
+    imageUrl: "",
+    lastName: "",
+  };
+}
+
+function toProfileForm(user: User): ProfileForm {
+  return {
+    displayName: user.displayName ?? "",
+    email: user.email ?? "",
+    firstName: user.firstName ?? "",
+    imageUrl: user.imageUrl ?? "",
+    lastName: user.lastName ?? "",
+  };
+}
+
+function validatePassword(form: PasswordForm) {
+  if (!form.currentPassword) return "请输入当前密码";
+  if (form.password.length < 8) return "新密码至少 8 位";
+  if (form.password !== form.confirmPassword) return "两次输入的密码不一致";
+  return null;
 }

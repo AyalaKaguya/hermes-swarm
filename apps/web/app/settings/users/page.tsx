@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { UserAvatar } from "@/components/user-avatar";
 import {
   createInvites,
   createUser,
@@ -119,7 +121,7 @@ export default function UsersPage() {
 
   return (
     <Tabs className="gap-4" defaultValue="users">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TabsList>
           <TabsTrigger value="users">用户</TabsTrigger>
           <TabsTrigger value="invites">邀请</TabsTrigger>
@@ -127,7 +129,10 @@ export default function UsersPage() {
         <div className="flex items-center gap-2">
           <Dialog onOpenChange={setInviteOpen} open={inviteOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" variant="outline">邀请用户</Button>
+              <Button size="sm" variant="outline">
+                <AppIcon className="size-3.5" name="invite" />
+                邀请用户
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>邀请用户</DialogTitle></DialogHeader>
@@ -143,7 +148,10 @@ export default function UsersPage() {
           </Dialog>
           <Dialog onOpenChange={setCreateOpen} open={createOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">添加用户</Button>
+              <Button size="sm">
+                <AppIcon className="size-3.5" name="users" />
+                添加用户
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>添加用户</DialogTitle></DialogHeader>
@@ -162,17 +170,17 @@ export default function UsersPage() {
 
       <TabsContent value="users">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
             <CardTitle>用户管理</CardTitle>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <Input
-                className="h-9 w-48"
+                className="h-8 w-56"
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜索名称、邮箱..."
                 value={search}
               />
               <Select onValueChange={setRoleFilter} value={roleFilter}>
-                <SelectTrigger className="h-9 w-36">
+                <SelectTrigger className="h-8 w-36">
                   <SelectValue placeholder="角色筛选" />
                 </SelectTrigger>
                 <SelectContent>
@@ -188,7 +196,7 @@ export default function UsersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-48">用户</TableHead>
+                  <TableHead className="w-56">用户</TableHead>
                   <TableHead>邮箱</TableHead>
                   <TableHead>角色</TableHead>
                   <TableHead>状态</TableHead>
@@ -205,8 +213,13 @@ export default function UsersPage() {
                   return (
                     <TableRow key={user.id}>
                       <TableCell>
-                        <div className="font-medium">{user.displayName}</div>
-                        {user.username && <div className="text-xs text-muted-foreground">@{user.username}</div>}
+                        <div className="flex items-center gap-3">
+                          <UserAvatar size="sm" user={user} />
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{user.displayName}</div>
+                            {user.username && <div className="truncate text-xs text-muted-foreground">@{user.username}</div>}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm">{user.email}</TableCell>
                       <TableCell>

@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 
 type AvatarUser = {
   displayName?: string | null;
@@ -27,22 +33,23 @@ export function UserAvatar({
   }, [imageUrl]);
 
   return (
-    <span
+    <Avatar
       aria-label={`${getDisplayName(user)} 头像`}
-      className={`user-avatar user-avatar-${size} ${className}`.trim()}
+      className={cn("bg-muted", className)}
+      size={size === "md" ? "default" : size}
       title={getDisplayName(user)}
     >
       {imageUrl && !imageFailed ? (
-        <img
+        <AvatarImage
           alt=""
           onError={() => setImageFailed(true)}
           referrerPolicy="no-referrer"
           src={imageUrl}
         />
       ) : (
-        <span aria-hidden="true">{initials}</span>
+        <AvatarFallback aria-hidden="true">{initials}</AvatarFallback>
       )}
-    </span>
+    </Avatar>
   );
 }
 

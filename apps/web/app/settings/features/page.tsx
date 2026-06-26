@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { listSystemSettings, saveSystemSettings, type SystemSettingDto } from "@/lib/admin-api";
@@ -86,27 +86,28 @@ export default function FeaturesPage() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div>
           <CardTitle>功能管理</CardTitle>
           <CardDescription>管理系统功能开关与全局配置</CardDescription>
         </div>
         <Button disabled={upgrading} onClick={upgrade} size="sm" variant="outline">
+          <AppIcon className="size-3.5" name="refresh" />
           {upgrading ? "刷新中..." : "刷新"}
         </Button>
       </CardHeader>
       <CardContent>
-        {msg && !error && <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{msg}</div>}
+        {msg && !error && <div className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">{msg}</div>}
         {error && <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
-        <div className="grid gap-2 max-w-xl">
+        <div className="grid max-w-2xl gap-2">
           {FEATURE_DEFINITIONS.map(feat => {
             const currentValue = getSettingValue(feat.key);
             const isEnabled = currentValue === "true";
             const id = getSettingId(feat.key);
 
             return (
-              <div key={feat.key} className="flex items-center justify-between rounded-md border p-3 hover:bg-muted/30 transition-colors">
+              <div key={feat.key} className="flex items-center justify-between gap-4 rounded-md border p-3 transition-colors hover:bg-muted/30">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{feat.label}</span>
@@ -127,7 +128,7 @@ export default function FeaturesPage() {
         {settings.filter(s => !FEATURE_DEFINITIONS.some(f => f.key === s.name)).length > 0 && (
           <>
             <Separator className="my-6" />
-            <div className="space-y-3 max-w-xl">
+            <div className="max-w-2xl space-y-3">
               <div className="text-sm font-medium">自定义设置</div>
               {settings
                 .filter(s => !FEATURE_DEFINITIONS.some(f => f.key === s.name))

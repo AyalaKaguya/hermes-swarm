@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { AppShell, type AppShellNavSection } from "@/components/app-shell";
+import { AppShell } from "@/components/app-shell";
+import { SETTINGS_NAV_SECTIONS } from "@/components/settings-navigation";
 import { getSnapshot } from "@/lib/admin-api";
 import type { Snapshot } from "@/lib/admin-api";
 import {
@@ -12,24 +13,6 @@ import {
   resolveSession,
 } from "@/lib/session";
 import type { ResolvedSession } from "@/lib/session";
-
-const SETTINGS_NAV_SECTIONS: AppShellNavSection[] = [
-  {
-    items: [
-      { href: "/settings/account", icon: "user", key: "account", label: "账号" },
-      { href: "/settings/users", icon: "users", key: "users", label: "用户" },
-      { href: "/settings/groups", icon: "users", key: "groups", label: "用户组" },
-      { href: "/settings/roles", icon: "shield", key: "roles", label: "角色与权限" },
-      { href: "/settings/email-templates", icon: "file", key: "email-templates", label: "邮件模板" },
-      { href: "/settings/custom-smtp", icon: "settings", key: "custom-smtp", label: "自定义 SMTP" },
-      { href: "/settings/features", icon: "grid", key: "features", label: "功能" },
-      { href: "/settings/organizations", icon: "building", key: "organizations", label: "组织" },
-      { href: "/settings/tenant", icon: "server", key: "tenant", label: "租户" },
-    ],
-    key: "settings",
-    label: "",
-  },
-];
 
 export default function SettingsLayout({
   children,
@@ -89,7 +72,7 @@ export default function SettingsLayout({
       organizationName={snapshot?.organization?.name ?? resolvedSession?.organization?.name}
       user={resolvedSession?.user}
     >
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-4">
         {children}
       </div>
     </AppShell>

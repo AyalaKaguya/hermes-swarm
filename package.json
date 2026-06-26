@@ -29,7 +29,11 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "nx"
+      "nx",
+      "sharp"
+    ],
+    "ignoredBuiltDependencies": [
+      "esbuild"
     ]
   },
   "dependencies": {
