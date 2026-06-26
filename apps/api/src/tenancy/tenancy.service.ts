@@ -12,6 +12,7 @@ import { randomBytes, pbkdf2Sync, timingSafeEqual } from "node:crypto";
 import { Repository } from "typeorm";
 import {
   DEFAULT_ADMIN_MENUS,
+  DEPRECATED_ADMIN_MENU_CODES,
   Menu,
   Organization,
   OrganizationSetting,
@@ -596,7 +597,7 @@ export class TenancyService implements OnModuleInit {
     roleId: string,
     payload: ReplaceRolePermissionsPayload,
   ) {
-    this.assertPermission(context, "permissions", "manage");
+    this.assertPermission(context, "roles", "manage");
     const role = await this.getRoleOrThrow(context.organizationId, roleId);
     const normalized = normalizeRolePermissions(payload.permissions);
     const allowedPermissions = new Set(this.listKnownMenuPermissions());
@@ -630,7 +631,7 @@ export class TenancyService implements OnModuleInit {
    * Lists organization-scoped settings.
    */
   async listSettings(context: AuthContext) {
-    this.assertPermission(context, "settings", "view");
+    this.assertPermission(context, "features", "view");
     const settings = await this.organizationSettingRepository.find({
       where: { organizationId: context.organizationId },
       order: { name: "ASC" },
@@ -642,7 +643,7 @@ export class TenancyService implements OnModuleInit {
    * Saves organization-scoped settings from normalized input payloads.
    */
   async saveSettings(context: AuthContext, payload: SaveSettingsPayload) {
-    this.assertPermission(context, "settings", "manage");
+    this.assertPermission(context, "features", "manage");
     const entries = normalizeSettingsPayload(payload);
     const saved: OrganizationSetting[] = [];
 
@@ -673,6 +674,7 @@ export class TenancyService implements OnModuleInit {
    */
   listMenus() {
     return this.menuRepository.find({
+      where: { isActive: true },
       order: { sortOrder: "ASC", createdAt: "ASC" },
     });
   }
@@ -681,7 +683,7 @@ export class TenancyService implements OnModuleInit {
    * Creates an admin menu and adds its permissions to existing roles.
    */
   async createMenu(context: AuthContext, payload: CreateMenuPayload) {
-    this.assertPermission(context, "menus", "manage");
+    this.assertPermission(context, "features", "manage");
     const code = normalizeMenuCode(payload.code);
     const label = requireText(payload.label, "菜单名称");
     const path = normalizeMenuPath(payload.path);
@@ -711,7 +713,7 @@ export class TenancyService implements OnModuleInit {
     menuId: string,
     payload: UpdateMenuPayload,
   ) {
-    this.assertPermission(context, "menus", "manage");
+    this.assertPermission(context, "features", "manage");
     const menu = await this.getMenuOrThrow(menuId);
     const previousCode = menu.code;
 
@@ -834,6 +836,8 @@ export class TenancyService implements OnModuleInit {
   }
 
   private async ensureMenus() {
+    await this.deactivateDeprecatedMenus();
+
     for (const menu of DEFAULT_ADMIN_MENUS) {
       const existing = await this.menuRepository.findOne({
         where: { code: menu.code },
@@ -853,6 +857,26 @@ export class TenancyService implements OnModuleInit {
         existing.path = menu.path;
         await this.menuRepository.save(existing);
       }
+    }
+  }
+
+  private async deactivateDeprecatedMenus() {
+    const deprecatedMenus = await this.menuRepository.find({
+      where: DEPRECATED_ADMIN_MENU_CODES.map((code) => ({ code })),
+    });
+
+    const nextMenuCodes = new Set<string>(
+      DEFAULT_ADMIN_MENUS.map((menu) => menu.code),
+    );
+    const menusToDisable = deprecatedMenus.filter(
+      (menu) => !nextMenuCodes.has(menu.code) && menu.isActive,
+    );
+
+    if (menusToDisable.length > 0) {
+      for (const menu of menusToDisable) {
+        menu.isActive = false;
+      }
+      await this.menuRepository.save(menusToDisable);
     }
   }
 

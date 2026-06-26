@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, Put } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put } from "@nestjs/common";
 import { MailService } from "./mail.service.js";
 
 @Controller("admin/mail")
@@ -67,6 +67,17 @@ export class MailController {
     @Body() payload: any,
   ) {
     return this.mailService.updateTemplate(authorization, templateId, payload);
+  }
+
+  /**
+   * Deletes an email template by id.
+   */
+  @Delete("templates/:templateId")
+  deleteTemplate(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("templateId") templateId: string,
+  ) {
+    return this.mailService.deleteTemplate(authorization, templateId);
   }
 
   /**

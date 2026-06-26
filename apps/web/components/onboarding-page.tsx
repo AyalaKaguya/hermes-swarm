@@ -53,7 +53,7 @@ export function OnboardingPage() {
       });
 
       storeSession({ token: response.token });
-      router.replace("/organizations");
+      router.replace("/home");
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {

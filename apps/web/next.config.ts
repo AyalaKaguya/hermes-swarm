@@ -6,11 +6,11 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        destination: "http://localhost:3100/api/admin/:path*",
+        destination: "http://localhost:3200/api/admin/:path*",
         source: "/api/admin/:path*",
       },
       {
-        destination: "http://localhost:3100/api/:path*",
+        destination: "http://localhost:3200/api/:path*",
         source: "/api/:path*",
       },
     ];

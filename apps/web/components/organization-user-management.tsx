@@ -4,7 +4,35 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { AppShell } from "@/components/app-shell";
-import type { AppShellNavItem, AppShellNavSection } from "@/components/app-shell";
+import type { AppShellNavItem } from "@/components/app-shell";
+import { SETTINGS_NAV_SECTIONS } from "@/components/settings-navigation";
+import { UserAvatar } from "@/components/user-avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deleteInvite, getInvites, getSnapshot, resendInvite } from "@/lib/admin-api";
 import type { Invite, Role, Snapshot, User } from "@/lib/admin-api";
 import {
@@ -13,21 +41,7 @@ import {
   resolveSession,
 } from "@/lib/session";
 import type { ResolvedSession } from "@/lib/session";
-
-const NAV_SECTIONS: AppShellNavSection[] = [
-  {
-    key: "system",
-    label: "系统管理",
-    items: [
-      { href: "/organizations", icon: "building", key: "organizations", label: "组织管理" },
-      { href: "/organizations", icon: "users", key: "users", label: "用户管理" },
-      { href: "/organizations", icon: "users", key: "roles", label: "角色管理" },
-      { href: "/organizations", icon: "invite", key: "invites", label: "邀请管理" },
-      { href: "/organizations", icon: "switch", key: "permissions", label: "权限配置" },
-      { href: "/organizations", icon: "settings", key: "settings", label: "系统配置" },
-    ],
-  },
-];
+import { cn } from "@/lib/utils";
 
 export function OrganizationUserManagement() {
   const router = useRouter();
@@ -35,14 +49,13 @@ export function OrganizationUserManagement() {
   const [resolvedSession, setResolvedSession] =
     useState<ResolvedSession | null>(null);
   const [sessionToken, setSessionToken] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "invites" | "applications">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "invites">("users");
   const [invites, setInvites] = useState<Invite[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [userMenuOpen, setUserMenuOpen] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadSnapshot() {
@@ -129,7 +142,7 @@ export function OrganizationUserManagement() {
     );
   }, [filteredUsers]);
 
-  const navSections = NAV_SECTIONS;
+  const navSections = SETTINGS_NAV_SECTIONS;
 
   function logout() {
     clearStoredSession();
@@ -137,18 +150,17 @@ export function OrganizationUserManagement() {
   }
 
   function navigateToMenu(item: AppShellNavItem) {
-    const tabMap: Record<string, typeof activeTab> = {
+    const tabMap: Partial<Record<string, typeof activeTab>> = {
       users: "users",
       invites: "invites",
-      applications: "applications",
     };
     const tab = tabMap[item.key];
     if (tab) {
       setActiveTab(tab);
     }
 
-    if (item.key === "roles" || item.key === "settings" || item.key === "permissions" || item.key === "organizations") {
-      window.history.replaceState(null, "", item.href);
+    if (item.key !== "users") {
+      router.push(item.href);
     }
   }
 
@@ -180,120 +192,111 @@ export function OrganizationUserManagement() {
   return (
     <AppShell
       actions={
-        <button className="sidebar-link-button" onClick={logout} type="button">
+        <Button className="w-full justify-start" onClick={logout} type="button" variant="ghost">
+          <AppIcon className="size-4" name="logout" />
           退出
-        </button>
+        </Button>
       }
       activeItem="users"
       navSections={navSections}
       onNavigate={navigateToMenu}
       organizationName={organization?.name}
-      roleLabel={resolvedSession?.role?.label}
       user={resolvedSession?.user}
     >
-      <section className="page-shell">
-        <header className="page-header page-header-stacked">
+      <section className="grid gap-5">
+        <header className="flex items-center justify-between gap-4">
           <div>
-            <h1>管理用户</h1>
+            <h1 className="text-xl font-semibold">管理用户</h1>
           </div>
-          <button className="header-invite-button" type="button">
-            <AppIcon name="invite" />
+          <Button type="button" variant="outline">
+            <AppIcon className="size-4" name="invite" />
             <span>邀请</span>
-          </button>
+          </Button>
         </header>
 
-        <div className="tab-strip" role="tablist" aria-label="用户管理页签">
-          <button
-            className={activeTab === "users" ? "tab-button active" : "tab-button"}
-            onClick={() => setActiveTab("users")}
-            type="button"
-          >
-            <AppIcon name="users" />
-            <span>用户列表</span>
-          </button>
-          <button
-            className={activeTab === "invites" ? "tab-button active" : "tab-button"}
-            onClick={() => setActiveTab("invites")}
-            type="button"
-          >
-            <AppIcon name="invite" />
-            <span>邀请列表</span>
-          </button>
-          <button
-            className={activeTab === "applications" ? "tab-button active" : "tab-button"}
-            onClick={() => setActiveTab("applications")}
-            type="button"
-          >
-            <AppIcon name="file" />
-            <span>申请列表</span>
-          </button>
-        </div>
+        <Tabs
+          onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+          value={activeTab}
+        >
+          <TabsList variant="line">
+            <TabsTrigger value="users">
+              <AppIcon className="size-4" name="users" />
+              用户
+            </TabsTrigger>
+            <TabsTrigger value="invites">
+              <AppIcon className="size-4" name="invite" />
+              邀请
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-        {error && <div className="form-error">{error}</div>}
+        {error && (
+          <div className="grid min-h-14 place-items-center rounded-lg border border-amber-500/30 bg-amber-50 p-4 text-sm text-amber-700">
+            {error}
+          </div>
+        )}
 
-        {loading && <div className="page-empty">加载中</div>}
+        {loading && (
+          <div className="grid min-h-28 place-items-center rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground">
+            加载中
+          </div>
+        )}
 
         {!loading && activeTab === "users" && (
           <>
-            <div className="toolbar-row">
-              <div className="toolbar-actions">
-                <button className="btn-primary" type="button">
-                  <AppIcon name="add" />
-                  <span>添加用户</span>
-                </button>
-                <button className="btn-secondary" type="button">
-                  <AppIcon name="invite" />
-                  <span>邀请</span>
-                </button>
-                <button className="btn-secondary" type="button">
-                  <AppIcon name="import" />
-                  <span>导入</span>
-                </button>
-              </div>
-              <div className="toolbar-right">
-                <label className="search-field">
-                  <AppIcon name="search" />
-                  <input
-                    aria-label="搜索"
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="搜索"
-                    value={search}
-                  />
-                </label>
-                <label className="role-filter">
-                  <span>角色:</span>
-                  <select
-                    aria-label="选择角色"
-                    onChange={(event) => setRoleFilter(event.target.value)}
-                    value={roleFilter}
-                  >
-                    <option value="">选择角色</option>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label className="relative block w-full max-w-sm">
+                <AppIcon className="pointer-events-none absolute left-2.5 top-2 size-4 text-muted-foreground" name="search" />
+                <Input
+                  aria-label="搜索"
+                  className="pl-8"
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="搜索"
+                  value={search}
+                />
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">角色:</span>
+                <Select
+                  onValueChange={(value) => setRoleFilter(value === "all" ? "" : value)}
+                  value={roleFilter || "all"}
+                >
+                  <SelectTrigger aria-label="选择角色" className="w-56">
+                    <SelectValue placeholder="选择角色" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">选择角色</SelectItem>
                     {roles.map((role) => (
-                      <option key={role.id} value={role.name}>
-                        {role.label}
-                      </option>
+                      <SelectItem key={role.id} value={role.name}>
+                        {role.name}
+                      </SelectItem>
                     ))}
-                  </select>
-                </label>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <section className="user-grid user-grid-rows">
+            <section className="grid grid-cols-[repeat(auto-fit,minmax(20rem,25rem))] gap-4">
               {filteredUsers.map((user) => (
-                <div
+                <Card
                   key={user.id}
-                  className={user.id === selectedUserId ? "user-card-row active" : "user-card-row"}
+                  className={cn(
+                    "cursor-pointer gap-3 rounded-lg border p-4 shadow-xs transition-colors hover:bg-muted/40",
+                    user.id === selectedUserId && "border-foreground/30 bg-muted/30",
+                  )}
                   onClick={() => setSelectedUserId(user.id)}
                 >
-                  <UserCardRow
+                  <UserCard
                     role={getRoleById(roles, user.roleId)}
                     user={user}
-                    menuOpen={userMenuOpen === user.id}
-                    onToggleMenu={() => setUserMenuOpen(userMenuOpen === user.id ? null : user.id)}
                   />
-                </div>
+                </Card>
               ))}
-              {!filteredUsers.length && <div className="page-empty">暂无用户</div>}
+              {!filteredUsers.length && (
+                <div className="grid min-h-28 place-items-center rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground">
+                  暂无用户
+                </div>
+              )}
             </section>
           </>
         )}
@@ -306,10 +309,6 @@ export function OrganizationUserManagement() {
             roles={roles}
             users={snapshot?.users ?? []}
           />
-        )}
-
-        {!loading && activeTab === "applications" && (
-          <div className="page-empty">暂无申请</div>
         )}
 
       </section>
@@ -331,136 +330,141 @@ function InviteTable({
   users: User[];
 }) {
   if (!invites.length) {
-    return <div className="page-empty">暂无邀请</div>;
+    return (
+      <div className="grid min-h-28 place-items-center rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground">
+        暂无邀请
+      </div>
+    );
   }
 
   return (
-    <section className="invite-table-wrap" aria-label="邀请列表">
-      <table className="invite-table">
-        <thead>
-          <tr>
-            <th>邮箱</th>
-            <th>角色</th>
-            <th>邀请人</th>
-            <th>创建时间</th>
-            <th>过期时间</th>
-            <th>状态</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
+    <Card className="rounded-lg p-0" aria-label="邀请列表">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>邮箱</TableHead>
+            <TableHead>角色</TableHead>
+            <TableHead>邀请人</TableHead>
+            <TableHead>创建时间</TableHead>
+            <TableHead>过期时间</TableHead>
+            <TableHead>状态</TableHead>
+            <TableHead className="text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {invites.map((invite) => {
             const role = getRoleById(roles, invite.roleId);
             const invitedBy = users.find((user) => user.id === invite.invitedById) ?? null;
             return (
-              <tr key={invite.id}>
-                <td>{invite.email}</td>
-                <td>{role?.name ?? "无角色"}</td>
-                <td>
+              <TableRow key={invite.id}>
+                <TableCell>{invite.email}</TableCell>
+                <TableCell>{role?.name ?? "无角色"}</TableCell>
+                <TableCell>
                   {invitedBy ? (
-                    <span className="invite-user-inline">
-                      <span className="user-card-avatar" aria-hidden="true">
-                        <AppIcon name="user" />
-                        <span className="user-status-dot" aria-hidden="true" />
-                      </span>
-                      <span>
-                        <strong>{invitedBy.displayName}</strong>
-                        <small>{invitedBy.email}</small>
+                    <span className="flex items-center gap-2">
+                      <UserAvatar size="sm" user={invitedBy} />
+                      <span className="grid min-w-0 leading-tight">
+                        <strong className="truncate text-sm font-medium">{invitedBy.displayName}</strong>
+                        <small className="truncate text-xs text-muted-foreground">{invitedBy.email}</small>
                       </span>
                     </span>
                   ) : (
                     "系统"
                   )}
-                </td>
-                <td>{formatDate(invite.createdAt)}</td>
-                <td>{formatDate(invite.expireDate) || "永不过期"}</td>
-                <td>
-                  <span className={"invite-status invite-status-" + invite.status}>
-                    <span aria-hidden="true" />
+                </TableCell>
+                <TableCell>{formatDate(invite.createdAt)}</TableCell>
+                <TableCell>{formatDate(invite.expireDate) || "永不过期"}</TableCell>
+                <TableCell>
+                  <Badge className="gap-1.5" variant="outline">
+                    <span
+                      aria-hidden="true"
+                      className={cn("size-1.5 rounded-full", inviteStatusDotClass(invite.status))}
+                    />
                     {inviteStatusText(invite.status)}
-                  </span>
-                </td>
-                <td>
-                  <div className="invite-actions">
-                    <button onClick={() => onResend(invite.id)} title="重新发送" type="button">
-                      <AppIcon name="refresh" />
-                    </button>
-                    <button onClick={() => onDelete(invite.id, invite.email)} title="删除" type="button">
-                      <AppIcon name="trash" />
-                    </button>
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-1">
+                    <Button onClick={() => onResend(invite.id)} size="icon-sm" title="重新发送" type="button" variant="ghost">
+                      <AppIcon className="size-4" name="refresh" />
+                    </Button>
+                    <Button onClick={() => onDelete(invite.id, invite.email)} size="icon-sm" title="删除" type="button" variant="ghost">
+                      <AppIcon className="size-4" name="trash" />
+                    </Button>
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
-    </section>
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
 
-function UserCardRow({
+function UserCard({
   role,
   user,
-  menuOpen,
-  onToggleMenu,
 }: {
   role: Role | null;
   user: User;
-  menuOpen: boolean;
-  onToggleMenu: () => void;
 }) {
   return (
-    <div className="user-card-row-inner">
-      <div className="user-card-person">
-        <span className="user-card-avatar" aria-hidden="true">
-          <AppIcon name="user" />
-          <span className="user-status-dot" aria-hidden="true" />
-        </span>
-        <div className="user-card-body">
-          <strong>{user.displayName}</strong>
-          <span>{user.email}</span>
+    <>
+      <div className="flex items-center gap-3">
+        <UserAvatar size="md" user={user} />
+        <div className="grid min-w-0 leading-tight">
+          <strong className="truncate text-sm font-medium">{user.displayName}</strong>
+          <span className="truncate text-sm text-muted-foreground">{user.email}</span>
         </div>
       </div>
-      <div className="user-card-role">
-        <span className={"role-badge " + roleBadgeClass(role?.name)}>
-          {role?.label ?? "无角色"}
-        </span>
-      </div>
-      <div className="user-card-actions">
-        <button
-          className="user-card-menu-trigger"
-          onClick={(e) => { e.stopPropagation(); onToggleMenu(); }}
-          type="button"
-        >
-          <AppIcon name="more" />
-        </button>
-        {menuOpen && (
-          <>
-            <div className="user-card-menu-overlay" onClick={(e) => { e.stopPropagation(); onToggleMenu(); }} />
-            <div className="user-card-menu">
-              <button type="button" className="user-card-menu-item" onClick={(e) => e.stopPropagation()}>
-                <AppIcon name="pencil" />
-                <span>编辑</span>
-              </button>
-              <button type="button" className="user-card-menu-item danger" onClick={(e) => e.stopPropagation()}>
-                <AppIcon name="trash" />
-                <span>删除</span>
-              </button>
-            </div>
-          </>
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground">角色:</span>
+        {role ? (
+          <Badge className={roleBadgeClass(role.name)} variant="outline">
+            {role.name.toUpperCase()}
+          </Badge>
+        ) : (
+          <Badge className={roleBadgeClass(null)} variant="outline">
+            无角色
+          </Badge>
         )}
       </div>
-    </div>
+      <div className="flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(event) => event.stopPropagation()}>
+            <Button size="icon-sm" type="button" variant="ghost">
+              <AppIcon className="size-4" name="more" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+            <DropdownMenuItem>
+              <AppIcon className="size-4" name="pencil" />
+              编辑
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive">
+              <AppIcon className="size-4" name="trash" />
+              删除
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </>
   );
 }
 
 function roleBadgeClass(roleName: string | undefined | null): string {
-  if (!roleName) return "role-badge-none";
-  if (roleName === "super_admin") return "role-badge-super";
-  if (roleName === "admin") return "role-badge-admin";
-  if (roleName === "viewer") return "role-badge-viewer";
-  return "role-badge-default";
+  if (!roleName) return "border-dashed text-muted-foreground";
+  if (roleName === "super_admin") return "border-destructive/20 text-destructive";
+  if (roleName === "admin") return "border-amber-500/30 text-amber-700";
+  if (roleName === "viewer") return "text-muted-foreground";
+  return "";
+}
+
+function inviteStatusDotClass(status: Invite["status"]) {
+  if (status === "accepted") return "bg-emerald-500";
+  if (status === "expired" || status === "revoked") return "bg-destructive";
+  return "bg-amber-500";
 }
 
 function getRoleById(roles: Role[], roleId: string | null) {

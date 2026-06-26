@@ -1,5 +1,6 @@
 export {
   DEFAULT_ADMIN_MENUS,
+  DEPRECATED_ADMIN_MENU_CODES,
   SYSTEM_ROLES,
   TENANCY_MENU_PERMISSION_PREFIX,
   buildMenuPermissionKey,
@@ -9,6 +10,7 @@ export {
 } from "./permissions.js";
 export { BaseEntity } from "./entities/base.entity.js";
 export { EmailVerification } from "./entities/email-verification.entity.js";
+export { Group } from "./entities/group.entity.js";
 export { Invite, type InviteStatus } from "./entities/invite.entity.js";
 export { Menu } from "./entities/menu.entity.js";
 export {

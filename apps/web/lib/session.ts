@@ -66,11 +66,12 @@ export function hasAnyManagementAccess(
   resolvedSession: ResolvedSession | null,
 ) {
   return (
-    hasMenuAccess(snapshot, resolvedSession, "organizations") ||
+    hasMenuAccess(snapshot, resolvedSession, "account") ||
     hasMenuAccess(snapshot, resolvedSession, "users") ||
-    hasMenuAccess(snapshot, resolvedSession, "roles") ||
-    hasMenuAccess(snapshot, resolvedSession, "menus") ||
-    hasMenuAccess(snapshot, resolvedSession, "permissions") ||
-    hasMenuAccess(snapshot, resolvedSession, "settings")
+    hasMenuAccess(snapshot, resolvedSession, "groups") ||
+    hasMenuAccess(snapshot, resolvedSession, "email-templates") ||
+    hasMenuAccess(snapshot, resolvedSession, "custom-smtp") ||
+    hasMenuAccess(snapshot, resolvedSession, "features") ||
+    hasMenuAccess(snapshot, resolvedSession, "organizations")
   );
 }

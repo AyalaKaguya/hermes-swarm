@@ -1,22 +1,48 @@
 export const TENANCY_MENU_PERMISSION_PREFIX = "menu";
 
 export const DEFAULT_ADMIN_MENUS = [
+  { code: "account", label: "账号", path: "/settings/account", sortOrder: 10 },
+  { code: "users", label: "用户", path: "/settings/users", sortOrder: 20 },
   {
-    code: "organizations",
-    label: "组织管理",
-    path: "/organizations",
-    sortOrder: 10,
+    code: "groups",
+    label: "用户组",
+    path: "/settings/groups",
+    sortOrder: 30,
   },
-  { code: "users", label: "用户管理", path: "/organizations", sortOrder: 20 },
-  { code: "roles", label: "角色管理", path: "/organizations", sortOrder: 30 },
-  { code: "menus", label: "菜单管理", path: "/organizations", sortOrder: 40 },
   {
-    code: "permissions",
-    label: "权限配置",
-    path: "/organizations",
+    code: "roles",
+    label: "角色",
+    path: "/settings/roles",
+    sortOrder: 35,
+  },
+  {
+    code: "email-templates",
+    label: "邮件模板",
+    path: "/settings/email-templates",
+    sortOrder: 40,
+  },
+  {
+    code: "custom-smtp",
+    label: "自定义 SMTP",
+    path: "/settings/custom-smtp",
     sortOrder: 50,
   },
-  { code: "settings", label: "系统配置", path: "/organizations", sortOrder: 60 },
+  { code: "features", label: "功能", path: "/settings/features", sortOrder: 60 },
+  { code: "organizations", label: "组织", path: "/settings/organizations", sortOrder: 70 },
+  {
+    code: "tenant",
+    label: "租户",
+    path: "/settings/tenant",
+    sortOrder: 80,
+  },
+] as const;
+
+export const DEPRECATED_ADMIN_MENU_CODES = [
+  "organization",
+  "menus",
+  "permissions",
+  "settings",
+  "user-groups",
 ] as const;
 
 export const SYSTEM_ROLES = [
@@ -48,11 +74,11 @@ export function defaultPermissionsForRole(roleName: string) {
 
   if (roleName === "member") {
     return DEFAULT_ADMIN_MENUS.filter((menu) =>
-      ["organizations", "users"].includes(menu.code),
+      ["account", "users", "organizations"].includes(menu.code),
     ).map((menu) => buildMenuPermissionKey(menu.code, "view"));
   }
 
-  return DEFAULT_ADMIN_MENUS.filter((menu) => menu.code === "organizations").map(
+  return DEFAULT_ADMIN_MENUS.filter((menu) => menu.code === "account").map(
     (menu) => buildMenuPermissionKey(menu.code, "view"),
   );
 }

@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 
-const BASE = "http://localhost:3200";
-const API = "http://localhost:3100";
+const BASE = "http://localhost:3100";
+const API = "http://localhost:3200";
 
 async function main() {
   const health = await fetch(`${API}/api/health`).then((r) => r.json());
@@ -25,17 +25,18 @@ async function main() {
 
   if (await emailInput.isVisible()) {
     await emailInput.fill("admin@hermes.local");
-    await passwordInput.fill("admin123");
+    await passwordInput.fill("admin123456");
     await submitBtn.click();
     await page.waitForTimeout(2000);
-    await page.waitForURL("**/organizations", { timeout: 10000 }).catch(() => {});
+    await page.waitForURL("**/home", { timeout: 10000 }).catch(() => {});
+    await page.goto(`${BASE}/settings/users`, { waitUntil: "networkidle" });
     await page.waitForTimeout(1000);
   }
 
   await page.screenshot({ path: "/tmp/hermes-org-users.png" });
   console.log("Users tab screenshot saved");
 
-  const invitesTab = page.locator('button:has-text("邀请"), [role="tab"]:has-text("邀请")').first();
+  const invitesTab = page.locator('.tab-strip button:has-text("邀请"), [role="tab"]:has-text("邀请")').first();
   if (await invitesTab.isVisible()) {
     await invitesTab.click();
     await page.waitForTimeout(1500);
