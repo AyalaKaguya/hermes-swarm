@@ -5,6 +5,8 @@ import { OrganizationsModule } from "../organizations/organizations.module.js";
 import { InviteModule } from "../invite/invite.module.js";
 import { PasswordResetModule } from "../password-reset/password-reset.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
+import { NotificationsModule } from "../notifications/notifications.module.js";
+import { TagsModule } from "../tags/tags.module.js";
 import { TenancyModule } from "../tenancy/tenancy.module.js";
 import { UsersModule } from "../users/users.module.js";
 import { AdminController } from "./admin.controller.js";
@@ -18,6 +20,8 @@ import { AdminController } from "./admin.controller.js";
     SettingsModule,
     InviteModule,
     MailModule,
+    TagsModule,
+    NotificationsModule,
     PasswordResetModule,
   ],
   controllers: [AdminController],

@@ -9,12 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getSnapshot } from "@/lib/admin-api";
+import { getSnapshot, switchOrganizationScope } from "@/lib/admin-api";
 import type { Snapshot } from "@/lib/admin-api";
 import {
   clearStoredSession,
   getStoredSession,
   resolveSession,
+  storeSession,
 } from "@/lib/session";
 import type { ResolvedSession } from "@/lib/session";
 
@@ -99,9 +100,21 @@ export function HomePage() {
     { href: "/settings/features", icon: "grid", label: "功能开关" },
   ] satisfies Array<{ href: string; icon: AppIconName; label: string }>;
 
+  async function switchOrganization(organizationId: string) {
+    const session = getStoredSession();
+    if (!session?.token || organizationId === snapshot?.organization.id) return;
+    const result = await switchOrganizationScope(session.token, organizationId);
+    storeSession({ token: result.token });
+    setSnapshot(result.snapshot);
+    setResolvedSession(resolveSession(result.snapshot));
+  }
+
   return (
     <AppShell
+      currentOrganizationId={organization?.id}
+      onOrganizationSwitch={switchOrganization}
       organizationName={organization?.name}
+      organizations={snapshot?.organizations}
       user={resolvedSession?.user}
     >
       {loading ? (

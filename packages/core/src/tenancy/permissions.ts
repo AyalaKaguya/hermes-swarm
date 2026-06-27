@@ -2,43 +2,66 @@ export const TENANCY_MENU_PERMISSION_PREFIX = "menu";
 
 export const DEFAULT_ADMIN_MENUS = [
   { code: "account", label: "账号", path: "/settings/account", sortOrder: 10 },
-  { code: "users", label: "用户", path: "/settings/users", sortOrder: 20 },
   {
-    code: "groups",
-    label: "用户组",
-    path: "/settings/groups",
-    sortOrder: 30,
+    code: "organization",
+    label: "组织常规",
+    path: "/settings/organization",
+    sortOrder: 20,
   },
   {
-    code: "roles",
-    label: "角色",
-    path: "/settings/roles",
-    sortOrder: 35,
+    code: "organization-controls",
+    label: "组织控制项",
+    path: "/settings/organization-controls",
+    sortOrder: 30,
+  },
+  { code: "tags", label: "标签", path: "/settings/tags", sortOrder: 40 },
+  {
+    code: "custom-smtp",
+    label: "自定义邮件",
+    path: "/settings/custom-smtp",
+    sortOrder: 50,
   },
   {
     code: "email-templates",
     label: "邮件模板",
     path: "/settings/email-templates",
-    sortOrder: 40,
+    sortOrder: 60,
   },
   {
-    code: "custom-smtp",
-    label: "自定义 SMTP",
-    path: "/settings/custom-smtp",
-    sortOrder: 50,
+    code: "notification-destinations",
+    label: "通知",
+    path: "/settings/notification-destinations",
+    sortOrder: 70,
   },
-  { code: "features", label: "功能", path: "/settings/features", sortOrder: 60 },
-  { code: "organizations", label: "组织", path: "/settings/organizations", sortOrder: 70 },
+  { code: "features", label: "功能", path: "/settings/features", sortOrder: 80 },
+  { code: "users", label: "成员", path: "/settings/users", sortOrder: 90 },
+  {
+    code: "groups",
+    label: "用户组",
+    path: "/settings/groups",
+    sortOrder: 100,
+  },
+  {
+    code: "roles",
+    label: "角色和权限",
+    path: "/settings/roles",
+    sortOrder: 110,
+  },
   {
     code: "tenant",
     label: "租户",
     path: "/settings/tenant",
-    sortOrder: 80,
+    sortOrder: 120,
+  },
+  {
+    code: "organizations",
+    label: "组织列表",
+    path: "/settings/organizations",
+    sortOrder: 130,
   },
 ] as const;
 
 export const DEPRECATED_ADMIN_MENU_CODES = [
-  "organization",
   "menus",
   "permissions",
   "settings",
@@ -74,7 +97,7 @@ export function defaultPermissionsForRole(roleName: string) {
 
   if (roleName === "member") {
     return DEFAULT_ADMIN_MENUS.filter((menu) =>
-      ["account", "users", "organizations"].includes(menu.code),
+      ["account", "organization", "users", "groups"].includes(menu.code),
     ).map((menu) => buildMenuPermissionKey(menu.code, "view"));
   }
 

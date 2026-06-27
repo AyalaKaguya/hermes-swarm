@@ -13,6 +13,7 @@ import {
   LoginPayload,
   OnboardingPayload,
   ReplaceRolePermissionsPayload,
+  SwitchOrganizationPayload,
   UpdateMenuPayload,
 } from "../tenancy/tenancy.types.js";
 import { TenancyService } from "../tenancy/tenancy.service.js";
@@ -57,6 +58,18 @@ export class AdminController {
   async getSnapshot(@Headers("authorization") authorization?: string) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.getSnapshot(context);
+  }
+
+  /**
+   * Switches the active organization scope for the current user identity.
+   */
+  @Post("scope/organization")
+  async switchOrganization(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() payload: SwitchOrganizationPayload,
+  ) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.switchOrganization(context, payload);
   }
 
   /**

@@ -1,99 +1,109 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getSnapshot, type Organization } from "@/lib/admin-api";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { listOrganizations, type Organization } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
-import Link from "next/link";
 
-export default function Page() {
-  const [org, setOrg] = useState<Organization | null>(null);
+export default function OrganizationsPage() {
+  const [items, setItems] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) { setLoading(false); return; }
-    try { const snap = await getSnapshot(session.token); setOrg(snap.organization); }
-    catch (err) { setError(err instanceof Error ? err.message : "加载失败"); }
-    finally { setLoading(false); }
+    if (!session?.token) {
+      setLoading(false);
+      return;
+    }
+    try {
+      setItems(await listOrganizations(session.token));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  if (loading) return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
-  if (error) return <div className="flex items-center justify-center py-16"><div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div></div>;
-  if (!org) return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">无法加载组织信息</div>;
+  const filtered = useMemo(() => {
+    const value = search.trim().toLowerCase();
+    if (!value) return items;
+    return items.filter((item) =>
+      [item.name, item.slug, item.subdomain].some((field) =>
+        field?.toLowerCase().includes(value),
+      ),
+    );
+  }, [items, search]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
+  }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div><h1 className="text-lg font-semibold">{org.name}</h1><p className="text-sm text-muted-foreground">标识：{org.slug}</p></div>
-      <Separator />
-
-      <Tabs defaultValue="general">
-        <TabsList><TabsTrigger value="general">通用</TabsTrigger><TabsTrigger value="members">成员</TabsTrigger><TabsTrigger value="settings">设置</TabsTrigger></TabsList>
-
-        <TabsContent className="mt-4" value="general">
-          <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-            <Card>
-              <CardHeader className="pb-3"><CardTitle className="text-base">组织信息</CardTitle></CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2 space-y-1"><Label>组织 ID</Label><p className="text-sm font-mono break-all">{org.id}</p></div>
-                <div className="space-y-2"><Label>名称</Label><Input defaultValue={org.name} readOnly /></div>
-                <div className="space-y-2"><Label>标识 (Slug)</Label><Input defaultValue={org.slug} readOnly /></div>
-                <div className="space-y-2"><Label>子域名</Label><Input defaultValue={org.subdomain ?? ""} readOnly /></div>
-                <div className="space-y-2">
-                  <Label>状态</Label>
-                  <div>
-                    <Badge variant={org.status === "active" ? "default" : "destructive"}>
-                      {org.status === "active" ? "启用" : "已停用"}
+    <section className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">组织列表</h1>
+          <p className="text-sm text-muted-foreground">租户范围内的组织管理视图</p>
+        </div>
+        <Input
+          className="w-full sm:w-72"
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="搜索组织..."
+          value={search}
+        />
+      </div>
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">组织</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>名称</TableHead>
+                <TableHead>标识</TableHead>
+                <TableHead>子域名</TableHead>
+                <TableHead>状态</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="font-medium">{item.name}</TableCell>
+                  <TableCell className="font-mono text-xs">{item.slug}</TableCell>
+                  <TableCell>{item.subdomain ?? "-"}</TableCell>
+                  <TableCell>
+                    <Badge variant={item.status === "active" ? "default" : "secondary"}>
+                      {item.status === "active" ? "启用" : "停用"}
                     </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card><CardHeader className="pb-3"><CardTitle className="text-base">概览</CardTitle></CardHeader>
-              <CardContent className="grid gap-2 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">状态</span><Badge variant={org.status === "active" ? "default" : "destructive"}>{org.status === "active" ? "启用" : "已停用"}</Badge></div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent className="mt-4" value="members">
-          <Card>
-            <CardContent className="flex items-center justify-between gap-4 py-6">
-              <div>
-                <div className="text-sm font-medium">组织成员</div>
-                <div className="text-xs text-muted-foreground">用户、角色与邀请记录</div>
-              </div>
-              <Button asChild size="sm">
-                <Link href="/settings/users">打开用户</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent className="mt-4" value="settings">
-          <Card>
-            <CardContent className="flex items-center justify-between gap-4 py-6">
-              <div>
-                <div className="text-sm font-medium">功能设置</div>
-                <div className="text-xs text-muted-foreground">组织级功能开关与系统配置</div>
-              </div>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/settings/features">打开功能</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={4}>
+                    暂无组织
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </section>
   );
 }

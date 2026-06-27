@@ -156,6 +156,13 @@ export type ReplaceRolePermissionsPayload = {
 };
 
 /**
+ * Active organization switch payload.
+ */
+export type SwitchOrganizationPayload = {
+  organizationId?: string;
+};
+
+/**
  * Bulk invite creation payload.
  */
 export type CreateBulkInvitesPayload = {
