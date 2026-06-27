@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { SystemSetting } from "@hermes-swarm/core";
@@ -41,7 +41,7 @@ export class SettingsService {
    */
   async listSystemSettings(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "features", "view");
+    this.ensureSystemSettingsPermission(context, "view");
     const settings = await this.systemSettingRepository.find({
       order: { name: "ASC" },
     });
@@ -56,7 +56,7 @@ export class SettingsService {
     payload: SaveSettingsPayload,
   ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "features", "manage");
+    this.ensureSystemSettingsPermission(context, "manage");
     const entries = normalizeSettingsPayload(payload);
     const saved: SystemSetting[] = [];
 
@@ -77,6 +77,17 @@ export class SettingsService {
     }
 
     return saved.map(toSystemSettingDto);
+  }
+
+  private ensureSystemSettingsPermission(
+    context: Awaited<ReturnType<TenancyService["requireAuthContext"]>>,
+    action: "manage" | "view",
+  ) {
+    try {
+      this.tenancyService.ensurePlatformScope(context, "tenant", action);
+    } catch {
+      throw new ForbiddenException("只有平台管理员可以访问平台设置");
+    }
   }
 }
 

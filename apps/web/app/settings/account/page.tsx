@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
+import { useAdminShell } from "@/components/admin-shell";
+import { AppIcon } from "@/components/app-icon";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,14 +24,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fetchMe, updateUser, updateUserPassword, type User } from "@/lib/admin-api";
+import {
+  fetchMe,
+  updateUser,
+  updateUserPassword,
+  uploadAdminFile,
+  type User,
+} from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 
 type ProfileForm = {
   displayName: string;
   email: string;
   firstName: string;
-  imageUrl: string;
   lastName: string;
 };
 
@@ -38,6 +53,8 @@ const EMPTY_PASSWORD: PasswordForm = {
 };
 
 export default function AccountPage() {
+  const { refreshSnapshot } = useAdminShell();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -45,6 +62,7 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<ProfileForm>(emptyProfile());
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
   const load = useCallback(async () => {
@@ -77,8 +95,7 @@ export default function AccountPage() {
       profile.displayName !== saved.displayName ||
       profile.email !== saved.email ||
       profile.firstName !== saved.firstName ||
-      profile.lastName !== saved.lastName ||
-      profile.imageUrl !== saved.imageUrl
+      profile.lastName !== saved.lastName
     );
   }, [profile, user]);
 
@@ -108,17 +125,49 @@ export default function AccountPage() {
         displayName: profile.displayName,
         email: profile.email,
         firstName: profile.firstName || null,
-        imageUrl: profile.imageUrl || null,
         lastName: profile.lastName || null,
       });
       setUser(updated);
       setProfile(toProfileForm(updated));
       setMessage("个人资料已保存");
+      await refreshSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
       setSavingProfile(false);
     }
+  }
+
+  async function uploadAvatar(file: File) {
+    const session = getStoredSession();
+    if (!session?.token || !user) return;
+
+    setUploadingAvatar(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const uploaded = await uploadAdminFile(session.token, file);
+      const imageUrl =
+        uploaded.url ??
+        uploaded.destinations.find((item) => item.status === "success" && item.url)?.url;
+      if (!imageUrl) {
+        throw new Error("上传成功但未返回图片地址");
+      }
+      const updated = await updateUser(session.token, user.id, { imageUrl });
+      setUser(updated);
+      setMessage("头像已上传");
+      await refreshSnapshot();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  }
+
+  function onAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void uploadAvatar(file);
   }
 
   async function savePassword() {
@@ -181,8 +230,27 @@ export default function AccountPage() {
               </div>
             </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            {user.status === "active" ? "账号正常" : "账号已停用"}
+          <div className="flex shrink-0 items-center gap-2">
+            <input
+              accept="image/*"
+              className="hidden"
+              onChange={onAvatarChange}
+              ref={avatarInputRef}
+              type="file"
+            />
+            <Button
+              disabled={uploadingAvatar}
+              onClick={() => avatarInputRef.current?.click()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <AppIcon className="size-3.5" name="image-upload" />
+              {uploadingAvatar ? "上传中..." : "上传头像"}
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              {user.status === "active" ? "账号正常" : "账号已停用"}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -208,7 +276,7 @@ export default function AccountPage() {
           <Card>
             <CardHeader>
               <CardTitle>个人资料</CardTitle>
-              <CardDescription>维护你的名称、邮箱和头像信息</CardDescription>
+              <CardDescription>维护你的名称和邮箱，头像只能通过图片上传更新</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -262,21 +330,6 @@ export default function AccountPage() {
                   />
                 </Field>
               </div>
-
-              <Field label="头像 URL" htmlFor="account-image-url">
-                <Input
-                  id="account-image-url"
-                  onChange={(event) =>
-                    setProfile((current) => ({
-                      ...current,
-                      imageUrl: event.target.value,
-                    }))
-                  }
-                  placeholder="https://..."
-                  type="url"
-                  value={profile.imageUrl}
-                />
-              </Field>
 
               <Separator />
 
@@ -401,7 +454,6 @@ function emptyProfile(): ProfileForm {
     displayName: "",
     email: "",
     firstName: "",
-    imageUrl: "",
     lastName: "",
   };
 }
@@ -411,7 +463,6 @@ function toProfileForm(user: User): ProfileForm {
     displayName: user.displayName ?? "",
     email: user.email ?? "",
     firstName: user.firstName ?? "",
-    imageUrl: user.imageUrl ?? "",
     lastName: user.lastName ?? "",
   };
 }

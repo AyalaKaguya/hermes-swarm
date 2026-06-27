@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,14 +82,20 @@ export function NotificationCenter() {
             <DropdownMenuLabel className="p-0">
               通知{items.length > 0 ? ` (${countLabel})` : ""}
             </DropdownMenuLabel>
-            <button
-              className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            <Button
+              aria-label="清空全部通知"
               disabled={items.length === 0}
-              onClick={() => setItems([])}
+              onClick={(event) => {
+                event.stopPropagation();
+                setItems([]);
+              }}
+              size="icon-xs"
+              title="清空全部通知"
               type="button"
+              variant="ghost"
             >
-              清空
-            </button>
+              <AppIcon className="size-3.5" name="list-x" />
+            </Button>
           </div>
           <DropdownMenuSeparator />
           {items.length === 0 ? (
@@ -112,16 +119,19 @@ export function NotificationCenter() {
                       {item.time}
                     </span>
                   </span>
-                  <button
-                    className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                  <Button
+                    aria-label="移除通知"
                     onClick={(event) => {
                       event.stopPropagation();
                       setItems((current) => current.filter((_, i) => i !== index));
                     }}
+                    size="icon-xs"
+                    title="移除通知"
                     type="button"
+                    variant="ghost"
                   >
-                    移除
-                  </button>
+                    <AppIcon className="size-3" name="x" />
+                  </Button>
                 </DropdownMenuItem>
               ))}
             </div>

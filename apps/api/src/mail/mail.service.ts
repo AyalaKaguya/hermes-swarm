@@ -63,8 +63,8 @@ export class MailService {
    */
   async getSmtp(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "custom-smtp", "view");
-    const record = await this.findSmtpRecord(context.organizationId);
+    const organizationId = this.resolveSmtpOrganizationId(context, "view");
+    const record = await this.findSmtpRecord(organizationId);
     return record ? toSmtpDto(record) : null;
   }
 
@@ -73,10 +73,10 @@ export class MailService {
    */
   async saveSmtp(authorization: string | undefined, payload: SmtpPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "custom-smtp", "manage");
-    const entity = await this.findOrCreateSmtpRecord(context.organizationId);
+    const organizationId = this.resolveSmtpOrganizationId(context, "manage");
+    const entity = await this.findOrCreateSmtpRecord(organizationId);
     applySmtpPayload(entity, payload);
-    entity.organizationId = context.organizationId;
+    entity.organizationId = organizationId;
     entity.isValidated = Boolean(payload.isValidated);
     return toSmtpDto(await this.smtpRepository.save(entity));
   }
@@ -86,7 +86,7 @@ export class MailService {
    */
   async validateSmtp(authorization: string | undefined, payload: SmtpPayload) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "custom-smtp", "manage");
+    this.resolveSmtpOrganizationId(context, "manage");
     return validateSmtpPayload(payload);
   }
 
@@ -198,7 +198,27 @@ export class MailService {
   /**
    * Finds the best SMTP record for an organization, with global fallback.
    */
-  private async findSmtpRecord(organizationId: string) {
+  private resolveSmtpOrganizationId(
+    context: Awaited<ReturnType<TenancyService["requireAuthContext"]>>,
+    action: "manage" | "view",
+  ) {
+    if (context.scopeLevel === "platform") {
+      this.tenancyService.ensurePlatformScope(context, "tenant", action);
+      return null;
+    }
+
+    this.tenancyService.ensurePermission(context, "custom-smtp", action);
+    return context.organizationId;
+  }
+
+  private async findSmtpRecord(organizationId: string | null) {
+    if (!organizationId) {
+      return this.smtpRepository.findOne({
+        where: { organizationId: IsNull() },
+        order: { createdAt: "DESC" },
+      });
+    }
+
     return this.smtpRepository.findOne({
       where: [{ organizationId }, { organizationId: IsNull() }],
       order: { createdAt: "DESC" },
@@ -208,8 +228,11 @@ export class MailService {
   /**
    * Returns an existing SMTP record or an unsaved organization default.
    */
-  private async findOrCreateSmtpRecord(organizationId: string) {
-    const existing = await this.findSmtpRecord(organizationId);
+  private async findOrCreateSmtpRecord(organizationId: string | null) {
+    const existing = await this.smtpRepository.findOne({
+      where: organizationId ? { organizationId } : { organizationId: IsNull() },
+      order: { createdAt: "DESC" },
+    });
     return (
       existing ??
       this.smtpRepository.create({

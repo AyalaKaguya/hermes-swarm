@@ -9,16 +9,25 @@ import type {
 export type AuthSessionTokenPayload = {
   exp: number;
   organizationId: string;
+  scopeLevel?: RequestScopeLevel;
   userId: string;
 };
+
+/**
+ * Active request scope carried by the admin session token.
+ */
+export type RequestScopeLevel = "organization" | "platform";
 
 /**
  * Authorization context resolved from the admin session token.
  */
 export type AuthContext = {
+  isPlatformAdmin: boolean;
   organizationId: string;
   permissions: string[];
   roleId: string | null;
+  roleName: string | null;
+  scopeLevel: RequestScopeLevel;
   userId: string;
 };
 
@@ -78,10 +87,14 @@ export type UpdateOrganizationPayload = Partial<CreateOrganizationPayload>;
 export type CreateUserPayload = {
   displayName?: string;
   email?: string;
+  firstName?: string | null;
   imageUrl?: string | null;
+  lastName?: string | null;
+  mobile?: string | null;
   password?: string;
   roleId?: string | null;
   status?: UserStatus;
+  username?: string | null;
 };
 
 /**
@@ -139,6 +152,13 @@ export type CreateMenuPayload = {
  * Admin menu update payload.
  */
 export type UpdateMenuPayload = Partial<CreateMenuPayload>;
+
+/**
+ * Admin menu listing options.
+ */
+export type ListMenusOptions = {
+  includeInactive?: boolean;
+};
 
 /**
  * Individual role permission payload entry.

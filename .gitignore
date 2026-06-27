@@ -6,6 +6,7 @@ dist/
 .DS_Store
 coverage/
 .nx/
+uploads/
 .env
 devenv/.env
 

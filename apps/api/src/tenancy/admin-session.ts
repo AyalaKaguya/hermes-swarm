@@ -48,6 +48,7 @@ export function parseAuthSessionToken(
     return {
       exp: payload.exp,
       organizationId: payload.organizationId,
+      scopeLevel: payload.scopeLevel === "platform" ? "platform" : "organization",
       userId: payload.userId,
     };
   } catch {
