@@ -14,6 +14,10 @@
       "types": "./dist/tenancy/index.d.ts",
       "import": "./dist/tenancy/index.js"
     },
+    "./tenancy/permissions": {
+      "types": "./dist/tenancy/permissions.d.ts",
+      "import": "./dist/tenancy/permissions.js"
+    },
     "./tenancy/entities": {
       "types": "./dist/tenancy/entities/index.d.ts",
       "import": "./dist/tenancy/entities/index.js"
@@ -41,6 +45,14 @@
     "./settings": {
       "types": "./dist/settings/index.d.ts",
       "import": "./dist/settings/index.js"
+    },
+    "./settings/definitions": {
+      "types": "./dist/settings/definitions.d.ts",
+      "import": "./dist/settings/definitions.js"
+    },
+    "./settings/effective-settings": {
+      "types": "./dist/settings/effective-settings.d.ts",
+      "import": "./dist/settings/effective-settings.js"
     },
     "./settings/entities": {
       "types": "./dist/settings/entities/index.d.ts",

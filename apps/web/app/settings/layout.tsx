@@ -48,11 +48,6 @@ export default function SettingsLayout({
       .map((item) =>
         item.key === "organization" && snapshot?.organization.id
           ? { ...item, href: `/settings/organizations/${snapshot.organization.id}` }
-          : item.key === "organization-controls" && snapshot?.organization.id
-            ? {
-                ...item,
-                href: `/settings/organizations/${snapshot.organization.id}?tab=controls`,
-              }
           : item,
       ),
   })).filter((section) => section.items.length > 0);

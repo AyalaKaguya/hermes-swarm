@@ -26,6 +26,18 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  CURRENCY_OPTIONS,
+  DATE_FORMAT_OPTIONS,
+  KNOWN_PLATFORM_SETTING_KEYS,
+  LANGUAGE_OPTIONS,
+  PASSWORD_LENGTH_OPTIONS,
+  PLATFORM_SETTING_DEFINITIONS,
+  PLATFORM_SETTING_KEYS,
+  PLATFORM_TITLE_SETTING_KEY,
+  REGION_OPTIONS,
+  TIME_ZONE_OPTIONS,
+} from "@hermes-swarm/core/settings/definitions";
+import {
   getSmtpConfig,
   listOrganizations,
   listSystemSettings,
@@ -37,58 +49,6 @@ import {
   type SystemSettingDto,
 } from "@/lib/admin-api";
 import { getStoredSession, hasMenuAccess } from "@/lib/session";
-
-const PLATFORM_TITLE_KEY = "tenant_title";
-const PLATFORM_SETTING_KEYS = {
-  allowOrganizationCreation: "platform.allowOrganizationCreation",
-  defaultCurrency: "organization.defaultCurrency",
-  defaultDateFormat: "organization.defaultDateFormat",
-  defaultLanguage: "organization.defaultLanguage",
-  defaultOrganizationStatus: "platform.defaultOrganizationStatus",
-  defaultRegionCode: "organization.defaultRegionCode",
-  defaultTimeZone: "organization.defaultTimeZone",
-  messageServiceEnabled: "platform.messageServiceEnabled",
-  messageServiceProvider: "platform.messageServiceProvider",
-  passwordMinLength: "auth.passwordPolicy.minLength",
-  publicSmtpEnabled: "platform.publicSmtpEnabled",
-};
-const LEGACY_PLATFORM_SETTING_KEYS = {
-  defaultLanguage: "platform.defaultLanguage",
-  defaultTimeZone: "platform.defaultTimeZone",
-};
-const CURRENCY_OPTIONS = [
-  { label: "人民币 (CNY)", value: "CNY" },
-  { label: "美元 (USD)", value: "USD" },
-  { label: "欧元 (EUR)", value: "EUR" },
-  { label: "英镑 (GBP)", value: "GBP" },
-  { label: "日元 (JPY)", value: "JPY" },
-  { label: "港币 (HKD)", value: "HKD" },
-  { label: "新加坡元 (SGD)", value: "SGD" },
-];
-const DATE_FORMAT_OPTIONS = ["YYYY-MM-DD", "YYYY/MM/DD", "MM/DD/YYYY", "DD/MM/YYYY"];
-const LANGUAGE_OPTIONS = [
-  { label: "中文", value: "zh-CN" },
-  { label: "English", value: "en" },
-  { label: "繁体中文", value: "zh-Hant" },
-];
-const PASSWORD_LENGTH_OPTIONS = [6, 8, 10, 12, 16].map((value) => String(value));
-const REGION_OPTIONS = [
-  { label: "中国 (CN)", value: "CN" },
-  { label: "美国 (US)", value: "US" },
-  { label: "英国 (GB)", value: "GB" },
-  { label: "欧盟 (EU)", value: "EU" },
-  { label: "日本 (JP)", value: "JP" },
-  { label: "新加坡 (SG)", value: "SG" },
-  { label: "中国香港 (HK)", value: "HK" },
-];
-const TIME_ZONE_OPTIONS = [
-  "Asia/Shanghai",
-  "UTC",
-  "America/New_York",
-  "Europe/London",
-  "Asia/Tokyo",
-  "Asia/Singapore",
-];
 
 type PlatformForm = {
   allowOrganizationCreation: boolean;
@@ -162,11 +122,7 @@ export default function TenantPage() {
     );
   }, [snapshot?.roles, snapshot?.users]);
   const customSystemSettings = useMemo(() => {
-    const knownNames = new Set([
-      PLATFORM_TITLE_KEY,
-      ...Object.values(PLATFORM_SETTING_KEYS),
-      ...Object.values(LEGACY_PLATFORM_SETTING_KEYS),
-    ]);
+    const knownNames = new Set<string>(KNOWN_PLATFORM_SETTING_KEYS);
     return systemSettings.filter((setting) => !knownNames.has(setting.name));
   }, [systemSettings]);
 
@@ -212,7 +168,7 @@ export default function TenantPage() {
     try {
       await saveSystemSettings(session.token, {
         settings: [
-          { name: PLATFORM_TITLE_KEY, value: form.platformTitle.trim() || null },
+          { name: PLATFORM_TITLE_SETTING_KEY, value: form.platformTitle.trim() || null },
           {
             name: PLATFORM_SETTING_KEYS.allowOrganizationCreation,
             value: form.allowOrganizationCreation,
@@ -462,8 +418,8 @@ export default function TenantPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {TIME_ZONE_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -498,8 +454,8 @@ export default function TenantPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {DATE_FORMAT_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -516,8 +472,8 @@ export default function TenantPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {PASSWORD_LENGTH_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option} 位
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -931,15 +887,17 @@ function ToggleField({
 function emptyPlatformForm(): PlatformForm {
   return {
     allowOrganizationCreation: true,
-    defaultCurrency: "CNY",
-    defaultDateFormat: "YYYY-MM-DD",
-    defaultLanguage: "zh-CN",
-    defaultOrganizationStatus: "active",
-    defaultRegionCode: "CN",
-    defaultTimeZone: "Asia/Shanghai",
+    defaultCurrency: PLATFORM_SETTING_DEFINITIONS.defaultCurrency.defaultValue,
+    defaultDateFormat: PLATFORM_SETTING_DEFINITIONS.defaultDateFormat.defaultValue,
+    defaultLanguage: PLATFORM_SETTING_DEFINITIONS.defaultLanguage.defaultValue,
+    defaultOrganizationStatus:
+      PLATFORM_SETTING_DEFINITIONS.defaultOrganizationStatus.defaultValue,
+    defaultRegionCode: PLATFORM_SETTING_DEFINITIONS.defaultRegionCode.defaultValue,
+    defaultTimeZone: PLATFORM_SETTING_DEFINITIONS.defaultTimeZone.defaultValue,
     messageServiceEnabled: false,
-    messageServiceProvider: "internal",
-    passwordMinLength: "8",
+    messageServiceProvider:
+      PLATFORM_SETTING_DEFINITIONS.messageServiceProvider.defaultValue,
+    passwordMinLength: PLATFORM_SETTING_DEFINITIONS.passwordMinLength.defaultValue,
     platformTitle: "",
     publicSmtpEnabled: false,
     smtpFromAddress: "",
@@ -953,37 +911,42 @@ function emptyPlatformForm(): PlatformForm {
 
 function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
   const get = (name: string) => settings.find((setting) => setting.name === name)?.value;
+  const getDefined = (name: keyof typeof PLATFORM_SETTING_DEFINITIONS) => {
+    const definition = PLATFORM_SETTING_DEFINITIONS[name];
+    const legacyValue =
+      "legacyKeys" in definition
+        ? definition.legacyKeys.map((key) => get(key)).find(Boolean)
+        : undefined;
+    return (
+      get(definition.key) ??
+      legacyValue ??
+      definition.defaultValue ??
+      ""
+    );
+  };
   return {
     allowOrganizationCreation: parseBoolean(
-      get(PLATFORM_SETTING_KEYS.allowOrganizationCreation),
+      getDefined("allowOrganizationCreation"),
       true,
     ),
-    defaultCurrency: get(PLATFORM_SETTING_KEYS.defaultCurrency) || "CNY",
-    defaultDateFormat:
-      get(PLATFORM_SETTING_KEYS.defaultDateFormat) || "YYYY-MM-DD",
-    defaultLanguage:
-      get(PLATFORM_SETTING_KEYS.defaultLanguage) ||
-      get(LEGACY_PLATFORM_SETTING_KEYS.defaultLanguage) ||
-      "zh-CN",
+    defaultCurrency: getDefined("defaultCurrency"),
+    defaultDateFormat: getDefined("defaultDateFormat"),
+    defaultLanguage: getDefined("defaultLanguage"),
     defaultOrganizationStatus:
-      get(PLATFORM_SETTING_KEYS.defaultOrganizationStatus) === "suspended"
+      getDefined("defaultOrganizationStatus") === "suspended"
         ? "suspended"
         : "active",
-    defaultRegionCode: get(PLATFORM_SETTING_KEYS.defaultRegionCode) || "CN",
-    defaultTimeZone:
-      get(PLATFORM_SETTING_KEYS.defaultTimeZone) ||
-      get(LEGACY_PLATFORM_SETTING_KEYS.defaultTimeZone) ||
-      "Asia/Shanghai",
+    defaultRegionCode: getDefined("defaultRegionCode"),
+    defaultTimeZone: getDefined("defaultTimeZone"),
     messageServiceEnabled: parseBoolean(
-      get(PLATFORM_SETTING_KEYS.messageServiceEnabled),
+      getDefined("messageServiceEnabled"),
       false,
     ),
-    messageServiceProvider:
-      get(PLATFORM_SETTING_KEYS.messageServiceProvider) || "internal",
-    passwordMinLength: get(PLATFORM_SETTING_KEYS.passwordMinLength) || "8",
-    platformTitle: get(PLATFORM_TITLE_KEY) || "",
+    messageServiceProvider: getDefined("messageServiceProvider"),
+    passwordMinLength: getDefined("passwordMinLength"),
+    platformTitle: get(PLATFORM_TITLE_SETTING_KEY) || "",
     publicSmtpEnabled: parseBoolean(
-      get(PLATFORM_SETTING_KEYS.publicSmtpEnabled),
+      getDefined("publicSmtpEnabled"),
       false,
     ),
     smtpFromAddress: smtp?.fromAddress ?? "",

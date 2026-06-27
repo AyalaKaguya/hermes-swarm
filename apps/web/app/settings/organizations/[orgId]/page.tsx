@@ -27,6 +27,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
+import { getRoleRank } from "@hermes-swarm/core/tenancy/permissions";
+import {
+  ORGANIZATION_CONTROL_SETTING_DEFINITIONS,
+  ORGANIZATION_DEFAULT_FIELD_DEFINITIONS,
+  type SettingOption,
+} from "@hermes-swarm/core/settings/definitions";
 import {
   createOrganizationGroup,
   createOrganizationUser,
@@ -53,101 +59,9 @@ import {
 import { getStoredSession, hasMenuAccess } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-type SelectOption = {
-  label: string;
-  value: string;
-};
-
-const CURRENCY_OPTIONS: SelectOption[] = [
-  { label: "人民币 (CNY)", value: "CNY" },
-  { label: "美元 (USD)", value: "USD" },
-  { label: "欧元 (EUR)", value: "EUR" },
-  { label: "英镑 (GBP)", value: "GBP" },
-  { label: "日元 (JPY)", value: "JPY" },
-  { label: "港币 (HKD)", value: "HKD" },
-  { label: "新加坡元 (SGD)", value: "SGD" },
-];
-const TIME_ZONE_OPTIONS: SelectOption[] = [
-  { label: "中国标准时间 (Asia/Shanghai)", value: "Asia/Shanghai" },
-  { label: "协调世界时 (UTC)", value: "UTC" },
-  { label: "美国东部时间 (America/New_York)", value: "America/New_York" },
-  { label: "伦敦时间 (Europe/London)", value: "Europe/London" },
-  { label: "东京时间 (Asia/Tokyo)", value: "Asia/Tokyo" },
-  { label: "新加坡时间 (Asia/Singapore)", value: "Asia/Singapore" },
-];
-const REGION_OPTIONS: SelectOption[] = [
-  { label: "中国 (CN)", value: "CN" },
-  { label: "美国 (US)", value: "US" },
-  { label: "英国 (GB)", value: "GB" },
-  { label: "欧盟 (EU)", value: "EU" },
-  { label: "日本 (JP)", value: "JP" },
-  { label: "新加坡 (SG)", value: "SG" },
-  { label: "中国香港 (HK)", value: "HK" },
-];
-const DATE_FORMAT_OPTIONS: SelectOption[] = [
-  { label: "YYYY-MM-DD", value: "YYYY-MM-DD" },
-  { label: "YYYY/MM/DD", value: "YYYY/MM/DD" },
-  { label: "MM/DD/YYYY", value: "MM/DD/YYYY" },
-  { label: "DD/MM/YYYY", value: "DD/MM/YYYY" },
-];
-const LANGUAGE_OPTIONS: SelectOption[] = [
-  { label: "中文", value: "zh-CN" },
-  { label: "English", value: "en" },
-  { label: "繁体中文", value: "zh-Hant" },
-];
-const PASSWORD_LENGTH_OPTIONS: SelectOption[] = [6, 8, 10, 12, 16].map((value) => ({
-  label: `${value} 位`,
-  value: String(value),
-}));
-const ROLE_RANKS: Record<string, number> = {
-  "platform-admin": 500,
-  owner: 400,
-  admin: 300,
-  member: 200,
-  viewer: 100,
-};
-const CUSTOM_ROLE_RANK = 150;
-
-const CONTROL_KEYS = [
-  {
-    key: "auth.passwordPolicy.minLength",
-    label: "密码最小长度",
-    options: PASSWORD_LENGTH_OPTIONS,
-  },
-];
-const ORGANIZATION_DEFAULT_FIELDS = [
-  {
-    field: "currency",
-    key: "organization.defaultCurrency",
-    label: "货币",
-    options: CURRENCY_OPTIONS,
-  },
-  {
-    field: "timeZone",
-    key: "organization.defaultTimeZone",
-    label: "时区",
-    options: TIME_ZONE_OPTIONS,
-  },
-  {
-    field: "regionCode",
-    key: "organization.defaultRegionCode",
-    label: "地区代码",
-    options: REGION_OPTIONS,
-  },
-  {
-    field: "dateFormat",
-    key: "organization.defaultDateFormat",
-    label: "日期格式",
-    options: DATE_FORMAT_OPTIONS,
-  },
-  {
-    field: "preferredLanguage",
-    key: "organization.defaultLanguage",
-    label: "默认语言",
-    options: LANGUAGE_OPTIONS,
-  },
-] as const;
-const HANDLED_SETTING_KEYS = new Set([
+const CONTROL_KEYS = ORGANIZATION_CONTROL_SETTING_DEFINITIONS;
+const ORGANIZATION_DEFAULT_FIELDS = ORGANIZATION_DEFAULT_FIELD_DEFINITIONS;
+const HANDLED_SETTING_KEYS = new Set<string>([
   ...CONTROL_KEYS.map((item) => item.key),
   ...ORGANIZATION_DEFAULT_FIELDS.map((item) => item.key),
 ]);
@@ -312,7 +226,7 @@ export default function OrganizationDetailPage() {
     return organizationSettings.find((setting) => setting.name === name) ?? null;
   }
 
-  function settingDefaultLabel(name: string, options?: SelectOption[]) {
+  function settingDefaultLabel(name: string, options?: readonly SettingOption[]) {
     const setting = findSetting(name);
     const value = setting?.defaultValue ?? setting?.value ?? "";
     if (!value) return "未设置";
@@ -1447,7 +1361,7 @@ function EnumSelect({
   id: string;
   noneLabel?: string;
   onChange: (value: string) => void;
-  options: SelectOption[];
+  options: readonly SettingOption[];
   placeholder: string;
   value: string;
 }) {
@@ -1570,11 +1484,6 @@ function parseOptionalNumber(value: string) {
   if (!normalized) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function getRoleRank(roleName: string | null | undefined) {
-  if (!roleName) return 0;
-  return ROLE_RANKS[roleName] ?? CUSTOM_ROLE_RANK;
 }
 
 function canAssignRole(
