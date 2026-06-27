@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getSnapshot, type Role, type RolePermission, type Menu } from "@/lib/admin-api";
+import {
+  getSnapshot,
+  replaceRolePermissions,
+  type Menu,
+  type Role,
+  type RolePermission,
+} from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 
 export default function RolesPage() {
@@ -63,11 +69,7 @@ export default function RolesPage() {
           { permission: manageKey, enabled: isChecked(roleId, m.code, "manage") },
         ];
       });
-      await fetch(`/api/admin/roles/${roleId}/permissions`, {
-        method: "PUT",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ permissions: perms }),
-      });
+      await replaceRolePermissions(token, roleId, perms);
       setLocalPerms(prev => { const n = { ...prev }; delete n[roleId]; return n; });
       await load();
     } catch (err) {

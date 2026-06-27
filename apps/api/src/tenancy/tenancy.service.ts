@@ -20,6 +20,7 @@ import {
   Role,
   RolePermission,
   SYSTEM_ROLES,
+  SystemSetting,
   User,
   UserStatus,
   buildMenuPermissionKey,
@@ -28,11 +29,13 @@ import {
 import {
   AuthContext,
   CreateMenuPayload,
+  ListMenusOptions,
   CreateOrganizationPayload,
   CreateUserPayload,
   LoginPayload,
   OnboardingPayload,
   ReplaceRolePermissionsPayload,
+  RequestScopeLevel,
   SaveSettingsPayload,
   SearchUsersQuery,
   SwitchOrganizationPayload,
@@ -55,6 +58,11 @@ const DEFAULT_ADMIN_PASSWORD = "admin123456";
 const PASSWORD_HASH_PREFIX = "pbkdf2_sha256";
 const PASSWORD_ITERATIONS = 310_000;
 const PASSWORD_KEY_LENGTH = 32;
+const PLATFORM_ADMIN_ROLE_NAMES = new Set(["platform-admin", "owner"]);
+const PLATFORM_ALLOW_ORGANIZATION_CREATION_KEY =
+  "platform.allowOrganizationCreation";
+const PLATFORM_DEFAULT_ORGANIZATION_STATUS_KEY =
+  "platform.defaultOrganizationStatus";
 
 @Injectable()
 /**
@@ -73,6 +81,8 @@ export class TenancyService implements OnModuleInit {
     private readonly rolePermissionRepository: Repository<RolePermission>,
     @InjectRepository(OrganizationSetting)
     private readonly organizationSettingRepository: Repository<OrganizationSetting>,
+    @InjectRepository(SystemSetting)
+    private readonly systemSettingRepository: Repository<SystemSetting>,
     @InjectRepository(Menu)
     private readonly menuRepository: Repository<Menu>,
   ) {}
@@ -209,15 +219,29 @@ export class TenancyService implements OnModuleInit {
       throw new UnauthorizedException("用户不可用");
     }
 
+    const role = user.roleId
+      ? await this.roleRepository.findOne({
+          where: { id: user.roleId, organizationId: tokenPayload.organizationId },
+        })
+      : null;
+    const scopeLevel = normalizeScopeLevel(tokenPayload.scopeLevel);
+    const isPlatformAdmin = isPlatformAdminRole(role?.name ?? null);
+    if (scopeLevel === "platform" && !isPlatformAdmin) {
+      throw new ForbiddenException("只有平台管理员可以切换到平台范围");
+    }
+
     const permissions = await this.getEnabledPermissions(
       tokenPayload.organizationId,
       user.roleId,
     );
 
     return {
+      isPlatformAdmin,
       organizationId: organization.id,
       permissions,
       roleId: user.roleId,
+      roleName: role?.name ?? null,
+      scopeLevel,
       userId: user.id,
     };
   }
@@ -246,6 +270,57 @@ export class TenancyService implements OnModuleInit {
     action: "manage" | "view",
   ) {
     this.assertPermission(context, menuCode, action);
+  }
+
+  /**
+   * Checks a menu permission without throwing, for endpoints shared by menus.
+   */
+  hasPermission(
+    context: AuthContext,
+    menuCode: string,
+    action: "manage" | "view",
+  ) {
+    const expected = buildMenuPermissionKey(menuCode, action);
+    const managerPermission = buildMenuPermissionKey(menuCode, "manage");
+    return (
+      context.permissions.includes(expected) ||
+      (action === "view" && context.permissions.includes(managerPermission))
+    );
+  }
+
+  /**
+   * Requires the authenticated user to be a platform admin in platform scope.
+   */
+  ensurePlatformScope(
+    context: AuthContext,
+    menuCode: string,
+    action: "manage" | "view",
+  ) {
+    this.ensurePlatformAdministrator(context);
+    if (context.scopeLevel !== "platform") {
+      throw new ForbiddenException("请先切换到整个平台范围");
+    }
+    this.assertPermission(context, menuCode, action);
+  }
+
+  /**
+   * Requires access to an explicit organization under the active scope.
+   */
+  ensureOrganizationAccess(
+    context: AuthContext,
+    organizationId: string,
+    action: "manage" | "view",
+  ) {
+    if (context.scopeLevel === "platform") {
+      this.ensurePlatformScope(context, "organizations", action);
+      return;
+    }
+
+    if (context.organizationId !== organizationId) {
+      throw new ForbiddenException("只能访问当前组织范围内的配置");
+    }
+
+    this.assertAnyPermission(context, action, ["organization", "organizations"]);
   }
 
   /**
@@ -290,6 +365,7 @@ export class TenancyService implements OnModuleInit {
       roles,
       rolePermissions,
       organizationSettings,
+      systemSettings,
       menus,
       switchableOrganizations,
     ] = await Promise.all([
@@ -312,6 +388,9 @@ export class TenancyService implements OnModuleInit {
         where: { organizationId: context.organizationId },
         order: { name: "ASC" },
       }),
+      this.systemSettingRepository.find({
+        order: { name: "ASC" },
+      }),
       this.listMenus(),
       this.listSwitchableOrganizations(context),
     ]);
@@ -329,17 +408,25 @@ export class TenancyService implements OnModuleInit {
 
     return {
       currentUser: {
+        isPlatformAdmin: context.isPlatformAdmin,
         organization: toOrganizationDto(organization),
         permissions: context.permissions,
         role: currentRole ? toRoleDto(currentRole) : null,
         user: toUserDto(currentUser),
       },
+      isPlatformAdmin: context.isPlatformAdmin,
       menus: menus.map(toMenuDto),
       organization: toOrganizationDto(organization),
       organizations: switchableOrganizations.map(toOrganizationDto),
       rolePermissions: rolePermissions.map(toRolePermissionDto),
       roles: roles.map(toRoleDto),
+      scope: {
+        level: context.scopeLevel,
+        organizationId:
+          context.scopeLevel === "organization" ? context.organizationId : null,
+      },
       settings: organizationSettings.map(toOrganizationSettingDto),
+      systemSettings: systemSettings.map(toSystemSettingDto),
       users: users.map(toUserDto),
     };
   }
@@ -381,18 +468,39 @@ export class TenancyService implements OnModuleInit {
       throw new ForbiddenException("当前用户未加入该组织");
     }
 
-    return this.createLoginResponse(organizationId, targetUser.id);
+    return this.createLoginResponse(organizationId, targetUser.id, "organization");
+  }
+
+  /**
+   * Switches into platform scope for platform administrators.
+   */
+  async switchPlatform(context: AuthContext) {
+    this.ensurePlatformAdministrator(context);
+    const user = await this.getUserOrThrow(context.organizationId, context.userId);
+    return this.createLoginResponse(
+      context.organizationId,
+      user.id,
+      "platform",
+    );
   }
 
   /**
    * Lists all organizations after checking organization view permission.
    */
   async listOrganizations(context: AuthContext) {
-    this.assertPermission(context, "organizations", "view");
+    this.ensurePlatformScope(context, "organizations", "view");
     const organizations = await this.organizationRepository.find({
       order: { createdAt: "ASC" },
     });
     return organizations.map(toOrganizationDto);
+  }
+
+  /**
+   * Loads an organization selected explicitly by id.
+   */
+  async getOrganizationById(context: AuthContext, organizationId: string) {
+    this.ensureOrganizationAccess(context, organizationId, "view");
+    return toOrganizationDto(await this.getOrganizationOrThrow(organizationId));
   }
 
   /**
@@ -402,16 +510,28 @@ export class TenancyService implements OnModuleInit {
     context: AuthContext,
     payload: CreateOrganizationPayload,
   ) {
-    this.assertPermission(context, "organizations", "manage");
+    this.ensurePlatformScope(context, "organizations", "manage");
+    const allowCreation = await this.getSystemSettingBoolean(
+      PLATFORM_ALLOW_ORGANIZATION_CREATION_KEY,
+      true,
+    );
+    if (!allowCreation) {
+      throw new ForbiddenException("当前平台不允许创建组织");
+    }
 
     const name = requireText(payload.name, "组织名称");
     const slug = normalizeSlug(payload.slug || name, "org");
     await this.assertUniqueOrganizationSlug(slug);
+    const defaultStatusSetting = await this.getSystemSettingValue(
+      PLATFORM_DEFAULT_ORGANIZATION_STATUS_KEY,
+    );
+    const defaultStatus: OrganizationStatus =
+      defaultStatusSetting === "suspended" ? "suspended" : "active";
 
     const organization = this.organizationRepository.create({
       name,
       slug,
-      status: normalizeOrganizationStatus(payload.status),
+      status: payload.status ? normalizeOrganizationStatus(payload.status) : defaultStatus,
       subdomain: normalizeOptionalText(payload.subdomain),
     });
     await this.applyOrganizationPayload(organization, payload, {
@@ -430,7 +550,7 @@ export class TenancyService implements OnModuleInit {
     context: AuthContext,
     payload: UpdateOrganizationPayload,
   ) {
-    this.assertPermission(context, "organizations", "manage");
+    this.ensureOrganizationAccess(context, context.organizationId, "manage");
     return this.updateOrganizationById(context, context.organizationId, payload);
   }
 
@@ -442,7 +562,7 @@ export class TenancyService implements OnModuleInit {
     organizationId: string,
     payload: UpdateOrganizationPayload,
   ) {
-    this.assertPermission(context, "organizations", "manage");
+    this.ensureOrganizationAccess(context, organizationId, "manage");
     const org = await this.getOrganizationOrThrow(organizationId);
     await this.applyOrganizationPayload(org, payload, {
       allowSlugChange: true,
@@ -458,6 +578,19 @@ export class TenancyService implements OnModuleInit {
     this.assertPermission(context, "users", "view");
     const users = await this.userRepository.find({
       where: { organizationId: context.organizationId },
+      order: { createdAt: "ASC" },
+    });
+    return users.map(toUserDto);
+  }
+
+  /**
+   * Lists users for an explicitly selected organization.
+   */
+  async listUsersForOrganization(context: AuthContext, organizationId: string) {
+    this.ensureOrganizationAccess(context, organizationId, "view");
+    await this.getOrganizationOrThrow(organizationId);
+    const users = await this.userRepository.find({
+      where: { organizationId },
       order: { createdAt: "ASC" },
     });
     return users.map(toUserDto);
@@ -482,7 +615,10 @@ export class TenancyService implements OnModuleInit {
       this.userRepository.create({
         displayName,
         email,
+        firstName: normalizeOptionalText(payload.firstName),
         imageUrl: normalizeOptionalText(payload.imageUrl),
+        lastName: normalizeOptionalText(payload.lastName),
+        mobile: normalizeOptionalText(payload.mobile),
         passwordHash: hashPassword(
           requirePassword(payload.password || DEFAULT_ADMIN_PASSWORD),
         ),
@@ -490,6 +626,46 @@ export class TenancyService implements OnModuleInit {
         status: normalizeUserStatus(payload.status),
         organizationId: context.organizationId,
         type: "user",
+        username: normalizeOptionalText(payload.username),
+        preferredLanguage: "zh-CN",
+      }),
+    );
+
+    return toUserDto(user);
+  }
+
+  /**
+   * Creates a user for an explicitly selected organization.
+   */
+  async createUserForOrganization(
+    context: AuthContext,
+    organizationId: string,
+    payload: CreateUserPayload,
+  ) {
+    this.ensureOrganizationAccess(context, organizationId, "manage");
+    await this.getOrganizationOrThrow(organizationId);
+
+    const displayName = requireText(payload.displayName, "用户名称");
+    const email = normalizeEmail(payload.email);
+    await this.assertUniqueUserEmail(organizationId, email);
+
+    const roleId = await this.normalizeRoleId(organizationId, payload.roleId);
+    const user = await this.userRepository.save(
+      this.userRepository.create({
+        displayName,
+        email,
+        firstName: normalizeOptionalText(payload.firstName),
+        imageUrl: normalizeOptionalText(payload.imageUrl),
+        lastName: normalizeOptionalText(payload.lastName),
+        mobile: normalizeOptionalText(payload.mobile),
+        passwordHash: hashPassword(
+          requirePassword(payload.password || DEFAULT_ADMIN_PASSWORD),
+        ),
+        roleId,
+        status: normalizeUserStatus(payload.status),
+        organizationId,
+        type: "user",
+        username: normalizeOptionalText(payload.username),
         preferredLanguage: "zh-CN",
       }),
     );
@@ -505,7 +681,15 @@ export class TenancyService implements OnModuleInit {
     userId: string,
     payload: UpdateUserPayload,
   ) {
-    this.assertPermission(context, "users", "manage");
+    const isSelf = context.userId === userId;
+    const updatesAdministrativeFields =
+      payload.password !== undefined ||
+      payload.roleId !== undefined ||
+      payload.status !== undefined;
+    if (!isSelf || updatesAdministrativeFields) {
+      this.assertPermission(context, "users", "manage");
+    }
+
     const user = await this.getUserOrThrow(context.organizationId, userId);
 
     if (payload.displayName !== undefined) {
@@ -521,6 +705,18 @@ export class TenancyService implements OnModuleInit {
     if (payload.imageUrl !== undefined) {
       user.imageUrl = normalizeOptionalText(payload.imageUrl);
     }
+    if (payload.firstName !== undefined) {
+      user.firstName = normalizeOptionalText(payload.firstName);
+    }
+    if (payload.lastName !== undefined) {
+      user.lastName = normalizeOptionalText(payload.lastName);
+    }
+    if (payload.username !== undefined) {
+      user.username = normalizeOptionalText(payload.username);
+    }
+    if (payload.mobile !== undefined) {
+      user.mobile = normalizeOptionalText(payload.mobile);
+    }
     if (payload.password !== undefined && payload.password.trim()) {
       user.passwordHash = hashPassword(requirePassword(payload.password));
     }
@@ -529,6 +725,54 @@ export class TenancyService implements OnModuleInit {
         context.organizationId,
         payload.roleId,
       );
+    }
+    if (payload.status !== undefined) {
+      user.status = normalizeUserStatus(payload.status);
+    }
+
+    return toUserDto(await this.userRepository.save(user));
+  }
+
+  /**
+   * Updates a user inside an explicitly selected organization.
+   */
+  async updateUserForOrganization(
+    context: AuthContext,
+    organizationId: string,
+    userId: string,
+    payload: UpdateUserPayload,
+  ) {
+    this.ensureOrganizationAccess(context, organizationId, "manage");
+    await this.getOrganizationOrThrow(organizationId);
+    const user = await this.getUserOrThrow(organizationId, userId);
+
+    if (payload.displayName !== undefined) {
+      user.displayName = requireText(payload.displayName, "用户名称");
+    }
+    if (payload.email !== undefined) {
+      const nextEmail = normalizeEmail(payload.email);
+      if (nextEmail !== user.email) {
+        await this.assertUniqueUserEmail(organizationId, nextEmail);
+      }
+      user.email = nextEmail;
+    }
+    if (payload.firstName !== undefined) {
+      user.firstName = normalizeOptionalText(payload.firstName);
+    }
+    if (payload.lastName !== undefined) {
+      user.lastName = normalizeOptionalText(payload.lastName);
+    }
+    if (payload.username !== undefined) {
+      user.username = normalizeOptionalText(payload.username);
+    }
+    if (payload.mobile !== undefined) {
+      user.mobile = normalizeOptionalText(payload.mobile);
+    }
+    if (payload.password !== undefined && payload.password.trim()) {
+      user.passwordHash = hashPassword(requirePassword(payload.password));
+    }
+    if (payload.roleId !== undefined) {
+      user.roleId = await this.normalizeRoleId(organizationId, payload.roleId);
     }
     if (payload.status !== undefined) {
       user.status = normalizeUserStatus(payload.status);
@@ -623,6 +867,19 @@ export class TenancyService implements OnModuleInit {
   }
 
   /**
+   * Lists roles for an explicitly selected organization.
+   */
+  async listRolesForOrganization(context: AuthContext, organizationId: string) {
+    this.ensureOrganizationAccess(context, organizationId, "view");
+    await this.getOrganizationOrThrow(organizationId);
+    const roles = await this.roleRepository.find({
+      where: { organizationId },
+      order: { createdAt: "ASC" },
+    });
+    return roles.map(toRoleDto);
+  }
+
+  /**
    * Replaces enabled permissions for a role after validating menu keys.
    */
   async replaceRolePermissions(
@@ -633,7 +890,7 @@ export class TenancyService implements OnModuleInit {
     this.assertPermission(context, "roles", "manage");
     const role = await this.getRoleOrThrow(context.organizationId, roleId);
     const normalized = normalizeRolePermissions(payload.permissions);
-    const allowedPermissions = new Set(this.listKnownMenuPermissions());
+    const allowedPermissions = new Set(await this.listKnownMenuPermissions());
 
     for (const permission of normalized) {
       if (!allowedPermissions.has(permission.permission)) {
@@ -673,6 +930,22 @@ export class TenancyService implements OnModuleInit {
   }
 
   /**
+   * Lists settings for an explicitly selected organization.
+   */
+  async listSettingsForOrganization(
+    context: AuthContext,
+    organizationId: string,
+  ) {
+    this.ensureOrganizationAccess(context, organizationId, "view");
+    await this.getOrganizationOrThrow(organizationId);
+    const settings = await this.organizationSettingRepository.find({
+      where: { organizationId },
+      order: { name: "ASC" },
+    });
+    return settings.map(toOrganizationSettingDto);
+  }
+
+  /**
    * Saves organization-scoped settings from normalized input payloads.
    */
   async saveSettings(context: AuthContext, payload: SaveSettingsPayload) {
@@ -703,11 +976,46 @@ export class TenancyService implements OnModuleInit {
   }
 
   /**
+   * Saves settings for an explicitly selected organization.
+   */
+  async saveSettingsForOrganization(
+    context: AuthContext,
+    organizationId: string,
+    payload: SaveSettingsPayload,
+  ) {
+    this.ensureOrganizationAccess(context, organizationId, "manage");
+    await this.getOrganizationOrThrow(organizationId);
+    const entries = normalizeSettingsPayload(payload);
+    const saved: OrganizationSetting[] = [];
+
+    for (const entry of entries) {
+      let setting = await this.organizationSettingRepository.findOne({
+        where: {
+          name: entry.name,
+          organizationId,
+        },
+      });
+      if (!setting) {
+        setting = this.organizationSettingRepository.create({
+          name: entry.name,
+          organizationId,
+          value: entry.value,
+        });
+      } else {
+        setting.value = entry.value;
+      }
+      saved.push(await this.organizationSettingRepository.save(setting));
+    }
+
+    return saved.map(toOrganizationSettingDto);
+  }
+
+  /**
    * Lists admin menus in display order.
    */
-  listMenus() {
+  listMenus(options: ListMenusOptions = {}) {
     return this.menuRepository.find({
-      where: { isActive: true },
+      where: options.includeInactive ? {} : { isActive: true },
       order: { sortOrder: "ASC", createdAt: "ASC" },
     });
   }
@@ -716,7 +1024,7 @@ export class TenancyService implements OnModuleInit {
    * Creates an admin menu and adds its permissions to existing roles.
    */
   async createMenu(context: AuthContext, payload: CreateMenuPayload) {
-    this.assertPermission(context, "features", "manage");
+    this.assertPermission(context, "menus", "manage");
     const code = normalizeMenuCode(payload.code);
     const label = requireText(payload.label, "菜单名称");
     const path = normalizeMenuPath(payload.path);
@@ -746,7 +1054,7 @@ export class TenancyService implements OnModuleInit {
     menuId: string,
     payload: UpdateMenuPayload,
   ) {
-    this.assertPermission(context, "features", "manage");
+    this.assertPermission(context, "menus", "manage");
     const menu = await this.getMenuOrThrow(menuId);
     const previousCode = menu.code;
 
@@ -782,6 +1090,16 @@ export class TenancyService implements OnModuleInit {
     }
 
     return toMenuDto(saved);
+  }
+
+  /**
+   * Deactivates an admin menu without deleting permission history.
+   */
+  async deleteMenu(context: AuthContext, menuId: string) {
+    this.assertPermission(context, "menus", "manage");
+    const menu = await this.getMenuOrThrow(menuId);
+    menu.isActive = false;
+    return toMenuDto(await this.menuRepository.save(menu));
   }
 
   /**
@@ -859,8 +1177,12 @@ export class TenancyService implements OnModuleInit {
   /**
    * Creates a session token and returns the authenticated admin snapshot.
    */
-  private async createLoginResponse(organizationId: string, userId: string) {
-    const token = createAuthSessionToken({ organizationId, userId });
+  private async createLoginResponse(
+    organizationId: string,
+    userId: string,
+    scopeLevel: RequestScopeLevel = "organization",
+  ) {
+    const token = createAuthSessionToken({ organizationId, scopeLevel, userId });
     const context = await this.requireAuthContext(`Bearer ${token}`);
     return {
       token,
@@ -921,7 +1243,7 @@ export class TenancyService implements OnModuleInit {
   }
 
   private async ensureOrganizationInfrastructure(organizationId: string) {
-    const allMenuPermissions = this.listKnownMenuPermissions();
+    const allMenuPermissions = await this.listKnownMenuPermissions();
 
     for (const systemRole of SYSTEM_ROLES) {
       let role = await this.roleRepository.findOne({
@@ -989,6 +1311,18 @@ export class TenancyService implements OnModuleInit {
     }
   }
 
+  private async getSystemSettingValue(name: string) {
+    const setting = await this.systemSettingRepository.findOne({ where: { name } });
+    return setting?.value ?? null;
+  }
+
+  private async getSystemSettingBoolean(name: string, fallback: boolean) {
+    const value = await this.getSystemSettingValue(name);
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return fallback;
+  }
+
   private async getEnabledPermissions(organizationId: string, roleId: string | null) {
     if (!roleId) return [];
     const permissions = await this.rolePermissionRepository.find({
@@ -1018,19 +1352,35 @@ export class TenancyService implements OnModuleInit {
     menuCode: string,
     action: "manage" | "view",
   ) {
-    const expected = buildMenuPermissionKey(menuCode, action);
-    const managerPermission = buildMenuPermissionKey(menuCode, "manage");
-    const allowed =
-      context.permissions.includes(expected) ||
-      (action === "view" && context.permissions.includes(managerPermission));
-
-    if (!allowed) {
+    if (!this.hasPermission(context, menuCode, action)) {
       throw new ForbiddenException("权限不足");
     }
   }
 
-  private listKnownMenuPermissions() {
-    return DEFAULT_ADMIN_MENUS.flatMap((menu) => [
+  private assertAnyPermission(
+    context: AuthContext,
+    action: "manage" | "view",
+    menuCodes: string[],
+  ) {
+    if (menuCodes.some((menuCode) => this.hasPermission(context, menuCode, action))) {
+      return;
+    }
+
+    throw new ForbiddenException("权限不足");
+  }
+
+  private ensurePlatformAdministrator(context: AuthContext) {
+    if (!context.isPlatformAdmin) {
+      throw new ForbiddenException("只有平台管理员可以访问该功能");
+    }
+  }
+
+  private async listKnownMenuPermissions(options: ListMenusOptions = {}) {
+    const menus = await this.menuRepository.find({
+      where: options.includeInactive ? {} : { isActive: true },
+    });
+    const source = menus.length > 0 ? menus : DEFAULT_ADMIN_MENUS;
+    return source.flatMap((menu) => [
       buildMenuPermissionKey(menu.code, "view"),
       buildMenuPermissionKey(menu.code, "manage"),
     ]);
@@ -1271,6 +1621,14 @@ function normalizeMenuPath(value: string | undefined) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function normalizeScopeLevel(value: RequestScopeLevel | undefined) {
+  return value === "platform" ? "platform" : "organization";
+}
+
+function isPlatformAdminRole(roleName: string | null) {
+  return Boolean(roleName && PLATFORM_ADMIN_ROLE_NAMES.has(roleName));
+}
+
 /**
  * Trims optional text and stores empty values as null.
  */
@@ -1508,6 +1866,18 @@ function toOrganizationSettingDto(setting: OrganizationSetting) {
     id: setting.id,
     name: setting.name,
     organizationId: setting.organizationId,
+    value: setting.value,
+  };
+}
+
+/**
+ * Projects global system setting entities into admin responses.
+ */
+function toSystemSettingDto(setting: SystemSetting) {
+  return {
+    id: setting.id,
+    name: setting.name,
+    scope: setting.scope,
     value: setting.value,
   };
 }

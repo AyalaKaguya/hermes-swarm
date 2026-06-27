@@ -65,13 +65,7 @@ export function hasAnyManagementAccess(
   snapshot: Snapshot,
   resolvedSession: ResolvedSession | null,
 ) {
-  return (
-    hasMenuAccess(snapshot, resolvedSession, "account") ||
-    hasMenuAccess(snapshot, resolvedSession, "users") ||
-    hasMenuAccess(snapshot, resolvedSession, "groups") ||
-    hasMenuAccess(snapshot, resolvedSession, "email-templates") ||
-    hasMenuAccess(snapshot, resolvedSession, "custom-smtp") ||
-    hasMenuAccess(snapshot, resolvedSession, "features") ||
-    hasMenuAccess(snapshot, resolvedSession, "organizations")
+  return snapshot.menus.some((menu) =>
+    hasMenuAccess(snapshot, resolvedSession, menu.code),
   );
 }

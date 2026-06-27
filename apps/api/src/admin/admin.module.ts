@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module.js";
+import { FilesModule } from "../files/files.module.js";
 import { MailModule } from "../mail/mail.module.js";
 import { OrganizationsModule } from "../organizations/organizations.module.js";
 import { InviteModule } from "../invite/invite.module.js";
@@ -19,6 +20,7 @@ import { AdminController } from "./admin.controller.js";
     OrganizationsModule,
     SettingsModule,
     InviteModule,
+    FilesModule,
     MailModule,
     TagsModule,
     NotificationsModule,

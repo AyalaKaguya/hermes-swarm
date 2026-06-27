@@ -33,6 +33,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import type { Organization, User } from "@/lib/admin-api";
+import type { RequestScopeLevel } from "@/lib/admin-api";
 import { cn } from "@/lib/utils";
 
 const MAIN_SIDEBAR_STATE_KEY = "sidebar_state";
@@ -58,30 +59,39 @@ export function AppShell({
   activeItem,
   children,
   contentClassName,
+  canUsePlatformScope,
   currentOrganizationId,
+  currentScopeLevel,
   navSections,
   onNavigate,
   onOrganizationSwitch,
+  onPlatformScopeSwitch,
   organizationName,
   organizations,
+  platformName,
   user,
 }: {
   actions?: ReactNode;
   activeItem?: string;
   children: ReactNode;
+  canUsePlatformScope?: boolean;
   contentClassName?: string;
   currentOrganizationId?: string | null;
+  currentScopeLevel?: RequestScopeLevel;
   navSections?: AppShellNavSection[];
   onNavigate?: (item: AppShellNavItem) => void;
   onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
+  onPlatformScopeSwitch?: () => void | Promise<void>;
   organizationName?: string | null;
   organizations?: Organization[];
+  platformName?: string | null;
   user?: User | null;
 }) {
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const [mainSidebarOpen, setMainSidebarOpen] = useState(false);
   const sections = navSections ?? [];
+  const shellTitle = platformName?.trim() || "Hermes Swarm";
 
   useEffect(() => {
     function syncHash() {
@@ -124,14 +134,17 @@ export function AppShell({
               className="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-sm font-semibold text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:hidden"
               href="/home"
             >
-              Hermes Swarm
+              {shellTitle}
             </Link>
             <SidebarTrigger className="size-8 shrink-0" />
           </div>
 
           <ScopeSwitcher
+            canUsePlatformScope={Boolean(canUsePlatformScope)}
             currentOrganizationId={currentOrganizationId}
+            currentScopeLevel={currentScopeLevel ?? "organization"}
             onOrganizationSwitch={onOrganizationSwitch}
+            onPlatformScopeSwitch={onPlatformScopeSwitch}
             organizationName={organizationName}
             organizations={organizations ?? []}
           />
@@ -232,7 +245,7 @@ export function AppShell({
             {organizationName ?? "管理控制台"}
           </span>
         </div>
-        <main className={cn("min-w-0 bg-background px-4 py-8 md:px-5", contentClassName)}>
+        <main className={cn("min-w-0 bg-background", contentClassName ?? "px-4 py-8 md:px-5")}>
           {children}
         </main>
       </SidebarInset>
@@ -267,18 +280,27 @@ function writeStoredSidebarState(open: boolean) {
 }
 
 function ScopeSwitcher({
+  canUsePlatformScope,
   currentOrganizationId,
+  currentScopeLevel,
   onOrganizationSwitch,
+  onPlatformScopeSwitch,
   organizationName,
   organizations,
 }: {
+  canUsePlatformScope: boolean;
   currentOrganizationId?: string | null;
+  currentScopeLevel: RequestScopeLevel;
   onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
+  onPlatformScopeSwitch?: () => void | Promise<void>;
   organizationName?: string | null;
   organizations: Organization[];
 }) {
-  const currentLabel = organizationName ?? "管理控制台";
-  const canSwitch = organizations.length > 0;
+  const isPlatformScope = currentScopeLevel === "platform";
+  const currentLabel = isPlatformScope
+    ? "整个平台"
+    : organizationName ?? "管理控制台";
+  const canSwitch = canUsePlatformScope || organizations.length > 0;
 
   return (
     <SidebarMenu>
@@ -309,8 +331,35 @@ function ScopeSwitcher({
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-72">
-            <DropdownMenuLabel>切换组织</DropdownMenuLabel>
+            <DropdownMenuLabel>切换范围</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {canUsePlatformScope && (
+              <>
+                <DropdownMenuItem
+                  className="items-start gap-2 py-2"
+                  disabled={isPlatformScope || !onPlatformScopeSwitch}
+                  onClick={() => {
+                    if (!isPlatformScope) void onPlatformScopeSwitch?.();
+                  }}
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                    <AppIcon className="size-4" name="server" />
+                  </span>
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="truncate text-sm font-medium">整个平台</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      租户管理与平台设置
+                    </span>
+                  </span>
+                  {isPlatformScope && (
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.68rem] text-muted-foreground">
+                      当前
+                    </span>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {organizations.length === 0 ? (
               <DropdownMenuItem disabled>暂无可切换组织</DropdownMenuItem>
             ) : (

@@ -1,16 +1,19 @@
 "use client";
 
 import {
+  ArrowLeft,
   BarChart3,
   Bell,
   Bot,
   Building2,
   ChevronDown,
   Database,
+  ImageUp,
   FileText,
   Grid2X2,
   Home,
   Layers,
+  ListX,
   LogOut,
   Menu,
   MoreVertical,
@@ -25,14 +28,17 @@ import {
   Shield,
   Sparkles,
   Trash2,
+  Upload,
   User,
   UserPlus,
   Users,
+  X,
   type LucideIcon,
   type LucideProps,
 } from "lucide-react";
 
 export type AppIconName =
+  | "arrow-left"
   | "bell"
   | "bot"
   | "building"
@@ -42,8 +48,10 @@ export type AppIconName =
   | "file"
   | "grid"
   | "home"
+  | "image-upload"
   | "invite"
   | "layers"
+  | "list-x"
   | "logout"
   | "menu"
   | "more"
@@ -56,12 +64,15 @@ export type AppIconName =
   | "sparkles"
   | "switch"
   | "trash"
+  | "upload"
   | "user"
   | "server"
   | "shield"
-  | "users";
+  | "users"
+  | "x";
 
 const ICONS: Record<AppIconName, LucideIcon> = {
+  "arrow-left": ArrowLeft,
   bell: Bell,
   bot: Bot,
   building: Building2,
@@ -71,8 +82,10 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   file: FileText,
   grid: Grid2X2,
   home: Home,
+  "image-upload": ImageUp,
   invite: UserPlus,
   layers: Layers,
+  "list-x": ListX,
   logout: LogOut,
   menu: Menu,
   more: MoreVertical,
@@ -85,10 +98,12 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   sparkles: Sparkles,
   switch: Repeat2,
   trash: Trash2,
+  upload: Upload,
   user: User,
   server: Server,
   shield: Shield,
   users: Users,
+  x: X,
 };
 
 export function AppIcon({

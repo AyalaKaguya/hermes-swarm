@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
   Patch,
   Post,
   Put,
+  Query,
 } from "@nestjs/common";
 import {
   CreateMenuPayload,
@@ -73,6 +75,15 @@ export class AdminController {
   }
 
   /**
+   * Switches the active scope to the whole platform for platform admins.
+   */
+  @Post("scope/platform")
+  async switchPlatform(@Headers("authorization") authorization: string | undefined) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.switchPlatform(context);
+  }
+
+  /**
    * Lists roles available inside the current organization.
    */
   @Get("roles")
@@ -98,9 +109,15 @@ export class AdminController {
    * Lists all admin menu definitions used to build management navigation.
    */
   @Get("menus")
-  async listMenus(@Headers("authorization") authorization?: string) {
-    await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.listMenus();
+  async listMenus(
+    @Headers("authorization") authorization?: string,
+    @Query("includeInactive") includeInactive?: string,
+  ) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    this.tenancyService.ensurePermission(context, "menus", "view");
+    return this.tenancyService.listMenus({
+      includeInactive: includeInactive === "true",
+    });
   }
 
   /**
@@ -126,5 +143,17 @@ export class AdminController {
   ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     return this.tenancyService.updateMenu(context, menuId, payload);
+  }
+
+  /**
+   * Deactivates a menu item while preserving historical permission records.
+   */
+  @Delete("menus/:menuId")
+  async deleteMenu(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("menuId") menuId: string,
+  ) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    return this.tenancyService.deleteMenu(context, menuId);
   }
 }

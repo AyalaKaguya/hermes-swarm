@@ -7,18 +7,19 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Group, User } from "@hermes-swarm/core";
 import { In, Repository } from "typeorm";
 import { TenancyService } from "./tenancy.service.js";
+import type { AuthContext } from "./tenancy.types.js";
 
-type CreateGroupPayload = {
+export type CreateGroupPayload = {
   name: string;
   description?: string | null;
 };
 
-type UpdateGroupPayload = {
+export type UpdateGroupPayload = {
   name?: string;
   description?: string | null;
 };
 
-type UpdateGroupMembersPayload = {
+export type UpdateGroupMembersPayload = {
   userIds?: string[];
 };
 
@@ -49,69 +50,143 @@ export class GroupsService {
   async listGroups(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.tenancyService.ensurePermission(context, "groups", "view");
+    return this.listGroupsByOrganizationId(context.organizationId);
+  }
+
+  async listGroupsForOrganization(context: AuthContext, organizationId: string) {
+    await this.tenancyService.getOrganizationById(context, organizationId);
+    return this.listGroupsByOrganizationId(organizationId);
+  }
+
+  async getGroup(authorization: string | undefined, groupId: string) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    this.tenancyService.ensurePermission(context, "groups", "view");
+    return toGroupDto(await this.getGroupOrThrow(context.organizationId, groupId));
+  }
+
+  async createGroup(authorization: string | undefined, payload: CreateGroupPayload) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    this.tenancyService.ensurePermission(context, "groups", "manage");
+    return this.createGroupForOrganizationId(context.organizationId, payload);
+  }
+
+  async createGroupForOrganization(
+    context: AuthContext,
+    organizationId: string,
+    payload: CreateGroupPayload,
+  ) {
+    this.tenancyService.ensureOrganizationAccess(context, organizationId, "manage");
+    await this.tenancyService.getOrganizationById(context, organizationId);
+    return this.createGroupForOrganizationId(organizationId, payload);
+  }
+
+  async updateGroup(authorization: string | undefined, groupId: string, payload: UpdateGroupPayload) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    this.tenancyService.ensurePermission(context, "groups", "manage");
+    return this.updateGroupForOrganizationId(
+      context.organizationId,
+      groupId,
+      payload,
+    );
+  }
+
+  async updateGroupForOrganization(
+    context: AuthContext,
+    organizationId: string,
+    groupId: string,
+    payload: UpdateGroupPayload,
+  ) {
+    this.tenancyService.ensureOrganizationAccess(context, organizationId, "manage");
+    await this.tenancyService.getOrganizationById(context, organizationId);
+    return this.updateGroupForOrganizationId(organizationId, groupId, payload);
+  }
+
+  async updateMembers(authorization: string | undefined, groupId: string, payload: UpdateGroupMembersPayload) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    this.tenancyService.ensurePermission(context, "groups", "manage");
+    return this.updateMembersForOrganizationId(
+      context.organizationId,
+      groupId,
+      payload,
+    );
+  }
+
+  async updateMembersForOrganization(
+    context: AuthContext,
+    organizationId: string,
+    groupId: string,
+    payload: UpdateGroupMembersPayload,
+  ) {
+    this.tenancyService.ensureOrganizationAccess(context, organizationId, "manage");
+    await this.tenancyService.getOrganizationById(context, organizationId);
+    return this.updateMembersForOrganizationId(organizationId, groupId, payload);
+  }
+
+  async deleteGroup(authorization: string | undefined, groupId: string) {
+    const context = await this.tenancyService.requireAuthContext(authorization);
+    this.tenancyService.ensurePermission(context, "groups", "manage");
+    await this.deleteGroupForOrganizationId(context.organizationId, groupId);
+  }
+
+  async deleteGroupForOrganization(
+    context: AuthContext,
+    organizationId: string,
+    groupId: string,
+  ) {
+    this.tenancyService.ensureOrganizationAccess(context, organizationId, "manage");
+    await this.tenancyService.getOrganizationById(context, organizationId);
+    await this.deleteGroupForOrganizationId(organizationId, groupId);
+  }
+
+  private async listGroupsByOrganizationId(organizationId: string) {
     const groups = await this.groupRepository.find({
-      where: { organizationId: context.organizationId },
+      where: { organizationId },
       relations: { members: true },
       order: { createdAt: "ASC" },
     });
     return groups.map(toGroupDto);
   }
 
-  async getGroup(authorization: string | undefined, groupId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "groups", "view");
-    const group = await this.groupRepository.findOne({
-      where: { id: groupId, organizationId: context.organizationId },
-      relations: { members: true },
-    });
-    if (!group) throw new NotFoundException("用户组不存在");
-    return toGroupDto(group);
-  }
-
-  async createGroup(authorization: string | undefined, payload: CreateGroupPayload) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "groups", "manage");
+  private async createGroupForOrganizationId(
+    organizationId: string,
+    payload: CreateGroupPayload,
+  ) {
     const name = payload.name?.trim();
     if (!name) throw new BadRequestException("用户组名称不能为空");
     const group = await this.groupRepository.save(
       this.groupRepository.create({
         name,
         description: payload.description?.trim() || null,
-        organizationId: context.organizationId,
+        organizationId,
         members: [],
       }),
     );
     return toGroupDto(group);
   }
 
-  async updateGroup(authorization: string | undefined, groupId: string, payload: UpdateGroupPayload) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "groups", "manage");
-    const group = await this.groupRepository.findOne({
-      where: { id: groupId, organizationId: context.organizationId },
-      relations: { members: true },
-    });
-    if (!group) throw new NotFoundException("用户组不存在");
+  private async updateGroupForOrganizationId(
+    organizationId: string,
+    groupId: string,
+    payload: UpdateGroupPayload,
+  ) {
+    const group = await this.getGroupOrThrow(organizationId, groupId);
     if (payload.name !== undefined) group.name = payload.name.trim() || group.name;
     if (payload.description !== undefined) group.description = payload.description?.trim() ?? null;
     return toGroupDto(await this.groupRepository.save(group));
   }
 
-  async updateMembers(authorization: string | undefined, groupId: string, payload: UpdateGroupMembersPayload) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "groups", "manage");
-    const group = await this.groupRepository.findOne({
-      where: { id: groupId, organizationId: context.organizationId },
-      relations: { members: true },
-    });
-    if (!group) throw new NotFoundException("用户组不存在");
-
+  private async updateMembersForOrganizationId(
+    organizationId: string,
+    groupId: string,
+    payload: UpdateGroupMembersPayload,
+  ) {
+    const group = await this.getGroupOrThrow(organizationId, groupId);
     const requestedIds = Array.from(new Set(payload.userIds ?? []));
     const members = requestedIds.length
       ? await this.userRepository.find({
           where: {
             id: In(requestedIds),
-            organizationId: context.organizationId,
+            organizationId,
           },
         })
       : [];
@@ -124,14 +199,20 @@ export class GroupsService {
     return toGroupDto(await this.groupRepository.save(group));
   }
 
-  async deleteGroup(authorization: string | undefined, groupId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "groups", "manage");
+  private async deleteGroupForOrganizationId(
+    organizationId: string,
+    groupId: string,
+  ) {
+    const group = await this.getGroupOrThrow(organizationId, groupId);
+    await this.groupRepository.remove(group);
+  }
+
+  private async getGroupOrThrow(organizationId: string, groupId: string) {
     const group = await this.groupRepository.findOne({
-      where: { id: groupId, organizationId: context.organizationId },
+      where: { id: groupId, organizationId },
       relations: { members: true },
     });
     if (!group) throw new NotFoundException("用户组不存在");
-    await this.groupRepository.remove(group);
+    return group;
   }
 }

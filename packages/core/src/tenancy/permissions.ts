@@ -34,41 +34,42 @@ export const DEFAULT_ADMIN_MENUS = [
     sortOrder: 70,
   },
   { code: "features", label: "功能", path: "/settings/features", sortOrder: 80 },
-  { code: "users", label: "成员", path: "/settings/users", sortOrder: 90 },
-  {
-    code: "groups",
-    label: "用户组",
-    path: "/settings/groups",
-    sortOrder: 100,
-  },
   {
     code: "roles",
     label: "角色和权限",
     path: "/settings/roles",
-    sortOrder: 110,
+    sortOrder: 90,
+  },
+  {
+    code: "menus",
+    label: "网页",
+    path: "/settings/menus",
+    sortOrder: 100,
   },
   {
     code: "tenant",
     label: "租户",
     path: "/settings/tenant",
-    sortOrder: 120,
+    sortOrder: 110,
   },
   {
     code: "organizations",
     label: "组织列表",
     path: "/settings/organizations",
-    sortOrder: 130,
+    sortOrder: 120,
   },
 ] as const;
 
 export const DEPRECATED_ADMIN_MENU_CODES = [
-  "menus",
+  "groups",
   "permissions",
   "settings",
   "user-groups",
+  "users",
 ] as const;
 
 export const SYSTEM_ROLES = [
+  { name: "platform-admin", label: "Platform Admin", isSystem: true },
   { name: "owner", label: "Owner", isSystem: true },
   { name: "admin", label: "Admin", isSystem: true },
   { name: "member", label: "Member", isSystem: true },
@@ -91,13 +92,13 @@ export function defaultPermissionsForRole(roleName: string) {
     buildMenuPermissionKey(menu.code, "manage"),
   ]);
 
-  if (roleName === "owner" || roleName === "admin") {
+  if (roleName === "platform-admin" || roleName === "owner" || roleName === "admin") {
     return allPermissions;
   }
 
   if (roleName === "member") {
     return DEFAULT_ADMIN_MENUS.filter((menu) =>
-      ["account", "organization", "users", "groups"].includes(menu.code),
+      ["account", "organization"].includes(menu.code),
     ).map((menu) => buildMenuPermissionKey(menu.code, "view"));
   }
 

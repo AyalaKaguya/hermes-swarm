@@ -7,6 +7,7 @@ import {
   OrganizationSetting,
   Role,
   RolePermission,
+  SystemSetting,
   User,
 } from "@hermes-swarm/core";
 import { GroupsController } from "./groups.controller.js";
@@ -22,11 +23,12 @@ import { TenancyService } from "./tenancy.service.js";
       OrganizationSetting,
       Role,
       RolePermission,
+      SystemSetting,
       User,
     ]),
   ],
   controllers: [GroupsController],
   providers: [GroupsService, TenancyService],
-  exports: [TenancyService],
+  exports: [GroupsService, TenancyService],
 })
 export class TenancyModule {}
