@@ -26,4 +26,5 @@ export {
   RolePermission,
 } from "./entities/role-permission.entity.js";
 export { Role } from "./entities/role.entity.js";
+export { Tag } from "./entities/tag.entity.js";
 export { User, type UserStatus, type UserType, type PreferredLanguage } from "./entities/user.entity.js";

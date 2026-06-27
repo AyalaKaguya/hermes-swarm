@@ -4,7 +4,16 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppIcon, type AppIconName } from "@/components/app-icon";
+import { NotificationCenter } from "@/components/notification-center";
 import { UserAvatar } from "@/components/user-avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -23,7 +32,11 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import type { User } from "@/lib/admin-api";
+import type { Organization, User } from "@/lib/admin-api";
+import { cn } from "@/lib/utils";
+
+const MAIN_SIDEBAR_STATE_KEY = "sidebar_state";
+const MAIN_SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 export type AppShellNavItem = {
   badge?: string;
@@ -44,21 +57,30 @@ export function AppShell({
   actions,
   activeItem,
   children,
+  contentClassName,
+  currentOrganizationId,
   navSections,
   onNavigate,
+  onOrganizationSwitch,
   organizationName,
+  organizations,
   user,
 }: {
   actions?: ReactNode;
   activeItem?: string;
   children: ReactNode;
+  contentClassName?: string;
+  currentOrganizationId?: string | null;
   navSections?: AppShellNavSection[];
   onNavigate?: (item: AppShellNavItem) => void;
+  onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
   organizationName?: string | null;
+  organizations?: Organization[];
   user?: User | null;
 }) {
   const pathname = usePathname();
   const [hash, setHash] = useState("");
+  const [mainSidebarOpen, setMainSidebarOpen] = useState(false);
   const sections = navSections ?? [];
 
   useEffect(() => {
@@ -71,9 +93,23 @@ export function AppShell({
     return () => window.removeEventListener("hashchange", syncHash);
   }, []);
 
+  useEffect(() => {
+    const stored = readStoredSidebarState();
+    if (stored !== null) {
+      setMainSidebarOpen(stored);
+    }
+  }, []);
+
+  function updateMainSidebarOpen(open: boolean) {
+    setMainSidebarOpen(open);
+    writeStoredSidebarState(open);
+  }
+
   return (
     <SidebarProvider
       defaultOpen={false}
+      onOpenChange={updateMainSidebarOpen}
+      open={mainSidebarOpen}
       style={
         {
           "--sidebar-width": "15.625rem",
@@ -93,34 +129,12 @@ export function AppShell({
             <SidebarTrigger className="size-8 shrink-0" />
           </div>
 
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                className="h-14 rounded-lg border bg-background/70 px-2 shadow-xs group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none"
-                size="lg"
-                tooltip={`组织范围：${organizationName ?? "管理控制台"}`}
-              >
-                <Link href="/settings/organizations">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground group-data-[collapsible=icon]:bg-sidebar-accent group-data-[collapsible=icon]:text-sidebar-accent-foreground">
-                    <AppIcon className="size-4" name="building" />
-                  </span>
-                  <span className="grid min-w-0 flex-1 leading-tight">
-                    <span className="truncate text-[0.65rem] uppercase text-muted-foreground">
-                      当前范围
-                    </span>
-                    <span className="truncate text-sm font-medium">
-                      {organizationName ?? "管理控制台"}
-                    </span>
-                  </span>
-                  <AppIcon
-                    className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden"
-                    name="chevron-down"
-                  />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <ScopeSwitcher
+            currentOrganizationId={currentOrganizationId}
+            onOrganizationSwitch={onOrganizationSwitch}
+            organizationName={organizationName}
+            organizations={organizations ?? []}
+          />
         </SidebarHeader>
 
         <SidebarContent>
@@ -176,7 +190,7 @@ export function AppShell({
 
         <SidebarFooter>
           <SidebarMenu>
-            <ShellMenuItem active={false} icon="bell" label="通知" />
+            <NotificationCenter />
             <ShellMenuItem
               active={pathname.startsWith("/settings")}
               href="/settings/account"
@@ -218,11 +232,123 @@ export function AppShell({
             {organizationName ?? "管理控制台"}
           </span>
         </div>
-        <main className="min-w-0 bg-background px-4 py-8 md:px-5">
+        <main className={cn("min-w-0 bg-background px-4 py-8 md:px-5", contentClassName)}>
           {children}
         </main>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function readStoredSidebarState() {
+  if (typeof window === "undefined") return null;
+
+  const localValue = window.localStorage.getItem(MAIN_SIDEBAR_STATE_KEY);
+  if (localValue === "true" || localValue === "false") {
+    return localValue === "true";
+  }
+
+  const cookieValue = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${MAIN_SIDEBAR_STATE_KEY}=`))
+    ?.split("=")[1];
+  if (cookieValue === "true" || cookieValue === "false") {
+    return cookieValue === "true";
+  }
+
+  return null;
+}
+
+function writeStoredSidebarState(open: boolean) {
+  if (typeof window === "undefined") return;
+  const value = String(open);
+  window.localStorage.setItem(MAIN_SIDEBAR_STATE_KEY, value);
+  document.cookie = `${MAIN_SIDEBAR_STATE_KEY}=${value}; path=/; max-age=${MAIN_SIDEBAR_COOKIE_MAX_AGE}`;
+}
+
+function ScopeSwitcher({
+  currentOrganizationId,
+  onOrganizationSwitch,
+  organizationName,
+  organizations,
+}: {
+  currentOrganizationId?: string | null;
+  onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
+  organizationName?: string | null;
+  organizations: Organization[];
+}) {
+  const currentLabel = organizationName ?? "管理控制台";
+  const canSwitch = organizations.length > 0;
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild disabled={!canSwitch}>
+            <SidebarMenuButton
+              className="h-14 rounded-lg border bg-background/70 px-2 shadow-xs group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none"
+              size="lg"
+              tooltip={`当前范围：${currentLabel}`}
+              type="button"
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground group-data-[collapsible=icon]:bg-sidebar-accent group-data-[collapsible=icon]:text-sidebar-accent-foreground">
+                <AppIcon className="size-4" name="building" />
+              </span>
+              <span className="grid min-w-0 flex-1 leading-tight">
+                <span className="truncate text-[0.65rem] uppercase text-muted-foreground">
+                  当前范围
+                </span>
+                <span className="truncate text-sm font-medium">
+                  {currentLabel}
+                </span>
+              </span>
+              <AppIcon
+                className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden"
+                name="chevron-down"
+              />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72">
+            <DropdownMenuLabel>切换组织</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {organizations.length === 0 ? (
+              <DropdownMenuItem disabled>暂无可切换组织</DropdownMenuItem>
+            ) : (
+              organizations.map((organization) => {
+                const active = organization.id === currentOrganizationId;
+                return (
+                  <DropdownMenuItem
+                    className="items-start gap-2 py-2"
+                    disabled={active || !onOrganizationSwitch}
+                    key={organization.id}
+                    onClick={() => {
+                      if (!active) void onOrganizationSwitch?.(organization.id);
+                    }}
+                  >
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                      <AppIcon className="size-4" name="building" />
+                    </span>
+                    <span className="grid min-w-0 flex-1 gap-0.5">
+                      <span className="truncate text-sm font-medium">
+                        {organization.name}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {organization.slug}
+                      </span>
+                    </span>
+                    {active && (
+                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.68rem] text-muted-foreground">
+                        当前
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                );
+              })
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 

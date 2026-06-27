@@ -35,6 +35,7 @@ import {
   ReplaceRolePermissionsPayload,
   SaveSettingsPayload,
   SearchUsersQuery,
+  SwitchOrganizationPayload,
   UpdateMenuPayload,
   UpdateOrganizationPayload,
   UpdatePreferredLanguagePayload,
@@ -290,6 +291,7 @@ export class TenancyService implements OnModuleInit {
       rolePermissions,
       organizationSettings,
       menus,
+      switchableOrganizations,
     ] = await Promise.all([
       this.organizationRepository.findOne({
         where: { id: context.organizationId },
@@ -311,6 +313,7 @@ export class TenancyService implements OnModuleInit {
         order: { name: "ASC" },
       }),
       this.listMenus(),
+      this.listSwitchableOrganizations(context),
     ]);
 
     if (!organization) {
@@ -333,7 +336,7 @@ export class TenancyService implements OnModuleInit {
       },
       menus: menus.map(toMenuDto),
       organization: toOrganizationDto(organization),
-      organizations: [toOrganizationDto(organization)],
+      organizations: switchableOrganizations.map(toOrganizationDto),
       rolePermissions: rolePermissions.map(toRolePermissionDto),
       roles: roles.map(toRoleDto),
       settings: organizationSettings.map(toOrganizationSettingDto),
@@ -349,6 +352,36 @@ export class TenancyService implements OnModuleInit {
       where: { id: context.organizationId },
     });
     return org ? toOrganizationDto(org) : null;
+  }
+
+  /**
+   * Switches organization scope when the same user identity exists in the
+   */
+  async switchOrganization(
+    context: AuthContext,
+    payload: SwitchOrganizationPayload,
+  ) {
+    const organizationId = requireText(payload.organizationId, "组织 ID");
+    const targetOrganization = await this.organizationRepository.findOne({
+      where: { id: organizationId },
+    });
+    if (!targetOrganization || targetOrganization.status !== "active") {
+      throw new NotFoundException("组织不存在或不可用");
+    }
+
+    const currentUser = await this.getUserOrThrow(context.organizationId, context.userId);
+    const targetUser = await this.userRepository.findOne({
+      where: {
+        email: currentUser.email,
+        organizationId,
+        status: "active",
+      },
+    });
+    if (!targetUser) {
+      throw new ForbiddenException("当前用户未加入该组织");
+    }
+
+    return this.createLoginResponse(organizationId, targetUser.id);
   }
 
   /**
@@ -962,6 +995,22 @@ export class TenancyService implements OnModuleInit {
       where: { enabled: true, roleId, organizationId },
     });
     return permissions.map((p) => p.permission);
+  }
+
+  private async listSwitchableOrganizations(context: AuthContext) {
+    const user = await this.getUserOrThrow(context.organizationId, context.userId);
+    const memberships = await this.userRepository.find({
+      where: { email: user.email, status: "active" },
+    });
+    const organizationIds = [...new Set(memberships.map((item) => item.organizationId).filter(Boolean))] as string[];
+    if (!organizationIds.length) return [];
+    const organizations = await this.organizationRepository
+      .createQueryBuilder("organization")
+      .where("organization.id IN (:...organizationIds)", { organizationIds })
+      .andWhere("organization.status = :status", { status: "active" })
+      .orderBy("organization.createdAt", "ASC")
+      .getMany();
+    return organizations;
   }
 
   private assertPermission(

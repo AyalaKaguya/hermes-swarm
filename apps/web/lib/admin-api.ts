@@ -9,6 +9,40 @@ export type Organization = {
   subdomain: string | null;
 };
 
+export type Tag = {
+  category: string | null;
+  color: string | null;
+  description: string | null;
+  icon: string | null;
+  id: string;
+  isSystem: boolean;
+  label: Record<string, unknown> | null;
+  name: string;
+  organizationId: string | null;
+};
+
+export type NotificationDestinationType = {
+  icon?: string;
+  name: string;
+  schema?: {
+    properties?: Record<string, { title?: string; type?: string }>;
+    required?: string[];
+    secret?: string[];
+    type?: string;
+  };
+  type: string;
+};
+
+export type NotificationDestination = {
+  id: string;
+  name: string;
+  options: Record<string, unknown> | null;
+  organizationId: string | null;
+  type: string;
+};
+
+export type NotificationDestinationGroup = Record<string, unknown>;
+
 export type User = {
   id: string;
   displayName: string;
@@ -178,6 +212,14 @@ export function onboard(payload: OnboardingPayload) {
 
 export function getSnapshot(token: string) {
   return fetchAdmin<Snapshot>("/snapshot", { token });
+}
+
+export function switchOrganizationScope(token: string, organizationId: string) {
+  return fetchAdmin<LoginResponse>("/scope/organization", {
+    body: { organizationId },
+    method: "POST",
+    token,
+  });
 }
 
 export function getInvites(token: string) {
@@ -352,6 +394,19 @@ export function listSystemSettings(token: string) {
   return fetchAdmin<SystemSettingDto[]>("/system-settings", { token });
 }
 
+export function listOrganizationSettings(token: string) {
+  return fetchAdmin<OrganizationSetting[]>("/settings", { token });
+}
+
+export function saveOrganizationSettings(
+  token: string,
+  settings:
+    | Record<string, string | number | boolean | null>
+    | { settings: Array<{ name: string; value: string | number | boolean | null }> },
+) {
+  return fetchAdmin<OrganizationSetting[]>("/settings", { body: settings, method: "PUT", token });
+}
+
 export function saveSystemSettings(
   token: string,
   settings:
@@ -389,4 +444,86 @@ export function updateGroupMembers(token: string, groupId: string, userIds: stri
 
 export function deleteGroup(token: string, groupId: string) {
   return fetchAdmin<void>(`/groups/${groupId}`, { method: "DELETE", token });
+}
+
+export function listOrganizations(token: string) {
+  return fetchAdmin<Organization[]>("/organizations", { token });
+}
+
+export function listTags(token: string) {
+  return fetchAdmin<Tag[]>("/tags", { token });
+}
+
+export function createTag(token: string, payload: {
+  category?: string | null;
+  color?: string | null;
+  description?: string | null;
+  icon?: string | null;
+  name: string;
+}) {
+  return fetchAdmin<Tag>("/tags", { body: payload, method: "POST", token });
+}
+
+export function updateTag(token: string, tagId: string, payload: Partial<{
+  category: string | null;
+  color: string | null;
+  description: string | null;
+  icon: string | null;
+  name: string;
+}>) {
+  return fetchAdmin<Tag>(`/tags/${tagId}`, { body: payload, method: "PATCH", token });
+}
+
+export function deleteTag(token: string, tagId: string) {
+  return fetchAdmin<void>(`/tags/${tagId}`, { method: "DELETE", token });
+}
+
+export function listNotificationDestinationTypes(token: string) {
+  return fetchAdmin<NotificationDestinationType[]>("/notification-destinations/types", { token });
+}
+
+export function listNotificationDestinations(token: string) {
+  return fetchAdmin<NotificationDestination[]>("/notification-destinations", { token });
+}
+
+export function createNotificationDestination(token: string, payload: {
+  name: string;
+  options?: Record<string, unknown> | null;
+  type: string;
+}) {
+  return fetchAdmin<NotificationDestination>("/notification-destinations", {
+    body: payload,
+    method: "POST",
+    token,
+  });
+}
+
+export function updateNotificationDestination(
+  token: string,
+  destinationId: string,
+  payload: Partial<{
+    name: string;
+    options: Record<string, unknown> | null;
+    type: string;
+  }>,
+) {
+  return fetchAdmin<NotificationDestination>(`/notification-destinations/${destinationId}`, {
+    body: payload,
+    method: "PATCH",
+    token,
+  });
+}
+
+export function deleteNotificationDestination(token: string, destinationId: string) {
+  return fetchAdmin<void>(`/notification-destinations/${destinationId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function listNotificationDestinationGroups(token: string, destinationId: string) {
+  return fetchAdmin<NotificationDestinationGroup[]>(
+    `/notification-destinations/${destinationId}/groups`,
+    { token },
+  );
 }
