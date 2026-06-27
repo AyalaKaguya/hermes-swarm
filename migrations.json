@@ -1,0 +1,10 @@
+{
+  "migrations": [],
+  "nx-console": {
+    "initialGitRef": {
+      "ref": "630433ec9a6547f7d15d877a5b66291d874bc983",
+      "subject": "feat: add AdminShell component for managing admin session and organization switching"
+    },
+    "targetVersion": "latest"
+  }
+}
