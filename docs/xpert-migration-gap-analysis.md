@@ -1,6 +1,6 @@
 ## xpert → hermes-swarm Backend Migration Gap Analysis
 
-*Generated 2026-06-25 after comparing both codebases*
+*Generated 2026-06-25 after comparing both codebases; refreshed 2026-06-27 against the current Hermes-Swarm tree*
 
 ### Scope
 
@@ -23,25 +23,21 @@ settings (email, global) capabilities into the hermes-swarm NestJS backend.
 | Email Templates | MailService + EmailTemplate entity: CRUD with hbs, mjml, languageCode, org/global scoping |
 | Email Logs | MailService + EmailLog entity: Sent/queued/failed/skipped status tracking |
 
-### Needed — In Priority Order
+### Refreshed Status
 
-1. **Invite module** — New entity/service/controller: bulk invite creation, JWT token
-   generation/validation, acceptance flows, resend, expiry management.
-   xpert source: packages/server/src/invite/
+The previous "Needed" list has since been implemented in the current tree:
 
-2. **Email sending capability** — Extend MailService with nodemailer integration,
-   SMTPUtils (transporter creation, verification), Handlebars template rendering,
-   and wired email dispatch (invite, welcome, password-reset).
-   xpert source: packages/server/src/email/, email-send/
+| Previously Needed | Current Hermes-Swarm Implementation |
+|---|---|
+| Invite module | `apps/api/src/invite/` plus `packages/core/src/tenancy/entities/invite.entity.ts`: list, bulk create, resend, delete, validate, accept |
+| Email sending capability | `apps/api/src/mail/email-send.service.ts`: nodemailer transport, SMTP verification, Handlebars template rendering, email log recording |
+| Organization Contact | `packages/core/src/tenancy/entities/organization-contact.entity.ts` |
+| Organization Language | `packages/core/src/tenancy/entities/organization-language.entity.ts` |
+| User Email Verification | `packages/core/src/tenancy/entities/email-verification.entity.ts` |
 
-3. **Organization Contact** — Entity for organization contact records.
-   xpert source: packages/server/src/organization-contact/
-
-4. **Organization Language** — Entity linking an organization to language codes.
-   xpert source: packages/server/src/organization-language/
-
-5. **User Email Verification** — Entity and service for email verification tokens.
-   xpert source: packages/server/src/user/email-verification/
+Future changes should no longer treat these as missing migration tasks. Instead,
+use Xpert as the reference for behavior and close any specific divergence found
+in the current implementation.
 
 ### Not Porting
 
