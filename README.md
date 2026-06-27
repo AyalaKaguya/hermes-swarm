@@ -7,11 +7,12 @@ A distributed computing swarm built with **pnpm + NX Monorepo**, **NestJS**, **T
 ```
 hermes-swarm/
 ├── apps/
-│   └── api/                  # NestJS API server (health endpoint + future services)
+│   ├── api/                  # NestJS API server
+│   └── web/                  # Next.js admin web app
 ├── packages/
 │   └── core/                 # Shared core business entities and config utilities
 ├── devenv/                   # Local dev infrastructure (Docker)
-│   ├── compose.yml           # PostgreSQL 17 + Redis 7
+│   ├── docker-compose.yml    # PostgreSQL 17 + Redis 7
 │   └── postgres/init/        # Database initialization scripts
 ├── tsconfig.base.json        # Shared TypeScript configuration
 ├── nx.json                   # NX build orchestration
@@ -41,19 +42,20 @@ cd devenv && cp ../.env.example .env && docker compose up -d
 
 This starts PostgreSQL and Redis containers with health checks.
 
-### 3. Start the API server
+### 3. Start the app servers
 
 ```bash
-pnpm exec tsc -p apps/api/tsconfig.json
-node apps/api/dist/main.js
+pnpm nx run @hermes-swarm/api:dev
+pnpm nx run @hermes-swarm/web:dev
 ```
 
-The API runs on `http://localhost:3100/api` (configurable via `API_PORT`).
+The web app runs on `http://localhost:3100`.
+The API runs on `http://localhost:3200/api` (configurable via `API_PORT`).
 
 ### 4. Health check
 
 ```bash
-curl http://localhost:3100/api/health
+curl http://localhost:3200/api/health
 # { "status": "ok", "db": "connected" }
 ```
 
@@ -66,6 +68,13 @@ curl http://localhost:3100/api/health
 | `pnpm lint` | Lint all packages |
 | `pnpm clean` | Remove dist directories |
 | `pnpm graph` | Visualize dependency graph |
+
+Prefer project-target commands when working on a single app or package, for example:
+
+```bash
+pnpm nx run @hermes-swarm/api:dev
+pnpm nx run @hermes-swarm/web:dev
+```
 
 ## Development Services
 
