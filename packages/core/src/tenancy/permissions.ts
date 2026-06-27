@@ -79,6 +79,34 @@ export const SYSTEM_ROLES = [
 export type SystemRoleName = (typeof SYSTEM_ROLES)[number]["name"];
 export type MenuPermissionAction = "manage" | "view";
 
+export const PLATFORM_ADMIN_ROLE_NAME = "platform-admin";
+
+export const ROLE_RANKS: Record<SystemRoleName, number> = {
+  "platform-admin": 500,
+  owner: 400,
+  admin: 300,
+  member: 200,
+  viewer: 100,
+};
+
+export const CUSTOM_ROLE_RANK = 150;
+
+export const PLATFORM_MENU_CODES = ["tenant", "organizations"] as const;
+export const PLATFORM_MENU_CODE_SET = new Set<string>(PLATFORM_MENU_CODES);
+
+export function getRoleRank(roleName: string | null | undefined) {
+  if (!roleName) return 0;
+  return ROLE_RANKS[roleName as SystemRoleName] ?? CUSTOM_ROLE_RANK;
+}
+
+export function isPlatformAdminRoleName(roleName: string | null | undefined) {
+  return roleName === PLATFORM_ADMIN_ROLE_NAME;
+}
+
+export function isPlatformMenuCode(menuCode: string) {
+  return PLATFORM_MENU_CODE_SET.has(menuCode);
+}
+
 export function buildMenuPermissionKey(
   menuCode: string,
   action: MenuPermissionAction,
@@ -91,9 +119,19 @@ export function defaultPermissionsForRole(roleName: string) {
     buildMenuPermissionKey(menu.code, "view"),
     buildMenuPermissionKey(menu.code, "manage"),
   ]);
+  const organizationPermissions = DEFAULT_ADMIN_MENUS.filter(
+    (menu) => !isPlatformMenuCode(menu.code),
+  ).flatMap((menu) => [
+    buildMenuPermissionKey(menu.code, "view"),
+    buildMenuPermissionKey(menu.code, "manage"),
+  ]);
 
-  if (roleName === "platform-admin" || roleName === "owner" || roleName === "admin") {
+  if (isPlatformAdminRoleName(roleName)) {
     return allPermissions;
+  }
+
+  if (roleName === "owner" || roleName === "admin") {
+    return organizationPermissions;
   }
 
   if (roleName === "member") {

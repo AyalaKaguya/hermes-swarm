@@ -99,6 +99,14 @@ const PASSWORD_LENGTH_OPTIONS: SelectOption[] = [6, 8, 10, 12, 16].map((value) =
   label: `${value} 位`,
   value: String(value),
 }));
+const ROLE_RANKS: Record<string, number> = {
+  "platform-admin": 500,
+  owner: 400,
+  admin: 300,
+  member: 200,
+  viewer: 100,
+};
+const CUSTOM_ROLE_RANK = 150;
 
 const CONTROL_KEYS = [
   {
@@ -106,17 +114,43 @@ const CONTROL_KEYS = [
     label: "密码最小长度",
     options: PASSWORD_LENGTH_OPTIONS,
   },
+];
+const ORGANIZATION_DEFAULT_FIELDS = [
   {
+    field: "currency",
+    key: "organization.defaultCurrency",
+    label: "货币",
+    options: CURRENCY_OPTIONS,
+  },
+  {
+    field: "timeZone",
+    key: "organization.defaultTimeZone",
+    label: "时区",
+    options: TIME_ZONE_OPTIONS,
+  },
+  {
+    field: "regionCode",
+    key: "organization.defaultRegionCode",
+    label: "地区代码",
+    options: REGION_OPTIONS,
+  },
+  {
+    field: "dateFormat",
+    key: "organization.defaultDateFormat",
+    label: "日期格式",
+    options: DATE_FORMAT_OPTIONS,
+  },
+  {
+    field: "preferredLanguage",
     key: "organization.defaultLanguage",
     label: "默认语言",
     options: LANGUAGE_OPTIONS,
   },
-  {
-    key: "organization.defaultTimeZone",
-    label: "默认时区",
-    options: TIME_ZONE_OPTIONS,
-  },
-];
+] as const;
+const HANDLED_SETTING_KEYS = new Set([
+  ...CONTROL_KEYS.map((item) => item.key),
+  ...ORGANIZATION_DEFAULT_FIELDS.map((item) => item.key),
+]);
 
 type OrganizationForm = {
   banner: string;
@@ -154,6 +188,8 @@ export default function OrganizationDetailPage() {
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [controlValues, setControlValues] = useState<Record<string, string>>({});
+  const [customSettingName, setCustomSettingName] = useState("");
+  const [customSettingValue, setCustomSettingValue] = useState("");
   const [editUser, setEditUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<OrganizationForm>(emptyOrganizationForm());
@@ -169,6 +205,7 @@ export default function OrganizationDetailPage() {
   const [savingGroup, setSavingGroup] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingControls, setSavingControls] = useState(false);
+  const [savingCustomSetting, setSavingCustomSetting] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -179,6 +216,16 @@ export default function OrganizationDetailPage() {
         hasMenuAccess(snapshot, resolvedSession, "organization", "manage")
       : false;
   const isPlatformScope = snapshot?.scope.level === "platform";
+  const currentRoleName = snapshot?.currentUser.role?.name ?? null;
+  const currentUserId = snapshot?.currentUser.user.id ?? null;
+  const canAssignPlatformRole = Boolean(snapshot?.isPlatformAdmin);
+  const assignableRoles = useMemo(
+    () =>
+      roles.filter((role) =>
+        canAssignRole(currentRoleName, role, canAssignPlatformRole),
+      ),
+    [canAssignPlatformRole, currentRoleName, roles],
+  );
 
   const load = useCallback(async () => {
     const session = getStoredSession();
@@ -212,7 +259,7 @@ export default function OrganizationDetailPage() {
         Object.fromEntries(
           CONTROL_KEYS.map((item) => [
             item.key,
-            settings.find((setting) => setting.name === item.key)?.value ?? "",
+            settings.find((setting) => setting.name === item.key)?.overrideValue ?? "",
           ]),
         ),
       );
@@ -244,7 +291,7 @@ export default function OrganizationDetailPage() {
   const customSettings = useMemo(
     () =>
       organizationSettings.filter(
-        (setting) => !CONTROL_KEYS.some((item) => item.key === setting.name),
+        (setting) => !HANDLED_SETTING_KEYS.has(setting.name),
       ),
     [organizationSettings],
   );
@@ -260,6 +307,17 @@ export default function OrganizationDetailPage() {
     setGroupDescription(selectedGroup.description ?? "");
     setGroupMemberIds(selectedGroup.memberIds);
   }, [selectedGroup]);
+
+  function findSetting(name: string) {
+    return organizationSettings.find((setting) => setting.name === name) ?? null;
+  }
+
+  function settingDefaultLabel(name: string, options?: SelectOption[]) {
+    const setting = findSetting(name);
+    const value = setting?.defaultValue ?? setting?.value ?? "";
+    if (!value) return "未设置";
+    return options?.find((option) => option.value === value)?.label ?? value;
+  }
 
   function updateField<K extends keyof OrganizationForm>(key: K, value: OrganizationForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -319,7 +377,7 @@ export default function OrganizationDetailPage() {
         {
           settings: CONTROL_KEYS.map((item) => ({
             name: item.key,
-            value: controlValues[item.key] ?? "",
+            value: controlValues[item.key] || null,
           })),
         },
       );
@@ -334,6 +392,32 @@ export default function OrganizationDetailPage() {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
       setSavingControls(false);
+    }
+  }
+
+  async function saveCustomSetting(name: string, value: string | null) {
+    if (!organization || !token || !canManage) return;
+    const settingName = name.trim();
+    if (!settingName) return;
+
+    setSavingCustomSetting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const settings = await saveOrganizationSettingsForOrganization(
+        token,
+        organization.id,
+        { settings: [{ name: settingName, value }] },
+      );
+      setOrganizationSettings(settings);
+      setCustomSettingName("");
+      setCustomSettingValue("");
+      setMessage(value === null ? "自定义设置已删除" : "自定义设置已保存");
+      await refreshSnapshot();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingCustomSetting(false);
     }
   }
 
@@ -385,7 +469,16 @@ export default function OrganizationDetailPage() {
   }
 
   function roleLabel(roleId: string | null) {
-    return roles.find((role) => role.id === roleId)?.label ?? "-";
+    if (!roleId) return "-";
+    return roles.find((role) => role.id === roleId)?.label ?? "受限角色";
+  }
+
+  function canEditUser(user: User) {
+    if (!canManage || user.id === currentUserId) return false;
+    if (canAssignPlatformRole) return true;
+    const role = roles.find((item) => item.id === user.roleId);
+    if (!role) return user.roleId === null;
+    return getRoleRank(role.name) < getRoleRank(currentRoleName);
   }
 
   function toggleGroupMember(userId: string) {
@@ -607,7 +700,7 @@ export default function OrganizationDetailPage() {
               </div>
               <Dialog onOpenChange={setCreateUserOpen} open={createUserOpen}>
                 <DialogTrigger asChild>
-                  <Button disabled={!canManage} size="sm">
+                  <Button disabled={!canManage || assignableRoles.length === 0} size="sm">
                     <AppIcon className="size-3.5" name="users" />
                     添加成员
                   </Button>
@@ -616,11 +709,11 @@ export default function OrganizationDetailPage() {
                   <DialogHeader>
                     <DialogTitle>添加成员</DialogTitle>
                   </DialogHeader>
-                  <OrganizationUserForm
-                    mode="create"
-                    organizationId={organization.id}
-                    roles={roles}
-                    token={token}
+                    <OrganizationUserForm
+                      mode="create"
+                      organizationId={organization.id}
+                      roles={assignableRoles}
+                      token={token}
                     onDone={() => {
                       setCreateUserOpen(false);
                       void load();
@@ -681,7 +774,7 @@ export default function OrganizationDetailPage() {
                         </TableCell>
                         <TableCell>
                           <Button
-                            disabled={!canManage}
+                            disabled={!canEditUser(user)}
                             onClick={() => setEditUser(user)}
                             size="sm"
                             variant="ghost"
@@ -862,76 +955,57 @@ export default function OrganizationDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>默认值</CardTitle>
-                <CardDescription>维护组织级默认语言、区域、货币和格式</CardDescription>
+                <CardDescription>为空时继承平台设置，选择后保存为组织覆写</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <Field label="货币" htmlFor="organization-currency">
-                  <EnumSelect
-                    disabled={!canManage}
-                    id="organization-currency"
-                    onChange={(value) => updateField("currency", value)}
-                    options={CURRENCY_OPTIONS}
-                    placeholder="选择货币"
-                    value={form.currency}
-                  />
-                </Field>
-                <Field label="时区" htmlFor="organization-time-zone">
-                  <EnumSelect
-                    disabled={!canManage}
-                    id="organization-time-zone"
-                    onChange={(value) => updateField("timeZone", value)}
-                    options={TIME_ZONE_OPTIONS}
-                    placeholder="选择时区"
-                    value={form.timeZone}
-                  />
-                </Field>
-                <Field label="地区代码" htmlFor="organization-region-code">
-                  <EnumSelect
-                    disabled={!canManage}
-                    id="organization-region-code"
-                    onChange={(value) => updateField("regionCode", value)}
-                    options={REGION_OPTIONS}
-                    placeholder="选择地区"
-                    value={form.regionCode}
-                  />
-                </Field>
-                <Field label="日期格式" htmlFor="organization-date-format">
-                  <EnumSelect
-                    disabled={!canManage}
-                    id="organization-date-format"
-                    onChange={(value) => updateField("dateFormat", value)}
-                    options={DATE_FORMAT_OPTIONS}
-                    placeholder="选择格式"
-                    value={form.dateFormat}
-                  />
-                </Field>
-                <Field label="默认语言" htmlFor="organization-language">
-                  <EnumSelect
-                    disabled={!canManage}
-                    id="organization-language"
-                    onChange={(value) => updateField("preferredLanguage", value)}
-                    options={LANGUAGE_OPTIONS}
-                    placeholder="选择语言"
-                    value={form.preferredLanguage}
-                  />
-                </Field>
-                <Field label="员工数" htmlFor="organization-total-employees">
-                  <Input
-                    disabled={!canManage}
-                    id="organization-total-employees"
-                    inputMode="numeric"
-                    onChange={(event) => updateField("totalEmployees", event.target.value)}
-                    type="number"
-                    value={form.totalEmployees}
-                  />
-                </Field>
+              <CardContent className="grid gap-4">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {ORGANIZATION_DEFAULT_FIELDS.map((item) => (
+                    <Field
+                      label={item.label}
+                      htmlFor={`organization-${item.field}`}
+                      key={item.key}
+                    >
+                      <EnumSelect
+                        disabled={!canManage}
+                        id={`organization-${item.field}`}
+                        noneLabel="继承平台默认"
+                        onChange={(value) => updateField(item.field, value)}
+                        options={item.options}
+                        placeholder="继承平台默认"
+                        value={form[item.field]}
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        平台默认：{settingDefaultLabel(item.key, item.options)}
+                      </div>
+                    </Field>
+                  ))}
+                  <Field label="员工数" htmlFor="organization-total-employees">
+                    <Input
+                      disabled={!canManage}
+                      id="organization-total-employees"
+                      inputMode="numeric"
+                      onChange={(event) => updateField("totalEmployees", event.target.value)}
+                      type="number"
+                      value={form.totalEmployees}
+                    />
+                  </Field>
+                </div>
+                <Button
+                  className="w-fit"
+                  disabled={!canManage || !dirty || saving}
+                  onClick={save}
+                  type="button"
+                  variant="outline"
+                >
+                  {saving ? "保存中..." : "保存默认值覆写"}
+                </Button>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle>基础控制项</CardTitle>
-                <CardDescription>保存到当前 URL 指定的组织</CardDescription>
+                <CardDescription>为空时继承平台默认，选择后保存为组织覆写</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -940,6 +1014,7 @@ export default function OrganizationDetailPage() {
                       <EnumSelect
                         disabled={!canManage}
                         id={`organization-setting-${item.key}`}
+                        noneLabel="继承平台默认"
                         onChange={(value) =>
                           setControlValues((current) => ({
                             ...current,
@@ -947,9 +1022,12 @@ export default function OrganizationDetailPage() {
                           }))
                         }
                         options={item.options}
-                        placeholder="请选择"
+                        placeholder="继承平台默认"
                         value={controlValues[item.key] ?? ""}
                       />
+                      <div className="text-xs text-muted-foreground">
+                        平台默认：{settingDefaultLabel(item.key, item.options)}
+                      </div>
                     </Field>
                   ))}
                 </div>
@@ -965,26 +1043,102 @@ export default function OrganizationDetailPage() {
               </CardContent>
             </Card>
 
-            {customSettings.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>其他设置</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2 text-sm">
-                  {customSettings.map((setting) => (
-                    <div
-                      className="flex justify-between gap-3 rounded-md border px-3 py-2"
-                      key={setting.id}
-                    >
-                      <span className="font-mono text-xs">{setting.name}</span>
-                      <span className="truncate text-muted-foreground">
-                        {setting.value ?? "-"}
-                      </span>
+            <Card>
+              <CardHeader>
+                <CardTitle>自定义设置</CardTitle>
+                <CardDescription>新增组织专属设置，或覆写平台自定义默认值</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <Field htmlFor="organization-custom-setting-name" label="名称">
+                    <Input
+                      disabled={!canManage || savingCustomSetting}
+                      id="organization-custom-setting-name"
+                      onChange={(event) => setCustomSettingName(event.target.value)}
+                      placeholder="custom.setting"
+                      value={customSettingName}
+                    />
+                  </Field>
+                  <Field htmlFor="organization-custom-setting-value" label="值">
+                    <Input
+                      disabled={!canManage || savingCustomSetting}
+                      id="organization-custom-setting-value"
+                      onChange={(event) => setCustomSettingValue(event.target.value)}
+                      value={customSettingValue}
+                    />
+                  </Field>
+                  <Button
+                    className="self-end"
+                    disabled={
+                      !canManage ||
+                      savingCustomSetting ||
+                      !customSettingName.trim()
+                    }
+                    onClick={() =>
+                      void saveCustomSetting(customSettingName, customSettingValue)
+                    }
+                    type="button"
+                    variant="outline"
+                  >
+                    添加
+                  </Button>
+                </div>
+
+                <div className="grid gap-2 text-sm">
+                  {customSettings.length === 0 ? (
+                    <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                      暂无自定义设置
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+                  ) : (
+                    customSettings.map((setting) => (
+                      <div
+                        className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                        key={setting.id}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-xs">
+                            {setting.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {setting.isOverridden
+                              ? "组织覆写"
+                              : `平台默认：${setting.defaultValue ?? "-"}`}
+                          </div>
+                        </div>
+                        <Input
+                          className="h-8 font-mono text-xs"
+                          defaultValue={setting.overrideValue ?? ""}
+                          disabled={!canManage || savingCustomSetting}
+                          onBlur={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            if (nextValue !== (setting.overrideValue ?? "")) {
+                              void saveCustomSetting(
+                                setting.name,
+                                nextValue || null,
+                              );
+                            }
+                          }}
+                          placeholder={setting.defaultValue ?? ""}
+                        />
+                        <Button
+                          disabled={
+                            !canManage ||
+                            savingCustomSetting ||
+                            !setting.isOverridden
+                          }
+                          onClick={() => void saveCustomSetting(setting.name, null)}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <AppIcon className="size-4" name="trash" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -1060,7 +1214,7 @@ export default function OrganizationDetailPage() {
             <OrganizationUserForm
               mode="edit"
               organizationId={organization.id}
-              roles={roles}
+              roles={assignableRoles}
               token={token}
               user={editUser}
               onDone={() => {
@@ -1282,6 +1436,7 @@ function Field({
 function EnumSelect({
   disabled,
   id,
+  noneLabel = "未设置",
   onChange,
   options,
   placeholder,
@@ -1289,6 +1444,7 @@ function EnumSelect({
 }: {
   disabled?: boolean;
   id: string;
+  noneLabel?: string;
   onChange: (value: string) => void;
   options: SelectOption[];
   placeholder: string;
@@ -1306,7 +1462,7 @@ function EnumSelect({
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="__none__">未设置</SelectItem>
+        <SelectItem value="__none__">{noneLabel}</SelectItem>
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             {option.label}
@@ -1413,6 +1569,20 @@ function parseOptionalNumber(value: string) {
   if (!normalized) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getRoleRank(roleName: string | null | undefined) {
+  if (!roleName) return 0;
+  return ROLE_RANKS[roleName] ?? CUSTOM_ROLE_RANK;
+}
+
+function canAssignRole(
+  currentRoleName: string | null,
+  role: Role,
+  canAssignPlatformRole: boolean,
+) {
+  if (canAssignPlatformRole) return true;
+  return getRoleRank(role.name) < getRoleRank(currentRoleName);
 }
 
 function isOrganizationTab(value: string | null): value is OrganizationTab {

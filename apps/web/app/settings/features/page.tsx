@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,8 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { listSystemSettings, saveSystemSettings, type SystemSettingDto } from "@/lib/admin-api";
-import { getStoredSession } from "@/lib/session";
+import {
+  listOrganizationSettings,
+  saveOrganizationSettings,
+  type OrganizationSetting,
+} from "@/lib/admin-api";
+import { getStoredSession, hasMenuAccess } from "@/lib/session";
 
 const FEATURE_DEFINITIONS = [
   { key: "feature:email:enabled", label: "邮件功能", description: "启用或禁用组织邮件发送能力", scope: "organization" },
@@ -21,17 +26,30 @@ const FEATURE_DEFINITIONS = [
 ];
 
 export default function FeaturesPage() {
-  const [settings, setSettings] = useState<SystemSettingDto[]>([]);
+  const { resolvedSession, snapshot } = useAdminShell();
+  const [settings, setSettings] = useState<OrganizationSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [upgrading, setUpgrading] = useState(false);
   const [msg, setMsg] = useState("");
+  const canManageFeatures =
+    snapshot && resolvedSession
+      ? hasMenuAccess(snapshot, resolvedSession, "features", "manage")
+      : false;
+  const organizationFeatures = FEATURE_DEFINITIONS.filter(
+    (definition) => definition.scope === "organization",
+  );
+  const customFeatureSettings = settings.filter(
+    (setting) =>
+      setting.name.startsWith("feature:") &&
+      !organizationFeatures.some((feature) => feature.key === setting.name),
+  );
 
   const load = useCallback(async () => {
     const session = getStoredSession();
     if (!session?.token) { setLoading(false); return; }
     try {
-      setSettings(await listSystemSettings(session.token));
+      setSettings(await listOrganizationSettings(session.token));
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally { setLoading(false); }
@@ -54,7 +72,7 @@ export default function FeaturesPage() {
       settings: [{ name: key, value: String(enabled) }],
     };
     try {
-      await saveSystemSettings(session.token, payload);
+      await saveOrganizationSettings(session.token, payload);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -65,7 +83,7 @@ export default function FeaturesPage() {
     const session = getStoredSession();
     if (!session?.token) return;
     try {
-      await saveSystemSettings(session.token, { settings: [{ name: key, value }] });
+      await saveOrganizationSettings(session.token, { settings: [{ name: key, value }] });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -83,13 +101,22 @@ export default function FeaturesPage() {
   }
 
   if (loading) return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
+  if (snapshot?.scope.level !== "organization") {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+          请切换到组织范围后管理组织功能。
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div>
           <CardTitle>功能管理</CardTitle>
-          <CardDescription>管理系统功能开关与全局配置</CardDescription>
+          <CardDescription>管理当前组织的功能开关</CardDescription>
         </div>
         <Button disabled={upgrading} onClick={upgrade} size="sm" variant="outline">
           <AppIcon className="size-3.5" name="refresh" />
@@ -101,7 +128,7 @@ export default function FeaturesPage() {
         {error && <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
         <div className="grid max-w-2xl gap-2">
-          {FEATURE_DEFINITIONS.map(feat => {
+          {organizationFeatures.map(feat => {
             const currentValue = getSettingValue(feat.key);
             const isEnabled = currentValue === "true";
             const id = getSettingId(feat.key);
@@ -118,6 +145,7 @@ export default function FeaturesPage() {
                 </div>
                 <Switch
                   checked={isEnabled}
+                  disabled={!canManageFeatures}
                   onCheckedChange={(checked) => toggleFeature(feat.key, checked)}
                 />
               </div>
@@ -125,22 +153,21 @@ export default function FeaturesPage() {
           })}
         </div>
 
-        {settings.filter(s => !FEATURE_DEFINITIONS.some(f => f.key === s.name)).length > 0 && (
+        {customFeatureSettings.length > 0 && (
           <>
             <Separator className="my-6" />
             <div className="max-w-2xl space-y-3">
               <div className="text-sm font-medium">自定义设置</div>
-              {settings
-                .filter(s => !FEATURE_DEFINITIONS.some(f => f.key === s.name))
-                .map(s => (
+              {customFeatureSettings.map(s => (
                   <div key={s.id} className="flex items-center justify-between gap-4 rounded-md border p-3">
                     <div>
                       <div className="text-sm font-medium font-mono">{s.name}</div>
-                      <div className="text-xs text-muted-foreground">{s.scope}</div>
+                      <div className="text-xs text-muted-foreground">organization</div>
                     </div>
                     <Input
                       className="h-8 w-48 text-xs font-mono"
                       defaultValue={s.value ?? ""}
+                      disabled={!canManageFeatures}
                       onBlur={(e) => {
                         const val = e.target.value;
                         if (val !== (s.value ?? "")) {

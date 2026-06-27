@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   getSmtpConfig,
   listOrganizations,
@@ -40,21 +41,66 @@ import { getStoredSession, hasMenuAccess } from "@/lib/session";
 const PLATFORM_TITLE_KEY = "tenant_title";
 const PLATFORM_SETTING_KEYS = {
   allowOrganizationCreation: "platform.allowOrganizationCreation",
-  defaultLanguage: "platform.defaultLanguage",
+  defaultCurrency: "organization.defaultCurrency",
+  defaultDateFormat: "organization.defaultDateFormat",
+  defaultLanguage: "organization.defaultLanguage",
   defaultOrganizationStatus: "platform.defaultOrganizationStatus",
-  defaultTimeZone: "platform.defaultTimeZone",
+  defaultRegionCode: "organization.defaultRegionCode",
+  defaultTimeZone: "organization.defaultTimeZone",
   messageServiceEnabled: "platform.messageServiceEnabled",
   messageServiceProvider: "platform.messageServiceProvider",
+  passwordMinLength: "auth.passwordPolicy.minLength",
   publicSmtpEnabled: "platform.publicSmtpEnabled",
 };
+const LEGACY_PLATFORM_SETTING_KEYS = {
+  defaultLanguage: "platform.defaultLanguage",
+  defaultTimeZone: "platform.defaultTimeZone",
+};
+const CURRENCY_OPTIONS = [
+  { label: "人民币 (CNY)", value: "CNY" },
+  { label: "美元 (USD)", value: "USD" },
+  { label: "欧元 (EUR)", value: "EUR" },
+  { label: "英镑 (GBP)", value: "GBP" },
+  { label: "日元 (JPY)", value: "JPY" },
+  { label: "港币 (HKD)", value: "HKD" },
+  { label: "新加坡元 (SGD)", value: "SGD" },
+];
+const DATE_FORMAT_OPTIONS = ["YYYY-MM-DD", "YYYY/MM/DD", "MM/DD/YYYY", "DD/MM/YYYY"];
+const LANGUAGE_OPTIONS = [
+  { label: "中文", value: "zh-CN" },
+  { label: "English", value: "en" },
+  { label: "繁体中文", value: "zh-Hant" },
+];
+const PASSWORD_LENGTH_OPTIONS = [6, 8, 10, 12, 16].map((value) => String(value));
+const REGION_OPTIONS = [
+  { label: "中国 (CN)", value: "CN" },
+  { label: "美国 (US)", value: "US" },
+  { label: "英国 (GB)", value: "GB" },
+  { label: "欧盟 (EU)", value: "EU" },
+  { label: "日本 (JP)", value: "JP" },
+  { label: "新加坡 (SG)", value: "SG" },
+  { label: "中国香港 (HK)", value: "HK" },
+];
+const TIME_ZONE_OPTIONS = [
+  "Asia/Shanghai",
+  "UTC",
+  "America/New_York",
+  "Europe/London",
+  "Asia/Tokyo",
+  "Asia/Singapore",
+];
 
 type PlatformForm = {
   allowOrganizationCreation: boolean;
+  defaultCurrency: string;
+  defaultDateFormat: string;
   defaultLanguage: string;
   defaultOrganizationStatus: "active" | "suspended";
+  defaultRegionCode: string;
   defaultTimeZone: string;
   messageServiceEnabled: boolean;
   messageServiceProvider: string;
+  passwordMinLength: string;
   platformTitle: string;
   publicSmtpEnabled: boolean;
   smtpFromAddress: string;
@@ -72,6 +118,10 @@ export default function TenantPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [form, setForm] = useState<PlatformForm>(emptyPlatformForm());
+  const [systemSettings, setSystemSettings] = useState<SystemSettingDto[]>([]);
+  const [customSettingName, setCustomSettingName] = useState("");
+  const [customSettingValue, setCustomSettingValue] = useState("");
+  const [savingCustomSetting, setSavingCustomSetting] = useState(false);
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
 
@@ -108,9 +158,17 @@ export default function TenantPage() {
     return (
       snapshot?.users
         .map((user) => ({ role: user.roleId ? roleById.get(user.roleId) : null, user }))
-        .filter(({ role }) => role?.name === "platform-admin" || role?.name === "owner") ?? []
+        .filter(({ role }) => role?.name === "platform-admin") ?? []
     );
   }, [snapshot?.roles, snapshot?.users]);
+  const customSystemSettings = useMemo(() => {
+    const knownNames = new Set([
+      PLATFORM_TITLE_KEY,
+      ...Object.values(PLATFORM_SETTING_KEYS),
+      ...Object.values(LEGACY_PLATFORM_SETTING_KEYS),
+    ]);
+    return systemSettings.filter((setting) => !knownNames.has(setting.name));
+  }, [systemSettings]);
 
   const load = useCallback(async () => {
     const session = getStoredSession();
@@ -126,6 +184,7 @@ export default function TenantPage() {
         getSmtpConfig(session.token),
       ]);
       setForm(toPlatformForm(settings, smtp));
+      setSystemSettings(settings);
       setOrganizations(orgs);
       setError(null);
     } catch (err) {
@@ -162,8 +221,18 @@ export default function TenantPage() {
             name: PLATFORM_SETTING_KEYS.defaultOrganizationStatus,
             value: form.defaultOrganizationStatus,
           },
+          { name: PLATFORM_SETTING_KEYS.defaultCurrency, value: form.defaultCurrency },
+          {
+            name: PLATFORM_SETTING_KEYS.defaultDateFormat,
+            value: form.defaultDateFormat,
+          },
           { name: PLATFORM_SETTING_KEYS.defaultLanguage, value: form.defaultLanguage },
+          { name: PLATFORM_SETTING_KEYS.defaultRegionCode, value: form.defaultRegionCode },
           { name: PLATFORM_SETTING_KEYS.defaultTimeZone, value: form.defaultTimeZone },
+          {
+            name: PLATFORM_SETTING_KEYS.passwordMinLength,
+            value: form.passwordMinLength,
+          },
           {
             name: PLATFORM_SETTING_KEYS.messageServiceEnabled,
             value: form.messageServiceEnabled,
@@ -231,6 +300,30 @@ export default function TenantPage() {
     }
   }
 
+  async function saveCustomSystemSetting(name: string, value: string | null) {
+    const session = getStoredSession();
+    const settingName = name.trim();
+    if (!session?.token || !canManagePlatform || !settingName) return;
+
+    setSavingCustomSetting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await saveSystemSettings(session.token, {
+        settings: [{ name: settingName, value }],
+      });
+      setCustomSettingName("");
+      setCustomSettingValue("");
+      setMessage(value === null ? "平台自定义设置已删除" : "平台自定义设置已保存");
+      await load();
+      await refreshSnapshot();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingCustomSetting(false);
+    }
+  }
+
   if (!canViewPlatform) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -272,118 +365,323 @@ export default function TenantPage() {
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="grid gap-4">
+      <Tabs className="grid gap-4" defaultValue="profile">
+        <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
+          <TabsTrigger value="profile">平台信息</TabsTrigger>
+          <TabsTrigger value="defaults">默认控制项</TabsTrigger>
+          <TabsTrigger value="organization">组织创建</TabsTrigger>
+          <TabsTrigger value="messaging">消息服务</TabsTrigger>
+          <TabsTrigger value="smtp">公共 SMTP</TabsTrigger>
+          <TabsTrigger value="admins">平台用户</TabsTrigger>
+          <TabsTrigger value="custom">自定义设置</TabsTrigger>
+        </TabsList>
+
+        <TabsContent className="mt-0" value="profile">
           <Card>
             <CardHeader>
-              <CardTitle>平台配置</CardTitle>
-              <CardDescription>平台名称、默认语言、时区和消息服务</CardDescription>
+              <CardTitle>平台信息</CardTitle>
+              <CardDescription>用于全局展示和识别当前平台的基础信息</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <Field htmlFor="tenant-title" label="平台名称">
-                <Input
-                  disabled={!canManagePlatform}
-                  id="tenant-title"
-                  onChange={(event) => updateField("platformTitle", event.target.value)}
-                  placeholder="Hermes Swarm"
-                  value={form.platformTitle}
-                />
-              </Field>
-              <Field htmlFor="platform-language" label="默认语言">
-                <Select
-                  disabled={!canManagePlatform}
-                  onValueChange={(value) => updateField("defaultLanguage", value)}
-                  value={form.defaultLanguage}
+            <CardContent className="grid gap-4">
+              <div className="max-w-xl">
+                <Field htmlFor="tenant-title" label="平台名称">
+                  <Input
+                    disabled={!canManagePlatform}
+                    id="tenant-title"
+                    onChange={(event) => updateField("platformTitle", event.target.value)}
+                    placeholder="Hermes Swarm"
+                    value={form.platformTitle}
+                  />
+                </Field>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  disabled={!canManagePlatform || savingPlatform}
+                  onClick={savePlatform}
+                  type="button"
                 >
-                  <SelectTrigger id="platform-language">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="zh-CN">中文</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="zh-Hant">繁体中文</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field htmlFor="platform-time-zone" label="默认时区">
-                <Select
-                  disabled={!canManagePlatform}
-                  onValueChange={(value) => updateField("defaultTimeZone", value)}
-                  value={form.defaultTimeZone}
-                >
-                  <SelectTrigger id="platform-time-zone">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Asia/Shanghai">Asia/Shanghai</SelectItem>
-                    <SelectItem value="UTC">UTC</SelectItem>
-                    <SelectItem value="America/New_York">America/New_York</SelectItem>
-                    <SelectItem value="Europe/London">Europe/London</SelectItem>
-                    <SelectItem value="Asia/Singapore">Asia/Singapore</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field htmlFor="platform-message-provider" label="消息服务提供方">
-                <Input
-                  disabled={!canManagePlatform}
-                  id="platform-message-provider"
-                  onChange={(event) =>
-                    updateField("messageServiceProvider", event.target.value)
-                  }
-                  placeholder="internal"
-                  value={form.messageServiceProvider}
-                />
-              </Field>
-              <ToggleField
-                checked={form.messageServiceEnabled}
-                disabled={!canManagePlatform}
-                id="platform-message-enabled"
-                label="启用公共消息服务"
-                onCheckedChange={(checked) =>
-                  updateField("messageServiceEnabled", checked)
-                }
-              />
+                  {savingPlatform ? "保存中..." : "保存平台信息"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
+        </TabsContent>
 
+        <TabsContent className="mt-0" value="defaults">
           <Card>
             <CardHeader>
-              <CardTitle>组织创建设置</CardTitle>
-              <CardDescription>控制新组织创建入口和默认状态</CardDescription>
+              <CardTitle>默认控制项</CardTitle>
+              <CardDescription>作为组织控制项的租户级默认值，组织可按需覆写</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <ToggleField
-                checked={form.allowOrganizationCreation}
-                disabled={!canManagePlatform}
-                id="platform-org-creation"
-                label="允许创建组织"
-                onCheckedChange={(checked) =>
-                  updateField("allowOrganizationCreation", checked)
-                }
-              />
-              <Field htmlFor="platform-org-status" label="新组织默认状态">
-                <Select
-                  disabled={!canManagePlatform}
-                  onValueChange={(value) =>
-                    updateField(
-                      "defaultOrganizationStatus",
-                      value as PlatformForm["defaultOrganizationStatus"],
-                    )
-                  }
-                  value={form.defaultOrganizationStatus}
+            <CardContent className="grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <Field htmlFor="platform-currency" label="默认货币">
+                  <Select
+                    disabled={!canManagePlatform}
+                    onValueChange={(value) => updateField("defaultCurrency", value)}
+                    value={form.defaultCurrency}
+                  >
+                    <SelectTrigger id="platform-currency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field htmlFor="platform-language" label="默认语言">
+                  <Select
+                    disabled={!canManagePlatform}
+                    onValueChange={(value) => updateField("defaultLanguage", value)}
+                    value={form.defaultLanguage}
+                  >
+                    <SelectTrigger id="platform-language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LANGUAGE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field htmlFor="platform-time-zone" label="默认时区">
+                  <Select
+                    disabled={!canManagePlatform}
+                    onValueChange={(value) => updateField("defaultTimeZone", value)}
+                    value={form.defaultTimeZone}
+                  >
+                    <SelectTrigger id="platform-time-zone">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIME_ZONE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field htmlFor="platform-region-code" label="默认地区代码">
+                  <Select
+                    disabled={!canManagePlatform}
+                    onValueChange={(value) => updateField("defaultRegionCode", value)}
+                    value={form.defaultRegionCode}
+                  >
+                    <SelectTrigger id="platform-region-code">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REGION_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field htmlFor="platform-date-format" label="默认日期格式">
+                  <Select
+                    disabled={!canManagePlatform}
+                    onValueChange={(value) => updateField("defaultDateFormat", value)}
+                    value={form.defaultDateFormat}
+                  >
+                    <SelectTrigger id="platform-date-format">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DATE_FORMAT_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field htmlFor="platform-password-min-length" label="密码最小长度">
+                  <Select
+                    disabled={!canManagePlatform}
+                    onValueChange={(value) => updateField("passwordMinLength", value)}
+                    value={form.passwordMinLength}
+                  >
+                    <SelectTrigger id="platform-password-min-length">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PASSWORD_LENGTH_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option} 位
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  disabled={!canManagePlatform || savingPlatform}
+                  onClick={savePlatform}
+                  type="button"
                 >
-                  <SelectTrigger id="platform-org-status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">启用</SelectItem>
-                    <SelectItem value="suspended">停用</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
+                  {savingPlatform ? "保存中..." : "保存默认控制项"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
+        </TabsContent>
 
+        <TabsContent className="mt-0" value="organization">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <Card>
+              <CardHeader>
+                <CardTitle>组织创建设置</CardTitle>
+                <CardDescription>控制新组织创建入口和默认状态</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <ToggleField
+                    checked={form.allowOrganizationCreation}
+                    disabled={!canManagePlatform}
+                    id="platform-org-creation"
+                    label="允许创建组织"
+                    onCheckedChange={(checked) =>
+                      updateField("allowOrganizationCreation", checked)
+                    }
+                  />
+                  <Field htmlFor="platform-org-status" label="新组织默认状态">
+                    <Select
+                      disabled={!canManagePlatform}
+                      onValueChange={(value) =>
+                        updateField(
+                          "defaultOrganizationStatus",
+                          value as PlatformForm["defaultOrganizationStatus"],
+                        )
+                      }
+                      value={form.defaultOrganizationStatus}
+                    >
+                      <SelectTrigger id="platform-org-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">启用</SelectItem>
+                        <SelectItem value="suspended">停用</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    disabled={!canManagePlatform || savingPlatform}
+                    onClick={savePlatform}
+                    type="button"
+                  >
+                    {savingPlatform ? "保存中..." : "保存组织创建"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle>组织配置</CardTitle>
+                  <CardDescription>租户下全部组织的配置入口</CardDescription>
+                </div>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/settings/organizations">
+                    <AppIcon className="size-3.5" name="building" />
+                    组织列表
+                  </Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {organizations.slice(0, 6).map((organization) => (
+                  <Link
+                    className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm hover:bg-muted/50"
+                    href={`/settings/organizations/${organization.id}`}
+                    key={organization.id}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{organization.name}</span>
+                      <span className="block truncate font-mono text-xs text-muted-foreground">
+                        {organization.slug}
+                      </span>
+                    </span>
+                    <Badge
+                      variant={organization.status === "active" ? "default" : "secondary"}
+                    >
+                      {organization.status === "active" ? "启用" : "停用"}
+                    </Badge>
+                  </Link>
+                ))}
+                {organizations.length === 0 && (
+                  <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                    暂无组织
+                  </div>
+                )}
+                {organizations.length > 6 && (
+                  <>
+                    <Separator />
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href="/settings/organizations">查看全部组织</Link>
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent className="mt-0" value="messaging">
+          <Card>
+            <CardHeader>
+              <CardTitle>消息服务</CardTitle>
+              <CardDescription>平台级公共消息服务开关和提供方</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,24rem)_minmax(0,20rem)]">
+                <Field htmlFor="platform-message-provider" label="消息服务提供方">
+                  <Input
+                    disabled={!canManagePlatform}
+                    id="platform-message-provider"
+                    onChange={(event) =>
+                      updateField("messageServiceProvider", event.target.value)
+                    }
+                    placeholder="internal"
+                    value={form.messageServiceProvider}
+                  />
+                </Field>
+                <ToggleField
+                  checked={form.messageServiceEnabled}
+                  disabled={!canManagePlatform}
+                  id="platform-message-enabled"
+                  label="启用公共消息服务"
+                  onCheckedChange={(checked) =>
+                    updateField("messageServiceEnabled", checked)
+                  }
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  disabled={!canManagePlatform || savingPlatform}
+                  onClick={savePlatform}
+                  type="button"
+                >
+                  {savingPlatform ? "保存中..." : "保存消息服务"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent className="mt-0" value="smtp">
           <Card>
             <CardHeader>
               <CardTitle>公共 SMTP</CardTitle>
@@ -397,7 +695,7 @@ export default function TenantPage() {
                 label="启用公共 SMTP"
                 onCheckedChange={(checked) => updateField("publicSmtpEnabled", checked)}
               />
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <Field htmlFor="platform-smtp-host" label="SMTP Host">
                   <Input
                     disabled={!canManagePlatform}
@@ -467,17 +765,17 @@ export default function TenantPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </TabsContent>
 
-        <div className="grid content-start gap-4">
+        <TabsContent className="mt-0" value="admins">
           <Card>
             <CardHeader>
               <CardTitle>平台用户管理</CardTitle>
               <CardDescription>当前组织内具备平台管理能力的账号</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3">
+            <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {platformUsers.length === 0 ? (
-                <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground sm:col-span-2 xl:col-span-3">
                   暂无平台管理员
                 </div>
               ) : (
@@ -493,65 +791,96 @@ export default function TenantPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
 
+        <TabsContent className="mt-0" value="custom">
           <Card>
-            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle>组织配置</CardTitle>
-                <CardDescription>租户下全部组织的配置入口</CardDescription>
-              </div>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/settings/organizations">
-                  <AppIcon className="size-3.5" name="building" />
-                  组织列表
-                </Link>
-              </Button>
+            <CardHeader>
+              <CardTitle>自定义平台设置</CardTitle>
+              <CardDescription>作为组织配置的默认键值，可由组织覆写</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-2">
-              {organizations.slice(0, 6).map((organization) => (
-                <Link
-                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm hover:bg-muted/50"
-                  href={`/settings/organizations/${organization.id}`}
-                  key={organization.id}
+            <CardContent className="grid gap-4">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <Field htmlFor="platform-custom-name" label="名称">
+                  <Input
+                    disabled={!canManagePlatform || savingCustomSetting}
+                    id="platform-custom-name"
+                    onChange={(event) => setCustomSettingName(event.target.value)}
+                    placeholder="custom.setting"
+                    value={customSettingName}
+                  />
+                </Field>
+                <Field htmlFor="platform-custom-value" label="默认值">
+                  <Input
+                    disabled={!canManagePlatform || savingCustomSetting}
+                    id="platform-custom-value"
+                    onChange={(event) => setCustomSettingValue(event.target.value)}
+                    value={customSettingValue}
+                  />
+                </Field>
+                <Button
+                  className="self-end"
+                  disabled={
+                    !canManagePlatform ||
+                    savingCustomSetting ||
+                    !customSettingName.trim()
+                  }
+                  onClick={() =>
+                    void saveCustomSystemSetting(
+                      customSettingName,
+                      customSettingValue,
+                    )
+                  }
+                  type="button"
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{organization.name}</span>
-                    <span className="block truncate font-mono text-xs text-muted-foreground">
-                      {organization.slug}
-                    </span>
-                  </span>
-                  <Badge
-                    variant={organization.status === "active" ? "default" : "secondary"}
-                  >
-                    {organization.status === "active" ? "启用" : "停用"}
-                  </Badge>
-                </Link>
-              ))}
-              {organizations.length === 0 && (
-                <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
-                  暂无组织
-                </div>
-              )}
-              {organizations.length > 6 && (
-                <>
-                  <Separator />
-                  <Button asChild size="sm" variant="ghost">
-                    <Link href="/settings/organizations">查看全部组织</Link>
-                  </Button>
-                </>
-              )}
+                  添加
+                </Button>
+              </div>
+
+              <div className="grid gap-2">
+                {customSystemSettings.length === 0 ? (
+                  <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                    暂无自定义平台设置
+                  </div>
+                ) : (
+                  customSystemSettings.map((setting) => (
+                    <div
+                      className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                      key={setting.id}
+                    >
+                      <div className="truncate font-mono text-xs">{setting.name}</div>
+                      <Input
+                        className="h-8 font-mono text-xs"
+                        disabled={!canManagePlatform || savingCustomSetting}
+                        defaultValue={setting.value ?? ""}
+                        onBlur={(event) => {
+                          if (event.currentTarget.value !== (setting.value ?? "")) {
+                            void saveCustomSystemSetting(
+                              setting.name,
+                              event.currentTarget.value,
+                            );
+                          }
+                        }}
+                      />
+                      <Button
+                        disabled={!canManagePlatform || savingCustomSetting}
+                        onClick={() =>
+                          void saveCustomSystemSetting(setting.name, null)
+                        }
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <AppIcon className="size-4" name="trash" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
-
-          <Button
-            disabled={!canManagePlatform || savingPlatform}
-            onClick={savePlatform}
-            type="button"
-          >
-            {savingPlatform ? "保存中..." : "保存平台设置"}
-          </Button>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }
@@ -602,11 +931,15 @@ function ToggleField({
 function emptyPlatformForm(): PlatformForm {
   return {
     allowOrganizationCreation: true,
+    defaultCurrency: "CNY",
+    defaultDateFormat: "YYYY-MM-DD",
     defaultLanguage: "zh-CN",
     defaultOrganizationStatus: "active",
+    defaultRegionCode: "CN",
     defaultTimeZone: "Asia/Shanghai",
     messageServiceEnabled: false,
     messageServiceProvider: "internal",
+    passwordMinLength: "8",
     platformTitle: "",
     publicSmtpEnabled: false,
     smtpFromAddress: "",
@@ -625,18 +958,29 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
       get(PLATFORM_SETTING_KEYS.allowOrganizationCreation),
       true,
     ),
-    defaultLanguage: get(PLATFORM_SETTING_KEYS.defaultLanguage) || "zh-CN",
+    defaultCurrency: get(PLATFORM_SETTING_KEYS.defaultCurrency) || "CNY",
+    defaultDateFormat:
+      get(PLATFORM_SETTING_KEYS.defaultDateFormat) || "YYYY-MM-DD",
+    defaultLanguage:
+      get(PLATFORM_SETTING_KEYS.defaultLanguage) ||
+      get(LEGACY_PLATFORM_SETTING_KEYS.defaultLanguage) ||
+      "zh-CN",
     defaultOrganizationStatus:
       get(PLATFORM_SETTING_KEYS.defaultOrganizationStatus) === "suspended"
         ? "suspended"
         : "active",
-    defaultTimeZone: get(PLATFORM_SETTING_KEYS.defaultTimeZone) || "Asia/Shanghai",
+    defaultRegionCode: get(PLATFORM_SETTING_KEYS.defaultRegionCode) || "CN",
+    defaultTimeZone:
+      get(PLATFORM_SETTING_KEYS.defaultTimeZone) ||
+      get(LEGACY_PLATFORM_SETTING_KEYS.defaultTimeZone) ||
+      "Asia/Shanghai",
     messageServiceEnabled: parseBoolean(
       get(PLATFORM_SETTING_KEYS.messageServiceEnabled),
       false,
     ),
     messageServiceProvider:
       get(PLATFORM_SETTING_KEYS.messageServiceProvider) || "internal",
+    passwordMinLength: get(PLATFORM_SETTING_KEYS.passwordMinLength) || "8",
     platformTitle: get(PLATFORM_TITLE_KEY) || "",
     publicSmtpEnabled: parseBoolean(
       get(PLATFORM_SETTING_KEYS.publicSmtpEnabled),

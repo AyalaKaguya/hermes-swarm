@@ -61,6 +61,11 @@ export class SettingsService {
     const saved: SystemSetting[] = [];
 
     for (const entry of entries) {
+      if (entry.value === null) {
+        await this.systemSettingRepository.delete({ name: entry.name });
+        continue;
+      }
+
       let setting = await this.systemSettingRepository.findOne({
         where: { name: entry.name },
       });
