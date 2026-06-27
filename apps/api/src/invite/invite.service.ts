@@ -8,7 +8,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { randomBytes, pbkdf2Sync } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { MoreThanOrEqual, Repository } from "typeorm";
-import { Invite, Organization, Role, User } from "@hermes-swarm/core";
+import { Invite, Organization, User } from "@hermes-swarm/core";
 import { TenancyService } from "../tenancy/tenancy.service.js";
 import type {
   AcceptInvitePayload,
@@ -52,8 +52,6 @@ export class InviteService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
     private readonly tenancyService: TenancyService,
   ) {}
 
@@ -76,12 +74,12 @@ export class InviteService {
     }
 
     const roleId = payload.roleId
-      ? (await this.roleRepository.findOne({ where: { id: payload.roleId, organizationId: context.organizationId } }))?.id
+      ? await this.tenancyService.resolveAssignableRoleId(
+          context,
+          context.organizationId,
+          payload.roleId,
+        )
       : null;
-
-    if (payload.roleId && !roleId) {
-      throw new NotFoundException("角色不存在");
-    }
 
     // Skip addresses that already have an active invite or are already users
     const existingInvites = await this.inviteRepository

@@ -1,10 +1,18 @@
 export {
   DEFAULT_ADMIN_MENUS,
+  CUSTOM_ROLE_RANK,
   DEPRECATED_ADMIN_MENU_CODES,
+  PLATFORM_ADMIN_ROLE_NAME,
+  PLATFORM_MENU_CODES,
+  PLATFORM_MENU_CODE_SET,
+  ROLE_RANKS,
   SYSTEM_ROLES,
   TENANCY_MENU_PERMISSION_PREFIX,
   buildMenuPermissionKey,
   defaultPermissionsForRole,
+  getRoleRank,
+  isPlatformAdminRoleName,
+  isPlatformMenuCode,
   type MenuPermissionAction,
   type SystemRoleName,
 } from "./permissions.js";

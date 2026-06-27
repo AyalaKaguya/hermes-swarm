@@ -15,10 +15,21 @@ import {
 } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 
+const ROLE_RANKS: Record<string, number> = {
+  "platform-admin": 500,
+  owner: 400,
+  admin: 300,
+  member: 200,
+  viewer: 100,
+};
+const CUSTOM_ROLE_RANK = 150;
+const PLATFORM_MENU_CODES = new Set(["tenant", "organizations"]);
+
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<RolePermission[]>([]);
   const [menus, setMenus] = useState<Menu[]>([]);
+  const [currentRoleName, setCurrentRoleName] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +45,14 @@ export default function RolesPage() {
       const snap = await getSnapshot(session.token);
       setRoles(snap.roles);
       setPermissions(snap.rolePermissions);
-      setMenus(snap.menus.filter(m => m.isActive));
+      setCurrentRoleName(snap.currentUser.role?.name ?? null);
+      setMenus(
+        snap.menus.filter(
+          (m) =>
+            m.isActive &&
+            (snap.scope.level === "platform" || !PLATFORM_MENU_CODES.has(m.code)),
+        ),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally { setLoading(false); }
@@ -51,6 +69,8 @@ export default function RolesPage() {
   }
 
   function togglePerm(roleId: string, key: string) {
+    const role = roles.find((item) => item.id === roleId);
+    if (!role || !canManageRole(currentRoleName, role)) return;
     setLocalPerms(prev => {
       const rp = { ...(prev[roleId] ?? {}) };
       rp[key] = !(rp[key] ?? permissions.some(p => p.roleId === roleId && p.permission === key && p.enabled));
@@ -59,6 +79,8 @@ export default function RolesPage() {
   }
 
   async function savePermissions(roleId: string) {
+    const role = roles.find((item) => item.id === roleId);
+    if (!role || !canManageRole(currentRoleName, role)) return;
     setSaving(roleId);
     try {
       const perms = menus.flatMap(m => {
@@ -99,6 +121,7 @@ export default function RolesPage() {
             {roles.map(role => {
               const rolePerms = permissions.filter(p => p.roleId === role.id && p.enabled);
               const isExpanded = expandedRole === role.id;
+              const editable = canManageRole(currentRoleName, role);
               return (
                 <Fragment key={role.id}>
                   <TableRow className={isExpanded ? "border-b-0" : ""}>
@@ -114,7 +137,7 @@ export default function RolesPage() {
                         >
                           {isExpanded ? "收起" : "权限"}
                         </Button>
-                        {localPerms[role.id] && (
+                        {localPerms[role.id] && editable && (
                           <Button
                             disabled={saving === role.id}
                             onClick={() => savePermissions(role.id)}
@@ -144,13 +167,13 @@ export default function RolesPage() {
                               <div className="grid max-w-48 grid-cols-2 gap-3">
                                 <Checkbox
                                   checked={isChecked(role.id, menu.code, "view")}
-                                  disabled={role.isSystem}
+                                  disabled={!editable}
                                   id={`${role.id}-${menu.code}-view`}
                                   onCheckedChange={() => togglePerm(role.id, `menu:${menu.code}:view`)}
                                 />
                                 <Checkbox
                                   checked={isChecked(role.id, menu.code, "manage")}
-                                  disabled={role.isSystem}
+                                  disabled={!editable}
                                   id={`${role.id}-${menu.code}-manage`}
                                   onCheckedChange={() => togglePerm(role.id, `menu:${menu.code}:manage`)}
                                 />
@@ -169,4 +192,14 @@ export default function RolesPage() {
       </CardContent>
     </Card>
   );
+}
+
+function getRoleRank(roleName: string | null | undefined) {
+  if (!roleName) return 0;
+  return ROLE_RANKS[roleName] ?? CUSTOM_ROLE_RANK;
+}
+
+function canManageRole(currentRoleName: string | null, role: Role) {
+  if (role.name === "platform-admin") return false;
+  return getRoleRank(role.name) < getRoleRank(currentRoleName);
 }

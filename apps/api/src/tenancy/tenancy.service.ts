@@ -25,6 +25,9 @@ import {
   UserStatus,
   buildMenuPermissionKey,
   defaultPermissionsForRole,
+  getRoleRank,
+  isPlatformAdminRoleName,
+  isPlatformMenuCode,
 } from "@hermes-swarm/core";
 import {
   AuthContext,
@@ -58,11 +61,18 @@ const DEFAULT_ADMIN_PASSWORD = "admin123456";
 const PASSWORD_HASH_PREFIX = "pbkdf2_sha256";
 const PASSWORD_ITERATIONS = 310_000;
 const PASSWORD_KEY_LENGTH = 32;
-const PLATFORM_ADMIN_ROLE_NAMES = new Set(["platform-admin", "owner"]);
 const PLATFORM_ALLOW_ORGANIZATION_CREATION_KEY =
   "platform.allowOrganizationCreation";
 const PLATFORM_DEFAULT_ORGANIZATION_STATUS_KEY =
   "platform.defaultOrganizationStatus";
+const PLATFORM_ORGANIZATION_SETTING_DEFAULTS = [
+  { name: "auth.passwordPolicy.minLength", value: "8" },
+  { name: "organization.defaultCurrency", value: "CNY" },
+  { name: "organization.defaultDateFormat", value: "YYYY-MM-DD" },
+  { name: "organization.defaultLanguage", value: "zh-CN" },
+  { name: "organization.defaultRegionCode", value: "CN" },
+  { name: "organization.defaultTimeZone", value: "Asia/Shanghai" },
+] as const;
 
 @Injectable()
 /**
@@ -89,6 +99,7 @@ export class TenancyService implements OnModuleInit {
 
   async onModuleInit() {
     await this.ensureMenus();
+    await this.ensureSystemDefaultSettings();
     await this.ensureInfrastructureForExistingOrganizations();
   }
 
@@ -113,7 +124,7 @@ export class TenancyService implements OnModuleInit {
 
   /**
    * Creates the first active organization, provisions its roles, and creates
-   * the owner account.
+   * the initial platform administrator account.
    */
   async onboard(payload: OnboardingPayload) {
     const hasUsers = (await this.userRepository.count()) > 0;
@@ -137,7 +148,10 @@ export class TenancyService implements OnModuleInit {
 
     await this.ensureOrganizationInfrastructure(organization.id);
 
-    const ownerRole = await this.getSystemRoleOrThrow(organization.id, "owner");
+    const platformAdminRole = await this.getSystemRoleOrThrow(
+      organization.id,
+      "platform-admin",
+    );
     const user = await this.userRepository.save(
       this.userRepository.create({
         displayName: requireText(payload.adminName, "管理员名称"),
@@ -145,7 +159,7 @@ export class TenancyService implements OnModuleInit {
         passwordHash: hashPassword(
           requirePassword(payload.adminPassword || DEFAULT_ADMIN_PASSWORD),
         ),
-        roleId: ownerRole.id,
+        roleId: platformAdminRole.id,
         status: "active",
         organizationId: organization.id,
         type: "user",
@@ -233,6 +247,7 @@ export class TenancyService implements OnModuleInit {
     const permissions = await this.getEnabledPermissions(
       tokenPayload.organizationId,
       user.roleId,
+      role?.name ?? null,
     );
 
     return {
@@ -280,6 +295,8 @@ export class TenancyService implements OnModuleInit {
     menuCode: string,
     action: "manage" | "view",
   ) {
+    if (context.isPlatformAdmin) return true;
+
     const expected = buildMenuPermissionKey(menuCode, action);
     const managerPermission = buildMenuPermissionKey(menuCode, "manage");
     return (
@@ -311,6 +328,8 @@ export class TenancyService implements OnModuleInit {
     organizationId: string,
     action: "manage" | "view",
   ) {
+    if (context.isPlatformAdmin) return;
+
     if (context.scopeLevel === "platform") {
       this.ensurePlatformScope(context, "organizations", action);
       return;
@@ -401,6 +420,15 @@ export class TenancyService implements OnModuleInit {
 
     const currentUser = users.find((u) => u.id === context.userId);
     const currentRole = roles.find((r) => r.id === context.roleId) ?? null;
+    const visibleRoles = roles.filter((role) => this.canViewRole(context, role));
+    const visibleRoleById = new Map(visibleRoles.map((role) => [role.id, role]));
+    const visibleRolePermissions = rolePermissions.filter((permission) =>
+      this.canViewRolePermission(
+        context,
+        visibleRoleById.get(permission.roleId) ?? null,
+        permission.permission,
+      ),
+    );
 
     if (!currentUser) {
       throw new UnauthorizedException("登录已失效");
@@ -418,14 +446,18 @@ export class TenancyService implements OnModuleInit {
       menus: menus.map(toMenuDto),
       organization: toOrganizationDto(organization),
       organizations: switchableOrganizations.map(toOrganizationDto),
-      rolePermissions: rolePermissions.map(toRolePermissionDto),
-      roles: roles.map(toRoleDto),
+      rolePermissions: visibleRolePermissions.map(toRolePermissionDto),
+      roles: visibleRoles.map(toRoleDto),
       scope: {
         level: context.scopeLevel,
         organizationId:
           context.scopeLevel === "organization" ? context.organizationId : null,
       },
-      settings: organizationSettings.map(toOrganizationSettingDto),
+      settings: mergeOrganizationSettings(
+        organizationSettings,
+        systemSettings,
+        context.organizationId,
+      ),
       systemSettings: systemSettings.map(toSystemSettingDto),
       users: users.map(toUserDto),
     };
@@ -607,7 +639,8 @@ export class TenancyService implements OnModuleInit {
     const email = normalizeEmail(payload.email);
     await this.assertUniqueUserEmail(context.organizationId, email);
 
-    const roleId = await this.normalizeRoleId(
+    const roleId = await this.resolveAssignableRoleId(
+      context,
       context.organizationId,
       payload.roleId,
     );
@@ -650,7 +683,11 @@ export class TenancyService implements OnModuleInit {
     const email = normalizeEmail(payload.email);
     await this.assertUniqueUserEmail(organizationId, email);
 
-    const roleId = await this.normalizeRoleId(organizationId, payload.roleId);
+    const roleId = await this.resolveAssignableRoleId(
+      context,
+      organizationId,
+      payload.roleId,
+    );
     const user = await this.userRepository.save(
       this.userRepository.create({
         displayName,
@@ -692,6 +729,9 @@ export class TenancyService implements OnModuleInit {
     }
 
     const user = await this.getUserOrThrow(context.organizationId, userId);
+    if (!isSelf || updatesAdministrativeFields) {
+      await this.assertCanManageUser(context, user);
+    }
 
     if (payload.displayName !== undefined) {
       user.displayName = requireText(payload.displayName, "用户名称");
@@ -722,7 +762,11 @@ export class TenancyService implements OnModuleInit {
       user.passwordHash = hashPassword(requirePassword(payload.password));
     }
     if (payload.roleId !== undefined) {
-      user.roleId = await this.normalizeRoleId(
+      if (user.id === context.userId) {
+        throw new ForbiddenException("不能修改自己的角色");
+      }
+      user.roleId = await this.resolveAssignableRoleId(
+        context,
         context.organizationId,
         payload.roleId,
       );
@@ -746,6 +790,7 @@ export class TenancyService implements OnModuleInit {
     this.ensureOrganizationAccess(context, organizationId, "manage");
     await this.getOrganizationOrThrow(organizationId);
     const user = await this.getUserOrThrow(organizationId, userId);
+    await this.assertCanManageUser(context, user);
 
     if (payload.displayName !== undefined) {
       user.displayName = requireText(payload.displayName, "用户名称");
@@ -773,7 +818,14 @@ export class TenancyService implements OnModuleInit {
       user.passwordHash = hashPassword(requirePassword(payload.password));
     }
     if (payload.roleId !== undefined) {
-      user.roleId = await this.normalizeRoleId(organizationId, payload.roleId);
+      if (user.id === context.userId) {
+        throw new ForbiddenException("不能修改自己的角色");
+      }
+      user.roleId = await this.resolveAssignableRoleId(
+        context,
+        organizationId,
+        payload.roleId,
+      );
     }
     if (payload.status !== undefined) {
       user.status = normalizeUserStatus(payload.status);
@@ -864,7 +916,7 @@ export class TenancyService implements OnModuleInit {
       where: { organizationId: context.organizationId },
       order: { createdAt: "ASC" },
     });
-    return roles.map(toRoleDto);
+    return roles.filter((role) => this.canViewRole(context, role)).map(toRoleDto);
   }
 
   /**
@@ -877,7 +929,7 @@ export class TenancyService implements OnModuleInit {
       where: { organizationId },
       order: { createdAt: "ASC" },
     });
-    return roles.map(toRoleDto);
+    return roles.filter((role) => this.canViewRole(context, role)).map(toRoleDto);
   }
 
   /**
@@ -890,6 +942,7 @@ export class TenancyService implements OnModuleInit {
   ) {
     this.assertPermission(context, "roles", "manage");
     const role = await this.getRoleOrThrow(context.organizationId, roleId);
+    this.assertCanManageRole(context, role);
     const normalized = normalizeRolePermissions(payload.permissions);
     const allowedPermissions = new Set(await this.listKnownMenuPermissions());
 
@@ -897,6 +950,7 @@ export class TenancyService implements OnModuleInit {
       if (!allowedPermissions.has(permission.permission)) {
         throw new BadRequestException("存在无效权限项");
       }
+      this.assertCanGrantPermission(context, role, permission.permission);
     }
 
     await this.rolePermissionRepository.delete({
@@ -923,11 +977,7 @@ export class TenancyService implements OnModuleInit {
    */
   async listSettings(context: AuthContext) {
     this.assertPermission(context, "features", "view");
-    const settings = await this.organizationSettingRepository.find({
-      where: { organizationId: context.organizationId },
-      order: { name: "ASC" },
-    });
-    return settings.map(toOrganizationSettingDto);
+    return this.listEffectiveOrganizationSettings(context.organizationId);
   }
 
   /**
@@ -939,11 +989,7 @@ export class TenancyService implements OnModuleInit {
   ) {
     this.ensureOrganizationAccess(context, organizationId, "view");
     await this.getOrganizationOrThrow(organizationId);
-    const settings = await this.organizationSettingRepository.find({
-      where: { organizationId },
-      order: { name: "ASC" },
-    });
-    return settings.map(toOrganizationSettingDto);
+    return this.listEffectiveOrganizationSettings(organizationId);
   }
 
   /**
@@ -951,29 +997,7 @@ export class TenancyService implements OnModuleInit {
    */
   async saveSettings(context: AuthContext, payload: SaveSettingsPayload) {
     this.assertPermission(context, "features", "manage");
-    const entries = normalizeSettingsPayload(payload);
-    const saved: OrganizationSetting[] = [];
-
-    for (const entry of entries) {
-      let setting = await this.organizationSettingRepository.findOne({
-        where: {
-          name: entry.name,
-          organizationId: context.organizationId,
-        },
-      });
-      if (!setting) {
-        setting = this.organizationSettingRepository.create({
-          name: entry.name,
-          organizationId: context.organizationId,
-          value: entry.value,
-        });
-      } else {
-        setting.value = entry.value;
-      }
-      saved.push(await this.organizationSettingRepository.save(setting));
-    }
-
-    return saved.map(toOrganizationSettingDto);
+    return this.saveOrganizationSettingOverrides(context.organizationId, payload);
   }
 
   /**
@@ -986,10 +1010,42 @@ export class TenancyService implements OnModuleInit {
   ) {
     this.ensureOrganizationAccess(context, organizationId, "manage");
     await this.getOrganizationOrThrow(organizationId);
+    return this.saveOrganizationSettingOverrides(organizationId, payload);
+  }
+
+  private async listEffectiveOrganizationSettings(organizationId: string) {
+    const [organizationSettings, systemSettings] = await Promise.all([
+      this.organizationSettingRepository.find({
+        where: { organizationId },
+        order: { name: "ASC" },
+      }),
+      this.systemSettingRepository.find({
+        order: { name: "ASC" },
+      }),
+    ]);
+
+    return mergeOrganizationSettings(
+      organizationSettings,
+      systemSettings,
+      organizationId,
+    );
+  }
+
+  private async saveOrganizationSettingOverrides(
+    organizationId: string,
+    payload: SaveSettingsPayload,
+  ) {
     const entries = normalizeSettingsPayload(payload);
-    const saved: OrganizationSetting[] = [];
 
     for (const entry of entries) {
+      if (entry.value === null) {
+        await this.organizationSettingRepository.delete({
+          name: entry.name,
+          organizationId,
+        });
+        continue;
+      }
+
       let setting = await this.organizationSettingRepository.findOne({
         where: {
           name: entry.name,
@@ -1005,10 +1061,10 @@ export class TenancyService implements OnModuleInit {
       } else {
         setting.value = entry.value;
       }
-      saved.push(await this.organizationSettingRepository.save(setting));
+      await this.organizationSettingRepository.save(setting);
     }
 
-    return saved.map(toOrganizationSettingDto);
+    return this.listEffectiveOrganizationSettings(organizationId);
   }
 
   /**
@@ -1286,29 +1342,22 @@ export class TenancyService implements OnModuleInit {
       }
     }
 
-    await this.ensureOrganizationSetting(
-      organizationId,
-      "auth.passwordPolicy.minLength",
-      "8",
-    );
   }
 
-  private async ensureOrganizationSetting(
-    organizationId: string,
-    name: string,
-    value: string,
-  ) {
-    const existing = await this.organizationSettingRepository.findOne({
-      where: { name, organizationId },
-    });
-    if (!existing) {
-      await this.organizationSettingRepository.save(
-        this.organizationSettingRepository.create({
-          name,
-          organizationId,
-          value,
-        }),
-      );
+  private async ensureSystemDefaultSettings() {
+    for (const defaultSetting of PLATFORM_ORGANIZATION_SETTING_DEFAULTS) {
+      const existing = await this.systemSettingRepository.findOne({
+        where: { name: defaultSetting.name },
+      });
+      if (!existing) {
+        await this.systemSettingRepository.save(
+          this.systemSettingRepository.create({
+            name: defaultSetting.name,
+            scope: "global",
+            value: defaultSetting.value,
+          }),
+        );
+      }
     }
   }
 
@@ -1324,12 +1373,26 @@ export class TenancyService implements OnModuleInit {
     return fallback;
   }
 
-  private async getEnabledPermissions(organizationId: string, roleId: string | null) {
+  private async getEnabledPermissions(
+    organizationId: string,
+    roleId: string | null,
+    roleName: string | null,
+  ) {
     if (!roleId) return [];
+    if (isPlatformAdminRoleName(roleName)) {
+      return this.listKnownMenuPermissions();
+    }
+
     const permissions = await this.rolePermissionRepository.find({
       where: { enabled: true, roleId, organizationId },
     });
-    return permissions.map((p) => p.permission);
+    return permissions
+      .map((p) => p.permission)
+      .filter((permission) => {
+        if (isPlatformAdminRoleName(roleName)) return true;
+        const parsed = parseMenuPermissionKey(permission);
+        return parsed ? !isPlatformMenuCode(parsed.menuCode) : true;
+      });
   }
 
   private async listSwitchableOrganizations(context: AuthContext) {
@@ -1479,15 +1542,95 @@ export class TenancyService implements OnModuleInit {
   }
 
   /**
-   * Resolves a role id from explicit, null, or default member input.
+   * Resolves a role id from explicit, null, or default member input, then
+   * verifies the current actor is allowed to assign it.
    */
-  private async normalizeRoleId(
+  async resolveAssignableRoleId(
+    context: AuthContext,
     organizationId: string,
     roleId: string | null | undefined,
   ) {
     if (roleId === null) return null;
-    if (roleId) return (await this.getRoleOrThrow(organizationId, roleId)).id;
-    return (await this.getSystemRoleOrThrow(organizationId, "member")).id;
+    const role = roleId
+      ? await this.getRoleOrThrow(organizationId, roleId)
+      : await this.getSystemRoleOrThrow(organizationId, "member");
+    this.assertCanAssignRole(context, role);
+    return role.id;
+  }
+
+  private canViewRole(context: AuthContext, role: Role) {
+    if (context.isPlatformAdmin) return true;
+    if (isPlatformAdminRoleName(role.name)) return false;
+    return getRoleRank(role.name) <= getRoleRank(context.roleName);
+  }
+
+  private canViewRolePermission(
+    context: AuthContext,
+    role: Role | null,
+    permission: string,
+  ) {
+    if (!role) return false;
+    const parsed = parseMenuPermissionKey(permission);
+    if (!parsed) return true;
+    if (!isPlatformAdminRoleName(role.name) && isPlatformMenuCode(parsed.menuCode)) {
+      return false;
+    }
+    return context.isPlatformAdmin || !isPlatformMenuCode(parsed.menuCode);
+  }
+
+  private canManageRole(context: AuthContext, role: Role) {
+    if (isPlatformAdminRoleName(role.name)) return false;
+    return getRoleRank(role.name) < getRoleRank(context.roleName);
+  }
+
+  private assertCanAssignRole(context: AuthContext, role: Role) {
+    if (context.isPlatformAdmin) return;
+    if (getRoleRank(role.name) >= getRoleRank(context.roleName)) {
+      throw new ForbiddenException("不能分配同级或上级角色");
+    }
+  }
+
+  private async assertCanManageUser(context: AuthContext, user: User) {
+    if (user.id === context.userId) {
+      throw new ForbiddenException("不能修改自己的管理权限");
+    }
+    if (context.isPlatformAdmin) return;
+    if (!user.roleId || !user.organizationId) return;
+
+    const role = await this.roleRepository.findOne({
+      where: { id: user.roleId, organizationId: user.organizationId },
+    });
+    if (role && getRoleRank(role.name) >= getRoleRank(context.roleName)) {
+      throw new ForbiddenException("不能修改同级或上级用户");
+    }
+  }
+
+  private assertCanManageRole(context: AuthContext, role: Role) {
+    if (!this.canManageRole(context, role)) {
+      throw new ForbiddenException("不能修改同级或上级角色权限");
+    }
+  }
+
+  private assertCanGrantPermission(
+    context: AuthContext,
+    role: Role,
+    permission: string,
+  ) {
+    const parsed = parseMenuPermissionKey(permission);
+    if (!parsed) return;
+
+    if (!isPlatformAdminRoleName(role.name) && isPlatformMenuCode(parsed.menuCode)) {
+      throw new ForbiddenException("组织角色不能授予平台范围权限");
+    }
+
+    if (context.isPlatformAdmin) return;
+    if (isPlatformMenuCode(parsed.menuCode)) {
+      throw new ForbiddenException("组织管理员不能授予平台范围权限");
+    }
+
+    if (!hasPermissionKey(context.permissions, parsed.menuCode, parsed.action)) {
+      throw new ForbiddenException("不能授予当前角色不具备的权限");
+    }
   }
 
   /**
@@ -1553,7 +1696,7 @@ export class TenancyService implements OnModuleInit {
     const role = await this.roleRepository.findOne({
       where: { id: user.roleId, organizationId: user.organizationId },
     });
-    if (!role || !["admin", "owner"].includes(role.name)) {
+    if (!role || !["platform-admin", "owner", "admin"].includes(role.name)) {
       return false;
     }
 
@@ -1627,7 +1770,29 @@ function normalizeScopeLevel(value: RequestScopeLevel | undefined) {
 }
 
 function isPlatformAdminRole(roleName: string | null) {
-  return Boolean(roleName && PLATFORM_ADMIN_ROLE_NAMES.has(roleName));
+  return isPlatformAdminRoleName(roleName);
+}
+
+function parseMenuPermissionKey(
+  permission: string,
+): { action: "manage" | "view"; menuCode: string } | null {
+  const [prefix, menuCode, action] = permission.split(":");
+  if (prefix !== "menu" || !menuCode) return null;
+  if (action !== "view" && action !== "manage") return null;
+  return { action, menuCode };
+}
+
+function hasPermissionKey(
+  permissions: string[],
+  menuCode: string,
+  action: "manage" | "view",
+) {
+  const expected = buildMenuPermissionKey(menuCode, action);
+  const managePermission = buildMenuPermissionKey(menuCode, "manage");
+  return (
+    permissions.includes(expected) ||
+    (action === "view" && permissions.includes(managePermission))
+  );
 }
 
 /**
@@ -1861,15 +2026,43 @@ function toRolePermissionDto(permission: RolePermission) {
 }
 
 /**
- * Projects organization setting entities into admin responses.
+ * Projects merged platform defaults and organization overrides into admin
+ * responses. `value` remains the effective value for backward compatibility.
  */
-function toOrganizationSettingDto(setting: OrganizationSetting) {
-  return {
-    id: setting.id,
-    name: setting.name,
-    organizationId: setting.organizationId,
-    value: setting.value,
-  };
+function mergeOrganizationSettings(
+  organizationSettings: OrganizationSetting[],
+  systemSettings: SystemSetting[],
+  organizationId: string,
+) {
+  const organizationByName = new Map(
+    organizationSettings.map((setting) => [setting.name, setting]),
+  );
+  const systemByName = new Map(
+    systemSettings.map((setting) => [setting.name, setting]),
+  );
+  const names = [...new Set([...systemByName.keys(), ...organizationByName.keys()])].sort();
+
+  return names.map((name) => {
+    const organizationSetting = organizationByName.get(name) ?? null;
+    const systemSetting = systemByName.get(name) ?? null;
+    const overrideValue = organizationSetting?.value ?? null;
+    const defaultValue = systemSetting?.value ?? null;
+    const isOverridden = Boolean(organizationSetting);
+
+    return {
+      id:
+        organizationSetting?.id ??
+        systemSetting?.id ??
+        `${organizationId}:${name}`,
+      defaultValue,
+      isOverridden,
+      name,
+      organizationId,
+      overrideValue,
+      scope: isOverridden ? "organization" : "platform",
+      value: isOverridden ? overrideValue : defaultValue,
+    };
+  });
 }
 
 /**

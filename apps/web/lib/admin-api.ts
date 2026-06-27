@@ -134,8 +134,12 @@ export type Invite = {
 
 export type OrganizationSetting = {
   id: string;
+  defaultValue?: string | null;
+  isOverridden?: boolean;
   name: string;
   organizationId: string;
+  overrideValue?: string | null;
+  scope?: "organization" | "platform" | string;
   value: string | null;
 };
 
