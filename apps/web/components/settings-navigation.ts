@@ -1,4 +1,8 @@
 import type { AppShellNavSection } from "@/components/app-shell";
+import {
+  DEFAULT_ADMIN_MENUS,
+  isPlatformMenuCode,
+} from "@hermes-swarm/core/tenancy/permissions";
 import type { RequestScopeLevel } from "@/lib/admin-api";
 
 export type SettingsScopeContext = "dual-scope" | "organization-only" | "platform-only";
@@ -6,92 +10,41 @@ export type SettingsNavItem = AppShellNavSection["items"][number] & {
   scopeContext?: SettingsScopeContext;
 };
 
-export const SETTINGS_NAV_ITEMS = [
+type AdminMenuCode = (typeof DEFAULT_ADMIN_MENUS)[number]["code"];
+
+const SETTINGS_NAV_UI: Record<
+  AdminMenuCode,
   {
-    href: "/settings/account",
-    icon: "user",
-    key: "account",
-    label: "账号",
-    scopeContext: "dual-scope",
-  },
-  {
-    href: "/settings/organization",
-    icon: "building",
-    key: "organization",
-    label: "常规",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/organization-controls",
-    icon: "settings",
-    key: "organization-controls",
-    label: "控制项",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/tags",
-    icon: "layers",
-    key: "tags",
-    label: "标签",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/custom-smtp",
-    icon: "settings",
-    key: "custom-smtp",
-    label: "自定义邮件",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/email-templates",
-    icon: "file",
-    key: "email-templates",
-    label: "邮件模板",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/notification-destinations",
-    icon: "bell",
-    key: "notification-destinations",
-    label: "通知",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/features",
-    icon: "grid",
-    key: "features",
-    label: "功能",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/roles",
-    icon: "shield",
-    key: "roles",
-    label: "角色和权限",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/menus",
-    icon: "menu",
-    key: "menus",
-    label: "网页",
-    scopeContext: "organization-only",
-  },
-  {
-    href: "/settings/tenant",
-    icon: "server",
-    key: "tenant",
-    label: "平台设置",
-    scopeContext: "platform-only",
-  },
-  {
-    href: "/settings/organizations",
-    icon: "building",
-    key: "organizations",
-    label: "组织列表",
-    scopeContext: "platform-only",
-  },
-] satisfies SettingsNavItem[];
+    icon: SettingsNavItem["icon"];
+    label?: string;
+    scopeContext?: SettingsScopeContext;
+  }
+> = {
+  account: { icon: "user", scopeContext: "dual-scope" },
+  "custom-smtp": { icon: "settings" },
+  "email-templates": { icon: "file" },
+  features: { icon: "grid" },
+  menus: { icon: "menu" },
+  "notification-destinations": { icon: "bell" },
+  organization: { icon: "building", label: "常规" },
+  organizations: { icon: "building" },
+  roles: { icon: "shield" },
+  tags: { icon: "layers" },
+  tenant: { icon: "server", label: "平台设置" },
+};
+
+export const SETTINGS_NAV_ITEMS = DEFAULT_ADMIN_MENUS.map((menu) => {
+  const ui = SETTINGS_NAV_UI[menu.code];
+  return {
+    href: menu.path,
+    icon: ui.icon,
+    key: menu.code,
+    label: ui.label ?? menu.label,
+    scopeContext:
+      ui.scopeContext ??
+      (isPlatformMenuCode(menu.code) ? "platform-only" : "organization-only"),
+  };
+}) satisfies SettingsNavItem[];
 
 export const SETTINGS_NAV_SECTIONS = [
   {
@@ -103,7 +56,6 @@ export const SETTINGS_NAV_SECTIONS = [
     items: SETTINGS_NAV_ITEMS.filter((item) =>
       [
         "organization",
-        "organization-controls",
         "tags",
         "custom-smtp",
         "email-templates",

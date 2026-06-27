@@ -28,6 +28,8 @@ import {
   getRoleRank,
   isPlatformAdminRoleName,
   isPlatformMenuCode,
+  mergeEffectiveOrganizationSettings,
+  PLATFORM_ORGANIZATION_SETTING_DEFAULTS,
 } from "@hermes-swarm/core";
 import {
   AuthContext,
@@ -65,15 +67,6 @@ const PLATFORM_ALLOW_ORGANIZATION_CREATION_KEY =
   "platform.allowOrganizationCreation";
 const PLATFORM_DEFAULT_ORGANIZATION_STATUS_KEY =
   "platform.defaultOrganizationStatus";
-const PLATFORM_ORGANIZATION_SETTING_DEFAULTS = [
-  { name: "auth.passwordPolicy.minLength", value: "8" },
-  { name: "organization.defaultCurrency", value: "CNY" },
-  { name: "organization.defaultDateFormat", value: "YYYY-MM-DD" },
-  { name: "organization.defaultLanguage", value: "zh-CN" },
-  { name: "organization.defaultRegionCode", value: "CN" },
-  { name: "organization.defaultTimeZone", value: "Asia/Shanghai" },
-] as const;
-
 @Injectable()
 /**
  * Central application service for migrated admin tenancy capabilities:
@@ -453,7 +446,7 @@ export class TenancyService implements OnModuleInit {
         organizationId:
           context.scopeLevel === "organization" ? context.organizationId : null,
       },
-      settings: mergeOrganizationSettings(
+      settings: mergeEffectiveOrganizationSettings(
         organizationSettings,
         systemSettings,
         context.organizationId,
@@ -1023,7 +1016,7 @@ export class TenancyService implements OnModuleInit {
       }),
     ]);
 
-    return mergeOrganizationSettings(
+    return mergeEffectiveOrganizationSettings(
       organizationSettings,
       systemSettings,
       organizationId,
@@ -2021,46 +2014,6 @@ function toRolePermissionDto(permission: RolePermission) {
     roleId: permission.roleId,
     organizationId: permission.organizationId,
   };
-}
-
-/**
- * Projects merged platform defaults and organization overrides into admin
- * responses. `value` remains the effective value for backward compatibility.
- */
-function mergeOrganizationSettings(
-  organizationSettings: OrganizationSetting[],
-  systemSettings: SystemSetting[],
-  organizationId: string,
-) {
-  const organizationByName = new Map(
-    organizationSettings.map((setting) => [setting.name, setting]),
-  );
-  const systemByName = new Map(
-    systemSettings.map((setting) => [setting.name, setting]),
-  );
-  const names = [...new Set([...systemByName.keys(), ...organizationByName.keys()])].sort();
-
-  return names.map((name) => {
-    const organizationSetting = organizationByName.get(name) ?? null;
-    const systemSetting = systemByName.get(name) ?? null;
-    const overrideValue = organizationSetting?.value ?? null;
-    const defaultValue = systemSetting?.value ?? null;
-    const isOverridden = Boolean(organizationSetting);
-
-    return {
-      id:
-        organizationSetting?.id ??
-        systemSetting?.id ??
-        `${organizationId}:${name}`,
-      defaultValue,
-      isOverridden,
-      name,
-      organizationId,
-      overrideValue,
-      scope: isOverridden ? "organization" : "platform",
-      value: isOverridden ? overrideValue : defaultValue,
-    };
-  });
 }
 
 /**
