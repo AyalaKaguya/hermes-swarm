@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import {
   SETTINGS_NAV_SECTIONS,
-  matchesSettingsScope,
   type SettingsNavItem,
 } from "@/components/settings-navigation";
 import {
@@ -30,55 +29,50 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { resolvedSession, snapshot } = useAdminShell();
-  const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] = useState(false);
-  const scopeLevel = snapshot?.scope.level ?? "organization";
+  const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] =
+    useState(false);
+  const activeOrganizationId = snapshot?.organization.id ?? "none";
 
   const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
     ...section,
     items: section.items
       .filter((item) => {
         if (!snapshot || !resolvedSession) return false;
-        if (!matchesSettingsScope(item, scopeLevel)) return false;
-        const menu = snapshot.menus.find((candidate) => candidate.code === item.key);
-        return Boolean(menu?.isActive) && hasMenuAccess(snapshot, resolvedSession, item.key);
+        const menu = snapshot.menus.find(
+          (candidate) => candidate.code === item.key,
+        );
+        return (
+          Boolean(menu?.isActive) &&
+          hasMenuAccess(snapshot, resolvedSession, item.key)
+        );
       })
       .map((item) =>
         item.key === "organization" && snapshot?.organization.id
-          ? { ...item, href: `/settings/organizations/${snapshot.organization.id}` }
+          ? {
+              ...item,
+              href: `/settings/organizations/${snapshot.organization.id}`,
+            }
           : item,
       ),
   })).filter((section) => section.items.length > 0);
   const visibleItems = navSections.flatMap((section) => section.items);
 
-  useEffect(() => {
-    if (!snapshot) return;
-    if (scopeLevel === "organization") {
-      if (pathname === "/settings/tenant" || pathname === "/settings/organizations") {
-        router.replace(`/settings/organizations/${snapshot.organization.id}`);
-      }
-      return;
-    }
-
-    if (
-      pathname === "/settings/organization" ||
-      pathname === "/settings/organization-controls"
-    ) {
-      router.replace("/settings/tenant");
-    }
-  }, [pathname, router, scopeLevel, snapshot]);
-
   const activeKey =
-    visibleItems.find((item) => matchesSettingsHref(item.href, pathname, searchParams, true))
-      ?.key ??
-    visibleItems.find((item) => matchesSettingsHref(item.href, pathname, searchParams, false))
-      ?.key;
+    visibleItems.find((item) =>
+      matchesSettingsHref(item.href, pathname, searchParams, true),
+    )?.key ??
+    visibleItems.find((item) =>
+      matchesSettingsHref(item.href, pathname, searchParams, false),
+    )?.key;
 
   return (
     <div className="min-h-svh min-w-0 bg-background">
-      <ResizablePanelGroup className="hidden min-h-svh md:flex" orientation="horizontal">
+      <ResizablePanelGroup
+        className="hidden min-h-svh md:flex"
+        orientation="horizontal"
+      >
         <ResizablePanel
           className="border-r bg-muted/20"
           defaultSize={SETTINGS_SIDEBAR_DEFAULT_SIZE}
@@ -87,7 +81,9 @@ export default function SettingsLayout({
           maxSize={SETTINGS_SIDEBAR_MAX_SIZE}
           minSize={SETTINGS_SIDEBAR_MIN_SIZE}
           onResize={(size) =>
-            setSettingsSidebarCollapsed(size.inPixels <= SETTINGS_SIDEBAR_COLLAPSED_THRESHOLD)
+            setSettingsSidebarCollapsed(
+              size.inPixels <= SETTINGS_SIDEBAR_COLLAPSED_THRESHOLD,
+            )
           }
         >
           <SettingsSidebar
@@ -97,9 +93,16 @@ export default function SettingsLayout({
           />
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel className="min-w-0" id="settings-content" minSize="360px">
+        <ResizablePanel
+          className="min-w-0"
+          id="settings-content"
+          minSize="360px"
+        >
           <div className="min-w-0 px-4 py-5 md:px-5">
-            <div className="mx-auto flex max-w-7xl flex-col gap-4">
+            <div
+              className="mx-auto flex max-w-7xl flex-col gap-4"
+              key={activeOrganizationId}
+            >
               {children}
             </div>
           </div>
@@ -110,14 +113,12 @@ export default function SettingsLayout({
         <div className="grid gap-1 rounded-lg border bg-muted/20 p-2">
           {navSections.map((section) => (
             <div className="grid gap-1" key={section.key}>
-              <div className="px-2 py-1 text-xs text-muted-foreground">
-                {section.label}
-              </div>
+              <div className="px-2 py-1 text-xs">{section.label}</div>
               {section.items.map((item) => (
                 <Link
                   className={cn(
                     "flex h-8 items-center gap-2 rounded-md px-2 text-sm",
-                    item.key === activeKey && "bg-accent text-accent-foreground",
+                    item.key === activeKey && "bg-accent",
                   )}
                   href={item.href}
                   key={item.key}
@@ -129,7 +130,7 @@ export default function SettingsLayout({
             </div>
           ))}
         </div>
-        {children}
+        <div key={activeOrganizationId}>{children}</div>
       </div>
     </div>
   );
@@ -151,12 +152,15 @@ function SettingsSidebar({
   return (
     <aside
       aria-label="配置导航"
-      className={cn("flex h-full min-h-svh flex-col", collapsed && "items-center")}
+      className={cn(
+        "flex h-full min-h-svh flex-col",
+        collapsed && "items-center",
+      )}
     >
       <div className="flex h-12 w-full items-center gap-2 border-b px-2">
         <span
           className={cn(
-            "grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground",
+            "grid size-8 shrink-0 place-items-center rounded-md",
             collapsed && "mx-auto",
           )}
           title="配置"
@@ -166,9 +170,7 @@ function SettingsSidebar({
         {!collapsed && (
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">配置</div>
-            <div className="truncate text-xs text-muted-foreground">
-              个人、组织与租户管理
-            </div>
+            <div className="truncate text-xs">个人、组织与租户管理</div>
           </div>
         )}
       </div>
@@ -177,7 +179,7 @@ function SettingsSidebar({
           <div className="grid gap-1" key={section.key}>
             {sectionIndex > 0 && <Separator className="my-2" />}
             {!collapsed && (
-              <div className="px-2 py-1 text-[0.68rem] font-medium uppercase text-muted-foreground">
+              <div className="px-2 py-1 text-[0.68rem] font-medium uppercase">
                 {section.label}
               </div>
             )}
@@ -186,15 +188,18 @@ function SettingsSidebar({
               return (
                 <Link
                   className={cn(
-                    "flex h-8 items-center gap-2 rounded-lg px-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring",
-                    active && "bg-accent text-accent-foreground",
+                    "flex h-8 items-center gap-2 rounded-lg px-2 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+                    active && "bg-accent",
                     collapsed && "justify-center",
                   )}
                   href={item.href}
                   key={item.key}
                   title={item.label}
                 >
-                  <AppIcon className="size-4 shrink-0" name={item.icon ?? "settings"} />
+                  <AppIcon
+                    className="size-4 shrink-0"
+                    name={item.icon ?? "settings"}
+                  />
                   {!collapsed && <span className="truncate">{item.label}</span>}
                 </Link>
               );

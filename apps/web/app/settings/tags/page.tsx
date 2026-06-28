@@ -6,11 +6,23 @@ import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createTag, deleteTag, listTags, updateTag, type Tag } from "@/lib/admin-api";
+import {
+  createTag,
+  deleteTag,
+  listTags,
+  updateTag,
+  type Tag,
+} from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 
 export default function TagsPage() {
@@ -54,7 +66,11 @@ export default function TagsPage() {
   }, [items, search]);
 
   if (loading) {
-    return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
+    return (
+      <div className="flex items-center justify-center py-16 text-sm">
+        加载中...
+      </div>
+    );
   }
 
   return (
@@ -62,7 +78,7 @@ export default function TagsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">标签</h1>
-          <p className="text-sm text-muted-foreground">组织范围内的标签和分类</p>
+          <p className="text-sm">组织范围内的标签和分类</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -80,7 +96,11 @@ export default function TagsPage() {
           />
         </Dialog>
       </div>
-      {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
+          {error}
+        </div>
+      )}
       <div className="flex justify-end">
         <Input
           className="w-full sm:w-72"
@@ -94,9 +114,13 @@ export default function TagsPage() {
           <Card key={item.id}>
             <CardHeader className="flex flex-row items-start justify-between gap-3 pb-3">
               <div className="min-w-0">
-                <CardTitle className="truncate text-base">{item.name}</CardTitle>
+                <CardTitle className="truncate text-base">
+                  {item.name}
+                </CardTitle>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {item.category && <Badge variant="secondary">{item.category}</Badge>}
+                  {item.category && (
+                    <Badge variant="secondary">{item.category}</Badge>
+                  )}
                   {item.isSystem && <Badge variant="outline">系统</Badge>}
                 </div>
               </div>
@@ -106,11 +130,16 @@ export default function TagsPage() {
               />
             </CardHeader>
             <CardContent className="grid gap-3 text-sm">
-              <p className="min-h-10 text-muted-foreground">{item.description || "无描述"}</p>
+              <p className="min-h-10">{item.description || "无描述"}</p>
               <div className="flex justify-end gap-2">
-                <Dialog open={editing?.id === item.id} onOpenChange={(next) => setEditing(next ? item : null)}>
+                <Dialog
+                  open={editing?.id === item.id}
+                  onOpenChange={(next) => setEditing(next ? item : null)}
+                >
                   <DialogTrigger asChild>
-                    <Button size="sm" variant="outline">编辑</Button>
+                    <Button size="sm" variant="outline">
+                      编辑
+                    </Button>
                   </DialogTrigger>
                   <TagDialogForm
                     item={item}
@@ -121,14 +150,22 @@ export default function TagsPage() {
                     token={token}
                   />
                 </Dialog>
-                <Button onClick={() => setDeleting(item)} size="sm" variant="outline">删除</Button>
+                <Button
+                  onClick={() => setDeleting(item)}
+                  size="sm"
+                  variant="outline"
+                >
+                  删除
+                </Button>
               </div>
             </CardContent>
           </Card>
         ))}
         {filtered.length === 0 && (
           <Card className="md:col-span-2 xl:col-span-3">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">暂无标签</CardContent>
+            <CardContent className="py-10 text-center text-sm">
+              暂无标签
+            </CardContent>
           </Card>
         )}
       </div>
@@ -191,19 +228,32 @@ function TagDialogForm({
       <div className="grid gap-4">
         <div className="grid gap-2">
           <Label>名称</Label>
-          <Input onChange={(event) => setName(event.target.value)} value={name} />
+          <Input
+            onChange={(event) => setName(event.target.value)}
+            value={name}
+          />
         </div>
         <div className="grid gap-2">
           <Label>分类</Label>
-          <Input onChange={(event) => setCategory(event.target.value)} value={category} />
+          <Input
+            onChange={(event) => setCategory(event.target.value)}
+            value={category}
+          />
         </div>
         <div className="grid gap-2">
           <Label>颜色</Label>
-          <Input onChange={(event) => setColor(event.target.value)} type="color" value={color} />
+          <Input
+            onChange={(event) => setColor(event.target.value)}
+            type="color"
+            value={color}
+          />
         </div>
         <div className="grid gap-2">
           <Label>描述</Label>
-          <Textarea onChange={(event) => setDescription(event.target.value)} value={description} />
+          <Textarea
+            onChange={(event) => setDescription(event.target.value)}
+            value={description}
+          />
         </div>
         <Button disabled={!name.trim() || saving} onClick={save}>
           {saving ? "保存中..." : "保存"}

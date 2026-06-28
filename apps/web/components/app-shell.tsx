@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppIcon, type AppIconName } from "@/components/app-icon";
 import { NotificationCenter } from "@/components/notification-center";
-import { UserAvatar } from "@/components/user-avatar";
+import { UserMenu } from "@/components/user-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +33,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import type { Organization, User } from "@/lib/admin-api";
-import type { RequestScopeLevel } from "@/lib/admin-api";
 import { cn } from "@/lib/utils";
 
 const MAIN_SIDEBAR_STATE_KEY = "sidebar_state";
@@ -59,13 +58,11 @@ export function AppShell({
   activeItem,
   children,
   contentClassName,
-  canUsePlatformScope,
   currentOrganizationId,
-  currentScopeLevel,
   navSections,
   onNavigate,
   onOrganizationSwitch,
-  onPlatformScopeSwitch,
+  onUserUpdated,
   organizationName,
   organizations,
   platformName,
@@ -74,14 +71,12 @@ export function AppShell({
   actions?: ReactNode;
   activeItem?: string;
   children: ReactNode;
-  canUsePlatformScope?: boolean;
   contentClassName?: string;
   currentOrganizationId?: string | null;
-  currentScopeLevel?: RequestScopeLevel;
   navSections?: AppShellNavSection[];
   onNavigate?: (item: AppShellNavItem) => void;
   onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
-  onPlatformScopeSwitch?: () => void | Promise<void>;
+  onUserUpdated?: () => Promise<void>;
   organizationName?: string | null;
   organizations?: Organization[];
   platformName?: string | null;
@@ -131,7 +126,7 @@ export function AppShell({
         <SidebarHeader className="gap-2 p-2">
           <div className="flex min-h-10 items-center gap-2">
             <Link
-              className="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-sm font-semibold text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:hidden"
+              className="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-sm font-semibold outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:hidden"
               href="/home"
             >
               {shellTitle}
@@ -140,11 +135,8 @@ export function AppShell({
           </div>
 
           <ScopeSwitcher
-            canUsePlatformScope={Boolean(canUsePlatformScope)}
             currentOrganizationId={currentOrganizationId}
-            currentScopeLevel={currentScopeLevel ?? "organization"}
             onOrganizationSwitch={onOrganizationSwitch}
-            onPlatformScopeSwitch={onPlatformScopeSwitch}
             organizationName={organizationName}
             organizations={organizations ?? []}
           />
@@ -173,7 +165,7 @@ export function AppShell({
                     <SidebarGroupLabel>
                       <span className="truncate">{section.label}</span>
                       {section.badge && (
-                        <span className="ml-auto rounded-md bg-sidebar-accent px-1.5 py-0.5 text-[0.68rem] text-sidebar-accent-foreground">
+                        <span className="ml-auto rounded-md bg-sidebar-accent px-1.5 py-0.5 text-[0.68rem]">
                           {section.badge}
                         </span>
                       )}
@@ -202,7 +194,7 @@ export function AppShell({
         </SidebarContent>
 
         <SidebarFooter>
-          <SidebarMenu>
+          <SidebarMenu className="group-data-[collapsible=icon]:items-center">
             <NotificationCenter />
             <ShellMenuItem
               active={pathname.startsWith("/settings")}
@@ -210,23 +202,11 @@ export function AppShell({
               icon="settings"
               label="设置"
             />
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="h-10"
-                tooltip={user?.displayName ?? user?.email ?? "未登录"}
-                type="button"
-              >
-                <UserAvatar size="sm" user={user} />
-                <span className="grid min-w-0 flex-1 leading-tight">
-                  <span className="truncate text-xs font-medium">
-                    {user?.displayName ?? "未登录"}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {user?.email ?? organizationName ?? "管理控制台"}
-                  </span>
-                </span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            <UserMenu
+              onUserUpdated={onUserUpdated}
+              organizationName={organizationName}
+              user={user}
+            />
           </SidebarMenu>
 
           {actions && (
@@ -245,7 +225,12 @@ export function AppShell({
             {organizationName ?? "管理控制台"}
           </span>
         </div>
-        <main className={cn("min-w-0 bg-background", contentClassName ?? "px-4 py-8 md:px-5")}>
+        <main
+          className={cn(
+            "min-w-0 bg-background",
+            contentClassName ?? "px-4 py-8 md:px-5",
+          )}
+        >
           {children}
         </main>
       </SidebarInset>
@@ -280,27 +265,18 @@ function writeStoredSidebarState(open: boolean) {
 }
 
 function ScopeSwitcher({
-  canUsePlatformScope,
   currentOrganizationId,
-  currentScopeLevel,
   onOrganizationSwitch,
-  onPlatformScopeSwitch,
   organizationName,
   organizations,
 }: {
-  canUsePlatformScope: boolean;
   currentOrganizationId?: string | null;
-  currentScopeLevel: RequestScopeLevel;
   onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
-  onPlatformScopeSwitch?: () => void | Promise<void>;
   organizationName?: string | null;
   organizations: Organization[];
 }) {
-  const isPlatformScope = currentScopeLevel === "platform";
-  const currentLabel = isPlatformScope
-    ? "整个平台"
-    : organizationName ?? "管理控制台";
-  const canSwitch = canUsePlatformScope || organizations.length > 0;
+  const currentLabel = organizationName ?? "管理控制台";
+  const canSwitch = organizations.length > 0;
 
   return (
     <SidebarMenu>
@@ -310,56 +286,29 @@ function ScopeSwitcher({
             <SidebarMenuButton
               className="h-14 rounded-lg border bg-background/70 px-2 shadow-xs group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none"
               size="lg"
-              tooltip={`当前范围：${currentLabel}`}
+              tooltip={`当前组织：${currentLabel}`}
               type="button"
             >
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground group-data-[collapsible=icon]:bg-sidebar-accent group-data-[collapsible=icon]:text-sidebar-accent-foreground">
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted group-data-[collapsible=icon]:bg-sidebar-accent">
                 <AppIcon className="size-4" name="building" />
               </span>
               <span className="grid min-w-0 flex-1 leading-tight">
-                <span className="truncate text-[0.65rem] uppercase text-muted-foreground">
-                  当前范围
+                <span className="truncate text-[0.65rem] uppercase">
+                  当前组织
                 </span>
                 <span className="truncate text-sm font-medium">
                   {currentLabel}
                 </span>
               </span>
               <AppIcon
-                className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden"
+                className="size-4 group-data-[collapsible=icon]:hidden"
                 name="chevron-down"
               />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-72">
-            <DropdownMenuLabel>切换范围</DropdownMenuLabel>
+            <DropdownMenuLabel>切换组织</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {canUsePlatformScope && (
-              <>
-                <DropdownMenuItem
-                  className="items-start gap-2 py-2"
-                  disabled={isPlatformScope || !onPlatformScopeSwitch}
-                  onClick={() => {
-                    if (!isPlatformScope) void onPlatformScopeSwitch?.();
-                  }}
-                >
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                    <AppIcon className="size-4" name="server" />
-                  </span>
-                  <span className="grid min-w-0 flex-1 gap-0.5">
-                    <span className="truncate text-sm font-medium">整个平台</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      租户管理与平台设置
-                    </span>
-                  </span>
-                  {isPlatformScope && (
-                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.68rem] text-muted-foreground">
-                      当前
-                    </span>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
             {organizations.length === 0 ? (
               <DropdownMenuItem disabled>暂无可切换组织</DropdownMenuItem>
             ) : (
@@ -374,19 +323,19 @@ function ScopeSwitcher({
                       if (!active) void onOrganizationSwitch?.(organization.id);
                     }}
                   >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
                       <AppIcon className="size-4" name="building" />
                     </span>
                     <span className="grid min-w-0 flex-1 gap-0.5">
                       <span className="truncate text-sm font-medium">
                         {organization.name}
                       </span>
-                      <span className="truncate text-xs text-muted-foreground">
+                      <span className="truncate text-xs">
                         {organization.slug}
                       </span>
                     </span>
                     {active && (
-                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.68rem] text-muted-foreground">
+                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.68rem]">
                         当前
                       </span>
                     )}

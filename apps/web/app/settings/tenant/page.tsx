@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
@@ -86,16 +92,14 @@ export default function TenantPage() {
   const [savingSmtp, setSavingSmtp] = useState(false);
 
   const canViewPlatform =
-    snapshot?.scope.level === "platform" &&
-    snapshot.isPlatformAdmin &&
+    Boolean(snapshot?.isPlatformAdmin) &&
     Boolean(
       snapshot && resolvedSession
         ? hasMenuAccess(snapshot, resolvedSession, "tenant", "view")
         : false,
     );
   const canManagePlatform =
-    snapshot?.scope.level === "platform" &&
-    snapshot.isPlatformAdmin &&
+    Boolean(snapshot?.isPlatformAdmin) &&
     Boolean(
       snapshot && resolvedSession
         ? hasMenuAccess(snapshot, resolvedSession, "tenant", "manage")
@@ -114,10 +118,15 @@ export default function TenantPage() {
     [organizations],
   );
   const platformUsers = useMemo(() => {
-    const roleById = new Map(snapshot?.roles.map((role) => [role.id, role]) ?? []);
+    const roleById = new Map(
+      snapshot?.roles.map((role) => [role.id, role]) ?? [],
+    );
     return (
       snapshot?.users
-        .map((user) => ({ role: user.roleId ? roleById.get(user.roleId) : null, user }))
+        .map((user) => ({
+          role: user.roleId ? roleById.get(user.roleId) : null,
+          user,
+        }))
         .filter(({ role }) => role?.name === "platform-admin") ?? []
     );
   }, [snapshot?.roles, snapshot?.users]);
@@ -136,8 +145,10 @@ export default function TenantPage() {
     try {
       const [settings, orgs, smtp] = await Promise.all([
         listSystemSettings(session.token),
-        canViewOrganizations ? listOrganizations(session.token) : Promise.resolve([]),
-        getSmtpConfig(session.token),
+        canViewOrganizations
+          ? listOrganizations(session.token)
+          : Promise.resolve([]),
+        getSmtpConfig(session.token, { scope: "platform" }),
       ]);
       setForm(toPlatformForm(settings, smtp));
       setSystemSettings(settings);
@@ -154,7 +165,10 @@ export default function TenantPage() {
     void load();
   }, [load]);
 
-  function updateField<K extends keyof PlatformForm>(key: K, value: PlatformForm[K]) {
+  function updateField<K extends keyof PlatformForm>(
+    key: K,
+    value: PlatformForm[K],
+  ) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -168,7 +182,10 @@ export default function TenantPage() {
     try {
       await saveSystemSettings(session.token, {
         settings: [
-          { name: PLATFORM_TITLE_SETTING_KEY, value: form.platformTitle.trim() || null },
+          {
+            name: PLATFORM_TITLE_SETTING_KEY,
+            value: form.platformTitle.trim() || null,
+          },
           {
             name: PLATFORM_SETTING_KEYS.allowOrganizationCreation,
             value: form.allowOrganizationCreation,
@@ -177,14 +194,26 @@ export default function TenantPage() {
             name: PLATFORM_SETTING_KEYS.defaultOrganizationStatus,
             value: form.defaultOrganizationStatus,
           },
-          { name: PLATFORM_SETTING_KEYS.defaultCurrency, value: form.defaultCurrency },
+          {
+            name: PLATFORM_SETTING_KEYS.defaultCurrency,
+            value: form.defaultCurrency,
+          },
           {
             name: PLATFORM_SETTING_KEYS.defaultDateFormat,
             value: form.defaultDateFormat,
           },
-          { name: PLATFORM_SETTING_KEYS.defaultLanguage, value: form.defaultLanguage },
-          { name: PLATFORM_SETTING_KEYS.defaultRegionCode, value: form.defaultRegionCode },
-          { name: PLATFORM_SETTING_KEYS.defaultTimeZone, value: form.defaultTimeZone },
+          {
+            name: PLATFORM_SETTING_KEYS.defaultLanguage,
+            value: form.defaultLanguage,
+          },
+          {
+            name: PLATFORM_SETTING_KEYS.defaultRegionCode,
+            value: form.defaultRegionCode,
+          },
+          {
+            name: PLATFORM_SETTING_KEYS.defaultTimeZone,
+            value: form.defaultTimeZone,
+          },
           {
             name: PLATFORM_SETTING_KEYS.passwordMinLength,
             value: form.passwordMinLength,
@@ -222,22 +251,30 @@ export default function TenantPage() {
     setMessage(null);
     try {
       if (form.publicSmtpEnabled || form.smtpHost.trim()) {
-        await validateSmtpConfig(session.token, {
-          fromAddress: nullableText(form.smtpFromAddress),
-          host: form.smtpHost,
-          port: Number(form.smtpPort || 587),
-          secure: form.smtpSecure,
-          username: nullableText(form.smtpUsername),
-        });
-        await saveSmtpConfig(session.token, {
-          fromAddress: nullableText(form.smtpFromAddress),
-          host: form.smtpHost,
-          isValidated: true,
-          password: nullableText(form.smtpPassword),
-          port: Number(form.smtpPort || 587),
-          secure: form.smtpSecure,
-          username: nullableText(form.smtpUsername),
-        });
+        await validateSmtpConfig(
+          session.token,
+          {
+            fromAddress: nullableText(form.smtpFromAddress),
+            host: form.smtpHost,
+            port: Number(form.smtpPort || 587),
+            secure: form.smtpSecure,
+            username: nullableText(form.smtpUsername),
+          },
+          { scope: "platform" },
+        );
+        await saveSmtpConfig(
+          session.token,
+          {
+            fromAddress: nullableText(form.smtpFromAddress),
+            host: form.smtpHost,
+            isValidated: true,
+            password: nullableText(form.smtpPassword),
+            port: Number(form.smtpPort || 587),
+            secure: form.smtpSecure,
+            username: nullableText(form.smtpUsername),
+          },
+          { scope: "platform" },
+        );
       }
       await saveSystemSettings(session.token, {
         settings: [
@@ -270,7 +307,9 @@ export default function TenantPage() {
       });
       setCustomSettingName("");
       setCustomSettingValue("");
-      setMessage(value === null ? "平台自定义设置已删除" : "平台自定义设置已保存");
+      setMessage(
+        value === null ? "平台自定义设置已删除" : "平台自定义设置已保存",
+      );
       await load();
       await refreshSnapshot();
     } catch (err) {
@@ -283,8 +322,8 @@ export default function TenantPage() {
   if (!canViewPlatform) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-          请切换到整个平台范围后访问平台设置。
+        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
+          当前账号无权访问平台设置。
         </div>
       </div>
     );
@@ -292,7 +331,7 @@ export default function TenantPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+      <div className="flex items-center justify-center py-16 text-sm">
         加载中...
       </div>
     );
@@ -303,7 +342,7 @@ export default function TenantPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">平台设置</h1>
-          <p className="text-sm text-muted-foreground">租户级默认值、组织治理与公共服务</p>
+          <p className="text-sm">租户级默认值、组织治理与公共服务</p>
         </div>
         <Badge variant="secondary">
           {activeOrganizations}/{organizations.length} 活跃组织
@@ -311,12 +350,12 @@ export default function TenantPage() {
       </div>
 
       {message && !error && (
-        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
           {message}
         </div>
       )}
       {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
           {error}
         </div>
       )}
@@ -336,7 +375,9 @@ export default function TenantPage() {
           <Card>
             <CardHeader>
               <CardTitle>平台信息</CardTitle>
-              <CardDescription>用于全局展示和识别当前平台的基础信息</CardDescription>
+              <CardDescription>
+                用于全局展示和识别当前平台的基础信息
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="max-w-xl">
@@ -344,7 +385,9 @@ export default function TenantPage() {
                   <Input
                     disabled={!canManagePlatform}
                     id="tenant-title"
-                    onChange={(event) => updateField("platformTitle", event.target.value)}
+                    onChange={(event) =>
+                      updateField("platformTitle", event.target.value)
+                    }
                     placeholder="Hermes Swarm"
                     value={form.platformTitle}
                   />
@@ -367,14 +410,18 @@ export default function TenantPage() {
           <Card>
             <CardHeader>
               <CardTitle>默认控制项</CardTitle>
-              <CardDescription>作为组织控制项的租户级默认值，组织可按需覆写</CardDescription>
+              <CardDescription>
+                作为组织控制项的租户级默认值，组织可按需覆写
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <Field htmlFor="platform-currency" label="默认货币">
                   <Select
                     disabled={!canManagePlatform}
-                    onValueChange={(value) => updateField("defaultCurrency", value)}
+                    onValueChange={(value) =>
+                      updateField("defaultCurrency", value)
+                    }
                     value={form.defaultCurrency}
                   >
                     <SelectTrigger id="platform-currency">
@@ -392,7 +439,9 @@ export default function TenantPage() {
                 <Field htmlFor="platform-language" label="默认语言">
                   <Select
                     disabled={!canManagePlatform}
-                    onValueChange={(value) => updateField("defaultLanguage", value)}
+                    onValueChange={(value) =>
+                      updateField("defaultLanguage", value)
+                    }
                     value={form.defaultLanguage}
                   >
                     <SelectTrigger id="platform-language">
@@ -410,7 +459,9 @@ export default function TenantPage() {
                 <Field htmlFor="platform-time-zone" label="默认时区">
                   <Select
                     disabled={!canManagePlatform}
-                    onValueChange={(value) => updateField("defaultTimeZone", value)}
+                    onValueChange={(value) =>
+                      updateField("defaultTimeZone", value)
+                    }
                     value={form.defaultTimeZone}
                   >
                     <SelectTrigger id="platform-time-zone">
@@ -428,7 +479,9 @@ export default function TenantPage() {
                 <Field htmlFor="platform-region-code" label="默认地区代码">
                   <Select
                     disabled={!canManagePlatform}
-                    onValueChange={(value) => updateField("defaultRegionCode", value)}
+                    onValueChange={(value) =>
+                      updateField("defaultRegionCode", value)
+                    }
                     value={form.defaultRegionCode}
                   >
                     <SelectTrigger id="platform-region-code">
@@ -446,7 +499,9 @@ export default function TenantPage() {
                 <Field htmlFor="platform-date-format" label="默认日期格式">
                   <Select
                     disabled={!canManagePlatform}
-                    onValueChange={(value) => updateField("defaultDateFormat", value)}
+                    onValueChange={(value) =>
+                      updateField("defaultDateFormat", value)
+                    }
                     value={form.defaultDateFormat}
                   >
                     <SelectTrigger id="platform-date-format">
@@ -461,10 +516,15 @@ export default function TenantPage() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field htmlFor="platform-password-min-length" label="密码最小长度">
+                <Field
+                  htmlFor="platform-password-min-length"
+                  label="密码最小长度"
+                >
                   <Select
                     disabled={!canManagePlatform}
-                    onValueChange={(value) => updateField("passwordMinLength", value)}
+                    onValueChange={(value) =>
+                      updateField("passwordMinLength", value)
+                    }
                     value={form.passwordMinLength}
                   >
                     <SelectTrigger id="platform-password-min-length">
@@ -565,20 +625,26 @@ export default function TenantPage() {
                     key={organization.id}
                   >
                     <span className="min-w-0">
-                      <span className="block truncate font-medium">{organization.name}</span>
-                      <span className="block truncate font-mono text-xs text-muted-foreground">
+                      <span className="block truncate font-medium">
+                        {organization.name}
+                      </span>
+                      <span className="block truncate font-mono text-xs">
                         {organization.slug}
                       </span>
                     </span>
                     <Badge
-                      variant={organization.status === "active" ? "default" : "secondary"}
+                      variant={
+                        organization.status === "active"
+                          ? "default"
+                          : "secondary"
+                      }
                     >
                       {organization.status === "active" ? "启用" : "停用"}
                     </Badge>
                   </Link>
                 ))}
                 {organizations.length === 0 && (
-                  <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                  <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
                     暂无组织
                   </div>
                 )}
@@ -603,7 +669,10 @@ export default function TenantPage() {
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,24rem)_minmax(0,20rem)]">
-                <Field htmlFor="platform-message-provider" label="消息服务提供方">
+                <Field
+                  htmlFor="platform-message-provider"
+                  label="消息服务提供方"
+                >
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-message-provider"
@@ -641,7 +710,9 @@ export default function TenantPage() {
           <Card>
             <CardHeader>
               <CardTitle>公共 SMTP</CardTitle>
-              <CardDescription>组织未配置 SMTP 时使用的租户级邮件服务</CardDescription>
+              <CardDescription>
+                组织未配置 SMTP 时使用的租户级邮件服务
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <ToggleField
@@ -649,14 +720,18 @@ export default function TenantPage() {
                 disabled={!canManagePlatform}
                 id="platform-smtp-enabled"
                 label="启用公共 SMTP"
-                onCheckedChange={(checked) => updateField("publicSmtpEnabled", checked)}
+                onCheckedChange={(checked) =>
+                  updateField("publicSmtpEnabled", checked)
+                }
               />
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <Field htmlFor="platform-smtp-host" label="SMTP Host">
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-smtp-host"
-                    onChange={(event) => updateField("smtpHost", event.target.value)}
+                    onChange={(event) =>
+                      updateField("smtpHost", event.target.value)
+                    }
                     value={form.smtpHost}
                   />
                 </Field>
@@ -665,7 +740,9 @@ export default function TenantPage() {
                     disabled={!canManagePlatform}
                     id="platform-smtp-port"
                     inputMode="numeric"
-                    onChange={(event) => updateField("smtpPort", event.target.value)}
+                    onChange={(event) =>
+                      updateField("smtpPort", event.target.value)
+                    }
                     value={form.smtpPort}
                   />
                 </Field>
@@ -706,7 +783,9 @@ export default function TenantPage() {
                   disabled={!canManagePlatform}
                   id="platform-smtp-secure"
                   label="启用 SSL/TLS"
-                  onCheckedChange={(checked) => updateField("smtpSecure", checked)}
+                  onCheckedChange={(checked) =>
+                    updateField("smtpSecure", checked)
+                  }
                 />
               </div>
               <div className="flex justify-end">
@@ -727,18 +806,22 @@ export default function TenantPage() {
           <Card>
             <CardHeader>
               <CardTitle>平台用户管理</CardTitle>
-              <CardDescription>当前组织内具备平台管理能力的账号</CardDescription>
+              <CardDescription>
+                当前组织内具备平台管理能力的账号
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {platformUsers.length === 0 ? (
-                <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground sm:col-span-2 xl:col-span-3">
+                <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm sm:col-span-2 xl:col-span-3">
                   暂无平台管理员
                 </div>
               ) : (
                 platformUsers.map(({ role, user }) => (
                   <div className="rounded-md border px-3 py-2" key={user.id}>
-                    <div className="truncate text-sm font-medium">{user.displayName}</div>
-                    <div className="truncate text-xs text-muted-foreground">{user.email}</div>
+                    <div className="truncate text-sm font-medium">
+                      {user.displayName}
+                    </div>
+                    <div className="truncate text-xs">{user.email}</div>
                     <Badge className="mt-2" variant="outline">
                       {role?.label ?? "Platform Admin"}
                     </Badge>
@@ -753,7 +836,9 @@ export default function TenantPage() {
           <Card>
             <CardHeader>
               <CardTitle>自定义平台设置</CardTitle>
-              <CardDescription>作为组织配置的默认键值，可由组织覆写</CardDescription>
+              <CardDescription>
+                作为组织配置的默认键值，可由组织覆写
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
@@ -761,7 +846,9 @@ export default function TenantPage() {
                   <Input
                     disabled={!canManagePlatform || savingCustomSetting}
                     id="platform-custom-name"
-                    onChange={(event) => setCustomSettingName(event.target.value)}
+                    onChange={(event) =>
+                      setCustomSettingName(event.target.value)
+                    }
                     placeholder="custom.setting"
                     value={customSettingName}
                   />
@@ -770,7 +857,9 @@ export default function TenantPage() {
                   <Input
                     disabled={!canManagePlatform || savingCustomSetting}
                     id="platform-custom-value"
-                    onChange={(event) => setCustomSettingValue(event.target.value)}
+                    onChange={(event) =>
+                      setCustomSettingValue(event.target.value)
+                    }
                     value={customSettingValue}
                   />
                 </Field>
@@ -795,7 +884,7 @@ export default function TenantPage() {
 
               <div className="grid gap-2">
                 {customSystemSettings.length === 0 ? (
-                  <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                  <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
                     暂无自定义平台设置
                   </div>
                 ) : (
@@ -804,13 +893,17 @@ export default function TenantPage() {
                       className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
                       key={setting.id}
                     >
-                      <div className="truncate font-mono text-xs">{setting.name}</div>
+                      <div className="truncate font-mono text-xs">
+                        {setting.name}
+                      </div>
                       <Input
                         className="h-8 font-mono text-xs"
                         disabled={!canManagePlatform || savingCustomSetting}
                         defaultValue={setting.value ?? ""}
                         onBlur={(event) => {
-                          if (event.currentTarget.value !== (setting.value ?? "")) {
+                          if (
+                            event.currentTarget.value !== (setting.value ?? "")
+                          ) {
                             void saveCustomSystemSetting(
                               setting.name,
                               event.currentTarget.value,
@@ -888,16 +981,19 @@ function emptyPlatformForm(): PlatformForm {
   return {
     allowOrganizationCreation: true,
     defaultCurrency: PLATFORM_SETTING_DEFINITIONS.defaultCurrency.defaultValue,
-    defaultDateFormat: PLATFORM_SETTING_DEFINITIONS.defaultDateFormat.defaultValue,
+    defaultDateFormat:
+      PLATFORM_SETTING_DEFINITIONS.defaultDateFormat.defaultValue,
     defaultLanguage: PLATFORM_SETTING_DEFINITIONS.defaultLanguage.defaultValue,
     defaultOrganizationStatus:
       PLATFORM_SETTING_DEFINITIONS.defaultOrganizationStatus.defaultValue,
-    defaultRegionCode: PLATFORM_SETTING_DEFINITIONS.defaultRegionCode.defaultValue,
+    defaultRegionCode:
+      PLATFORM_SETTING_DEFINITIONS.defaultRegionCode.defaultValue,
     defaultTimeZone: PLATFORM_SETTING_DEFINITIONS.defaultTimeZone.defaultValue,
     messageServiceEnabled: false,
     messageServiceProvider:
       PLATFORM_SETTING_DEFINITIONS.messageServiceProvider.defaultValue,
-    passwordMinLength: PLATFORM_SETTING_DEFINITIONS.passwordMinLength.defaultValue,
+    passwordMinLength:
+      PLATFORM_SETTING_DEFINITIONS.passwordMinLength.defaultValue,
     platformTitle: "",
     publicSmtpEnabled: false,
     smtpFromAddress: "",
@@ -910,19 +1006,15 @@ function emptyPlatformForm(): PlatformForm {
 }
 
 function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
-  const get = (name: string) => settings.find((setting) => setting.name === name)?.value;
+  const get = (name: string) =>
+    settings.find((setting) => setting.name === name)?.value;
   const getDefined = (name: keyof typeof PLATFORM_SETTING_DEFINITIONS) => {
     const definition = PLATFORM_SETTING_DEFINITIONS[name];
     const legacyValue =
       "legacyKeys" in definition
         ? definition.legacyKeys.map((key) => get(key)).find(Boolean)
         : undefined;
-    return (
-      get(definition.key) ??
-      legacyValue ??
-      definition.defaultValue ??
-      ""
-    );
+    return get(definition.key) ?? legacyValue ?? definition.defaultValue ?? "";
   };
   return {
     allowOrganizationCreation: parseBoolean(
@@ -945,10 +1037,7 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
     messageServiceProvider: getDefined("messageServiceProvider"),
     passwordMinLength: getDefined("passwordMinLength"),
     platformTitle: get(PLATFORM_TITLE_SETTING_KEY) || "",
-    publicSmtpEnabled: parseBoolean(
-      getDefined("publicSmtpEnabled"),
-      false,
-    ),
+    publicSmtpEnabled: parseBoolean(getDefined("publicSmtpEnabled"), false),
     smtpFromAddress: smtp?.fromAddress ?? "",
     smtpHost: smtp?.host ?? "",
     smtpPassword: "",

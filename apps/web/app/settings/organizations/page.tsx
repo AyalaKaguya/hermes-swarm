@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAdminShell } from "@/components/admin-shell";
@@ -18,7 +24,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   createOrganization,
   listOrganizations,
@@ -31,8 +44,7 @@ export default function OrganizationsPage() {
   const router = useRouter();
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const canViewPlatformOrganizations =
-    snapshot?.scope.level === "platform" &&
-    snapshot.isPlatformAdmin &&
+    Boolean(snapshot?.isPlatformAdmin) &&
     Boolean(
       snapshot && resolvedSession
         ? hasMenuAccess(snapshot, resolvedSession, "organizations", "view")
@@ -111,14 +123,18 @@ export default function OrganizationsPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
+    return (
+      <div className="flex items-center justify-center py-16 text-sm">
+        加载中...
+      </div>
+    );
   }
 
   if (!canViewPlatformOrganizations) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-          请切换到整个平台范围后访问组织列表。
+        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
+          当前账号无权访问组织列表。
         </div>
       </div>
     );
@@ -129,7 +145,7 @@ export default function OrganizationsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">组织列表</h1>
-          <p className="text-sm text-muted-foreground">租户范围内的组织管理视图</p>
+          <p className="text-sm">租户范围内的组织管理视图</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Input
@@ -147,7 +163,7 @@ export default function OrganizationsPage() {
         </div>
       </div>
       {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
           {error}
         </div>
       )}
@@ -170,10 +186,16 @@ export default function OrganizationsPage() {
               {filtered.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell className="font-mono text-xs">{item.slug}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {item.slug}
+                  </TableCell>
                   <TableCell>{item.subdomain ?? "-"}</TableCell>
                   <TableCell>
-                    <Badge variant={item.status === "active" ? "default" : "secondary"}>
+                    <Badge
+                      variant={
+                        item.status === "active" ? "default" : "secondary"
+                      }
+                    >
                       {item.status === "active" ? "启用" : "停用"}
                     </Badge>
                   </TableCell>
@@ -189,7 +211,7 @@ export default function OrganizationsPage() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={5}>
+                  <TableCell className="py-8 text-center text-sm" colSpan={5}>
                     暂无组织
                   </TableCell>
                 </TableRow>
@@ -203,7 +225,9 @@ export default function OrganizationsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建组织</DialogTitle>
-            <DialogDescription>创建后进入该组织的完整配置页。</DialogDescription>
+            <DialogDescription>
+              创建后进入该组织的完整配置页。
+            </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitCreate}>
             <div className="grid gap-2">
@@ -211,7 +235,10 @@ export default function OrganizationsPage() {
               <Input
                 id="organization-create-name"
                 onChange={(event) =>
-                  setCreateForm((current) => ({ ...current, name: event.target.value }))
+                  setCreateForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
                 }
                 required
                 value={createForm.name}
@@ -222,7 +249,10 @@ export default function OrganizationsPage() {
               <Input
                 id="organization-create-slug"
                 onChange={(event) =>
-                  setCreateForm((current) => ({ ...current, slug: event.target.value }))
+                  setCreateForm((current) => ({
+                    ...current,
+                    slug: event.target.value,
+                  }))
                 }
                 placeholder="留空后根据名称生成"
                 value={createForm.slug}
@@ -233,7 +263,10 @@ export default function OrganizationsPage() {
               <Input
                 id="organization-create-subdomain"
                 onChange={(event) =>
-                  setCreateForm((current) => ({ ...current, subdomain: event.target.value }))
+                  setCreateForm((current) => ({
+                    ...current,
+                    subdomain: event.target.value,
+                  }))
                 }
                 value={createForm.subdomain}
               />

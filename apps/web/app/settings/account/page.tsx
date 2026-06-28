@@ -149,7 +149,9 @@ export default function AccountPage() {
       const uploaded = await uploadAdminFile(session.token, file);
       const imageUrl =
         uploaded.url ??
-        uploaded.destinations.find((item) => item.status === "success" && item.url)?.url;
+        uploaded.destinations.find(
+          (item) => item.status === "success" && item.url,
+        )?.url;
       if (!imageUrl) {
         throw new Error("上传成功但未返回图片地址");
       }
@@ -201,7 +203,7 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+      <div className="flex items-center justify-center py-16 text-sm">
         加载中...
       </div>
     );
@@ -209,7 +211,7 @@ export default function AccountPage() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+      <div className="flex items-center justify-center py-16 text-sm">
         请先登录
       </div>
     );
@@ -225,9 +227,7 @@ export default function AccountPage() {
               <div className="truncate text-sm font-medium">
                 {user.displayName || user.email}
               </div>
-              <div className="truncate text-xs text-muted-foreground">
-                {user.email}
-              </div>
+              <div className="truncate text-xs">{user.email}</div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -248,7 +248,7 @@ export default function AccountPage() {
               <AppIcon className="size-3.5" name="image-upload" />
               {uploadingAvatar ? "上传中..." : "上传头像"}
             </Button>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs">
               {user.status === "active" ? "账号正常" : "账号已停用"}
             </div>
           </div>
@@ -256,12 +256,12 @@ export default function AccountPage() {
       </Card>
 
       {error && (
-        <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm">
           {error}
         </div>
       )}
       {message && !error && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
           {message}
         </div>
       )}
@@ -276,7 +276,9 @@ export default function AccountPage() {
           <Card>
             <CardHeader>
               <CardTitle>个人资料</CardTitle>
-              <CardDescription>维护你的名称和邮箱，头像只能通过图片上传更新</CardDescription>
+              <CardDescription>
+                维护你的名称和邮箱，头像只能通过图片上传更新
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-3 sm:grid-cols-2">

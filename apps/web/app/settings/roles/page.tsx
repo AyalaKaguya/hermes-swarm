@@ -33,44 +33,67 @@ export default function RolesPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
-  const [localPerms, setLocalPerms] = useState<Record<string, Record<string, boolean>>>({});
+  const [localPerms, setLocalPerms] = useState<
+    Record<string, Record<string, boolean>>
+  >({});
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) { setLoading(false); return; }
+    if (!session?.token) {
+      setLoading(false);
+      return;
+    }
     setToken(session.token);
     try {
       const snap = await getSnapshot(session.token);
-      setRoles(snap.roles);
-      setPermissions(snap.rolePermissions);
+      const visibleRoles = snap.isPlatformAdmin
+        ? snap.roles
+        : snap.roles.filter((role) => !isPlatformAdminRoleName(role.name));
+      const visibleRoleIds = new Set(visibleRoles.map((role) => role.id));
+      setRoles(visibleRoles);
+      setPermissions(
+        snap.rolePermissions.filter((permission) =>
+          visibleRoleIds.has(permission.roleId),
+        ),
+      );
       setCurrentRoleName(snap.currentUser.role?.name ?? null);
       setSelectedRoleId((current) =>
-        snap.roles.some((role) => role.id === current)
+        visibleRoles.some((role) => role.id === current)
           ? current
-          : snap.roles[0]?.id ?? null,
+          : (visibleRoles[0]?.id ?? null),
       );
       setMenus(
         snap.menus.filter(
           (m) =>
-            m.isActive &&
-            (snap.scope.level === "platform" || !isPlatformMenuCode(m.code)),
+            m.isActive && (snap.isPlatformAdmin || !isPlatformMenuCode(m.code)),
         ),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0] ?? null;
+  const selectedRole =
+    roles.find((role) => role.id === selectedRoleId) ?? roles[0] ?? null;
   const totalPermissionCount = menus.length * 2;
 
   function persistedPermission(roleId: string, key: string) {
-    return permissions.some((p) => p.roleId === roleId && p.permission === key && p.enabled);
+    return permissions.some(
+      (p) => p.roleId === roleId && p.permission === key && p.enabled,
+    );
   }
 
-  function isChecked(roleId: string, menuCode: string, action: MenuPermissionAction) {
+  function isChecked(
+    roleId: string,
+    menuCode: string,
+    action: MenuPermissionAction,
+  ) {
     const key = buildMenuPermissionKey(menuCode, action);
     return localPerms[roleId]?.[key] ?? persistedPermission(roleId, key);
   }
@@ -98,7 +121,7 @@ export default function RolesPage() {
   function togglePerm(roleId: string, key: string) {
     const role = roles.find((item) => item.id === roleId);
     if (!role || !canManageRole(currentRoleName, role)) return;
-    setLocalPerms(prev => {
+    setLocalPerms((prev) => {
       const next = { ...prev };
       const rp = { ...(next[roleId] ?? {}) };
       const persisted = persistedPermission(roleId, key);
@@ -122,24 +145,45 @@ export default function RolesPage() {
     if (!role || !canManageRole(currentRoleName, role)) return;
     setSaving(roleId);
     try {
-      const perms = menus.flatMap(m => {
+      const perms = menus.flatMap((m) => {
         const viewKey = buildMenuPermissionKey(m.code, "view");
         const manageKey = buildMenuPermissionKey(m.code, "manage");
         return [
           { permission: viewKey, enabled: isChecked(roleId, m.code, "view") },
-          { permission: manageKey, enabled: isChecked(roleId, m.code, "manage") },
+          {
+            permission: manageKey,
+            enabled: isChecked(roleId, m.code, "manage"),
+          },
         ];
       });
       await replaceRolePermissions(token, roleId, perms);
-      setLocalPerms(prev => { const n = { ...prev }; delete n[roleId]; return n; });
+      setLocalPerms((prev) => {
+        const n = { ...prev };
+        delete n[roleId];
+        return n;
+      });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
-    } finally { setSaving(null); }
+    } finally {
+      setSaving(null);
+    }
   }
 
-  if (loading) return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
-  if (error) return <div className="flex items-center justify-center py-16"><div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div></div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-16 text-sm">
+        加载中...
+      </div>
+    );
+  if (error)
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
+          {error}
+        </div>
+      </div>
+    );
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -151,7 +195,7 @@ export default function RolesPage() {
         <Card className="min-w-0 self-start overflow-hidden shadow-none">
           <CardHeader className="border-b px-4 py-3">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <AppIcon className="size-4 text-muted-foreground" name="shield" />
+              <AppIcon className="size-4" name="shield" />
               可选角色
             </CardTitle>
           </CardHeader>
@@ -178,28 +222,42 @@ export default function RolesPage() {
                       <span
                         className={cn(
                           "size-2 shrink-0 rounded-full border",
-                          selected ? "border-primary bg-primary" : "border-muted-foreground/40",
+                          selected
+                            ? "border-primary bg-primary"
+                            : "border-muted-foreground/40",
                         )}
                       />
                       <span className="min-w-0">
-                        <span className="block truncate font-medium leading-5">{role.label}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{role.name}</span>
+                        <span className="block truncate font-medium leading-5">
+                          {role.label}
+                        </span>
+                        <span className="block truncate text-xs">
+                          {role.name}
+                        </span>
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
-                      {dirty && <span className="size-1.5 rounded-full bg-primary" />}
-                      <Badge className="px-1.5 text-[11px]" variant={editable ? "outline" : "secondary"}>
+                      {dirty && (
+                        <span className="size-1.5 rounded-full bg-primary" />
+                      )}
+                      <Badge
+                        className="px-1.5 text-[11px]"
+                        variant={editable ? "outline" : "secondary"}
+                      >
                         {enabledPermissionCount(role.id)}/{totalPermissionCount}
                       </Badge>
                       {selected && (
-                        <AppIcon className="size-3.5 -rotate-90 text-muted-foreground" name="chevron-down" />
+                        <AppIcon
+                          className="size-3.5 -rotate-90"
+                          name="chevron-down"
+                        />
                       )}
                     </span>
                   </button>
                 );
               })}
               {roles.length === 0 && (
-                <div className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
+                <div className="rounded-md border border-dashed px-3 py-8 text-center text-sm">
                   暂无角色
                 </div>
               )}
@@ -213,17 +271,24 @@ export default function RolesPage() {
               <CardHeader className="border-b px-4 py-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="min-w-0">
-                    <CardTitle className="truncate text-lg">{selectedRole.label}</CardTitle>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <CardTitle className="truncate text-lg">
+                      {selectedRole.label}
+                    </CardTitle>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                       <span className="truncate">{selectedRole.name}</span>
-                      <Badge variant={selectedRole.isSystem ? "secondary" : "outline"}>
+                      <Badge
+                        variant={
+                          selectedRole.isSystem ? "secondary" : "outline"
+                        }
+                      >
                         {selectedRole.isSystem ? "系统" : "自定义"}
                       </Badge>
                       {!canManageRole(currentRoleName, selectedRole) && (
                         <Badge variant="secondary">只读</Badge>
                       )}
                       <span>
-                        {enabledPermissionCount(selectedRole.id)} / {totalPermissionCount} 已启用
+                        {enabledPermissionCount(selectedRole.id)} /{" "}
+                        {totalPermissionCount} 已启用
                       </span>
                     </div>
                   </div>
@@ -242,41 +307,61 @@ export default function RolesPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="grid grid-cols-[minmax(100px,1fr)_64px_64px] items-center gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground sm:grid-cols-[minmax(120px,1fr)_96px_96px] sm:gap-3">
+                <div className="grid grid-cols-[minmax(100px,1fr)_64px_64px] items-center gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium sm:grid-cols-[minmax(120px,1fr)_96px_96px] sm:gap-3">
                   <div>菜单</div>
                   <div className="text-center">查看</div>
                   <div className="text-center">管理</div>
                 </div>
                 <div className="divide-y">
                   {menus.map((menu) => {
-                    const editable = canManageRole(currentRoleName, selectedRole);
+                    const editable = canManageRole(
+                      currentRoleName,
+                      selectedRole,
+                    );
                     const viewKey = buildMenuPermissionKey(menu.code, "view");
-                    const manageKey = buildMenuPermissionKey(menu.code, "manage");
+                    const manageKey = buildMenuPermissionKey(
+                      menu.code,
+                      "manage",
+                    );
                     return (
                       <div
                         className="grid grid-cols-[minmax(100px,1fr)_64px_64px] items-center gap-2 px-4 py-2 sm:grid-cols-[minmax(120px,1fr)_96px_96px] sm:gap-3"
                         key={menu.code}
                       >
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{menu.label}</div>
-                          <div className="truncate text-xs text-muted-foreground">{menu.code}</div>
+                          <div className="truncate text-sm font-medium">
+                            {menu.label}
+                          </div>
+                          <div className="truncate text-xs">{menu.code}</div>
                         </div>
                         <div className="flex justify-center">
                           <Checkbox
                             aria-label={`${menu.label} 查看`}
-                            checked={isChecked(selectedRole.id, menu.code, "view")}
+                            checked={isChecked(
+                              selectedRole.id,
+                              menu.code,
+                              "view",
+                            )}
                             disabled={!editable}
                             id={`${selectedRole.id}-${menu.code}-view`}
-                            onCheckedChange={() => togglePerm(selectedRole.id, viewKey)}
+                            onCheckedChange={() =>
+                              togglePerm(selectedRole.id, viewKey)
+                            }
                           />
                         </div>
                         <div className="flex justify-center">
                           <Checkbox
                             aria-label={`${menu.label} 管理`}
-                            checked={isChecked(selectedRole.id, menu.code, "manage")}
+                            checked={isChecked(
+                              selectedRole.id,
+                              menu.code,
+                              "manage",
+                            )}
                             disabled={!editable}
                             id={`${selectedRole.id}-${menu.code}-manage`}
-                            onCheckedChange={() => togglePerm(selectedRole.id, manageKey)}
+                            onCheckedChange={() =>
+                              togglePerm(selectedRole.id, manageKey)
+                            }
                           />
                         </div>
                       </div>
@@ -286,7 +371,7 @@ export default function RolesPage() {
               </CardContent>
             </>
           ) : (
-            <CardContent className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+            <CardContent className="flex min-h-48 items-center justify-center text-sm">
               暂无可配置角色
             </CardContent>
           )}

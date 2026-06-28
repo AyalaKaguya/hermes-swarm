@@ -31,7 +31,7 @@ export function ConfirmActionDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p className="text-sm">{description}</p>
         <div className="flex justify-end gap-2">
           <Button
             disabled={pending}

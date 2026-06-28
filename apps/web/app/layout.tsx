@@ -3,6 +3,7 @@ import "./globals.css";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { AdminShell } from "@/components/admin-shell";
+import { AppearanceController } from "@/components/appearance-controller";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
@@ -20,6 +21,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
       <body>
+        <AppearanceController />
         <TooltipProvider>
           <AdminShell>{children}</AdminShell>
         </TooltipProvider>

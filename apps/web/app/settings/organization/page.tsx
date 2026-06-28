@@ -15,7 +15,7 @@ export default function OrganizationPage() {
   }, [router, snapshot?.organization.id]);
 
   return (
-    <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+    <div className="flex items-center justify-center py-16 text-sm">
       加载中...
     </div>
   );
