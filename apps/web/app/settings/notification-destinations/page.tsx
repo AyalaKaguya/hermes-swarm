@@ -6,10 +6,22 @@ import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   createNotificationDestination,
   deleteNotificationDestination,
@@ -29,7 +41,9 @@ export default function NotificationDestinationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<NotificationDestination | null>(null);
-  const [deleting, setDeleting] = useState<NotificationDestination | null>(null);
+  const [deleting, setDeleting] = useState<NotificationDestination | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     const session = getStoredSession();
@@ -56,10 +70,17 @@ export default function NotificationDestinationsPage() {
     void load();
   }, [load]);
 
-  const typeMap = useMemo(() => new Map(types.map((type) => [type.type, type])), [types]);
+  const typeMap = useMemo(
+    () => new Map(types.map((type) => [type.type, type])),
+    [types],
+  );
 
   if (loading) {
-    return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
+    return (
+      <div className="flex items-center justify-center py-16 text-sm">
+        加载中...
+      </div>
+    );
   }
 
   return (
@@ -67,7 +88,7 @@ export default function NotificationDestinationsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">通知</h1>
-          <p className="text-sm text-muted-foreground">配置组织通知目的地</p>
+          <p className="text-sm">配置组织通知目的地</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -86,7 +107,11 @@ export default function NotificationDestinationsPage() {
           />
         </Dialog>
       </div>
-      {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
+          {error}
+        </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
           const type = typeMap.get(item.type);
@@ -94,21 +119,28 @@ export default function NotificationDestinationsPage() {
             <Card key={item.id}>
               <CardHeader className="flex flex-row items-start justify-between gap-3 pb-3">
                 <div className="min-w-0">
-                  <CardTitle className="truncate text-base">{item.name}</CardTitle>
+                  <CardTitle className="truncate text-base">
+                    {item.name}
+                  </CardTitle>
                   <div className="mt-1">
                     <Badge variant="secondary">{type?.name ?? item.type}</Badge>
                   </div>
                 </div>
-                <AppIcon className="size-4 text-muted-foreground" name="bell" />
+                <AppIcon className="size-4" name="bell" />
               </CardHeader>
               <CardContent className="grid gap-3 text-sm">
-                <div className="rounded-md border bg-muted/20 px-3 py-2 font-mono text-xs text-muted-foreground">
+                <div className="rounded-md border bg-muted/20 px-3 py-2 font-mono text-xs">
                   {Object.keys(item.options ?? {}).length} 个配置项
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Dialog open={editing?.id === item.id} onOpenChange={(next) => setEditing(next ? item : null)}>
+                  <Dialog
+                    open={editing?.id === item.id}
+                    onOpenChange={(next) => setEditing(next ? item : null)}
+                  >
                     <DialogTrigger asChild>
-                      <Button size="sm" variant="outline">编辑</Button>
+                      <Button size="sm" variant="outline">
+                        编辑
+                      </Button>
                     </DialogTrigger>
                     <DestinationForm
                       item={item}
@@ -120,7 +152,13 @@ export default function NotificationDestinationsPage() {
                       types={types}
                     />
                   </Dialog>
-                  <Button onClick={() => setDeleting(item)} size="sm" variant="outline">删除</Button>
+                  <Button
+                    onClick={() => setDeleting(item)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    删除
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -128,7 +166,9 @@ export default function NotificationDestinationsPage() {
         })}
         {items.length === 0 && (
           <Card className="md:col-span-2 xl:col-span-3">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">暂无通知目的地</CardContent>
+            <CardContent className="py-10 text-center text-sm">
+              暂无通知目的地
+            </CardContent>
           </Card>
         )}
       </div>
@@ -162,7 +202,12 @@ function DestinationForm({
   const [type, setType] = useState(item?.type ?? types[0]?.type ?? "");
   const [name, setName] = useState(item?.name ?? "");
   const [options, setOptions] = useState<Record<string, string>>(
-    Object.fromEntries(Object.entries(item?.options ?? {}).map(([key, value]) => [key, String(value ?? "")])),
+    Object.fromEntries(
+      Object.entries(item?.options ?? {}).map(([key, value]) => [
+        key,
+        String(value ?? ""),
+      ]),
+    ),
   );
   const [saving, setSaving] = useState(false);
 
@@ -220,14 +265,26 @@ function DestinationForm({
         </div>
         <div className="grid gap-2">
           <Label>名称</Label>
-          <Input onChange={(event) => setName(event.target.value)} value={name} />
+          <Input
+            onChange={(event) => setName(event.target.value)}
+            value={name}
+          />
         </div>
         {fields.map(([key, field]) => (
           <div className="grid gap-2" key={key}>
             <Label>{field.title ?? key}</Label>
             <Input
-              onChange={(event) => setOptions((current) => ({ ...current, [key]: event.target.value }))}
-              type={selectedType?.schema?.secret?.includes(key) ? "password" : "text"}
+              onChange={(event) =>
+                setOptions((current) => ({
+                  ...current,
+                  [key]: event.target.value,
+                }))
+              }
+              type={
+                selectedType?.schema?.secret?.includes(key)
+                  ? "password"
+                  : "text"
+              }
               value={options[key] ?? ""}
             />
           </div>

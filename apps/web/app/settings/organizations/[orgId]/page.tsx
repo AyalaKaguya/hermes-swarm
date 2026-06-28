@@ -15,19 +15,47 @@ import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
-import { getRoleRank } from "@hermes-swarm/core/tenancy/permissions";
+import {
+  getRoleRank,
+  isPlatformAdminRoleName,
+} from "@hermes-swarm/core/tenancy/permissions";
 import {
   ORGANIZATION_CONTROL_SETTING_DEFINITIONS,
   ORGANIZATION_DEFAULT_FIELD_DEFINITIONS,
@@ -89,19 +117,28 @@ type OrganizationForm = {
   website: string;
 };
 
-type OrganizationTab = "controls" | "general" | "groups" | "members" | "profile";
+type OrganizationTab =
+  | "controls"
+  | "general"
+  | "groups"
+  | "members"
+  | "profile";
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ orgId?: string | string[] }>();
   const searchParams = useSearchParams();
-  const organizationId = Array.isArray(params.orgId) ? params.orgId[0] : params.orgId;
+  const organizationId = Array.isArray(params.orgId)
+    ? params.orgId[0]
+    : params.orgId;
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<OrganizationTab>("general");
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
-  const [controlValues, setControlValues] = useState<Record<string, string>>({});
+  const [controlValues, setControlValues] = useState<Record<string, string>>(
+    {},
+  );
   const [customSettingName, setCustomSettingName] = useState("");
   const [customSettingValue, setCustomSettingValue] = useState("");
   const [editUser, setEditUser] = useState<User | null>(null);
@@ -114,7 +151,9 @@ export default function OrganizationDetailPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [organizationSettings, setOrganizationSettings] = useState<OrganizationSetting[]>([]);
+  const [organizationSettings, setOrganizationSettings] = useState<
+    OrganizationSetting[]
+  >([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [savingGroup, setSavingGroup] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -129,7 +168,10 @@ export default function OrganizationDetailPage() {
       ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage") ||
         hasMenuAccess(snapshot, resolvedSession, "organization", "manage")
       : false;
-  const isPlatformScope = snapshot?.scope.level === "platform";
+  const canViewOrganizationsList =
+    snapshot && resolvedSession
+      ? hasMenuAccess(snapshot, resolvedSession, "organizations", "view")
+      : false;
   const currentRoleName = snapshot?.currentUser.role?.name ?? null;
   const currentUserId = snapshot?.currentUser.user.id ?? null;
   const canAssignPlatformRole = Boolean(snapshot?.isPlatformAdmin);
@@ -151,13 +193,17 @@ export default function OrganizationDetailPage() {
     setToken(session.token);
     setError(null);
     try {
-      const [data, settings, userItems, roleItems, groupItems] = await Promise.all([
-        getOrganization(session.token, organizationId),
-        listOrganizationSettingsForOrganization(session.token, organizationId),
-        listOrganizationUsers(session.token, organizationId),
-        listOrganizationRoles(session.token, organizationId),
-        listOrganizationGroups(session.token, organizationId),
-      ]);
+      const [data, settings, userItems, roleItems, groupItems] =
+        await Promise.all([
+          getOrganization(session.token, organizationId),
+          listOrganizationSettingsForOrganization(
+            session.token,
+            organizationId,
+          ),
+          listOrganizationUsers(session.token, organizationId),
+          listOrganizationRoles(session.token, organizationId),
+          listOrganizationGroups(session.token, organizationId),
+        ]);
       setOrganization(data);
       setForm(toOrganizationForm(data));
       setOrganizationSettings(settings);
@@ -167,13 +213,14 @@ export default function OrganizationDetailPage() {
       setSelectedGroupId((current) =>
         current && groupItems.some((group) => group.id === current)
           ? current
-          : groupItems[0]?.id ?? null,
+          : (groupItems[0]?.id ?? null),
       );
       setControlValues(
         Object.fromEntries(
           CONTROL_KEYS.map((item) => [
             item.key,
-            settings.find((setting) => setting.name === item.key)?.overrideValue ?? "",
+            settings.find((setting) => setting.name === item.key)
+              ?.overrideValue ?? "",
           ]),
         ),
       );
@@ -196,7 +243,9 @@ export default function OrganizationDetailPage() {
 
   const dirty = useMemo(() => {
     if (!organization) return false;
-    return JSON.stringify(form) !== JSON.stringify(toOrganizationForm(organization));
+    return (
+      JSON.stringify(form) !== JSON.stringify(toOrganizationForm(organization))
+    );
   }, [form, organization]);
   const selectedGroup = useMemo(
     () => groups.find((group) => group.id === selectedGroupId) ?? null,
@@ -223,17 +272,25 @@ export default function OrganizationDetailPage() {
   }, [selectedGroup]);
 
   function findSetting(name: string) {
-    return organizationSettings.find((setting) => setting.name === name) ?? null;
+    return (
+      organizationSettings.find((setting) => setting.name === name) ?? null
+    );
   }
 
-  function settingDefaultLabel(name: string, options?: readonly SettingOption[]) {
+  function settingDefaultLabel(
+    name: string,
+    options?: readonly SettingOption[],
+  ) {
     const setting = findSetting(name);
     const value = setting?.defaultValue ?? setting?.value ?? "";
     if (!value) return "未设置";
     return options?.find((option) => option.value === value)?.label ?? value;
   }
 
-  function updateField<K extends keyof OrganizationForm>(key: K, value: OrganizationForm[K]) {
+  function updateField<K extends keyof OrganizationForm>(
+    key: K,
+    value: OrganizationForm[K],
+  ) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -243,7 +300,11 @@ export default function OrganizationDetailPage() {
     setError(null);
     setMessage(null);
     try {
-      const updated = await updateOrganization(token, organization.id, toOrganizationPayload(form));
+      const updated = await updateOrganization(
+        token,
+        organization.id,
+        toOrganizationPayload(form),
+      );
       setOrganization(updated);
       setForm(toOrganizationForm(updated));
       setMessage("组织配置已保存");
@@ -264,9 +325,13 @@ export default function OrganizationDetailPage() {
       const uploaded = await uploadAdminFile(token, file);
       const imageUrl =
         uploaded.url ??
-        uploaded.destinations.find((item) => item.status === "success" && item.url)?.url;
+        uploaded.destinations.find(
+          (item) => item.status === "success" && item.url,
+        )?.url;
       if (!imageUrl) throw new Error("上传成功但未返回图片地址");
-      const updated = await updateOrganization(token, organization.id, { imageUrl });
+      const updated = await updateOrganization(token, organization.id, {
+        imageUrl,
+      });
       setOrganization(updated);
       setForm(toOrganizationForm(updated));
       setMessage("组织 Logo 已上传");
@@ -285,16 +350,12 @@ export default function OrganizationDetailPage() {
     setError(null);
     setMessage(null);
     try {
-      await saveOrganizationSettingsForOrganization(
-        token,
-        organization.id,
-        {
-          settings: CONTROL_KEYS.map((item) => ({
-            name: item.key,
-            value: controlValues[item.key] || null,
-          })),
-        },
-      );
+      await saveOrganizationSettingsForOrganization(token, organization.id, {
+        settings: CONTROL_KEYS.map((item) => ({
+          name: item.key,
+          value: controlValues[item.key] || null,
+        })),
+      });
       const settings = await listOrganizationSettingsForOrganization(
         token,
         organization.id,
@@ -404,18 +465,22 @@ export default function OrganizationDetailPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
+    return (
+      <div className="flex items-center justify-center py-16 text-sm">
+        加载中...
+      </div>
+    );
   }
 
   if (!organization) {
     return (
       <div className="grid gap-3">
         {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
             {error}
           </div>
         )}
-        {isPlatformScope && (
+        {canViewOrganizationsList && (
           <Button asChild className="w-fit" size="sm" variant="outline">
             <Link href="/settings/organizations">返回组织列表</Link>
           </Button>
@@ -428,7 +493,7 @@ export default function OrganizationDetailPage() {
     <section className="grid gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          {isPlatformScope && (
+          {canViewOrganizationsList && (
             <Button asChild className="-ml-2 mb-2" size="sm" variant="ghost">
               <Link href="/settings/organizations">
                 <AppIcon className="size-3.5" name="arrow-left" />
@@ -436,23 +501,27 @@ export default function OrganizationDetailPage() {
               </Link>
             </Button>
           )}
-          <h1 className="truncate text-lg font-semibold">{organization.name}</h1>
-          <p className="break-all text-sm text-muted-foreground">
+          <h1 className="truncate text-lg font-semibold">
+            {organization.name}
+          </h1>
+          <p className="break-all text-sm">
             org_id: <span className="font-mono">{organization.id}</span>
           </p>
         </div>
-        <Badge variant={organization.status === "active" ? "default" : "secondary"}>
+        <Badge
+          variant={organization.status === "active" ? "default" : "secondary"}
+        >
           {organization.status === "active" ? "启用" : "已停用"}
         </Badge>
       </div>
 
       {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
           {error}
         </div>
       )}
       {message && !error && (
-        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
           {message}
         </div>
       )}
@@ -484,7 +553,9 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-name"
-                    onChange={(event) => updateField("name", event.target.value)}
+                    onChange={(event) =>
+                      updateField("name", event.target.value)
+                    }
                     value={form.name}
                   />
                 </Field>
@@ -492,7 +563,9 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-slug"
-                    onChange={(event) => updateField("slug", event.target.value)}
+                    onChange={(event) =>
+                      updateField("slug", event.target.value)
+                    }
                     value={form.slug}
                   />
                 </Field>
@@ -500,7 +573,9 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-subdomain"
-                    onChange={(event) => updateField("subdomain", event.target.value)}
+                    onChange={(event) =>
+                      updateField("subdomain", event.target.value)
+                    }
                     value={form.subdomain}
                   />
                 </Field>
@@ -508,7 +583,9 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-official-name"
-                    onChange={(event) => updateField("officialName", event.target.value)}
+                    onChange={(event) =>
+                      updateField("officialName", event.target.value)
+                    }
                     value={form.officialName}
                   />
                 </Field>
@@ -516,7 +593,9 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-profile-link"
-                    onChange={(event) => updateField("profileLink", event.target.value)}
+                    onChange={(event) =>
+                      updateField("profileLink", event.target.value)
+                    }
                     value={form.profileLink}
                   />
                 </Field>
@@ -524,14 +603,16 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-website"
-                    onChange={(event) => updateField("website", event.target.value)}
+                    onChange={(event) =>
+                      updateField("website", event.target.value)
+                    }
                     value={form.website}
                   />
                 </Field>
                 <div className="flex items-center justify-between rounded-md border px-3 py-2">
                   <div className="grid gap-0.5">
                     <Label htmlFor="organization-active">启用组织</Label>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs">
                       停用后该组织用户不能继续登录
                     </span>
                   </div>
@@ -547,15 +628,15 @@ export default function OrganizationDetailPage() {
                 <div className="flex items-center justify-between rounded-md border px-3 py-2">
                   <div className="grid gap-0.5">
                     <Label htmlFor="organization-default">默认组织</Label>
-                    <span className="text-xs text-muted-foreground">
-                      用于租户初始组织选择
-                    </span>
+                    <span className="text-xs">用于租户初始组织选择</span>
                   </div>
                   <Switch
                     checked={form.isDefault}
                     disabled={!canManage}
                     id="organization-default"
-                    onCheckedChange={(checked) => updateField("isDefault", checked)}
+                    onCheckedChange={(checked) =>
+                      updateField("isDefault", checked)
+                    }
                   />
                 </div>
               </CardContent>
@@ -571,16 +652,20 @@ export default function OrganizationDetailPage() {
                   <div className="grid size-16 place-items-center overflow-hidden rounded-lg border bg-muted">
                     {form.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img alt="" className="size-full object-cover" src={form.imageUrl} />
+                      <img
+                        alt=""
+                        className="size-full object-cover"
+                        src={form.imageUrl}
+                      />
                     ) : (
-                      <AppIcon className="size-6 text-muted-foreground" name="building" />
+                      <AppIcon className="size-6" name="building" />
                     )}
                   </div>
                   <div className="min-w-0 text-sm">
-                    <div className="truncate font-medium">{organization.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {organization.slug}
+                    <div className="truncate font-medium">
+                      {organization.name}
                     </div>
+                    <div className="truncate text-xs">{organization.slug}</div>
                   </div>
                 </div>
                 <input
@@ -610,11 +695,16 @@ export default function OrganizationDetailPage() {
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle>组织成员</CardTitle>
-                <CardDescription>维护 URL 中 org_id 指定组织的成员账号和角色</CardDescription>
+                <CardDescription>
+                  维护 URL 中 org_id 指定组织的成员账号和角色
+                </CardDescription>
               </div>
               <Dialog onOpenChange={setCreateUserOpen} open={createUserOpen}>
                 <DialogTrigger asChild>
-                  <Button disabled={!canManage || assignableRoles.length === 0} size="sm">
+                  <Button
+                    disabled={!canManage || assignableRoles.length === 0}
+                    size="sm"
+                  >
                     <AppIcon className="size-3.5" name="users" />
                     添加成员
                   </Button>
@@ -623,11 +713,11 @@ export default function OrganizationDetailPage() {
                   <DialogHeader>
                     <DialogTitle>添加成员</DialogTitle>
                   </DialogHeader>
-                    <OrganizationUserForm
-                      mode="create"
-                      organizationId={organization.id}
-                      roles={assignableRoles}
-                      token={token}
+                  <OrganizationUserForm
+                    mode="create"
+                    organizationId={organization.id}
+                    roles={assignableRoles}
+                    token={token}
                     onDone={() => {
                       setCreateUserOpen(false);
                       void load();
@@ -650,7 +740,7 @@ export default function OrganizationDetailPage() {
                 <TableBody>
                   {users.length === 0 ? (
                     <TableRow>
-                      <TableCell className="text-center text-muted-foreground" colSpan={5}>
+                      <TableCell className="text-center" colSpan={5}>
                         暂无成员
                       </TableCell>
                     </TableRow>
@@ -665,7 +755,7 @@ export default function OrganizationDetailPage() {
                                 {user.displayName}
                               </div>
                               {user.username && (
-                                <div className="truncate text-xs text-muted-foreground">
+                                <div className="truncate text-xs">
                                   @{user.username}
                                 </div>
                               )}
@@ -681,7 +771,9 @@ export default function OrganizationDetailPage() {
                         <TableCell>
                           <Badge
                             className="text-xs"
-                            variant={user.status === "active" ? "default" : "secondary"}
+                            variant={
+                              user.status === "active" ? "default" : "secondary"
+                            }
                           >
                             {user.status === "active" ? "启用" : "禁用"}
                           </Badge>
@@ -710,7 +802,9 @@ export default function OrganizationDetailPage() {
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle>用户组</CardTitle>
-                <CardDescription>维护该组织内的访问分组和成员关系</CardDescription>
+                <CardDescription>
+                  维护该组织内的访问分组和成员关系
+                </CardDescription>
               </div>
               <Dialog onOpenChange={setCreateGroupOpen} open={createGroupOpen}>
                 <DialogTrigger asChild>
@@ -739,7 +833,7 @@ export default function OrganizationDetailPage() {
               <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
                 <div className="rounded-md border">
                   {groups.length === 0 ? (
-                    <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    <div className="px-4 py-10 text-center text-sm">
                       暂无用户组
                     </div>
                   ) : (
@@ -747,7 +841,7 @@ export default function OrganizationDetailPage() {
                       <Button
                         className={cn(
                           "h-auto w-full justify-between rounded-none border-b px-4 py-3 text-left last:border-b-0",
-                          group.id === selectedGroupId && "bg-muted text-foreground",
+                          group.id === selectedGroupId && "bg-muted",
                         )}
                         key={group.id}
                         onClick={() => setSelectedGroupId(group.id)}
@@ -757,7 +851,7 @@ export default function OrganizationDetailPage() {
                           <span className="block truncate font-medium">
                             {group.name}
                           </span>
-                          <span className="block truncate text-xs text-muted-foreground">
+                          <span className="block truncate text-xs">
                             {group.description || "无描述"}
                           </span>
                         </span>
@@ -778,19 +872,29 @@ export default function OrganizationDetailPage() {
                           value={groupName}
                         />
                       </Field>
-                      <Field htmlFor="organization-group-created-at" label="创建时间">
+                      <Field
+                        htmlFor="organization-group-created-at"
+                        label="创建时间"
+                      >
                         <Input
                           disabled
                           id="organization-group-created-at"
-                          value={new Date(selectedGroup.createdAt).toLocaleString("zh-CN")}
+                          value={new Date(
+                            selectedGroup.createdAt,
+                          ).toLocaleString("zh-CN")}
                         />
                       </Field>
                     </div>
-                    <Field htmlFor="organization-group-description" label="描述">
+                    <Field
+                      htmlFor="organization-group-description"
+                      label="描述"
+                    >
                       <Textarea
                         disabled={!canManage}
                         id="organization-group-description"
-                        onChange={(event) => setGroupDescription(event.target.value)}
+                        onChange={(event) =>
+                          setGroupDescription(event.target.value)
+                        }
                         value={groupDescription}
                       />
                     </Field>
@@ -798,15 +902,15 @@ export default function OrganizationDetailPage() {
                       <div className="flex items-center justify-between border-b px-4 py-3">
                         <div>
                           <div className="text-sm font-medium">成员</div>
-                          <div className="text-xs text-muted-foreground">
-                            仅显示该组织内用户
-                          </div>
+                          <div className="text-xs">仅显示该组织内用户</div>
                         </div>
-                        <Badge variant="outline">{groupMemberIds.length} 人</Badge>
+                        <Badge variant="outline">
+                          {groupMemberIds.length} 人
+                        </Badge>
                       </div>
                       <div className="max-h-[360px] divide-y overflow-auto">
                         {users.length === 0 ? (
-                          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                          <div className="px-4 py-8 text-center text-sm">
                             暂无可选成员
                           </div>
                         ) : (
@@ -818,18 +922,24 @@ export default function OrganizationDetailPage() {
                               <Checkbox
                                 checked={groupMemberIds.includes(user.id)}
                                 disabled={!canManage}
-                                onCheckedChange={() => toggleGroupMember(user.id)}
+                                onCheckedChange={() =>
+                                  toggleGroupMember(user.id)
+                                }
                               />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium">
                                   {user.displayName}
                                 </span>
-                                <span className="block truncate text-xs text-muted-foreground">
+                                <span className="block truncate text-xs">
                                   {user.email}
                                 </span>
                               </span>
                               <Badge
-                                variant={user.status === "active" ? "default" : "secondary"}
+                                variant={
+                                  user.status === "active"
+                                    ? "default"
+                                    : "secondary"
+                                }
                               >
                                 {user.status === "active" ? "启用" : "禁用"}
                               </Badge>
@@ -847,7 +957,9 @@ export default function OrganizationDetailPage() {
                         删除用户组
                       </Button>
                       <Button
-                        disabled={!canManage || savingGroup || !groupName.trim()}
+                        disabled={
+                          !canManage || savingGroup || !groupName.trim()
+                        }
                         onClick={() => void saveGroupDetails()}
                       >
                         {savingGroup ? "保存中..." : "保存用户组"}
@@ -855,7 +967,7 @@ export default function OrganizationDetailPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex min-h-80 items-center justify-center rounded-md border text-sm text-muted-foreground">
+                  <div className="flex min-h-80 items-center justify-center rounded-md border text-sm">
                     选择或创建一个用户组
                   </div>
                 )}
@@ -869,7 +981,9 @@ export default function OrganizationDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>默认值</CardTitle>
-                <CardDescription>为空时继承平台设置，选择后保存为组织覆写</CardDescription>
+                <CardDescription>
+                  为空时继承平台设置，选择后保存为组织覆写
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -888,7 +1002,7 @@ export default function OrganizationDetailPage() {
                         placeholder="继承平台默认"
                         value={form[item.field]}
                       />
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs">
                         平台默认：{settingDefaultLabel(item.key, item.options)}
                       </div>
                     </Field>
@@ -898,7 +1012,9 @@ export default function OrganizationDetailPage() {
                       disabled={!canManage}
                       id="organization-total-employees"
                       inputMode="numeric"
-                      onChange={(event) => updateField("totalEmployees", event.target.value)}
+                      onChange={(event) =>
+                        updateField("totalEmployees", event.target.value)
+                      }
                       type="number"
                       value={form.totalEmployees}
                     />
@@ -919,12 +1035,18 @@ export default function OrganizationDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>基础控制项</CardTitle>
-                <CardDescription>为空时继承平台默认，选择后保存为组织覆写</CardDescription>
+                <CardDescription>
+                  为空时继承平台默认，选择后保存为组织覆写
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {CONTROL_KEYS.map((item) => (
-                    <Field htmlFor={`organization-setting-${item.key}`} key={item.key} label={item.label}>
+                    <Field
+                      htmlFor={`organization-setting-${item.key}`}
+                      key={item.key}
+                      label={item.label}
+                    >
                       <EnumSelect
                         disabled={!canManage}
                         id={`organization-setting-${item.key}`}
@@ -939,7 +1061,7 @@ export default function OrganizationDetailPage() {
                         placeholder="继承平台默认"
                         value={controlValues[item.key] ?? ""}
                       />
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs">
                         平台默认：{settingDefaultLabel(item.key, item.options)}
                       </div>
                     </Field>
@@ -960,15 +1082,22 @@ export default function OrganizationDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>自定义设置</CardTitle>
-                <CardDescription>新增组织专属设置，或覆写平台自定义默认值</CardDescription>
+                <CardDescription>
+                  新增组织专属设置，或覆写平台自定义默认值
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <Field htmlFor="organization-custom-setting-name" label="名称">
+                  <Field
+                    htmlFor="organization-custom-setting-name"
+                    label="名称"
+                  >
                     <Input
                       disabled={!canManage || savingCustomSetting}
                       id="organization-custom-setting-name"
-                      onChange={(event) => setCustomSettingName(event.target.value)}
+                      onChange={(event) =>
+                        setCustomSettingName(event.target.value)
+                      }
                       placeholder="custom.setting"
                       value={customSettingName}
                     />
@@ -977,7 +1106,9 @@ export default function OrganizationDetailPage() {
                     <Input
                       disabled={!canManage || savingCustomSetting}
                       id="organization-custom-setting-value"
-                      onChange={(event) => setCustomSettingValue(event.target.value)}
+                      onChange={(event) =>
+                        setCustomSettingValue(event.target.value)
+                      }
                       value={customSettingValue}
                     />
                   </Field>
@@ -989,7 +1120,10 @@ export default function OrganizationDetailPage() {
                       !customSettingName.trim()
                     }
                     onClick={() =>
-                      void saveCustomSetting(customSettingName, customSettingValue)
+                      void saveCustomSetting(
+                        customSettingName,
+                        customSettingValue,
+                      )
                     }
                     type="button"
                     variant="outline"
@@ -1000,7 +1134,7 @@ export default function OrganizationDetailPage() {
 
                 <div className="grid gap-2 text-sm">
                   {customSettings.length === 0 ? (
-                    <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                    <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
                       暂无自定义设置
                     </div>
                   ) : (
@@ -1013,7 +1147,7 @@ export default function OrganizationDetailPage() {
                           <div className="truncate font-mono text-xs">
                             {setting.name}
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs">
                             {setting.isOverridden
                               ? "组织覆写"
                               : `平台默认：${setting.defaultValue ?? "-"}`}
@@ -1040,7 +1174,9 @@ export default function OrganizationDetailPage() {
                             savingCustomSetting ||
                             !setting.isOverridden
                           }
-                          onClick={() => void saveCustomSetting(setting.name, null)}
+                          onClick={() =>
+                            void saveCustomSetting(setting.name, null)
+                          }
                           size="icon"
                           type="button"
                           variant="ghost"
@@ -1060,6 +1196,8 @@ export default function OrganizationDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>展示资料</CardTitle>
+              <CardDescription>
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1067,7 +1205,9 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-brand-color"
-                    onChange={(event) => updateField("brandColor", event.target.value)}
+                    onChange={(event) =>
+                      updateField("brandColor", event.target.value)
+                    }
                     placeholder="#0f172a"
                     value={form.brandColor}
                   />
@@ -1076,7 +1216,9 @@ export default function OrganizationDetailPage() {
                   <Input
                     disabled={!canManage}
                     id="organization-banner"
-                    onChange={(event) => updateField("banner", event.target.value)}
+                    onChange={(event) =>
+                      updateField("banner", event.target.value)
+                    }
                     placeholder="https://..."
                     value={form.banner}
                   />
@@ -1086,7 +1228,9 @@ export default function OrganizationDetailPage() {
                 <Textarea
                   disabled={!canManage}
                   id="organization-short-description"
-                  onChange={(event) => updateField("shortDescription", event.target.value)}
+                  onChange={(event) =>
+                    updateField("shortDescription", event.target.value)
+                  }
                   rows={3}
                   value={form.shortDescription}
                 />
@@ -1095,7 +1239,9 @@ export default function OrganizationDetailPage() {
                 <Textarea
                   disabled={!canManage}
                   id="organization-client-focus"
-                  onChange={(event) => updateField("clientFocus", event.target.value)}
+                  onChange={(event) =>
+                    updateField("clientFocus", event.target.value)
+                  }
                   rows={3}
                   value={form.clientFocus}
                 />
@@ -1104,7 +1250,9 @@ export default function OrganizationDetailPage() {
                 <Textarea
                   disabled={!canManage}
                   id="organization-overview"
-                  onChange={(event) => updateField("overview", event.target.value)}
+                  onChange={(event) =>
+                    updateField("overview", event.target.value)
+                  }
                   rows={5}
                   value={form.overview}
                 />
@@ -1142,7 +1290,11 @@ export default function OrganizationDetailPage() {
 
       <Separator />
       <div className="flex justify-end gap-2">
-        <Button disabled={!dirty || saving} onClick={() => setForm(toOrganizationForm(organization))} variant="outline">
+        <Button
+          disabled={!dirty || saving}
+          onClick={() => setForm(toOrganizationForm(organization))}
+          variant="outline"
+        >
           重置
         </Button>
         <Button disabled={!canManage || !dirty || saving} onClick={save}>
@@ -1260,7 +1412,7 @@ function OrganizationUserForm({
           </SelectContent>
         </Select>
       </Field>
-      {msg && <div className="text-sm text-destructive">{msg}</div>}
+      {msg && <div className="text-sm">{msg}</div>}
       <Button
         disabled={
           saving ||
@@ -1322,7 +1474,7 @@ function OrganizationGroupForm({
           value={description}
         />
       </Field>
-      {msg && <div className="text-sm text-destructive">{msg}</div>}
+      {msg && <div className="text-sm">{msg}</div>}
       <Button disabled={saving || !name.trim()} onClick={submit}>
         {saving ? "创建中..." : "创建用户组"}
       </Button>
@@ -1391,7 +1543,7 @@ function ReadOnly({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className="grid gap-1.5 sm:col-span-2">
       <Label>{label}</Label>
-      <div className="break-all rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
+      <div className="break-all rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs">
         {children}
       </div>
     </div>
@@ -1443,7 +1595,10 @@ function toOrganizationForm(organization: Organization): OrganizationForm {
     status: organization.status,
     subdomain: organization.subdomain ?? "",
     timeZone: organization.timeZone ?? "",
-    totalEmployees: organization.totalEmployees == null ? "" : String(organization.totalEmployees),
+    totalEmployees:
+      organization.totalEmployees == null
+        ? ""
+        : String(organization.totalEmployees),
     website: organization.website ?? "",
   };
 }
@@ -1490,6 +1645,7 @@ function canAssignRole(
   role: Role,
   canAssignPlatformRole: boolean,
 ) {
+  if (isPlatformAdminRoleName(role.name)) return canAssignPlatformRole;
   if (canAssignPlatformRole) return true;
   return getRoleRank(role.name) < getRoleRank(currentRoleName);
 }

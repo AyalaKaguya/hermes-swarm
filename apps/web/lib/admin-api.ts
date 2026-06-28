@@ -331,13 +331,6 @@ export function switchOrganizationScope(token: string, organizationId: string) {
   });
 }
 
-export function switchPlatformScope(token: string) {
-  return fetchAdmin<LoginResponse>("/scope/platform", {
-    method: "POST",
-    token,
-  });
-}
-
 export function getInvites(token: string) {
   return fetchAdmin<Invite[]>("/invites", { token });
 }
@@ -412,6 +405,18 @@ export function updateUserPassword(token: string, userId: string, payload: {
   return fetchAdmin<void>(`/users/${userId}/password`, { body: payload, method: "POST", token });
 }
 
+export function updateUserPreferredLanguage(
+  token: string,
+  userId: string,
+  preferredLanguage: string,
+) {
+  return fetchAdmin<User>(`/users/${userId}/preferred-language`, {
+    body: { preferredLanguage },
+    method: "PATCH",
+    token,
+  });
+}
+
 export type SmtpConfig = {
   fromAddress: string | null;
   host: string;
@@ -450,8 +455,16 @@ export type CreateInviteResult = {
   ignored: number;
 };
 
-export function getSmtpConfig(token: string) {
-  return fetchAdmin<SmtpConfig | null>("/mail/smtp", { token });
+type SmtpScopeOptions = {
+  scope?: "organization" | "platform";
+};
+
+function smtpScopeSearch(options?: SmtpScopeOptions) {
+  return options?.scope === "platform" ? "?scope=platform" : "";
+}
+
+export function getSmtpConfig(token: string, options?: SmtpScopeOptions) {
+  return fetchAdmin<SmtpConfig | null>(`/mail/smtp${smtpScopeSearch(options)}`, { token });
 }
 
 export function saveSmtpConfig(token: string, payload: {
@@ -462,8 +475,8 @@ export function saveSmtpConfig(token: string, payload: {
   port?: number;
   secure?: boolean;
   username?: string | null;
-}) {
-  return fetchAdmin<SmtpConfig>("/mail/smtp", { body: payload, method: "PUT", token });
+}, options?: SmtpScopeOptions) {
+  return fetchAdmin<SmtpConfig>(`/mail/smtp${smtpScopeSearch(options)}`, { body: payload, method: "PUT", token });
 }
 
 export function validateSmtpConfig(token: string, payload: {
@@ -473,8 +486,8 @@ export function validateSmtpConfig(token: string, payload: {
   port?: number;
   secure?: boolean;
   username?: string | null;
-}) {
-  return fetchAdmin<{ ok: boolean }>("/mail/smtp/validate", { body: payload, method: "POST", token });
+}, options?: SmtpScopeOptions) {
+  return fetchAdmin<{ ok: boolean }>(`/mail/smtp/validate${smtpScopeSearch(options)}`, { body: payload, method: "POST", token });
 }
 
 export function createUser(token: string, payload: {

@@ -299,7 +299,7 @@ export class TenancyService implements OnModuleInit {
   }
 
   /**
-   * Requires the authenticated user to be a platform admin in platform scope.
+   * Requires the authenticated user to be a platform admin with menu access.
    */
   ensurePlatformScope(
     context: AuthContext,
@@ -307,9 +307,6 @@ export class TenancyService implements OnModuleInit {
     action: "manage" | "view",
   ) {
     this.ensurePlatformAdministrator(context);
-    if (context.scopeLevel !== "platform") {
-      throw new ForbiddenException("请先切换到整个平台范围");
-    }
     this.assertPermission(context, menuCode, action);
   }
 
@@ -412,9 +409,18 @@ export class TenancyService implements OnModuleInit {
     }
 
     const currentUser = users.find((u) => u.id === context.userId);
-    const currentRole = roles.find((r) => r.id === context.roleId) ?? null;
+    const roleById = new Map(roles.map((role) => [role.id, role]));
+    const currentRole = context.roleId
+      ? (roleById.get(context.roleId) ?? null)
+      : null;
     const visibleRoles = roles.filter((role) => this.canViewRole(context, role));
     const visibleRoleById = new Map(visibleRoles.map((role) => [role.id, role]));
+    const visibleUsers = users.filter((user) =>
+      this.canViewUser(
+        context,
+        user.roleId ? (roleById.get(user.roleId) ?? null) : null,
+      ),
+    );
     const visibleRolePermissions = rolePermissions.filter((permission) =>
       this.canViewRolePermission(
         context,
@@ -452,7 +458,7 @@ export class TenancyService implements OnModuleInit {
         context.organizationId,
       ),
       systemSettings: systemSettings.map(toSystemSettingDto),
-      users: users.map(toUserDto),
+      users: visibleUsers.map(toUserDto),
     };
   }
 
@@ -605,7 +611,12 @@ export class TenancyService implements OnModuleInit {
       where: { organizationId: context.organizationId },
       order: { createdAt: "ASC" },
     });
-    return users.map(toUserDto);
+    const visibleUsers = await this.filterVisibleUsers(
+      context,
+      context.organizationId,
+      users,
+    );
+    return visibleUsers.map(toUserDto);
   }
 
   /**
@@ -618,7 +629,12 @@ export class TenancyService implements OnModuleInit {
       where: { organizationId },
       order: { createdAt: "ASC" },
     });
-    return users.map(toUserDto);
+    const visibleUsers = await this.filterVisibleUsers(
+      context,
+      organizationId,
+      users,
+    );
+    return visibleUsers.map(toUserDto);
   }
 
   /**
@@ -837,11 +853,17 @@ export class TenancyService implements OnModuleInit {
       order: { createdAt: "ASC" },
     });
 
+    const visibleUsers = await this.filterVisibleUsers(
+      context,
+      context.organizationId,
+      users,
+    );
+
     if (!search) {
-      return users.map(toUserDto);
+      return visibleUsers.map(toUserDto);
     }
 
-    return users
+    return visibleUsers
       .filter((user) =>
         [
           user.displayName,
@@ -1570,6 +1592,12 @@ export class TenancyService implements OnModuleInit {
     return context.isPlatformAdmin || !isPlatformMenuCode(parsed.menuCode);
   }
 
+  private canViewUser(context: AuthContext, role: Role | null) {
+    if (context.isPlatformAdmin) return true;
+    if (!role) return true;
+    return !isPlatformAdminRoleName(role.name);
+  }
+
   private canManageRole(context: AuthContext, role: Role) {
     if (isPlatformAdminRoleName(role.name)) return false;
     return getRoleRank(role.name) < getRoleRank(context.roleName);
@@ -1577,6 +1605,9 @@ export class TenancyService implements OnModuleInit {
 
   private assertCanAssignRole(context: AuthContext, role: Role) {
     if (context.isPlatformAdmin) return;
+    if (isPlatformAdminRoleName(role.name)) {
+      throw new ForbiddenException("不能分配平台管理员角色");
+    }
     if (getRoleRank(role.name) >= getRoleRank(context.roleName)) {
       throw new ForbiddenException("不能分配同级或上级角色");
     }
@@ -1592,9 +1623,33 @@ export class TenancyService implements OnModuleInit {
     const role = await this.roleRepository.findOne({
       where: { id: user.roleId, organizationId: user.organizationId },
     });
-    if (role && getRoleRank(role.name) >= getRoleRank(context.roleName)) {
+    if (!role) return;
+    if (isPlatformAdminRoleName(role.name)) {
+      throw new ForbiddenException("不能修改平台管理员用户");
+    }
+    if (getRoleRank(role.name) >= getRoleRank(context.roleName)) {
       throw new ForbiddenException("不能修改同级或上级用户");
     }
+  }
+
+  private async filterVisibleUsers(
+    context: AuthContext,
+    organizationId: string,
+    users: User[],
+  ) {
+    if (context.isPlatformAdmin || users.length === 0) return users;
+
+    const roles = await this.roleRepository.find({
+      where: { organizationId },
+      order: { createdAt: "ASC" },
+    });
+    const roleById = new Map(roles.map((role) => [role.id, role]));
+    return users.filter((user) =>
+      this.canViewUser(
+        context,
+        user.roleId ? (roleById.get(user.roleId) ?? null) : null,
+      ),
+    );
   }
 
   private assertCanManageRole(context: AuthContext, role: Role) {

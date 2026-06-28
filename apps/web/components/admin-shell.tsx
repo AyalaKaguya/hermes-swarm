@@ -14,7 +14,6 @@ import { AppShell } from "@/components/app-shell";
 import {
   getSnapshot,
   switchOrganizationScope,
-  switchPlatformScope,
   type Snapshot,
 } from "@/lib/admin-api";
 import {
@@ -43,35 +42,39 @@ export function AdminShell({ children }: { children: ReactNode }) {
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [resolvedSession, setResolvedSession] = useState<ResolvedSession | null>(null);
+  const [resolvedSession, setResolvedSession] =
+    useState<ResolvedSession | null>(null);
   const [loading, setLoading] = useState(!isPublicRoute);
 
-  const loadSnapshot = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const session = getStoredSession();
-    if (!session?.token) {
-      setSnapshot(null);
-      setResolvedSession(null);
-      setLoading(false);
-      router.replace("/login");
-      return;
-    }
+  const loadSnapshot = useCallback(
+    async (options: { showLoading?: boolean } = {}) => {
+      const session = getStoredSession();
+      if (!session?.token) {
+        setSnapshot(null);
+        setResolvedSession(null);
+        setLoading(false);
+        router.replace("/login");
+        return;
+      }
 
-    if (options.showLoading ?? true) {
-      setLoading(true);
-    }
-    try {
-      const data = await getSnapshot(session.token);
-      setSnapshot(data);
-      setResolvedSession(resolveSession(data));
-    } catch {
-      clearStoredSession();
-      setSnapshot(null);
-      setResolvedSession(null);
-      router.replace("/login");
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
+      if (options.showLoading ?? true) {
+        setLoading(true);
+      }
+      try {
+        const data = await getSnapshot(session.token);
+        setSnapshot(data);
+        setResolvedSession(resolveSession(data));
+      } catch {
+        clearStoredSession();
+        setSnapshot(null);
+        setResolvedSession(null);
+        router.replace("/login");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [router],
+  );
 
   useEffect(() => {
     if (isPublicRoute) {
@@ -84,31 +87,15 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   async function switchOrganization(organizationId: string) {
     const session = getStoredSession();
-    if (
-      !session?.token ||
-      (snapshot?.scope.level === "organization" &&
-        organizationId === snapshot.organization.id)
-    ) {
+    if (!session?.token || organizationId === snapshot?.organization.id) {
       return;
     }
     const result = await switchOrganizationScope(session.token, organizationId);
     storeSession({ token: result.token });
     setSnapshot(result.snapshot);
     setResolvedSession(resolveSession(result.snapshot));
-    if (pathname === "/settings/tenant" || pathname === "/settings/organizations") {
+    if (pathname.startsWith("/settings/organizations/")) {
       router.replace(`/settings/organizations/${organizationId}`);
-    }
-  }
-
-  async function switchPlatform() {
-    const session = getStoredSession();
-    if (!session?.token || snapshot?.scope.level === "platform") return;
-    const result = await switchPlatformScope(session.token);
-    storeSession({ token: result.token });
-    setSnapshot(result.snapshot);
-    setResolvedSession(resolveSession(result.snapshot));
-    if (pathname.startsWith("/settings")) {
-      router.replace("/settings/tenant");
     }
   }
 
@@ -129,7 +116,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (loading || !snapshot || !resolvedSession) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <span className="text-sm text-muted-foreground">加载中...</span>
+        <span className="text-sm">加载中...</span>
       </div>
     );
   }
@@ -142,17 +129,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <AppShell
       contentClassName={pathname.startsWith("/settings") ? "p-0" : undefined}
-      canUsePlatformScope={snapshot.isPlatformAdmin}
-      currentOrganizationId={
-        snapshot.scope.level === "organization" ? snapshot.organization.id : null
-      }
-      currentScopeLevel={snapshot.scope.level}
-      onPlatformScopeSwitch={switchPlatform}
+      currentOrganizationId={snapshot.organization.id}
       onOrganizationSwitch={switchOrganization}
+      onUserUpdated={() => loadSnapshot({ showLoading: false })}
       organizationName={
-        snapshot.scope.level === "platform"
-          ? "整个平台"
-          : snapshot.organization.name ?? resolvedSession.organization?.name
+        snapshot.organization.name ?? resolvedSession.organization?.name
       }
       organizations={snapshot.organizations}
       platformName={platformName}
@@ -173,12 +154,19 @@ export function useAdminShell() {
   return context;
 }
 
-function resolvePlatformName(snapshot: Snapshot, preferredLanguage?: string | null) {
+function resolvePlatformName(
+  snapshot: Snapshot,
+  preferredLanguage?: string | null,
+) {
   const settings = snapshot.systemSettings ?? [];
-  const languageKey = preferredLanguage ? `tenant_title_${preferredLanguage}` : "";
+  const languageKey = preferredLanguage
+    ? `tenant_title_${preferredLanguage}`
+    : "";
   return (
     settings.find((setting) => setting.name === languageKey)?.value?.trim() ||
-    settings.find((setting) => setting.name === "tenant_title")?.value?.trim() ||
+    settings
+      .find((setting) => setting.name === "tenant_title")
+      ?.value?.trim() ||
     null
   );
 }

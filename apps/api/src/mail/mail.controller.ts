@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { MailService } from "./mail.service.js";
 
 @Controller("admin/mail")
@@ -12,8 +12,11 @@ export class MailController {
    * Returns the effective SMTP configuration without secret values.
    */
   @Get("smtp")
-  getSmtp(@Headers("authorization") authorization?: string) {
-    return this.mailService.getSmtp(authorization);
+  getSmtp(
+    @Headers("authorization") authorization?: string,
+    @Query("scope") scope?: string,
+  ) {
+    return this.mailService.getSmtp(authorization, { scope });
   }
 
   /**
@@ -23,8 +26,9 @@ export class MailController {
   saveSmtp(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: any,
+    @Query("scope") scope?: string,
   ) {
-    return this.mailService.saveSmtp(authorization, payload);
+    return this.mailService.saveSmtp(authorization, payload, { scope });
   }
 
   /**
@@ -34,8 +38,9 @@ export class MailController {
   validateSmtp(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: any,
+    @Query("scope") scope?: string,
   ) {
-    return this.mailService.validateSmtp(authorization, payload);
+    return this.mailService.validateSmtp(authorization, payload, { scope });
   }
 
   /**

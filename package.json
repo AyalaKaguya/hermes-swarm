@@ -27,15 +27,6 @@
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "nx",
-      "sharp"
-    ],
-    "ignoredBuiltDependencies": [
-      "esbuild"
-    ]
-  },
   "dependencies": {
     "handlebars": "^4.7.9",
     "jsonwebtoken": "^9.0.3",

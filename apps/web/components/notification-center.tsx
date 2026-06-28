@@ -11,10 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 type NotificationItem = {
   id: string;
@@ -43,7 +40,11 @@ export function NotificationCenter() {
 
     function onUnhandledRejection(event: PromiseRejectionEvent) {
       const reason = event.reason;
-      push(reason instanceof Error ? reason.message : String(reason || "异步任务失败"));
+      push(
+        reason instanceof Error
+          ? reason.message
+          : String(reason || "异步任务失败"),
+      );
     }
 
     function onCustom(event: Event) {
@@ -61,7 +62,10 @@ export function NotificationCenter() {
     };
   }, []);
 
-  const countLabel = useMemo(() => (items.length > 99 ? "99+" : String(items.length)), [items.length]);
+  const countLabel = useMemo(
+    () => (items.length > 99 ? "99+" : String(items.length)),
+    [items.length],
+  );
 
   return (
     <SidebarMenuItem>
@@ -99,9 +103,7 @@ export function NotificationCenter() {
           </div>
           <DropdownMenuSeparator />
           {items.length === 0 ? (
-            <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-              暂无通知
-            </div>
+            <div className="px-2 py-6 text-center text-sm">暂无通知</div>
           ) : (
             <div className="max-h-80 overflow-auto">
               {items.map((item, index) => (
@@ -115,15 +117,15 @@ export function NotificationCenter() {
                     <span className="break-words text-sm leading-snug">
                       {item.message}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      {item.time}
-                    </span>
+                    <span className="text-xs">{item.time}</span>
                   </span>
                   <Button
                     aria-label="移除通知"
                     onClick={(event) => {
                       event.stopPropagation();
-                      setItems((current) => current.filter((_, i) => i !== index));
+                      setItems((current) =>
+                        current.filter((_, i) => i !== index),
+                      );
                     }}
                     size="icon-xs"
                     title="移除通知"

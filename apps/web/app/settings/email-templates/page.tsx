@@ -5,11 +5,29 @@ import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createEmailTemplate,
@@ -37,23 +55,34 @@ export default function EmailTemplatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [languageFilter, setLanguageFilter] = useState<LanguageFilter>("all");
   const [createOpen, setCreateOpen] = useState(false);
-  const [editTemplate, setEditTemplate] = useState<EmailTemplateDto | null>(null);
-  const [deleteTemplate, setDeleteTemplate] = useState<EmailTemplateDto | null>(null);
+  const [editTemplate, setEditTemplate] = useState<EmailTemplateDto | null>(
+    null,
+  );
+  const [deleteTemplate, setDeleteTemplate] = useState<EmailTemplateDto | null>(
+    null,
+  );
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) { setLoading(false); return; }
+    if (!session?.token) {
+      setLoading(false);
+      return;
+    }
     setToken(session.token);
     try {
       const data = await listEmailTemplates(session.token);
       setTemplates(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function remove(templateId: string) {
     try {
@@ -66,14 +95,27 @@ export default function EmailTemplatesPage() {
     }
   }
 
-  const filtered = languageFilter === "all"
-    ? templates
-    : templates.filter(t => t.languageCode === languageFilter);
+  const filtered =
+    languageFilter === "all"
+      ? templates
+      : templates.filter((t) => t.languageCode === languageFilter);
 
-  const availableLanguages = [...new Set(templates.map(t => t.languageCode))];
+  const availableLanguages = [...new Set(templates.map((t) => t.languageCode))];
 
-  if (loading) return <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">加载中...</div>;
-  if (error) return <div className="flex items-center justify-center py-16"><div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div></div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-16 text-sm">
+        加载中...
+      </div>
+    );
+  if (error)
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
+          {error}
+        </div>
+      </div>
+    );
 
   return (
     <Card>
@@ -90,36 +132,50 @@ export default function EmailTemplatesPage() {
             </Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>创建邮件模板</DialogTitle></DialogHeader>
-            <CreateTemplateForm token={token} onDone={() => { setCreateOpen(false); void load(); }} />
+            <DialogHeader>
+              <DialogTitle>创建邮件模板</DialogTitle>
+            </DialogHeader>
+            <CreateTemplateForm
+              token={token}
+              onDone={() => {
+                setCreateOpen(false);
+                void load();
+              }}
+            />
           </DialogContent>
         </Dialog>
       </CardHeader>
       <CardContent>
-        {msg && !error && <div className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">{msg}</div>}
+        {msg && !error && (
+          <div className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            {msg}
+          </div>
+        )}
 
         {availableLanguages.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-1.5">
-            {(["all", ...availableLanguages] as LanguageFilter[]).map(lang => (
-              <Button
-                key={lang}
-                onClick={() => setLanguageFilter(lang)}
-                size="xs"
-                variant={languageFilter === lang ? "secondary" : "ghost"}
-              >
-                {LANGUAGE_LABELS[lang] || lang}
-              </Button>
-            ))}
+            {(["all", ...availableLanguages] as LanguageFilter[]).map(
+              (lang) => (
+                <Button
+                  key={lang}
+                  onClick={() => setLanguageFilter(lang)}
+                  size="xs"
+                  variant={languageFilter === lang ? "secondary" : "ghost"}
+                >
+                  {LANGUAGE_LABELS[lang] || lang}
+                </Button>
+              ),
+            )}
           </div>
         )}
 
         {filtered.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">
+          <div className="py-8 text-center text-sm">
             暂无邮件模板。点击"添加模板"创建第一个。
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map(t => (
+            {filtered.map((t) => (
               <div
                 key={t.id}
                 className="flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:border-primary/50"
@@ -127,35 +183,43 @@ export default function EmailTemplatesPage() {
                 <div className="flex flex-1 flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="font-semibold text-sm">{t.name}</div>
-                    <Badge className="text-xs" variant="outline">{t.languageCode}</Badge>
+                    <Badge className="text-xs" variant="outline">
+                      {t.languageCode}
+                    </Badge>
                   </div>
                   {t.subject && (
-                    <div className="text-xs text-muted-foreground line-clamp-1">{t.subject}</div>
+                    <div className="text-xs line-clamp-1">{t.subject}</div>
                   )}
                   {t.mjml && (
-                    <div className="text-xs text-muted-foreground line-clamp-2 font-mono opacity-70">
+                    <div className="text-xs line-clamp-2 font-mono opacity-70">
                       {t.mjml.replace(/<[^>]*>/g, "").slice(0, 120)}
                     </div>
                   )}
                   {!t.mjml && t.hbs && (
-                    <div className="text-xs text-muted-foreground line-clamp-2 font-mono opacity-70">
+                    <div className="text-xs line-clamp-2 font-mono opacity-70">
                       {t.hbs.slice(0, 120)}
                     </div>
                   )}
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-xs">
                     {t.organizationId ? "组织模板" : "全局模板"}
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-1">
                   <Button
-                    onClick={(e) => { e.stopPropagation(); setEditTemplate(t); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditTemplate(t);
+                    }}
                     size="xs"
                     variant="ghost"
                   >
                     编辑
                   </Button>
                   <Button
-                    onClick={(e) => { e.stopPropagation(); setDeleteTemplate(t); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTemplate(t);
+                    }}
                     size="xs"
                     variant="destructive"
                   >
@@ -170,13 +234,23 @@ export default function EmailTemplatesPage() {
 
       {/* Edit dialog */}
       {editTemplate && (
-        <Dialog onOpenChange={(o) => { if (!o) setEditTemplate(null); }} open={true}>
+        <Dialog
+          onOpenChange={(o) => {
+            if (!o) setEditTemplate(null);
+          }}
+          open={true}
+        >
           <DialogContent className="max-w-2xl">
-            <DialogHeader><DialogTitle>编辑模板</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>编辑模板</DialogTitle>
+            </DialogHeader>
             <EditTemplateForm
               template={editTemplate}
               token={token}
-              onDone={() => { setEditTemplate(null); void load(); }}
+              onDone={() => {
+                setEditTemplate(null);
+                void load();
+              }}
             />
           </DialogContent>
         </Dialog>
@@ -198,7 +272,13 @@ export default function EmailTemplatesPage() {
   );
 }
 
-function CreateTemplateForm({ token, onDone }: { token: string; onDone: () => void }) {
+function CreateTemplateForm({
+  token,
+  onDone,
+}: {
+  token: string;
+  onDone: () => void;
+}) {
   const [name, setName] = useState("");
   const [languageCode, setLanguageCode] = useState("zh-CN");
   const [subject, setSubject] = useState("");
@@ -209,7 +289,8 @@ function CreateTemplateForm({ token, onDone }: { token: string; onDone: () => vo
 
   async function submit() {
     if (!name.trim()) return;
-    setSaving(true); setMsg("");
+    setSaving(true);
+    setMsg("");
     try {
       await createEmailTemplate(token, {
         name: name.trim(),
@@ -219,18 +300,30 @@ function CreateTemplateForm({ token, onDone }: { token: string; onDone: () => vo
         mjml: mjml.trim() || null,
       });
       onDone();
-    } catch (err) { setMsg(err instanceof Error ? err.message : "创建失败"); }
-    finally { setSaving(false); }
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "创建失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4">
-        <div className="grid gap-2"><Label>模板名称</Label><Input onChange={(e) => setName(e.target.value)} placeholder="welcome-user" value={name} /></div>
+        <div className="grid gap-2">
+          <Label>模板名称</Label>
+          <Input
+            onChange={(e) => setName(e.target.value)}
+            placeholder="welcome-user"
+            value={name}
+          />
+        </div>
         <div className="grid gap-2">
           <Label>语言</Label>
           <Select onValueChange={setLanguageCode} value={languageCode}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="zh-CN">简体中文</SelectItem>
               <SelectItem value="zh-Hans">简体中文</SelectItem>
@@ -240,22 +333,51 @@ function CreateTemplateForm({ token, onDone }: { token: string; onDone: () => vo
           </Select>
         </div>
       </div>
-      <div className="grid gap-2"><Label>邮件主题</Label><Input onChange={(e) => setSubject(e.target.value)} placeholder="欢迎加入 {{orgName}}" value={subject} /></div>
+      <div className="grid gap-2">
+        <Label>邮件主题</Label>
+        <Input
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="欢迎加入 {{orgName}}"
+          value={subject}
+        />
+      </div>
       <div className="grid gap-2">
         <Label>HBS 模板内容</Label>
-        <Textarea className="font-mono text-xs" onChange={(e) => setHbs(e.target.value)} placeholder="Handlebars 模板..." rows={6} value={hbs} />
+        <Textarea
+          className="font-mono text-xs"
+          onChange={(e) => setHbs(e.target.value)}
+          placeholder="Handlebars 模板..."
+          rows={6}
+          value={hbs}
+        />
       </div>
       <div className="grid gap-2">
         <Label>MJML (可选)</Label>
-        <Textarea className="font-mono text-xs" onChange={(e) => setMjml(e.target.value)} placeholder="MJML markup..." rows={4} value={mjml} />
+        <Textarea
+          className="font-mono text-xs"
+          onChange={(e) => setMjml(e.target.value)}
+          placeholder="MJML markup..."
+          rows={4}
+          value={mjml}
+        />
       </div>
-      {msg && <div className="text-sm text-destructive">{msg}</div>}
-      <Button disabled={saving || !name.trim() || !hbs.trim()} onClick={submit}>{saving ? "创建中..." : "创建模板"}</Button>
+      {msg && <div className="text-sm">{msg}</div>}
+      <Button disabled={saving || !name.trim() || !hbs.trim()} onClick={submit}>
+        {saving ? "创建中..." : "创建模板"}
+      </Button>
     </div>
   );
 }
 
-function EditTemplateForm({ template, token, onDone }: { template: EmailTemplateDto; token: string; onDone: () => void }) {
+function EditTemplateForm({
+  template,
+  token,
+  onDone,
+}: {
+  template: EmailTemplateDto;
+  token: string;
+  onDone: () => void;
+}) {
   const [name, setName] = useState(template.name);
   const [languageCode, setLanguageCode] = useState(template.languageCode);
   const [subject, setSubject] = useState(template.subject ?? "");
@@ -265,7 +387,8 @@ function EditTemplateForm({ template, token, onDone }: { template: EmailTemplate
   const [msg, setMsg] = useState("");
 
   async function submit() {
-    setSaving(true); setMsg("");
+    setSaving(true);
+    setMsg("");
     try {
       await updateEmailTemplate(token, template.id, {
         name: name.trim(),
@@ -275,18 +398,26 @@ function EditTemplateForm({ template, token, onDone }: { template: EmailTemplate
         mjml: mjml.trim() || null,
       });
       onDone();
-    } catch (err) { setMsg(err instanceof Error ? err.message : "保存失败"); }
-    finally { setSaving(false); }
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4">
-        <div className="grid gap-2"><Label>模板名称</Label><Input onChange={(e) => setName(e.target.value)} value={name} /></div>
+        <div className="grid gap-2">
+          <Label>模板名称</Label>
+          <Input onChange={(e) => setName(e.target.value)} value={name} />
+        </div>
         <div className="grid gap-2">
           <Label>语言</Label>
           <Select onValueChange={setLanguageCode} value={languageCode}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="zh-CN">简体中文</SelectItem>
               <SelectItem value="zh-Hans">简体中文</SelectItem>
@@ -296,17 +427,32 @@ function EditTemplateForm({ template, token, onDone }: { template: EmailTemplate
           </Select>
         </div>
       </div>
-      <div className="grid gap-2"><Label>邮件主题</Label><Input onChange={(e) => setSubject(e.target.value)} value={subject} /></div>
+      <div className="grid gap-2">
+        <Label>邮件主题</Label>
+        <Input onChange={(e) => setSubject(e.target.value)} value={subject} />
+      </div>
       <div className="grid gap-2">
         <Label>HBS 模板内容</Label>
-        <Textarea className="font-mono text-xs" onChange={(e) => setHbs(e.target.value)} rows={6} value={hbs} />
+        <Textarea
+          className="font-mono text-xs"
+          onChange={(e) => setHbs(e.target.value)}
+          rows={6}
+          value={hbs}
+        />
       </div>
       <div className="grid gap-2">
         <Label>MJML (可选)</Label>
-        <Textarea className="font-mono text-xs" onChange={(e) => setMjml(e.target.value)} rows={4} value={mjml} />
+        <Textarea
+          className="font-mono text-xs"
+          onChange={(e) => setMjml(e.target.value)}
+          rows={4}
+          value={mjml}
+        />
       </div>
-      {msg && <div className="text-sm text-destructive">{msg}</div>}
-      <Button disabled={saving} onClick={submit}>{saving ? "保存中..." : "保存"}</Button>
+      {msg && <div className="text-sm">{msg}</div>}
+      <Button disabled={saving} onClick={submit}>
+        {saving ? "保存中..." : "保存"}
+      </Button>
     </div>
   );
 }

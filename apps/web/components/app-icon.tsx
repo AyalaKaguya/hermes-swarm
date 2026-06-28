@@ -13,10 +13,14 @@ import {
   Grid2X2,
   Home,
   Layers,
+  Languages,
   ListX,
   LogOut,
   Menu,
+  Monitor,
+  Moon,
   MoreVertical,
+  Palette,
   PanelLeft,
   Pencil,
   Plug,
@@ -27,6 +31,7 @@ import {
   Settings,
   Shield,
   Sparkles,
+  Sun,
   Trash2,
   Upload,
   User,
@@ -51,10 +56,13 @@ export type AppIconName =
   | "image-upload"
   | "invite"
   | "layers"
+  | "language"
   | "list-x"
   | "logout"
   | "menu"
+  | "moon"
   | "more"
+  | "palette"
   | "panel"
   | "pencil"
   | "plug"
@@ -62,6 +70,8 @@ export type AppIconName =
   | "search"
   | "settings"
   | "sparkles"
+  | "sun"
+  | "system"
   | "switch"
   | "trash"
   | "upload"
@@ -85,10 +95,13 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   "image-upload": ImageUp,
   invite: UserPlus,
   layers: Layers,
+  language: Languages,
   "list-x": ListX,
   logout: LogOut,
   menu: Menu,
+  moon: Moon,
   more: MoreVertical,
+  palette: Palette,
   panel: PanelLeft,
   pencil: Pencil,
   plug: Plug,
@@ -96,6 +109,8 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   search: Search,
   settings: Settings,
   sparkles: Sparkles,
+  sun: Sun,
+  system: Monitor,
   switch: Repeat2,
   trash: Trash2,
   upload: Upload,

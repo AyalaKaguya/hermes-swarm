@@ -1,14 +1,7 @@
 import type { AppShellNavSection } from "@/components/app-shell";
-import {
-  DEFAULT_ADMIN_MENUS,
-  isPlatformMenuCode,
-} from "@hermes-swarm/core/tenancy/permissions";
-import type { RequestScopeLevel } from "@/lib/admin-api";
+import { DEFAULT_ADMIN_MENUS } from "@hermes-swarm/core/tenancy/permissions";
 
-export type SettingsScopeContext = "dual-scope" | "organization-only" | "platform-only";
-export type SettingsNavItem = AppShellNavSection["items"][number] & {
-  scopeContext?: SettingsScopeContext;
-};
+export type SettingsNavItem = AppShellNavSection["items"][number];
 
 type AdminMenuCode = (typeof DEFAULT_ADMIN_MENUS)[number]["code"];
 
@@ -17,10 +10,9 @@ const SETTINGS_NAV_UI: Record<
   {
     icon: SettingsNavItem["icon"];
     label?: string;
-    scopeContext?: SettingsScopeContext;
   }
 > = {
-  account: { icon: "user", scopeContext: "dual-scope" },
+  account: { icon: "user" },
   "custom-smtp": { icon: "settings" },
   "email-templates": { icon: "file" },
   features: { icon: "grid" },
@@ -40,9 +32,6 @@ export const SETTINGS_NAV_ITEMS = DEFAULT_ADMIN_MENUS.map((menu) => {
     icon: ui.icon,
     key: menu.code,
     label: ui.label ?? menu.label,
-    scopeContext:
-      ui.scopeContext ??
-      (isPlatformMenuCode(menu.code) ? "platform-only" : "organization-only"),
   };
 }) satisfies SettingsNavItem[];
 
@@ -76,16 +65,6 @@ export const SETTINGS_NAV_SECTIONS = [
     label: "租户管理",
   },
 ];
-
-export function matchesSettingsScope(
-  item: SettingsNavItem,
-  scopeLevel: RequestScopeLevel,
-) {
-  const scope = item.scopeContext ?? "dual-scope";
-  if (scope === "dual-scope") return true;
-  if (scope === "platform-only") return scopeLevel === "platform";
-  return scopeLevel === "organization";
-}
 
 export function getSettingsNavLabel(activeItem: string) {
   return (

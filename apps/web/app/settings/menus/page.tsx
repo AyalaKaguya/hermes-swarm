@@ -97,7 +97,7 @@ export default function MenusPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+      <div className="flex items-center justify-center py-16 text-sm">
         加载中...
       </div>
     );
@@ -108,9 +108,7 @@ export default function MenusPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">网页</h1>
-          <p className="text-sm text-muted-foreground">
-            管理控制台页面、路由和权限入口
-          </p>
+          <p className="text-sm">管理控制台页面、路由和权限入口</p>
         </div>
         <Dialog onOpenChange={setCreateOpen} open={createOpen}>
           <DialogTrigger asChild>
@@ -132,12 +130,12 @@ export default function MenusPage() {
       </div>
 
       {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
           {error}
         </div>
       )}
       {!canManage && (
-        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
           当前账号只有查看权限，不能新增、编辑或停用网页。
         </div>
       )}
@@ -169,12 +167,16 @@ export default function MenusPage() {
               {filteredItems.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.label}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
+                  <TableCell className="font-mono text-xs">
                     {item.code}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{item.path}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {item.parentId ? parentLabel.get(item.parentId) ?? "未知父级" : "-"}
+                  <TableCell className="font-mono text-xs">
+                    {item.path}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {item.parentId
+                      ? (parentLabel.get(item.parentId) ?? "未知父级")
+                      : "-"}
                   </TableCell>
                   <TableCell className="text-sm">{item.sortOrder}</TableCell>
                   <TableCell>
@@ -189,7 +191,11 @@ export default function MenusPage() {
                         open={editing?.id === item.id}
                       >
                         <DialogTrigger asChild>
-                          <Button disabled={!canManage} size="xs" variant="ghost">
+                          <Button
+                            disabled={!canManage}
+                            size="xs"
+                            variant="ghost"
+                          >
                             编辑
                           </Button>
                         </DialogTrigger>
@@ -218,10 +224,7 @@ export default function MenusPage() {
               ))}
               {filteredItems.length === 0 && (
                 <TableRow>
-                  <TableCell
-                    className="py-10 text-center text-sm text-muted-foreground"
-                    colSpan={7}
-                  >
+                  <TableCell className="py-10 text-center text-sm" colSpan={7}>
                     暂无网页
                   </TableCell>
                 </TableRow>
@@ -233,7 +236,11 @@ export default function MenusPage() {
 
       <ConfirmActionDialog
         confirmLabel="停用"
-        description={deleting ? `停用网页「${deleting.label}」后，它不会再出现在管理导航中。` : ""}
+        description={
+          deleting
+            ? `停用网页「${deleting.label}」后，它不会再出现在管理导航中。`
+            : ""
+        }
         onConfirm={async () => {
           if (!deleting) return;
           await deleteMenu(token, deleting.id);
@@ -269,7 +276,9 @@ function MenuForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const parentOptions = menus.filter((menu) => menu.id !== item?.id && menu.isActive);
+  const parentOptions = menus.filter(
+    (menu) => menu.id !== item?.id && menu.isActive,
+  );
 
   async function save() {
     setSaving(true);
@@ -303,7 +312,7 @@ function MenuForm({
       </DialogHeader>
       <div className="grid gap-3">
         {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
             {error}
           </div>
         )}
@@ -336,7 +345,9 @@ function MenuForm({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="父级" htmlFor="menu-parent">
             <Select
-              onValueChange={(value) => setParentId(value === NO_PARENT ? null : value)}
+              onValueChange={(value) =>
+                setParentId(value === NO_PARENT ? null : value)
+              }
               value={parentId ?? NO_PARENT}
             >
               <SelectTrigger id="menu-parent">
@@ -365,11 +376,13 @@ function MenuForm({
         <div className="flex items-center justify-between rounded-md border px-3 py-2">
           <div className="grid gap-0.5">
             <Label htmlFor="menu-active">启用网页</Label>
-            <span className="text-xs text-muted-foreground">
-              停用后不会出现在管理导航中
-            </span>
+            <span className="text-xs">停用后不会出现在管理导航中</span>
           </div>
-          <Switch checked={isActive} id="menu-active" onCheckedChange={setIsActive} />
+          <Switch
+            checked={isActive}
+            id="menu-active"
+            onCheckedChange={setIsActive}
+          />
         </div>
         <Button
           disabled={!code.trim() || !label.trim() || !path.trim() || saving}

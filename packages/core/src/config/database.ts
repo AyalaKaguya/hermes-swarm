@@ -5,11 +5,21 @@
  * Works with the docker-compose.yml defaults out of the box.
  */
 export const databaseConfig = {
-  host: process.env.POSTGRES_HOST ?? "localhost",
-  port: Number(process.env.POSTGRES_PORT ?? 5432),
-  user: process.env.POSTGRES_USER ?? "hermes",
-  password: process.env.POSTGRES_PASSWORD ?? "hermes_dev_pwd",
-  database: process.env.POSTGRES_DB ?? "hermes_dev",
+  get host() {
+    return process.env.POSTGRES_HOST ?? "localhost";
+  },
+  get port() {
+    return Number(process.env.POSTGRES_PORT ?? 5432);
+  },
+  get user() {
+    return process.env.POSTGRES_USER ?? "hermes";
+  },
+  get password() {
+    return process.env.POSTGRES_PASSWORD ?? "hermes_dev_pwd";
+  },
+  get database() {
+    return process.env.POSTGRES_DB ?? "hermes_dev";
+  },
 } as const;
 
 /** Build a connection string from the current config (or POSTGRES_URL). */

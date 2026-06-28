@@ -1,16 +1,15 @@
 import * as dotenv from "dotenv";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import "reflect-metadata";
+import { NestFactory } from "@nestjs/core";
 
 // Load root .env before any other imports
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(currentDir, "../../../.env") });
 
-import "reflect-metadata";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./app.module.js";
-
 async function bootstrap() {
+  const { AppModule } = await import("./app.module.js");
   const app = await NestFactory.create(AppModule);
   const corsOrigin =
     process.env.CORS_ORIGIN?.split(",")

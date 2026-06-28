@@ -42,6 +42,10 @@ type EmailLogPayload = {
   templateName?: string | null;
 };
 
+type MailScopeOptions = {
+  scope?: string;
+};
+
 @Injectable()
 /**
  * Implements the migrated mail settings surface: SMTP configuration, template
@@ -61,9 +65,16 @@ export class MailService {
   /**
    * Returns the organization SMTP configuration, falling back to global config.
    */
-  async getSmtp(authorization: string | undefined) {
+  async getSmtp(
+    authorization: string | undefined,
+    options: MailScopeOptions = {},
+  ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    const organizationId = this.resolveSmtpOrganizationId(context, "view");
+    const organizationId = this.resolveSmtpOrganizationId(
+      context,
+      "view",
+      options.scope,
+    );
     const record = await this.findSmtpRecord(organizationId);
     return record ? toSmtpDto(record) : null;
   }
@@ -71,9 +82,17 @@ export class MailService {
   /**
    * Creates or updates the SMTP configuration for the current organization.
    */
-  async saveSmtp(authorization: string | undefined, payload: SmtpPayload) {
+  async saveSmtp(
+    authorization: string | undefined,
+    payload: SmtpPayload,
+    options: MailScopeOptions = {},
+  ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    const organizationId = this.resolveSmtpOrganizationId(context, "manage");
+    const organizationId = this.resolveSmtpOrganizationId(
+      context,
+      "manage",
+      options.scope,
+    );
     const entity = await this.findOrCreateSmtpRecord(organizationId);
     applySmtpPayload(entity, payload);
     entity.organizationId = organizationId;
@@ -84,9 +103,13 @@ export class MailService {
   /**
    * Validates SMTP input shape without sending mail or requiring nodemailer.
    */
-  async validateSmtp(authorization: string | undefined, payload: SmtpPayload) {
+  async validateSmtp(
+    authorization: string | undefined,
+    payload: SmtpPayload,
+    options: MailScopeOptions = {},
+  ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    this.resolveSmtpOrganizationId(context, "manage");
+    this.resolveSmtpOrganizationId(context, "manage", options.scope);
     return validateSmtpPayload(payload);
   }
 
@@ -201,8 +224,9 @@ export class MailService {
   private resolveSmtpOrganizationId(
     context: Awaited<ReturnType<TenancyService["requireAuthContext"]>>,
     action: "manage" | "view",
+    scope?: string,
   ) {
-    if (context.scopeLevel === "platform") {
+    if (scope === "platform" || context.scopeLevel === "platform") {
       this.tenancyService.ensurePlatformScope(context, "tenant", action);
       return null;
     }

@@ -78,12 +78,12 @@ export function OnboardingPage() {
       <Card className="w-full max-w-2xl" size="sm">
         <CardHeader className="gap-3">
           <div className="flex items-center gap-2">
-            <div className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <div className="grid size-9 place-items-center rounded-lg bg-primary">
               <AppIcon className="size-4" name="sparkles" />
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">Hermes Swarm</p>
-              <p className="text-xs text-muted-foreground">首次设置</p>
+              <p className="text-xs">首次设置</p>
             </div>
           </div>
           <div className="grid gap-1">
@@ -141,7 +141,7 @@ export function OnboardingPage() {
 
             {error && (
               <div
-                className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm"
                 role="alert"
               >
                 {error}
