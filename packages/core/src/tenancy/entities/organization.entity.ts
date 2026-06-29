@@ -2,12 +2,15 @@ import {
   Column,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
 } from "typeorm";
 import type { Role } from "./role.entity.js";
 import type { RolePermission } from "./role-permission.entity.js";
 import type { OrganizationSetting } from "./organization-setting.entity.js";
 import type { User } from "./user.entity.js";
+import type { UserOrganization } from "./user-organization.entity.js";
 import { BaseEntity } from "./base.entity.js";
 
 /**
@@ -27,6 +30,17 @@ export class Organization extends BaseEntity {
    */
   @Column({ type: "varchar", length: 120 })
   name!: string;
+
+  @Column({ name: "created_by_user_id", type: "uuid", nullable: true })
+  @Index()
+  createdByUserId!: string | null;
+
+  @ManyToOne("User", {
+    nullable: true,
+    onDelete: "SET NULL",
+  })
+  @JoinColumn({ name: "created_by_user_id" })
+  createdByUser!: User | null;
 
   /**
    * Stable URL-safe organization identifier.
@@ -94,6 +108,9 @@ export class Organization extends BaseEntity {
   @Column({ name: "image_url", type: "varchar", length: 500, nullable: true })
   imageUrl!: string | null;
 
+  @Column({ name: "logo_url", type: "varchar", length: 500, nullable: true })
+  logoUrl!: string | null;
+
   /**
    * Preferred currency code for organization-level defaults.
    */
@@ -144,6 +161,9 @@ export class Organization extends BaseEntity {
 
   @OneToMany("User", "organization")
   users!: User[];
+
+  @OneToMany("UserOrganization", "organization")
+  memberships!: UserOrganization[];
 
   @OneToMany("Role", "organization")
   roles!: Role[];

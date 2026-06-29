@@ -10,7 +10,7 @@ import type {
  */
 export type AuthSessionTokenPayload = {
   exp: number;
-  organizationId: string;
+  organizationId?: string | null;
   scopeLevel?: RequestScopeLevel;
   userId: string;
 };

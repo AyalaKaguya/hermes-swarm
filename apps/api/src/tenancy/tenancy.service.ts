@@ -213,6 +213,9 @@ export class TenancyService implements OnModuleInit {
     if (!tokenPayload) {
       throw new UnauthorizedException("登录已失效");
     }
+    if (!tokenPayload.organizationId) {
+      throw new UnauthorizedException("当前会话没有组织上下文");
+    }
 
     const [organization, user] = await Promise.all([
       this.organizationRepository.findOne({

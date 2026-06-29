@@ -1,1 +1,4 @@
-export { SystemSetting } from "./system-setting.entity.js";
+export {
+  PlatformSetting,
+  PlatformSetting as SystemSetting,
+} from "./platform-setting.entity.js";

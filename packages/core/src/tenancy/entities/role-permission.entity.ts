@@ -1,9 +1,11 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
+import type { Permission } from "./permission.entity.js";
 import type { Role } from "./role.entity.js";
 import { OrganizationBaseEntity } from "./organization-base.entity.js";
 
 @Entity({ name: "role_permissions" })
 @Index(["roleId", "permission"], { unique: true })
+@Index(["roleId", "permissionId"], { unique: true })
 export class RolePermission extends OrganizationBaseEntity {
   @Column({ name: "role_id", type: "uuid" })
   @Index()
@@ -14,6 +16,17 @@ export class RolePermission extends OrganizationBaseEntity {
   })
   @JoinColumn({ name: "role_id" })
   role!: Role;
+
+  @Column({ name: "permission_id", type: "uuid", nullable: true })
+  @Index()
+  permissionId!: string | null;
+
+  @ManyToOne("Permission", "rolePermissions", {
+    nullable: true,
+    onDelete: "CASCADE",
+  })
+  @JoinColumn({ name: "permission_id" })
+  permissionRecord!: Permission | null;
 
   @Column({ type: "varchar", length: 160 })
   @Index()

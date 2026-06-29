@@ -1,11 +1,13 @@
 import { Module } from "@nestjs/common";
-import { TenancyModule } from "../tenancy/tenancy.module.js";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { User } from "@hermes-swarm/core";
 import { UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
 
 @Module({
-  imports: [TenancyModule],
+  imports: [TypeOrmModule.forFeature([User])],
   controllers: [UsersController],
   providers: [UsersService],
+  exports: [UsersService],
 })
 export class UsersModule {}
