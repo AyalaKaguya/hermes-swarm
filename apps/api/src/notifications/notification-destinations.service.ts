@@ -6,7 +6,6 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { NotificationDestination } from "@hermes-swarm/core";
-import { TenancyService } from "../tenancy/tenancy.service.js";
 
 type DestinationPayload = {
   name?: string;
@@ -64,54 +63,43 @@ export class NotificationDestinationsService {
   constructor(
     @InjectRepository(NotificationDestination)
     private readonly destinationRepository: Repository<NotificationDestination>,
-    private readonly tenancyService: TenancyService,
   ) {}
 
-  async list(authorization: string | undefined) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "notification-destinations", "view");
+  async list(organizationId: string) {
     const items = await this.destinationRepository.find({
-      where: { organizationId: context.organizationId },
+      where: { organizationId },
       order: { createdAt: "DESC" },
     });
     return items.map(toDestinationDto);
   }
 
-  async types(authorization: string | undefined) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "notification-destinations", "view");
+  async types() {
     return DESTINATION_TYPES;
   }
 
-  async getOne(authorization: string | undefined, destinationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "notification-destinations", "view");
-    return toDestinationDto(await this.getDestinationOrThrow(context.organizationId, destinationId));
+  async getOne(organizationId: string, destinationId: string) {
+    return toDestinationDto(await this.getDestinationOrThrow(organizationId, destinationId));
   }
 
-  async create(authorization: string | undefined, input: unknown) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "notification-destinations", "manage");
+  async create(organizationId: string, input: unknown) {
     const payload = parsePayload(input);
     const type = normalizeType(payload.type);
     const destination = this.destinationRepository.create({
       name: requireText(payload.name, "通知名称"),
       options: normalizeOptions(payload.options),
-      organizationId: context.organizationId,
+      organizationId,
       type,
     });
     return toDestinationDto(await this.destinationRepository.save(destination));
   }
 
   async update(
-    authorization: string | undefined,
+    organizationId: string,
     destinationId: string,
     input: unknown,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "notification-destinations", "manage");
     const payload = parsePayload(input);
-    const destination = await this.getDestinationOrThrow(context.organizationId, destinationId);
+    const destination = await this.getDestinationOrThrow(organizationId, destinationId);
     if (payload.name !== undefined) {
       destination.name = requireText(payload.name, "通知名称");
     }
@@ -124,18 +112,14 @@ export class NotificationDestinationsService {
     return toDestinationDto(await this.destinationRepository.save(destination));
   }
 
-  async delete(authorization: string | undefined, destinationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "notification-destinations", "manage");
-    const destination = await this.getDestinationOrThrow(context.organizationId, destinationId);
+  async delete(organizationId: string, destinationId: string) {
+    const destination = await this.getDestinationOrThrow(organizationId, destinationId);
     await this.destinationRepository.remove(destination);
     return { id: destinationId };
   }
 
-  async groups(authorization: string | undefined, destinationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.tenancyService.ensurePermission(context, "notification-destinations", "view");
-    const destination = await this.getDestinationOrThrow(context.organizationId, destinationId);
+  async groups(organizationId: string, destinationId: string) {
+    const destination = await this.getDestinationOrThrow(organizationId, destinationId);
     if (destination.type !== "feishu") {
       return [];
     }

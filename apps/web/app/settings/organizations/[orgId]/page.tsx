@@ -75,10 +75,9 @@ import {
   createOrganizationUser,
   deleteOrganizationGroup,
   getOrganization,
-  listOrganizationGroups,
+  listOrganizationMembers,
   listOrganizationRoles,
   listOrganizationSettingsForOrganization,
-  listOrganizationUsers,
   saveOrganizationSettingsForOrganization,
   updateOrganizationGroup,
   updateOrganizationGroupMembers,
@@ -219,21 +218,21 @@ export default function OrganizationDetailPage() {
     setToken(session.token);
     setError(null);
     try {
-      const [data, settings, userItems, roleItems, groupItems] =
+      const [data, settings, userItems, roleItems] =
         await Promise.all([
           getOrganization(session.token, organizationId),
           listOrganizationSettingsForOrganization(
             session.token,
             organizationId,
           ),
-          listOrganizationUsers(session.token, organizationId),
+          listOrganizationMembers(session.token, organizationId),
           listOrganizationRoles(session.token, organizationId),
-          listOrganizationGroups(session.token, organizationId),
         ]);
+      const groupItems: GroupDto[] = [];
       setOrganization(data);
       setForm(toOrganizationForm(data));
       setOrganizationSettings(settings);
-      setUsers(userItems);
+      setUsers(userItems.map((membership) => membership.user));
       setRoles(roleItems);
       setGroups(groupItems);
       setSelectedGroupId((current) =>

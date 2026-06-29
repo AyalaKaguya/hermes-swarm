@@ -1,49 +1,51 @@
-import { Body, Controller, Get, Headers, Put } from "@nestjs/common";
+import { Body, Controller, Get, Param, Put } from "@nestjs/common";
 import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
+import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { SettingsService } from "./settings.service.js";
 
 @Controller("admin")
-/**
- * Exposes organization and global settings endpoints under `/api/admin`.
- */
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
-  /**
-   * Returns settings for the current organization.
-   */
-  @Get("settings")
-  listOrganizationSettings(@Headers("authorization") authorization?: string) {
-    return this.settingsService.listOrganizationSettings(authorization);
+  @Get("platform/settings")
+  @RequirePermission({ action: "read", entity: "setting", scope: "platform" })
+  listPlatformSettings() {
+    return this.settingsService.listPlatformSettings();
   }
 
-  /**
-   * Saves settings for the current organization.
-   */
-  @Put("settings")
+  @Put("platform/settings")
+  @RequirePermission({ action: "update", entity: "setting", scope: "platform" })
+  savePlatformSettings(@Body() payload: SaveSettingsPayload) {
+    return this.settingsService.savePlatformSettings(payload);
+  }
+
+  @Get("organizations/:organizationId/settings")
+  @RequirePermission({
+    action: "read",
+    entity: "setting",
+    scope: "organization",
+  })
+  listOrganizationSettings(
+    @Param("organizationId") organizationId: string,
+  ) {
+    return this.settingsService.listOrganizationSettingsForOrganization(
+      organizationId,
+    );
+  }
+
+  @Put("organizations/:organizationId/settings")
+  @RequirePermission({
+    action: "update",
+    entity: "setting",
+    scope: "organization",
+  })
   saveOrganizationSettings(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Body() payload: SaveSettingsPayload,
   ) {
-    return this.settingsService.saveOrganizationSettings(authorization, payload);
-  }
-
-  /**
-   * Returns global system settings shared across organizations.
-   */
-  @Get("system-settings")
-  listSystemSettings(@Headers("authorization") authorization?: string) {
-    return this.settingsService.listSystemSettings(authorization);
-  }
-
-  /**
-   * Saves global system settings shared across organizations.
-   */
-  @Put("system-settings")
-  saveSystemSettings(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: SaveSettingsPayload,
-  ) {
-    return this.settingsService.saveSystemSettings(authorization, payload);
+    return this.settingsService.saveOrganizationSettingsForOrganization(
+      organizationId,
+      payload,
+    );
   }
 }

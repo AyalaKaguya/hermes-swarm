@@ -53,12 +53,9 @@ import {
   TIME_ZONE_OPTIONS,
 } from "@hermes-swarm/core/settings/definitions";
 import {
-  getSmtpConfig,
   listOrganizations,
   listSystemSettings,
-  saveSmtpConfig,
   saveSystemSettings,
-  validateSmtpConfig,
   type Organization,
   type SettingPayloadEntry,
   type SettingPayloadValue,
@@ -126,19 +123,18 @@ export default function TenantPage() {
     () => organizations.filter((item) => item.status === "active").length,
     [organizations],
   );
-  const platformUsers = useMemo(() => {
-    const roleById = new Map(
-      snapshot?.roles.map((role) => [role.id, role]) ?? [],
-    );
-    return (
-      snapshot?.users
-        .map((user) => ({
-          role: user.roleId ? roleById.get(user.roleId) : null,
-          user,
-        }))
-        .filter(({ role }) => role?.name === "platform-admin") ?? []
-    );
-  }, [snapshot?.roles, snapshot?.users]);
+  const platformUsers = useMemo(
+    () =>
+      snapshot?.platformMembership
+        ? [
+            {
+              role: snapshot.platformMembership.role,
+              user: snapshot.user,
+            },
+          ]
+        : [],
+    [snapshot?.platformMembership, snapshot?.user],
+  );
   const customSystemSettings = useMemo(() => {
     const knownNames = new Set<string>(KNOWN_PLATFORM_SETTING_KEYS);
     return systemSettings.filter((setting) => !knownNames.has(setting.name));
@@ -152,14 +148,13 @@ export default function TenantPage() {
     }
 
     try {
-      const [settings, orgs, smtp] = await Promise.all([
+      const [settings, orgs] = await Promise.all([
         listSystemSettings(session.token),
         canViewOrganizations
           ? listOrganizations(session.token)
           : Promise.resolve([]),
-        getSmtpConfig(session.token, { scope: "platform" }),
       ]);
-      setForm(toPlatformForm(settings, smtp));
+      setForm(toPlatformForm(settings, null));
       setSystemSettings(settings);
       setOrganizations(orgs);
       setError(null);
@@ -237,32 +232,6 @@ export default function TenantPage() {
     setSavingSmtp(true);
     setError(null);
     try {
-      if (form.publicSmtpEnabled || form.smtpHost.trim()) {
-        await validateSmtpConfig(
-          session.token,
-          {
-            fromAddress: nullableText(form.smtpFromAddress),
-            host: form.smtpHost,
-            port: Number(form.smtpPort || 587),
-            secure: form.smtpSecure,
-            username: nullableText(form.smtpUsername),
-          },
-          { scope: "platform" },
-        );
-        await saveSmtpConfig(
-          session.token,
-          {
-            fromAddress: nullableText(form.smtpFromAddress),
-            host: form.smtpHost,
-            isValidated: true,
-            password: nullableText(form.smtpPassword),
-            port: Number(form.smtpPort || 587),
-            secure: form.smtpSecure,
-            username: nullableText(form.smtpUsername),
-          },
-          { scope: "platform" },
-        );
-      }
       await saveSystemSettings(session.token, {
         settings: [
           platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),

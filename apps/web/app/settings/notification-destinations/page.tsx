@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,8 @@ import {
 import { getStoredSession } from "@/lib/session";
 
 export default function NotificationDestinationsPage() {
+  const { snapshot } = useAdminShell();
+  const organizationId = snapshot?.organization?.id ?? null;
   const [items, setItems] = useState<NotificationDestination[]>([]);
   const [types, setTypes] = useState<NotificationDestinationType[]>([]);
   const [token, setToken] = useState("");
@@ -47,15 +50,15 @@ export default function NotificationDestinationsPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) {
+    if (!session?.token || !organizationId) {
       setLoading(false);
       return;
     }
     setToken(session.token);
     try {
       const [destinationTypes, destinations] = await Promise.all([
-        listNotificationDestinationTypes(session.token),
-        listNotificationDestinations(session.token),
+        listNotificationDestinationTypes(session.token, organizationId),
+        listNotificationDestinations(session.token, organizationId),
       ]);
       setTypes(destinationTypes);
       setItems(destinations);
@@ -64,7 +67,7 @@ export default function NotificationDestinationsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     void load();
@@ -98,6 +101,7 @@ export default function NotificationDestinationsPage() {
             </Button>
           </DialogTrigger>
           <DestinationForm
+            organizationId={organizationId}
             onSaved={async () => {
               setOpen(false);
               await load();
@@ -144,6 +148,7 @@ export default function NotificationDestinationsPage() {
                     </DialogTrigger>
                     <DestinationForm
                       item={item}
+                      organizationId={organizationId}
                       onSaved={async () => {
                         setEditing(null);
                         await load();
@@ -176,7 +181,8 @@ export default function NotificationDestinationsPage() {
         description={deleting ? `删除通知目的地 ${deleting.name}` : ""}
         onConfirm={async () => {
           if (!deleting) return;
-          await deleteNotificationDestination(token, deleting.id);
+          if (!organizationId) return;
+          await deleteNotificationDestination(token, organizationId, deleting.id);
           setDeleting(null);
           await load();
         }}
@@ -190,11 +196,13 @@ export default function NotificationDestinationsPage() {
 
 function DestinationForm({
   item,
+  organizationId,
   onSaved,
   token,
   types,
 }: {
   item?: NotificationDestination;
+  organizationId: string | null;
   onSaved: () => Promise<void>;
   token: string;
   types: NotificationDestinationType[];
@@ -231,10 +239,11 @@ function DestinationForm({
         Object.entries(options).filter(([, value]) => value.trim() !== ""),
       );
       const payload = { name: name.trim(), options: compactOptions, type };
+      if (!organizationId) return;
       if (item) {
-        await updateNotificationDestination(token, item.id, payload);
+        await updateNotificationDestination(token, organizationId, item.id, payload);
       } else {
-        await createNotificationDestination(token, payload);
+        await createNotificationDestination(token, organizationId, payload);
       }
       await onSaved();
     } finally {

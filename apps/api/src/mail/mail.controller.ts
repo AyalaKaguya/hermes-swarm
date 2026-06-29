@@ -1,106 +1,82 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from "@nestjs/common";
+import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { MailService } from "./mail.service.js";
 
-@Controller("admin/mail")
-/**
- * Exposes migrated mail administration endpoints under `/api/admin/mail`.
- */
+@Controller("admin/organizations/:organizationId/mail")
 export class MailController {
   constructor(private readonly mailService: MailService) {}
 
-  /**
-   * Returns the effective SMTP configuration without secret values.
-   */
   @Get("smtp")
-  getSmtp(
-    @Headers("authorization") authorization?: string,
-    @Query("scope") scope?: string,
-  ) {
-    return this.mailService.getSmtp(authorization, { scope });
+  @RequirePermission({ action: "read", entity: "mail", scope: "organization" })
+  getSmtp(@Param("organizationId") organizationId: string) {
+    return this.mailService.getSmtp(organizationId);
   }
 
-  /**
-   * Saves custom SMTP settings for the current organization.
-   */
   @Put("smtp")
+  @RequirePermission({ action: "update", entity: "mail", scope: "organization" })
   saveSmtp(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: any,
-    @Query("scope") scope?: string,
+    @Param("organizationId") organizationId: string,
+    @Body() payload: unknown,
   ) {
-    return this.mailService.saveSmtp(authorization, payload, { scope });
+    return this.mailService.saveSmtp(organizationId, payload as never);
   }
 
-  /**
-   * Validates SMTP configuration fields before persisting or sending mail.
-   */
   @Post("smtp/validate")
-  validateSmtp(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: any,
-    @Query("scope") scope?: string,
-  ) {
-    return this.mailService.validateSmtp(authorization, payload, { scope });
+  @RequirePermission({ action: "update", entity: "mail", scope: "organization" })
+  validateSmtp(@Body() payload: unknown) {
+    return this.mailService.validateSmtp(payload as never);
   }
 
-  /**
-   * Lists global and organization email templates.
-   */
   @Get("templates")
-  listTemplates(@Headers("authorization") authorization?: string) {
-    return this.mailService.listTemplates(authorization);
+  @RequirePermission({ action: "read", entity: "mail", scope: "organization" })
+  listTemplates(@Param("organizationId") organizationId: string) {
+    return this.mailService.listTemplates(organizationId);
   }
 
-  /**
-   * Creates an organization email template.
-   */
   @Post("templates")
+  @RequirePermission({ action: "create", entity: "mail", scope: "organization" })
   createTemplate(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: any,
+    @Param("organizationId") organizationId: string,
+    @Body() payload: unknown,
   ) {
-    return this.mailService.createTemplate(authorization, payload);
+    return this.mailService.createTemplate(organizationId, payload as never);
   }
 
-  /**
-   * Updates an existing email template.
-   */
   @Patch("templates/:templateId")
+  @RequirePermission({ action: "update", entity: "mail", scope: "organization" })
   updateTemplate(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Param("templateId") templateId: string,
-    @Body() payload: any,
+    @Body() payload: unknown,
   ) {
-    return this.mailService.updateTemplate(authorization, templateId, payload);
+    return this.mailService.updateTemplate(
+      organizationId,
+      templateId,
+      payload as never,
+    );
   }
 
-  /**
-   * Deletes an email template by id.
-   */
   @Delete("templates/:templateId")
+  @RequirePermission({ action: "delete", entity: "mail", scope: "organization" })
   deleteTemplate(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Param("templateId") templateId: string,
   ) {
-    return this.mailService.deleteTemplate(authorization, templateId);
+    return this.mailService.deleteTemplate(organizationId, templateId);
   }
 
-  /**
-   * Lists sent-email log records for the current organization.
-   */
   @Get("logs")
-  listLogs(@Headers("authorization") authorization?: string) {
-    return this.mailService.listLogs(authorization);
+  @RequirePermission({ action: "read", entity: "mail", scope: "organization" })
+  listLogs(@Param("organizationId") organizationId: string) {
+    return this.mailService.listLogs(organizationId);
   }
 
-  /**
-   * Creates a sent-email log record.
-   */
   @Post("logs")
+  @RequirePermission({ action: "create", entity: "mail", scope: "organization" })
   createLog(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: any,
+    @Param("organizationId") organizationId: string,
+    @Body() payload: unknown,
   ) {
-    return this.mailService.createLog(authorization, payload);
+    return this.mailService.createLog(organizationId, payload as never);
   }
 }

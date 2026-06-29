@@ -159,9 +159,6 @@ export class Organization extends BaseEntity {
   @Column({ name: "preferred_language", type: "varchar", length: 16, nullable: true })
   preferredLanguage!: string | null;
 
-  @OneToMany("User", "organization")
-  users!: User[];
-
   @OneToMany("UserOrganization", "organization")
   memberships!: UserOrganization[];
 

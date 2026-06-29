@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useAdminShell } from "@/components/admin-shell";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,6 +22,8 @@ import {
 import { getStoredSession } from "@/lib/session";
 
 export default function CustomSmtpPage() {
+  const { snapshot } = useAdminShell();
+  const organizationId = snapshot?.organization?.id ?? null;
   const [config, setConfig] = useState<SmtpConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,12 +40,12 @@ export default function CustomSmtpPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) {
+    if (!session?.token || !organizationId) {
       setLoading(false);
       return;
     }
     try {
-      const c = await getSmtpConfig(session.token);
+      const c = await getSmtpConfig(session.token, { organizationId });
       setConfig(c);
       if (c) {
         setHost(c.host ?? "");
@@ -56,7 +59,7 @@ export default function CustomSmtpPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     void load();
@@ -67,19 +70,23 @@ export default function CustomSmtpPage() {
     setError(null);
     setMsg("");
     const session = getStoredSession();
-    if (!session?.token) {
+    if (!session?.token || !organizationId) {
       setSaving(false);
       return;
     }
     try {
-      await saveSmtpConfig(session.token, {
-        host: host.trim(),
-        port: Number(port) || 587,
-        secure,
-        username: username.trim() || null,
-        password: password || null,
-        fromAddress: fromAddress.trim() || null,
-      });
+      await saveSmtpConfig(
+        session.token,
+        {
+          host: host.trim(),
+          port: Number(port) || 587,
+          secure,
+          username: username.trim() || null,
+          password: password || null,
+          fromAddress: fromAddress.trim() || null,
+        },
+        { organizationId },
+      );
       setMsg("保存成功");
       await load();
     } catch (err) {
@@ -94,18 +101,22 @@ export default function CustomSmtpPage() {
     setError(null);
     setMsg("");
     const session = getStoredSession();
-    if (!session?.token) {
+    if (!session?.token || !organizationId) {
       setValidating(false);
       return;
     }
     try {
-      await validateSmtpConfig(session.token, {
-        host: host.trim(),
-        port: Number(port) || 587,
-        secure,
-        username: username.trim() || null,
-        fromAddress: fromAddress.trim() || null,
-      });
+      await validateSmtpConfig(
+        session.token,
+        {
+          host: host.trim(),
+          port: Number(port) || 587,
+          secure,
+          username: username.trim() || null,
+          fromAddress: fromAddress.trim() || null,
+        },
+        { organizationId },
+      );
       setMsg("配置验证通过");
     } catch (err) {
       setError(err instanceof Error ? err.message : "验证失败");

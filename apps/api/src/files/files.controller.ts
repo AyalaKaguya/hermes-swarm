@@ -9,12 +9,13 @@ import {
   Res,
   UploadedFile,
   UseInterceptors,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { TenancyService } from "../tenancy/tenancy.service.js";
+import { parseAuthSessionToken } from "../tenancy/admin-session.js";
 
 type UploadedImage = {
   buffer?: Buffer;
@@ -34,15 +35,13 @@ const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 
 @Controller("admin/files")
 export class FilesController {
-  constructor(private readonly tenancyService: TenancyService) {}
-
   @Post("upload")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_IMAGE_SIZE } }))
   async upload(
     @Headers("authorization") authorization: string | undefined,
     @UploadedFile() file?: UploadedImage,
   ) {
-    await this.tenancyService.requireAuthContext(authorization);
+    requireSessionUserId(authorization);
 
     if (!file?.buffer) {
       throw new BadRequestException("请选择要上传的图片");
@@ -96,4 +95,11 @@ export class FilesController {
 
     response.sendFile(resolved);
   }
+}
+
+function requireSessionUserId(authorization: string | undefined) {
+  const token = authorization?.replace(/^Bearer\s+/i, "").trim();
+  const session = parseAuthSessionToken(token);
+  if (!session) throw new UnauthorizedException("登录已失效，请重新登录");
+  return session.userId;
 }

@@ -10,7 +10,10 @@ import {
   UserOrganization,
 } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
-import { buildEntityPermissionKey } from "./permission-key.js";
+import {
+  buildRbacAbility,
+  toRbacSubject,
+} from "./rbac-ability.js";
 import type { PermissionRequirement } from "./rbac.types.js";
 
 @Injectable()
@@ -47,7 +50,11 @@ export class RbacService {
         : await this.findOrganizationRoleId(userId, organizationId);
 
     if (!roleId) return false;
-    return this.roleHasPermission(roleId, requirement);
+    const ability = await this.buildAbilityForRole(roleId);
+    return ability.can(
+      requirement.action,
+      toRbacSubject(requirement.entity, requirement.scope),
+    );
   }
 
   private async findPlatformRoleId(userId: string) {
@@ -68,30 +75,16 @@ export class RbacService {
     return membership?.roleId ?? null;
   }
 
-  private async roleHasPermission(
-    roleId: string,
-    requirement: PermissionRequirement,
-  ) {
-    const key = buildEntityPermissionKey(
-      requirement.entity,
-      requirement.action,
-      requirement.scope,
-    );
+  private async buildAbilityForRole(roleId: string) {
     const rolePermissions = await this.rolePermissionRepository.find({
       relations: { permissionRecord: true },
       where: { enabled: true, roleId },
     });
-
-    if (rolePermissions.some((item) => item.permission === key)) return true;
-
-    return rolePermissions.some((item) => {
-      const permission = item.permissionRecord;
-      return (
-        permission?.entity === requirement.entity &&
-        permission.action === requirement.action &&
-        permission.scope === requirement.scope
-      );
-    });
+    return buildRbacAbility(
+      rolePermissions
+        .map((item) => toPermissionRequirement(item))
+        .filter((item): item is PermissionRequirement => Boolean(item)),
+    );
   }
 
   async ensurePermissionCatalog(requirements: PermissionRequirement[]) {
@@ -123,4 +116,30 @@ function parsePermissionKey(permission: string) {
     entity,
     scope: scope as PermissionScope,
   };
+}
+
+function toPermissionRequirement(
+  rolePermission: RolePermission,
+): PermissionRequirement | null {
+  if (rolePermission.permissionRecord) {
+    return {
+      action: rolePermission.permissionRecord.action,
+      entity: rolePermission.permissionRecord.entity,
+      scope: rolePermission.permissionRecord.scope,
+    };
+  }
+
+  const [entity, action, scope] = rolePermission.permission.split(":");
+  if (!entity || !isPermissionAction(action) || !isPermissionScope(scope)) {
+    return null;
+  }
+  return { action, entity, scope };
+}
+
+function isPermissionAction(value: string): value is PermissionAction {
+  return ["create", "read", "update", "delete"].includes(value);
+}
+
+function isPermissionScope(value: string): value is PermissionScope {
+  return ["platform", "organization", "own"].includes(value);
 }

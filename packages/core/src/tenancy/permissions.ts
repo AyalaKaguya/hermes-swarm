@@ -146,6 +146,10 @@ export function defaultPermissionsForRole(roleName: string) {
 }
 
 export const DEFAULT_PERMISSION_KEYS = [
+  "user:create:platform",
+  "user:read:platform",
+  "user:update:platform",
+  "user:delete:platform",
   "user:create:organization",
   "user:read:organization",
   "user:update:organization",
@@ -154,6 +158,10 @@ export const DEFAULT_PERMISSION_KEYS = [
   "organization:read:organization",
   "organization:update:organization",
   "organization:delete:platform",
+  "role:create:platform",
+  "role:read:platform",
+  "role:update:platform",
+  "role:delete:platform",
   "role:create:organization",
   "role:read:organization",
   "role:update:organization",
