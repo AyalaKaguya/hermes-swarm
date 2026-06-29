@@ -1,4 +1,21 @@
+export const TENANCY_PERMISSION_ACTIONS = [
+  "create",
+  "read",
+  "update",
+  "delete",
+] as const;
+
+export const TENANCY_PERMISSION_SCOPES = [
+  "platform",
+  "organization",
+  "own",
+] as const;
+
+export type TenancyPermissionAction = (typeof TENANCY_PERMISSION_ACTIONS)[number];
+export type TenancyPermissionScope = (typeof TENANCY_PERMISSION_SCOPES)[number];
+
 export const TENANCY_MENU_PERMISSION_PREFIX = "menu";
+export type MenuPermissionAction = "manage" | "view";
 
 export const DEFAULT_ADMIN_MENUS = [
   { code: "account", label: "账号", path: "/settings/account", sortOrder: 10 },
@@ -8,7 +25,6 @@ export const DEFAULT_ADMIN_MENUS = [
     path: "/settings/organization",
     sortOrder: 20,
   },
-  { code: "tags", label: "标签", path: "/settings/tags", sortOrder: 30 },
   {
     code: "custom-smtp",
     label: "自定义邮件",
@@ -72,7 +88,6 @@ export const SYSTEM_ROLES = [
 ] as const;
 
 export type SystemRoleName = (typeof SYSTEM_ROLES)[number]["name"];
-export type MenuPermissionAction = "manage" | "view";
 
 export const PLATFORM_ADMIN_ROLE_NAME = "platform-admin";
 
@@ -110,16 +125,10 @@ export function buildMenuPermissionKey(
 }
 
 export function defaultPermissionsForRole(roleName: string) {
-  const allPermissions = DEFAULT_ADMIN_MENUS.flatMap((menu) => [
-    buildMenuPermissionKey(menu.code, "view"),
-    buildMenuPermissionKey(menu.code, "manage"),
-  ]);
-  const organizationPermissions = DEFAULT_ADMIN_MENUS.filter(
-    (menu) => !isPlatformMenuCode(menu.code),
-  ).flatMap((menu) => [
-    buildMenuPermissionKey(menu.code, "view"),
-    buildMenuPermissionKey(menu.code, "manage"),
-  ]);
+  const allPermissions = DEFAULT_PERMISSION_KEYS;
+  const organizationPermissions = DEFAULT_PERMISSION_KEYS.filter(
+    (permission) => !permission.endsWith(":platform"),
+  );
 
   if (isPlatformAdminRoleName(roleName)) {
     return allPermissions;
@@ -130,12 +139,39 @@ export function defaultPermissionsForRole(roleName: string) {
   }
 
   if (roleName === "member") {
-    return DEFAULT_ADMIN_MENUS.filter((menu) =>
-      ["account", "organization"].includes(menu.code),
-    ).map((menu) => buildMenuPermissionKey(menu.code, "view"));
+    return ["user:read:own", "organization:read:organization"];
   }
 
-  return DEFAULT_ADMIN_MENUS.filter((menu) => menu.code === "account").map(
-    (menu) => buildMenuPermissionKey(menu.code, "view"),
-  );
+  return ["user:read:own"];
 }
+
+export const DEFAULT_PERMISSION_KEYS = [
+  "user:create:organization",
+  "user:read:organization",
+  "user:update:organization",
+  "user:delete:organization",
+  "organization:create:platform",
+  "organization:read:organization",
+  "organization:update:organization",
+  "organization:delete:platform",
+  "role:create:organization",
+  "role:read:organization",
+  "role:update:organization",
+  "role:delete:organization",
+  "setting:read:organization",
+  "setting:update:organization",
+  "setting:read:platform",
+  "setting:update:platform",
+  "invite:create:organization",
+  "invite:read:organization",
+  "invite:update:organization",
+  "invite:delete:organization",
+  "mail:create:organization",
+  "mail:read:organization",
+  "mail:update:organization",
+  "mail:delete:organization",
+  "notification:create:organization",
+  "notification:read:organization",
+  "notification:update:organization",
+  "notification:delete:organization",
+] as const;

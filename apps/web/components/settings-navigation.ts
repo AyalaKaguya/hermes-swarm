@@ -21,7 +21,6 @@ const SETTINGS_NAV_UI: Record<
   organization: { icon: "building", label: "常规" },
   organizations: { icon: "building" },
   roles: { icon: "shield" },
-  tags: { icon: "layers" },
   tenant: { icon: "server", label: "平台设置" },
 };
 
@@ -45,7 +44,6 @@ export const SETTINGS_NAV_SECTIONS = [
     items: SETTINGS_NAV_ITEMS.filter((item) =>
       [
         "organization",
-        "tags",
         "custom-smtp",
         "email-templates",
         "notification-destinations",

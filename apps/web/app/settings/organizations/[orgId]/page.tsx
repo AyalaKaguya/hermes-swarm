@@ -170,24 +170,27 @@ export default function OrganizationDetailPage() {
   const [token, setToken] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
+  const isPlatformAdmin = Boolean(snapshot?.isPlatformAdmin);
   const canManage =
-    snapshot && resolvedSession
+    isPlatformAdmin ||
+    (snapshot && resolvedSession
       ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage") ||
         hasMenuAccess(snapshot, resolvedSession, "organization", "manage")
-      : false;
-  const canViewTenantControls = Boolean(snapshot?.isPlatformAdmin);
+      : false);
+  const canViewTenantControls = isPlatformAdmin;
   const canManageTenantControls = canViewTenantControls && Boolean(canManage);
   const canManagePlatformOrganizationUsers =
-    snapshot && resolvedSession
+    isPlatformAdmin ||
+    (snapshot && resolvedSession
       ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage")
-      : false;
+      : false);
   const canViewOrganizationsList =
     snapshot && resolvedSession
       ? hasMenuAccess(snapshot, resolvedSession, "organizations", "view")
       : false;
   const currentRoleName = snapshot?.currentUser.role?.name ?? null;
   const currentUserId = snapshot?.currentUser.user.id ?? null;
-  const canAssignPlatformRole = Boolean(snapshot?.isPlatformAdmin);
+  const canAssignPlatformRole = isPlatformAdmin;
   const assignableRoles = useMemo(
     () =>
       roles.filter((role) =>

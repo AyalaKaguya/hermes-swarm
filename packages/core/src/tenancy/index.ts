@@ -1,5 +1,6 @@
 export {
   DEFAULT_ADMIN_MENUS,
+  DEFAULT_PERMISSION_KEYS,
   CUSTOM_ROLE_RANK,
   DEPRECATED_ADMIN_MENU_CODES,
   PLATFORM_ADMIN_ROLE_NAME,
@@ -8,31 +9,16 @@ export {
   ROLE_RANKS,
   SYSTEM_ROLES,
   TENANCY_MENU_PERMISSION_PREFIX,
+  TENANCY_PERMISSION_ACTIONS,
+  TENANCY_PERMISSION_SCOPES,
   buildMenuPermissionKey,
   defaultPermissionsForRole,
   getRoleRank,
   isPlatformAdminRoleName,
   isPlatformMenuCode,
   type MenuPermissionAction,
+  type TenancyPermissionAction,
+  type TenancyPermissionScope,
   type SystemRoleName,
 } from "./permissions.js";
-export { BaseEntity } from "./entities/base.entity.js";
-export { EmailVerification } from "./entities/email-verification.entity.js";
-export { Group } from "./entities/group.entity.js";
-export { Invite, type InviteStatus } from "./entities/invite.entity.js";
-export { Menu } from "./entities/menu.entity.js";
-export {
-  Organization,
-  type OrganizationStatus,
-} from "./entities/organization.entity.js";
-export { OrganizationBaseEntity } from "./entities/organization-base.entity.js";
-export { OrganizationContact } from "./entities/organization-contact.entity.js";
-export { OrganizationLanguage } from "./entities/organization-language.entity.js";
-export { OrganizationSetting } from "./entities/organization-setting.entity.js";
-export { PasswordReset } from "./entities/password-reset.entity.js";
-export {
-  RolePermission,
-} from "./entities/role-permission.entity.js";
-export { Role } from "./entities/role.entity.js";
-export { Tag } from "./entities/tag.entity.js";
-export { User, type UserStatus, type UserType, type PreferredLanguage } from "./entities/user.entity.js";
+export * from "./entities/index.js";

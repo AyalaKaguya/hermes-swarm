@@ -55,18 +55,6 @@ export type OrganizationPayload = Partial<{
   website: string | null;
 }>;
 
-export type Tag = {
-  category: string | null;
-  color: string | null;
-  description: string | null;
-  icon: string | null;
-  id: string;
-  isSystem: boolean;
-  label: Record<string, unknown> | null;
-  name: string;
-  organizationId: string | null;
-};
-
 export type NotificationDestinationType = {
   icon?: string;
   name: string;
@@ -806,34 +794,6 @@ export function deleteOrganizationGroup(
     method: "DELETE",
     token,
   });
-}
-
-export function listTags(token: string) {
-  return fetchAdmin<Tag[]>("/tags", { token });
-}
-
-export function createTag(token: string, payload: {
-  category?: string | null;
-  color?: string | null;
-  description?: string | null;
-  icon?: string | null;
-  name: string;
-}) {
-  return fetchAdmin<Tag>("/tags", { body: payload, method: "POST", token });
-}
-
-export function updateTag(token: string, tagId: string, payload: Partial<{
-  category: string | null;
-  color: string | null;
-  description: string | null;
-  icon: string | null;
-  name: string;
-}>) {
-  return fetchAdmin<Tag>(`/tags/${tagId}`, { body: payload, method: "PATCH", token });
-}
-
-export function deleteTag(token: string, tagId: string) {
-  return fetchAdmin<void>(`/tags/${tagId}`, { method: "DELETE", token });
 }
 
 export function listNotificationDestinationTypes(token: string) {

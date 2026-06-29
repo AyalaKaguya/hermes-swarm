@@ -43,13 +43,16 @@ export function resolveSession(snapshot: Snapshot): ResolvedSession {
 }
 
 export function hasMenuAccess(
-  _snapshot: Snapshot,
+  snapshot: Snapshot,
   resolvedSession: ResolvedSession | null,
   menuCode: string,
   action: "manage" | "view" = "view",
 ) {
   if (!resolvedSession) {
     return false;
+  }
+  if (snapshot.isPlatformAdmin || resolvedSession.isPlatformAdmin) {
+    return true;
   }
 
   const expectedPermission = buildMenuPermission(menuCode, action);

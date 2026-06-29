@@ -1,12 +1,15 @@
-import { ForbiddenException, Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { createClient } from "redis";
 import {
   maskSettingValue,
+  OrganizationSetting,
+  PlatformSetting,
   resolveSettingValueOptions,
   resolveSettingValueType,
-  SystemSetting,
 } from "@hermes-swarm/core";
+import { getRedisUrl } from "@hermes-swarm/core/config/redis";
 import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
 import { TenancyService } from "../tenancy/tenancy.service.js";
 import {
@@ -20,9 +23,15 @@ import {
  * existing tenancy settings plus the new shared SystemSetting entity.
  */
 export class SettingsService {
+  private readonly logger = new Logger(SettingsService.name);
+  private redisClientPromise: Promise<ReturnType<typeof createClient> | null> | null =
+    null;
+
   constructor(
-    @InjectRepository(SystemSetting)
-    private readonly systemSettingRepository: Repository<SystemSetting>,
+    @InjectRepository(PlatformSetting)
+    private readonly platformSettingRepository: Repository<PlatformSetting>,
+    @InjectRepository(OrganizationSetting)
+    private readonly organizationSettingRepository: Repository<OrganizationSetting>,
     private readonly tenancyService: TenancyService,
   ) {}
 
@@ -42,7 +51,14 @@ export class SettingsService {
     payload: SaveSettingsPayload,
   ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.saveSettings(context, payload);
+    const entries = parseSettingsPayload(payload);
+    const result = await this.tenancyService.saveSettings(context, payload);
+    await Promise.all(
+      entries.map((entry) =>
+        this.deleteCache(this.organizationCacheKey(context.organizationId, entry.name)),
+      ),
+    );
+    return result;
   }
 
   /**
@@ -51,10 +67,10 @@ export class SettingsService {
   async listSystemSettings(authorization: string | undefined) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.ensureSystemSettingsPermission(context, "view");
-    const settings = await this.systemSettingRepository.find({
+    const settings = await this.platformSettingRepository.find({
       order: { name: "ASC" },
     });
-    return settings.map(toSystemSettingDto);
+    return settings.map(toPlatformSettingDto);
   }
 
   /**
@@ -67,20 +83,21 @@ export class SettingsService {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.ensureSystemSettingsPermission(context, "manage");
     const entries = parseSettingsPayload(payload);
-    const saved: SystemSetting[] = [];
+    const saved: PlatformSetting[] = [];
 
     for (const entry of entries) {
       if (entry.value === null || entry.value === undefined) {
-        await this.systemSettingRepository.delete({ name: entry.name });
+        await this.platformSettingRepository.delete({ name: entry.name });
+        await this.deleteCache(this.platformCacheKey(entry.name));
         continue;
       }
 
-      let setting = await this.systemSettingRepository.findOne({
+      let setting = await this.platformSettingRepository.findOne({
         where: { name: entry.name },
       });
       const normalized = normalizeSettingEntry(entry, [setting]);
       if (!setting) {
-        setting = this.systemSettingRepository.create({
+        setting = this.platformSettingRepository.create({
           name: entry.name,
           scope: "global",
           value: normalized.value,
@@ -92,10 +109,45 @@ export class SettingsService {
         setting.valueOptions = normalized.valueOptions;
         setting.valueType = normalized.valueType;
       }
-      saved.push(await this.systemSettingRepository.save(setting));
+      const persisted = await this.platformSettingRepository.save(setting);
+      await this.setCache(this.platformCacheKey(entry.name), persisted.value);
+      saved.push(persisted);
     }
 
-    return saved.map(toSystemSettingDto);
+    return saved.map(toPlatformSettingDto);
+  }
+
+  async getPlatformValue(name: string, fallback: string | null = null) {
+    const cacheKey = this.platformCacheKey(name);
+    const cached = await this.getCache(cacheKey);
+    if (cached !== null) return cached;
+
+    const setting = await this.platformSettingRepository.findOne({
+      where: { name },
+    });
+    const value = setting?.value ?? fallback;
+    await this.setCache(cacheKey, value);
+    return value;
+  }
+
+  async getOrganizationValue(
+    organizationId: string,
+    name: string,
+    fallback: string | null = null,
+  ) {
+    const cacheKey = this.organizationCacheKey(organizationId, name);
+    const cached = await this.getCache(cacheKey);
+    if (cached !== null) return cached;
+
+    const setting = await this.organizationSettingRepository.findOne({
+      where: { name, organizationId },
+    });
+    if (setting?.value !== null && setting?.value !== undefined) {
+      await this.setCache(cacheKey, setting.value);
+      return setting.value;
+    }
+
+    return this.getPlatformValue(name, fallback);
   }
 
   private ensureSystemSettingsPermission(
@@ -108,12 +160,79 @@ export class SettingsService {
       throw new ForbiddenException("只有平台管理员可以访问平台设置");
     }
   }
+
+  private platformCacheKey(name: string) {
+    return `settings:platform:${name}`;
+  }
+
+  private organizationCacheKey(organizationId: string, name: string) {
+    return `settings:organization:${organizationId}:${name}`;
+  }
+
+  private async getCache(key: string) {
+    const client = await this.getRedisClient();
+    if (!client) return null;
+
+    try {
+      return await client.get(key);
+    } catch (error) {
+      this.logger.warn(`Redis settings cache read failed: ${String(error)}`);
+      return null;
+    }
+  }
+
+  private async setCache(key: string, value: string | null) {
+    const client = await this.getRedisClient();
+    if (!client) return;
+
+    try {
+      if (value === null) {
+        await client.del(key);
+        return;
+      }
+      await client.set(key, value);
+    } catch (error) {
+      this.logger.warn(`Redis settings cache write failed: ${String(error)}`);
+    }
+  }
+
+  private async deleteCache(key: string) {
+    const client = await this.getRedisClient();
+    if (!client) return;
+
+    try {
+      await client.del(key);
+    } catch (error) {
+      this.logger.warn(`Redis settings cache invalidation failed: ${String(error)}`);
+    }
+  }
+
+  private getRedisClient() {
+    if (!this.redisClientPromise) {
+      this.redisClientPromise = this.connectRedis();
+    }
+    return this.redisClientPromise;
+  }
+
+  private async connectRedis() {
+    try {
+      const client = createClient({ url: getRedisUrl() });
+      client.on("error", (error) => {
+        this.logger.warn(`Redis settings cache connection error: ${String(error)}`);
+      });
+      await client.connect();
+      return client;
+    } catch (error) {
+      this.logger.warn(`Redis settings cache unavailable: ${String(error)}`);
+      return null;
+    }
+  }
 }
 
 /**
- * Projects the shared SystemSetting entity into the admin API response shape.
+ * Projects the shared PlatformSetting entity into the admin API response shape.
  */
-function toSystemSettingDto(setting: SystemSetting) {
+function toPlatformSettingDto(setting: PlatformSetting) {
   const valueType = resolveSettingValueType(setting.name, setting.valueType);
   const valueOptions = resolveSettingValueOptions(
     setting.name,

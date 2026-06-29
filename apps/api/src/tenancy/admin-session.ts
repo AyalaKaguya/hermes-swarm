@@ -38,7 +38,6 @@ export function parseAuthSessionToken(
       Buffer.from(encodedPayload, "base64url").toString("utf8"),
     ) as Partial<AuthSessionTokenPayload>;
     if (
-      !payload.organizationId ||
       !payload.userId ||
       !payload.exp ||
       payload.exp < Math.floor(Date.now() / 1000)
@@ -47,7 +46,7 @@ export function parseAuthSessionToken(
     }
     return {
       exp: payload.exp,
-      organizationId: payload.organizationId,
+      organizationId: payload.organizationId ?? null,
       scopeLevel: payload.scopeLevel === "platform" ? "platform" : "organization",
       userId: payload.userId,
     };
