@@ -18,6 +18,26 @@ export type SettingValueOption = SettingOption;
 
 export const SECRET_SETTING_MASK = "********";
 
+const SECRET_SETTING_KEY_TOKENS = new Set([
+  "passwd",
+  "password",
+  "pwd",
+  "secret",
+  "sk",
+  "token",
+]);
+
+const SECRET_SETTING_KEY_PATTERNS = [
+  /(?:^|[._:-])api[._:-]?key(?:[._:-]|$)/i,
+  /(?:^|[._:-])access[._:-]?key(?:[._:-]|$)/i,
+  /(?:^|[._:-])secret[._:-]?key(?:[._:-]|$)/i,
+  /(?:^|[._:-])private[._:-]?key(?:[._:-]|$)/i,
+  /(?:^|[._:-])client[._:-]?secret(?:[._:-]|$)/i,
+  /(?:^|[._:-])app[._:-]?secret(?:[._:-]|$)/i,
+  /(?:^|[._:-])verification[._:-]?token(?:[._:-]|$)/i,
+  /(?:^|[._:-])encrypt[._:-]?key(?:[._:-]|$)/i,
+];
+
 export type PlatformSettingDefinition = {
   defaultValue?: string;
   key: string;
@@ -358,7 +378,16 @@ export function resolveSettingValueType(
   if (definition && (!isSettingValueType(valueType) || valueType === "string")) {
     return definition.valueType;
   }
-  return isSettingValueType(valueType) ? valueType : (definition?.valueType ?? "string");
+  const inferredValueType = inferSettingValueTypeFromKey(name);
+  if (
+    inferredValueType &&
+    (!isSettingValueType(valueType) || valueType === "string")
+  ) {
+    return inferredValueType;
+  }
+  return isSettingValueType(valueType)
+    ? valueType
+    : (definition?.valueType ?? inferredValueType ?? "string");
 }
 
 export function resolveSettingValueOptions(
@@ -379,4 +408,19 @@ export function getSettingDefinitionByKey(
   if (platformDefinition) return platformDefinition;
 
   return FEATURE_SETTING_DEFINITIONS.find((definition) => definition.key === key);
+}
+
+export function inferSettingValueTypeFromKey(
+  key: string,
+): SettingValueType | null {
+  const normalized = key.trim().toLowerCase();
+  if (!normalized) return null;
+  if (SECRET_SETTING_KEY_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return "secret";
+  }
+
+  const tokens = normalized.split(/[._:-]+/).filter(Boolean);
+  return tokens.some((token) => SECRET_SETTING_KEY_TOKENS.has(token))
+    ? "secret"
+    : null;
 }

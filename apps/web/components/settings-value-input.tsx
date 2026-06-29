@@ -705,13 +705,19 @@ export function SettingEditDialog({
       return;
     }
 
-    const valueResult = normalizeDraftValue(
-      draftValueType === "secret"
-        ? editSecretValueRef.current
-        : formatDraftValue(draftValue, draftValueType),
-      draftValueType,
-      optionsResult.value,
-    );
+    const shouldKeepExistingSecret =
+      draftValueType === "secret" &&
+      !editSecretValueRef.current &&
+      Boolean(value);
+    const valueResult = shouldKeepExistingSecret
+      ? { ok: true as const, value: SECRET_SETTING_MASK }
+      : normalizeDraftValue(
+          draftValueType === "secret"
+            ? editSecretValueRef.current
+            : formatDraftValue(draftValue, draftValueType),
+          draftValueType,
+          optionsResult.value,
+        );
     if (!valueResult.ok) {
       setError(valueResult.error);
       return;
