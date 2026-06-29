@@ -69,9 +69,22 @@ CREATE TABLE IF NOT EXISTS organization_settings (
   organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
   value TEXT,
+  value_type VARCHAR(32) NOT NULL DEFAULT 'string',
+  value_options JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT organization_settings_org_name_unique UNIQUE (organization_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(160) NOT NULL UNIQUE,
+  value TEXT,
+  value_type VARCHAR(32) NOT NULL DEFAULT 'string',
+  value_options JSONB,
+  scope VARCHAR(80) NOT NULL DEFAULT 'global',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS menus (
@@ -94,6 +107,11 @@ CREATE INDEX IF NOT EXISTS roles_organization_id_idx ON roles(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_organization_id_idx ON role_permissions(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_role_id_idx ON role_permissions(role_id);
 CREATE INDEX IF NOT EXISTS organization_settings_organization_id_idx ON organization_settings(organization_id);
+
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS value_type VARCHAR(32) NOT NULL DEFAULT 'string';
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS value_options JSONB;
+ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS value_type VARCHAR(32) NOT NULL DEFAULT 'string';
+ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS value_options JSONB;
 
 \c hermes_dev;
 
@@ -162,9 +180,22 @@ CREATE TABLE IF NOT EXISTS organization_settings (
   organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
   value TEXT,
+  value_type VARCHAR(32) NOT NULL DEFAULT 'string',
+  value_options JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT organization_settings_org_name_unique UNIQUE (organization_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(160) NOT NULL UNIQUE,
+  value TEXT,
+  value_type VARCHAR(32) NOT NULL DEFAULT 'string',
+  value_options JSONB,
+  scope VARCHAR(80) NOT NULL DEFAULT 'global',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS menus (
@@ -187,6 +218,11 @@ CREATE INDEX IF NOT EXISTS roles_organization_id_idx ON roles(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_organization_id_idx ON role_permissions(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_role_id_idx ON role_permissions(role_id);
 CREATE INDEX IF NOT EXISTS organization_settings_organization_id_idx ON organization_settings(organization_id);
+
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS value_type VARCHAR(32) NOT NULL DEFAULT 'string';
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS value_options JSONB;
+ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS value_type VARCHAR(32) NOT NULL DEFAULT 'string';
+ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS value_options JSONB;
 
 \c hermes_test;
 
@@ -255,9 +291,22 @@ CREATE TABLE IF NOT EXISTS organization_settings (
   organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
   value TEXT,
+  value_type VARCHAR(32) NOT NULL DEFAULT 'string',
+  value_options JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT organization_settings_org_name_unique UNIQUE (organization_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(160) NOT NULL UNIQUE,
+  value TEXT,
+  value_type VARCHAR(32) NOT NULL DEFAULT 'string',
+  value_options JSONB,
+  scope VARCHAR(80) NOT NULL DEFAULT 'global',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS menus (
@@ -280,3 +329,8 @@ CREATE INDEX IF NOT EXISTS roles_organization_id_idx ON roles(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_organization_id_idx ON role_permissions(organization_id);
 CREATE INDEX IF NOT EXISTS role_permissions_role_id_idx ON role_permissions(role_id);
 CREATE INDEX IF NOT EXISTS organization_settings_organization_id_idx ON organization_settings(organization_id);
+
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS value_type VARCHAR(32) NOT NULL DEFAULT 'string';
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS value_options JSONB;
+ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS value_type VARCHAR(32) NOT NULL DEFAULT 'string';
+ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS value_options JSONB;

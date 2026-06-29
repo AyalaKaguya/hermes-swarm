@@ -1,3 +1,9 @@
+import {
+  SECRET_SETTING_MASK,
+  type SettingValueOption,
+  type SettingValueType,
+} from "@hermes-swarm/core/settings/definitions";
+
 export type OrganizationStatus = "active" | "suspended";
 export type RequestScopeLevel = "organization" | "platform";
 export type UserStatus = "active" | "disabled";
@@ -141,6 +147,8 @@ export type OrganizationSetting = {
   overrideValue?: string | null;
   scope?: "organization" | "platform" | string;
   value: string | null;
+  valueOptions?: SettingValueOption[] | null;
+  valueType: SettingValueType;
 };
 
 export type SystemSettingDto = {
@@ -148,7 +156,28 @@ export type SystemSettingDto = {
   name: string;
   scope: string;
   value: string | null;
+  valueOptions?: SettingValueOption[] | null;
+  valueType: SettingValueType;
 };
+
+export type SettingPayloadValue =
+  | string
+  | number
+  | boolean
+  | Record<string, unknown>
+  | unknown[]
+  | null;
+
+export type SettingPayloadEntry = {
+  name: string;
+  value: SettingPayloadValue;
+  valueOptions?: SettingValueOption[] | null;
+  valueType?: SettingValueType;
+};
+
+export type SaveSettingsPayload =
+  | Record<string, SettingPayloadValue>
+  | { settings: SettingPayloadEntry[] };
 
 export type Menu = {
   id: string;
@@ -275,7 +304,36 @@ export async function fetchAdmin<T>(
     return null as T;
   }
 
-  return JSON.parse(text) as T;
+  return maskSecretSettingPayload(JSON.parse(text)) as T;
+}
+
+function maskSecretSettingPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(maskSecretSettingPayload);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const item = value as Record<string, unknown>;
+  for (const [key, child] of Object.entries(item)) {
+    item[key] = maskSecretSettingPayload(child);
+  }
+
+  if (item.valueType === "secret") {
+    if (item.value !== null && item.value !== undefined) {
+      item.value = SECRET_SETTING_MASK;
+    }
+    if (item.defaultValue !== null && item.defaultValue !== undefined) {
+      item.defaultValue = SECRET_SETTING_MASK;
+    }
+    if (item.overrideValue !== null && item.overrideValue !== undefined) {
+      item.overrideValue = SECRET_SETTING_MASK;
+    }
+  }
+
+  return item;
 }
 
 export async function uploadAdminFile(token: string, file: File) {
@@ -554,18 +612,14 @@ export function listOrganizationSettings(token: string) {
 
 export function saveOrganizationSettings(
   token: string,
-  settings:
-    | Record<string, string | number | boolean | null>
-    | { settings: Array<{ name: string; value: string | number | boolean | null }> },
+  settings: SaveSettingsPayload,
 ) {
   return fetchAdmin<OrganizationSetting[]>("/settings", { body: settings, method: "PUT", token });
 }
 
 export function saveSystemSettings(
   token: string,
-  settings:
-    | Record<string, string | number | boolean | null>
-    | { settings: Array<{ name: string; value: string | number | boolean | null }> },
+  settings: SaveSettingsPayload,
 ) {
   return fetchAdmin<SystemSettingDto[]>("/system-settings", { body: settings, method: "PUT", token });
 }
@@ -621,9 +675,7 @@ export function listOrganizationSettingsForOrganization(
 export function saveOrganizationSettingsForOrganization(
   token: string,
   organizationId: string,
-  settings:
-    | Record<string, string | number | boolean | null>
-    | { settings: Array<{ name: string; value: string | number | boolean | null }> },
+  settings: SaveSettingsPayload,
 ) {
   return fetchAdmin<OrganizationSetting[]>(
     `/organizations/${organizationId}/settings`,

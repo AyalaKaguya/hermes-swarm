@@ -1,9 +1,18 @@
-import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { SystemSetting } from "@hermes-swarm/core";
+import {
+  maskSettingValue,
+  resolveSettingValueOptions,
+  resolveSettingValueType,
+  SystemSetting,
+} from "@hermes-swarm/core";
 import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
 import { TenancyService } from "../tenancy/tenancy.service.js";
+import {
+  normalizeSettingEntry,
+  parseSettingsPayload,
+} from "./settings-value-normalizer.js";
 
 @Injectable()
 /**
@@ -57,11 +66,11 @@ export class SettingsService {
   ) {
     const context = await this.tenancyService.requireAuthContext(authorization);
     this.ensureSystemSettingsPermission(context, "manage");
-    const entries = normalizeSettingsPayload(payload);
+    const entries = parseSettingsPayload(payload);
     const saved: SystemSetting[] = [];
 
     for (const entry of entries) {
-      if (entry.value === null) {
+      if (entry.value === null || entry.value === undefined) {
         await this.systemSettingRepository.delete({ name: entry.name });
         continue;
       }
@@ -69,14 +78,19 @@ export class SettingsService {
       let setting = await this.systemSettingRepository.findOne({
         where: { name: entry.name },
       });
+      const normalized = normalizeSettingEntry(entry, [setting]);
       if (!setting) {
         setting = this.systemSettingRepository.create({
           name: entry.name,
-          value: entry.value,
           scope: "global",
+          value: normalized.value,
+          valueOptions: normalized.valueOptions,
+          valueType: normalized.valueType,
         });
       } else {
-        setting.value = entry.value;
+        setting.value = normalized.value;
+        setting.valueOptions = normalized.valueOptions;
+        setting.valueType = normalized.valueType;
       }
       saved.push(await this.systemSettingRepository.save(setting));
     }
@@ -100,56 +114,17 @@ export class SettingsService {
  * Projects the shared SystemSetting entity into the admin API response shape.
  */
 function toSystemSettingDto(setting: SystemSetting) {
+  const valueType = resolveSettingValueType(setting.name, setting.valueType);
+  const valueOptions = resolveSettingValueOptions(
+    setting.name,
+    setting.valueOptions,
+  );
   return {
     id: setting.id,
     name: setting.name,
     scope: setting.scope,
-    value: setting.value,
+    value: maskSettingValue(setting.value, valueType),
+    valueOptions,
+    valueType,
   };
-}
-
-/**
- */
-function normalizeSettingsPayload(payload: SaveSettingsPayload) {
-  const entries = Array.isArray((payload as { settings?: unknown }).settings)
-    ? (payload as {
-        settings: Array<{
-          name?: string;
-          value?: string | number | boolean | null;
-        }>;
-      }).settings.map((item) => ({
-        name: requireName(item.name),
-        value: stringifySettingValue(item.value),
-      }))
-    : Object.entries(payload)
-        .filter(([key]) => key !== "settings")
-        .map(([name, value]) => ({
-          name: requireName(name),
-          value: stringifySettingValue(value),
-        }));
-
-  if (entries.length === 0) {
-    throw new BadRequestException("设置不能为空");
-  }
-
-  return entries;
-}
-
-/**
- * Validates and trims a setting name.
- */
-function requireName(value: string | undefined) {
-  const text = value?.trim();
-  if (!text) {
-    throw new BadRequestException("设置名称不能为空");
-  }
-  return text;
-}
-
-/**
- * Stores primitive and structured setting values in the text-backed column.
- */
-function stringifySettingValue(value: unknown) {
-  if (value === undefined || value === null) return null;
-  return typeof value === "string" ? value : JSON.stringify(value);
 }

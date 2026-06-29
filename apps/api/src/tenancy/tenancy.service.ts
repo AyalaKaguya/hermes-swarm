@@ -28,8 +28,11 @@ import {
   getRoleRank,
   isPlatformAdminRoleName,
   isPlatformMenuCode,
+  maskSettingValue,
   mergeEffectiveOrganizationSettings,
   PLATFORM_ORGANIZATION_SETTING_DEFAULTS,
+  resolveSettingValueOptions,
+  resolveSettingValueType,
 } from "@hermes-swarm/core";
 import {
   AuthContext,
@@ -54,6 +57,10 @@ import {
   createAuthSessionToken,
   parseAuthSessionToken,
 } from "./admin-session.js";
+import {
+  normalizeSettingEntry,
+  parseSettingsPayload,
+} from "../settings/settings-value-normalizer.js";
 
 const ORGANIZATION_STATUSES: OrganizationStatus[] = ["active", "suspended"];
 const USER_STATUSES: UserStatus[] = ["active", "disabled"];
@@ -567,6 +574,7 @@ export class TenancyService implements OnModuleInit {
     });
     await this.applyOrganizationPayload(organization, payload, {
       allowSlugChange: false,
+      allowTenantControlChange: true,
     });
 
     const saved = await this.organizationRepository.save(organization);
@@ -597,6 +605,7 @@ export class TenancyService implements OnModuleInit {
     const org = await this.getOrganizationOrThrow(organizationId);
     await this.applyOrganizationPayload(org, payload, {
       allowSlugChange: true,
+      allowTenantControlChange: context.isPlatformAdmin,
     });
 
     return toOrganizationDto(await this.organizationRepository.save(org));
@@ -1049,10 +1058,10 @@ export class TenancyService implements OnModuleInit {
     organizationId: string,
     payload: SaveSettingsPayload,
   ) {
-    const entries = normalizeSettingsPayload(payload);
+    const entries = parseSettingsPayload(payload);
 
     for (const entry of entries) {
-      if (entry.value === null) {
+      if (entry.value === null || entry.value === undefined) {
         await this.organizationSettingRepository.delete({
           name: entry.name,
           organizationId,
@@ -1066,14 +1075,22 @@ export class TenancyService implements OnModuleInit {
           organizationId,
         },
       });
+      const systemSetting = await this.systemSettingRepository.findOne({
+        where: { name: entry.name },
+      });
+      const normalized = normalizeSettingEntry(entry, [setting, systemSetting]);
       if (!setting) {
         setting = this.organizationSettingRepository.create({
           name: entry.name,
           organizationId,
-          value: entry.value,
+          value: normalized.value,
+          valueOptions: normalized.valueOptions,
+          valueType: normalized.valueType,
         });
       } else {
-        setting.value = entry.value;
+        setting.value = normalized.value;
+        setting.valueOptions = normalized.valueOptions;
+        setting.valueType = normalized.valueType;
       }
       await this.organizationSettingRepository.save(setting);
     }
@@ -1179,7 +1196,7 @@ export class TenancyService implements OnModuleInit {
   private async applyOrganizationPayload(
     org: Organization,
     payload: UpdateOrganizationPayload,
-    options: { allowSlugChange: boolean },
+    options: { allowSlugChange: boolean; allowTenantControlChange: boolean },
   ) {
     if (payload.name !== undefined) {
       org.name = requireText(payload.name, "组织名称");
@@ -1195,9 +1212,15 @@ export class TenancyService implements OnModuleInit {
       org.subdomain = normalizeOptionalText(payload.subdomain);
     }
     if (payload.status !== undefined) {
+      if (!options.allowTenantControlChange) {
+        throw new ForbiddenException("只有平台管理员可以修改组织启用状态");
+      }
       org.status = normalizeOrganizationStatus(payload.status);
     }
     if (payload.isDefault !== undefined) {
+      if (!options.allowTenantControlChange) {
+        throw new ForbiddenException("只有平台管理员可以修改默认组织");
+      }
       org.isDefault = Boolean(payload.isDefault);
     }
 
@@ -1369,8 +1392,18 @@ export class TenancyService implements OnModuleInit {
             name: defaultSetting.name,
             scope: "global",
             value: defaultSetting.value,
+            valueOptions: defaultSetting.valueOptions
+              ? [...defaultSetting.valueOptions]
+              : null,
+            valueType: defaultSetting.valueType,
           }),
         );
+      } else {
+        existing.valueOptions = defaultSetting.valueOptions
+          ? [...defaultSetting.valueOptions]
+          : (existing.valueOptions ?? null);
+        existing.valueType = defaultSetting.valueType;
+        await this.systemSettingRepository.save(existing);
       }
     }
   }
@@ -1574,6 +1607,9 @@ export class TenancyService implements OnModuleInit {
 
   private canViewRole(context: AuthContext, role: Role) {
     if (context.isPlatformAdmin) return true;
+    if (this.hasPermission(context, "organizations", "view")) {
+      return !isPlatformAdminRoleName(role.name);
+    }
     if (isPlatformAdminRoleName(role.name)) return false;
     return getRoleRank(role.name) <= getRoleRank(context.roleName);
   }
@@ -1595,6 +1631,9 @@ export class TenancyService implements OnModuleInit {
   private canViewUser(context: AuthContext, role: Role | null) {
     if (context.isPlatformAdmin) return true;
     if (!role) return true;
+    if (this.hasPermission(context, "organizations", "view")) {
+      return !isPlatformAdminRoleName(role.name);
+    }
     return !isPlatformAdminRoleName(role.name);
   }
 
@@ -1608,6 +1647,7 @@ export class TenancyService implements OnModuleInit {
     if (isPlatformAdminRoleName(role.name)) {
       throw new ForbiddenException("不能分配平台管理员角色");
     }
+    if (this.hasPermission(context, "organizations", "manage")) return;
     if (getRoleRank(role.name) >= getRoleRank(context.roleName)) {
       throw new ForbiddenException("不能分配同级或上级角色");
     }
@@ -1627,6 +1667,7 @@ export class TenancyService implements OnModuleInit {
     if (isPlatformAdminRoleName(role.name)) {
       throw new ForbiddenException("不能修改平台管理员用户");
     }
+    if (this.hasPermission(context, "organizations", "manage")) return;
     if (getRoleRank(role.name) >= getRoleRank(context.roleName)) {
       throw new ForbiddenException("不能修改同级或上级用户");
     }
@@ -1938,41 +1979,6 @@ function normalizeRolePermissions(
 }
 
 /**
- */
-function normalizeSettingsPayload(payload: SaveSettingsPayload) {
-  const entries = Array.isArray((payload as { settings?: unknown }).settings)
-    ? (payload as {
-        settings: Array<{
-          name?: string;
-          value?: string | number | boolean | null;
-        }>;
-      }).settings.map((item) => ({
-        name: requireText(item.name, "设置名称"),
-        value: stringifySettingValue(item.value),
-      }))
-    : Object.entries(payload)
-        .filter(([key]) => key !== "settings")
-        .map(([name, value]) => ({
-          name: requireText(name, "设置名称"),
-          value: stringifySettingValue(value),
-        }));
-
-  if (entries.length === 0) {
-    throw new BadRequestException("设置不能为空");
-  }
-
-  return entries;
-}
-
-/**
- * Serializes primitive and structured setting values for text storage.
- */
-function stringifySettingValue(value: unknown) {
-  if (value === undefined || value === null) return null;
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-/**
  * Extracts a bearer token from an authorization header.
  */
 function parseBearerToken(authorization: string | undefined) {
@@ -2075,11 +2081,18 @@ function toRolePermissionDto(permission: RolePermission) {
  * Projects global system setting entities into admin responses.
  */
 function toSystemSettingDto(setting: SystemSetting) {
+  const valueType = resolveSettingValueType(setting.name, setting.valueType);
+  const valueOptions = resolveSettingValueOptions(
+    setting.name,
+    setting.valueOptions,
+  );
   return {
     id: setting.id,
     name: setting.name,
     scope: setting.scope,
-    value: setting.value,
+    value: maskSettingValue(setting.value, valueType),
+    valueOptions,
+    valueType,
   };
 }
 

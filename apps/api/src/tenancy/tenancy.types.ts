@@ -1,5 +1,7 @@
 import type {
   OrganizationStatus,
+  SettingValueOption,
+  SettingValueType,
   UserStatus,
 } from "@hermes-swarm/core";
 
@@ -124,16 +126,27 @@ export type UpdatePreferredLanguagePayload = {
   preferredLanguage?: string;
 };
 
+export type SettingPayloadValue =
+  | string
+  | number
+  | boolean
+  | Record<string, unknown>
+  | unknown[]
+  | null
+  | undefined;
+
 /**
  * Organization and system settings payload shape accepted by the settings API.
  */
 export type SaveSettingsPayload =
-  | Record<string, string | number | boolean | null | undefined>
+  | Record<string, SettingPayloadValue>
   | {
       settings?: Array<{
         name?: string;
-        value?: string | number | boolean | null;
-    }>;
+        value?: SettingPayloadValue;
+        valueOptions?: SettingValueOption[] | null;
+        valueType?: SettingValueType;
+      }>;
     };
 
 /**

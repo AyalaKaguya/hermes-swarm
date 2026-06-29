@@ -1,7 +1,17 @@
+import {
+  maskSettingValue,
+  resolveSettingValueOptions,
+  resolveSettingValueType,
+  type SettingValueOption,
+  type SettingValueType,
+} from "./definitions.js";
+
 export type ScopedSettingRecord = {
   id?: string;
   name: string;
   value: string | null;
+  valueOptions?: readonly SettingValueOption[] | null;
+  valueType?: SettingValueType | string | null;
 };
 
 export type EffectiveOrganizationSetting = {
@@ -13,6 +23,8 @@ export type EffectiveOrganizationSetting = {
   overrideValue: string | null;
   scope: "organization" | "platform";
   value: string | null;
+  valueOptions: readonly SettingValueOption[] | null;
+  valueType: SettingValueType;
 };
 
 /**
@@ -39,9 +51,20 @@ export function mergeEffectiveOrganizationSettings(
     const overrideValue = organizationSetting?.value ?? null;
     const defaultValue = systemSetting?.value ?? null;
     const isOverridden = Boolean(organizationSetting);
+    const valueType = resolveSettingValueType(
+      name,
+      organizationSetting?.valueType ??
+        systemSetting?.valueType,
+    );
+    const valueOptions = resolveSettingValueOptions(
+      name,
+      organizationSetting?.valueOptions ??
+        systemSetting?.valueOptions,
+    );
+    const effectiveValue = isOverridden ? overrideValue : defaultValue;
 
     return {
-      defaultValue,
+      defaultValue: maskSettingValue(defaultValue, valueType),
       id:
         organizationSetting?.id ??
         systemSetting?.id ??
@@ -49,9 +72,11 @@ export function mergeEffectiveOrganizationSettings(
       isOverridden,
       name,
       organizationId,
-      overrideValue,
+      overrideValue: maskSettingValue(overrideValue, valueType),
       scope: isOverridden ? "organization" : "platform",
-      value: isOverridden ? overrideValue : defaultValue,
+      value: maskSettingValue(effectiveValue, valueType),
+      valueOptions,
+      valueType,
     };
   });
 }

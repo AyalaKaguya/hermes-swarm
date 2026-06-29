@@ -12,54 +12,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
+import { FEATURE_SETTING_DEFINITIONS } from "@hermes-swarm/core/settings/definitions";
 import {
   listOrganizationSettings,
   saveOrganizationSettings,
   type OrganizationSetting,
 } from "@/lib/admin-api";
 import { getStoredSession, hasMenuAccess } from "@/lib/session";
-
-const FEATURE_DEFINITIONS = [
-  {
-    key: "feature:email:enabled",
-    label: "邮件功能",
-    description: "启用或禁用组织邮件发送能力",
-    scope: "organization",
-  },
-  {
-    key: "feature:invite:enabled",
-    label: "邀请功能",
-    description: "允许通过邮件邀请新用户加入组织",
-    scope: "organization",
-  },
-  {
-    key: "feature:password-reset:enabled",
-    label: "密码重置",
-    description: "允许用户通过邮件重置密码",
-    scope: "organization",
-  },
-  {
-    key: "feature:org-management:enabled",
-    label: "组织管理",
-    description: "启用组织级别的管理功能",
-    scope: "system",
-  },
-  {
-    key: "system:maintenance:enabled",
-    label: "维护模式",
-    description: "开启后仅管理员可访问系统",
-    scope: "system",
-  },
-  {
-    key: "system:registration:open",
-    label: "开放注册",
-    description: "允许新用户自行注册",
-    scope: "system",
-  },
-];
 
 export default function FeaturesPage() {
   const { resolvedSession, snapshot } = useAdminShell();
@@ -72,13 +32,8 @@ export default function FeaturesPage() {
     snapshot && resolvedSession
       ? hasMenuAccess(snapshot, resolvedSession, "features", "manage")
       : false;
-  const organizationFeatures = FEATURE_DEFINITIONS.filter(
+  const organizationFeatures = FEATURE_SETTING_DEFINITIONS.filter(
     (definition) => definition.scope === "organization",
-  );
-  const customFeatureSettings = settings.filter(
-    (setting) =>
-      setting.name.startsWith("feature:") &&
-      !organizationFeatures.some((feature) => feature.key === setting.name),
   );
 
   const load = useCallback(async () => {
@@ -112,23 +67,10 @@ export default function FeaturesPage() {
     const session = getStoredSession();
     if (!session?.token) return;
     const payload = {
-      settings: [{ name: key, value: String(enabled) }],
+      settings: [{ name: key, value: enabled, valueType: "boolean" }],
     };
     try {
       await saveOrganizationSettings(session.token, payload);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
-    }
-  }
-
-  async function saveCustomSetting(key: string, value: string) {
-    const session = getStoredSession();
-    if (!session?.token) return;
-    try {
-      await saveOrganizationSettings(session.token, {
-        settings: [{ name: key, value }],
-      });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -222,38 +164,6 @@ export default function FeaturesPage() {
           })}
         </div>
 
-        {customFeatureSettings.length > 0 && (
-          <>
-            <Separator className="my-6" />
-            <div className="max-w-2xl space-y-3">
-              <div className="text-sm font-medium">自定义设置</div>
-              {customFeatureSettings.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between gap-4 rounded-md border p-3"
-                >
-                  <div>
-                    <div className="text-sm font-medium font-mono">
-                      {s.name}
-                    </div>
-                    <div className="text-xs">organization</div>
-                  </div>
-                  <Input
-                    className="h-8 w-48 text-xs font-mono"
-                    defaultValue={s.value ?? ""}
-                    disabled={!canManageFeatures}
-                    onBlur={(e) => {
-                      const val = e.target.value;
-                      if (val !== (s.value ?? "")) {
-                        saveCustomSetting(s.name, val);
-                      }
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          </>
-        )}
       </CardContent>
     </Card>
   );

@@ -68,13 +68,13 @@ export default function SettingsLayout({
     )?.key;
 
   return (
-    <div className="min-h-svh min-w-0 bg-background">
+    <div className="min-h-svh min-w-0 bg-background md:h-svh md:overflow-hidden">
       <ResizablePanelGroup
-        className="hidden min-h-svh md:flex"
+        className="hidden h-full min-h-0 md:flex"
         orientation="horizontal"
       >
         <ResizablePanel
-          className="border-r bg-muted/20"
+          className="min-h-0 border-r bg-muted/20"
           defaultSize={SETTINGS_SIDEBAR_DEFAULT_SIZE}
           groupResizeBehavior="preserve-pixel-size"
           id="settings-navigation"
@@ -94,11 +94,11 @@ export default function SettingsLayout({
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel
-          className="min-w-0"
+          className="min-h-0 min-w-0 overflow-hidden"
           id="settings-content"
           minSize="360px"
         >
-          <div className="min-w-0 px-4 py-5 md:px-5">
+          <div className="h-full min-w-0 overflow-auto px-4 py-5 md:px-5">
             <div
               className="mx-auto flex max-w-7xl flex-col gap-4"
               key={activeOrganizationId}
@@ -153,7 +153,7 @@ function SettingsSidebar({
     <aside
       aria-label="配置导航"
       className={cn(
-        "flex h-full min-h-svh flex-col",
+        "flex h-full min-h-0 flex-col overflow-hidden",
         collapsed && "items-center",
       )}
     >
@@ -174,7 +174,7 @@ function SettingsSidebar({
           </div>
         )}
       </div>
-      <div className="w-full flex-1 overflow-auto px-2 py-3">
+      <div className="min-h-0 w-full flex-1 overflow-auto px-2 py-3">
         {navSections.map((section, sectionIndex) => (
           <div className="grid gap-1" key={section.key}>
             {sectionIndex > 0 && <Separator className="my-2" />}
