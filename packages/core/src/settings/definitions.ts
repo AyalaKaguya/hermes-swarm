@@ -3,15 +3,35 @@ export type SettingOption = {
   value: string;
 };
 
+export const SETTING_VALUE_TYPES = [
+  "string",
+  "boolean",
+  "number",
+  "json",
+  "enum",
+  "secret",
+] as const;
+
+export type SettingValueType = (typeof SETTING_VALUE_TYPES)[number];
+
+export type SettingValueOption = SettingOption;
+
+export const SECRET_SETTING_MASK = "********";
+
 export type PlatformSettingDefinition = {
   defaultValue?: string;
   key: string;
   legacyKeys?: readonly string[];
+  scope?: "organization" | "platform";
+  valueOptions?: readonly SettingValueOption[];
+  valueType: SettingValueType;
 };
 
 export type PlatformDefaultSetting = {
   name: string;
   value: string;
+  valueOptions?: readonly SettingValueOption[];
+  valueType: SettingValueType;
 };
 
 export type OrganizationDefaultFieldDefinition = {
@@ -19,12 +39,23 @@ export type OrganizationDefaultFieldDefinition = {
   key: string;
   label: string;
   options: readonly SettingOption[];
+  valueType: SettingValueType;
 };
 
 export type OrganizationControlSettingDefinition = {
   key: string;
   label: string;
   options: readonly SettingOption[];
+  valueType: SettingValueType;
+};
+
+export type FeatureSettingDefinition = {
+  description: string;
+  key: string;
+  label: string;
+  scope: "organization" | "system";
+  valueOptions?: readonly SettingValueOption[];
+  valueType: "boolean";
 };
 
 export const PLATFORM_TITLE_SETTING_KEY = "tenant_title";
@@ -95,36 +126,46 @@ export const TIME_ZONE_OPTIONS = [
   { label: "新加坡时间 (Asia/Singapore)", value: "Asia/Singapore" },
 ] as const satisfies readonly SettingOption[];
 
+export const ORGANIZATION_STATUS_OPTIONS = [
+  { label: "启用", value: "active" },
+  { label: "停用", value: "suspended" },
+] as const satisfies readonly SettingOption[];
+
 export const ORGANIZATION_DEFAULT_FIELD_DEFINITIONS = [
   {
     field: "currency",
     key: PLATFORM_SETTING_KEYS.defaultCurrency,
     label: "货币",
     options: CURRENCY_OPTIONS,
+    valueType: "enum",
   },
   {
     field: "timeZone",
     key: PLATFORM_SETTING_KEYS.defaultTimeZone,
     label: "时区",
     options: TIME_ZONE_OPTIONS,
+    valueType: "enum",
   },
   {
     field: "regionCode",
     key: PLATFORM_SETTING_KEYS.defaultRegionCode,
     label: "地区代码",
     options: REGION_OPTIONS,
+    valueType: "enum",
   },
   {
     field: "dateFormat",
     key: PLATFORM_SETTING_KEYS.defaultDateFormat,
     label: "日期格式",
     options: DATE_FORMAT_OPTIONS,
+    valueType: "enum",
   },
   {
     field: "preferredLanguage",
     key: PLATFORM_SETTING_KEYS.defaultLanguage,
     label: "默认语言",
     options: LANGUAGE_OPTIONS,
+    valueType: "enum",
   },
 ] as const satisfies readonly OrganizationDefaultFieldDefinition[];
 
@@ -133,6 +174,7 @@ export const ORGANIZATION_CONTROL_SETTING_DEFINITIONS = [
     key: PLATFORM_SETTING_KEYS.passwordMinLength,
     label: "密码最小长度",
     options: PASSWORD_LENGTH_OPTIONS,
+    valueType: "enum",
   },
 ] as const satisfies readonly OrganizationControlSettingDefinition[];
 
@@ -140,65 +182,137 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   allowOrganizationCreation: {
     defaultValue: "true",
     key: PLATFORM_SETTING_KEYS.allowOrganizationCreation,
+    scope: "platform",
+    valueType: "boolean",
   },
   defaultCurrency: {
     defaultValue: "CNY",
     key: PLATFORM_SETTING_KEYS.defaultCurrency,
+    scope: "organization",
+    valueOptions: CURRENCY_OPTIONS,
+    valueType: "enum",
   },
   defaultDateFormat: {
     defaultValue: "YYYY-MM-DD",
     key: PLATFORM_SETTING_KEYS.defaultDateFormat,
+    scope: "organization",
+    valueOptions: DATE_FORMAT_OPTIONS,
+    valueType: "enum",
   },
   defaultLanguage: {
     defaultValue: "zh-CN",
     key: PLATFORM_SETTING_KEYS.defaultLanguage,
     legacyKeys: [LEGACY_PLATFORM_SETTING_KEYS.defaultLanguage],
+    scope: "organization",
+    valueOptions: LANGUAGE_OPTIONS,
+    valueType: "enum",
   },
   defaultOrganizationStatus: {
     defaultValue: "active",
     key: PLATFORM_SETTING_KEYS.defaultOrganizationStatus,
+    scope: "platform",
+    valueOptions: ORGANIZATION_STATUS_OPTIONS,
+    valueType: "enum",
   },
   defaultRegionCode: {
     defaultValue: "CN",
     key: PLATFORM_SETTING_KEYS.defaultRegionCode,
+    scope: "organization",
+    valueOptions: REGION_OPTIONS,
+    valueType: "enum",
   },
   defaultTimeZone: {
     defaultValue: "Asia/Shanghai",
     key: PLATFORM_SETTING_KEYS.defaultTimeZone,
     legacyKeys: [LEGACY_PLATFORM_SETTING_KEYS.defaultTimeZone],
+    scope: "organization",
+    valueOptions: TIME_ZONE_OPTIONS,
+    valueType: "enum",
   },
   messageServiceEnabled: {
     defaultValue: "false",
     key: PLATFORM_SETTING_KEYS.messageServiceEnabled,
+    scope: "platform",
+    valueType: "boolean",
   },
   messageServiceProvider: {
     defaultValue: "internal",
     key: PLATFORM_SETTING_KEYS.messageServiceProvider,
+    scope: "platform",
+    valueType: "string",
   },
   passwordMinLength: {
     defaultValue: "8",
     key: PLATFORM_SETTING_KEYS.passwordMinLength,
+    scope: "organization",
+    valueOptions: PASSWORD_LENGTH_OPTIONS,
+    valueType: "enum",
   },
   publicSmtpEnabled: {
     defaultValue: "false",
     key: PLATFORM_SETTING_KEYS.publicSmtpEnabled,
+    scope: "platform",
+    valueType: "boolean",
   },
 } as const satisfies Record<string, PlatformSettingDefinition>;
+
+export const FEATURE_SETTING_DEFINITIONS = [
+  {
+    key: "feature:email:enabled",
+    label: "邮件功能",
+    description: "启用或禁用组织邮件发送能力",
+    scope: "organization",
+    valueType: "boolean",
+  },
+  {
+    key: "feature:invite:enabled",
+    label: "邀请功能",
+    description: "允许通过邮件邀请新用户加入组织",
+    scope: "organization",
+    valueType: "boolean",
+  },
+  {
+    key: "feature:password-reset:enabled",
+    label: "密码重置",
+    description: "允许用户通过邮件重置密码",
+    scope: "organization",
+    valueType: "boolean",
+  },
+  {
+    key: "feature:org-management:enabled",
+    label: "组织管理",
+    description: "启用组织级别的管理功能",
+    scope: "system",
+    valueType: "boolean",
+  },
+  {
+    key: "system:maintenance:enabled",
+    label: "维护模式",
+    description: "开启后仅管理员可访问系统",
+    scope: "system",
+    valueType: "boolean",
+  },
+  {
+    key: "system:registration:open",
+    label: "开放注册",
+    description: "允许新用户自行注册",
+    scope: "system",
+    valueType: "boolean",
+  },
+] as const satisfies readonly FeatureSettingDefinition[];
 
 export const PLATFORM_ORGANIZATION_SETTING_DEFAULTS: readonly PlatformDefaultSetting[] = [
   ...ORGANIZATION_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
     name: definition.key,
-    value:
-      PLATFORM_SETTING_DEFINITIONS[
-        getPlatformSettingDefinitionName(definition.key)
-      ].defaultValue,
+    value: getPlatformSettingDefinition(definition.key).defaultValue ?? "",
+    valueOptions: getPlatformSettingDefinition(definition.key).valueOptions,
+    valueType: getPlatformSettingDefinition(definition.key).valueType,
   })),
   ...ORGANIZATION_CONTROL_SETTING_DEFINITIONS.map((definition) => ({
     name: definition.key,
-    value:
-      PLATFORM_SETTING_DEFINITIONS[
-        getPlatformSettingDefinitionName(definition.key)
-      ].defaultValue,
+    value: getPlatformSettingDefinition(definition.key).defaultValue ?? "",
+    valueOptions: getPlatformSettingDefinition(definition.key).valueOptions,
+    valueType: getPlatformSettingDefinition(definition.key).valueType,
   })),
 ];
 
@@ -216,4 +330,53 @@ function getPlatformSettingDefinitionName(key: string) {
     throw new Error(`Unknown platform setting key: ${key}`);
   }
   return entry[0] as keyof typeof PLATFORM_SETTING_DEFINITIONS;
+}
+
+function getPlatformSettingDefinition(key: string): PlatformSettingDefinition {
+  return PLATFORM_SETTING_DEFINITIONS[getPlatformSettingDefinitionName(key)];
+}
+
+export function isSettingValueType(value: unknown): value is SettingValueType {
+  return (
+    typeof value === "string" &&
+    SETTING_VALUE_TYPES.includes(value as SettingValueType)
+  );
+}
+
+export function maskSettingValue(
+  value: string | null,
+  valueType: SettingValueType,
+) {
+  return valueType === "secret" && value !== null ? SECRET_SETTING_MASK : value;
+}
+
+export function resolveSettingValueType(
+  name: string,
+  valueType?: SettingValueType | string | null,
+): SettingValueType {
+  const definition = getSettingDefinitionByKey(name);
+  if (definition && (!isSettingValueType(valueType) || valueType === "string")) {
+    return definition.valueType;
+  }
+  return isSettingValueType(valueType) ? valueType : (definition?.valueType ?? "string");
+}
+
+export function resolveSettingValueOptions(
+  name: string,
+  valueOptions?: readonly SettingValueOption[] | null,
+) {
+  const definitionOptions = getSettingDefinitionByKey(name)?.valueOptions ?? null;
+  if (valueOptions?.length) return valueOptions;
+  return definitionOptions ?? valueOptions ?? null;
+}
+
+export function getSettingDefinitionByKey(
+  key: string,
+): FeatureSettingDefinition | PlatformSettingDefinition | undefined {
+  const platformDefinition = Object.values(PLATFORM_SETTING_DEFINITIONS).find(
+    (definition) => definition.key === key,
+  );
+  if (platformDefinition) return platformDefinition;
+
+  return FEATURE_SETTING_DEFINITIONS.find((definition) => definition.key === key);
 }

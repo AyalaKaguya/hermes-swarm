@@ -23,6 +23,7 @@ import {
   Palette,
   PanelLeft,
   Pencil,
+  Plus,
   Plug,
   RefreshCw,
   Repeat2,
@@ -65,6 +66,7 @@ export type AppIconName =
   | "palette"
   | "panel"
   | "pencil"
+  | "plus"
   | "plug"
   | "refresh"
   | "search"
@@ -104,6 +106,7 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   palette: Palette,
   panel: PanelLeft,
   pencil: Pencil,
+  plus: Plus,
   plug: Plug,
   refresh: RefreshCw,
   search: Search,

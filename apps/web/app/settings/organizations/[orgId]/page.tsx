@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useAdminShell } from "@/components/admin-shell";
+import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,12 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  CustomSettingDialog,
+  SettingEditDialog,
+  SettingValueInput,
+  type CustomSettingSubmit,
+} from "@/components/settings-value-input";
 import { UserAvatar } from "@/components/user-avatar";
 import {
   getRoleRank,
@@ -59,6 +66,8 @@ import {
 import {
   ORGANIZATION_CONTROL_SETTING_DEFINITIONS,
   ORGANIZATION_DEFAULT_FIELD_DEFINITIONS,
+  resolveSettingValueOptions,
+  resolveSettingValueType,
   type SettingOption,
 } from "@hermes-swarm/core/settings/definitions";
 import {
@@ -136,11 +145,10 @@ export default function OrganizationDetailPage() {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const notifications = useNotifications();
   const [controlValues, setControlValues] = useState<Record<string, string>>(
     {},
   );
-  const [customSettingName, setCustomSettingName] = useState("");
-  const [customSettingValue, setCustomSettingValue] = useState("");
   const [editUser, setEditUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<OrganizationForm>(emptyOrganizationForm());
@@ -149,7 +157,6 @@ export default function OrganizationDetailPage() {
   const [groupName, setGroupName] = useState("");
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [organizationSettings, setOrganizationSettings] = useState<
     OrganizationSetting[]
@@ -168,6 +175,12 @@ export default function OrganizationDetailPage() {
       ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage") ||
         hasMenuAccess(snapshot, resolvedSession, "organization", "manage")
       : false;
+  const canViewTenantControls = Boolean(snapshot?.isPlatformAdmin);
+  const canManageTenantControls = canViewTenantControls && Boolean(canManage);
+  const canManagePlatformOrganizationUsers =
+    snapshot && resolvedSession
+      ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage")
+      : false;
   const canViewOrganizationsList =
     snapshot && resolvedSession
       ? hasMenuAccess(snapshot, resolvedSession, "organizations", "view")
@@ -178,9 +191,19 @@ export default function OrganizationDetailPage() {
   const assignableRoles = useMemo(
     () =>
       roles.filter((role) =>
-        canAssignRole(currentRoleName, role, canAssignPlatformRole),
+        canAssignRole(
+          currentRoleName,
+          role,
+          canAssignPlatformRole,
+          Boolean(canManagePlatformOrganizationUsers),
+        ),
       ),
-    [canAssignPlatformRole, currentRoleName, roles],
+    [
+      canAssignPlatformRole,
+      canManagePlatformOrganizationUsers,
+      currentRoleName,
+      roles,
+    ],
   );
 
   const load = useCallback(async () => {
@@ -298,16 +321,17 @@ export default function OrganizationDetailPage() {
     if (!organization || !token || !canManage) return;
     setSaving(true);
     setError(null);
-    setMessage(null);
     try {
       const updated = await updateOrganization(
         token,
         organization.id,
-        toOrganizationPayload(form),
+        toOrganizationPayload(form, {
+          includeTenantControls: canManageTenantControls,
+        }),
       );
       setOrganization(updated);
       setForm(toOrganizationForm(updated));
-      setMessage("组织配置已保存");
+      notifications.success("组织配置已保存");
       await refreshSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -320,7 +344,6 @@ export default function OrganizationDetailPage() {
     if (!organization || !token || !canManage) return;
     setUploadingLogo(true);
     setError(null);
-    setMessage(null);
     try {
       const uploaded = await uploadAdminFile(token, file);
       const imageUrl =
@@ -334,7 +357,7 @@ export default function OrganizationDetailPage() {
       });
       setOrganization(updated);
       setForm(toOrganizationForm(updated));
-      setMessage("组织 Logo 已上传");
+      notifications.success("组织 Logo 已上传");
       await refreshSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "上传失败");
@@ -348,11 +371,12 @@ export default function OrganizationDetailPage() {
     if (!organization || !token || !canManage) return;
     setSavingControls(true);
     setError(null);
-    setMessage(null);
     try {
       await saveOrganizationSettingsForOrganization(token, organization.id, {
         settings: CONTROL_KEYS.map((item) => ({
           name: item.key,
+          valueOptions: item.options.map((option) => ({ ...option })),
+          valueType: item.valueType,
           value: controlValues[item.key] || null,
         })),
       });
@@ -361,7 +385,7 @@ export default function OrganizationDetailPage() {
         organization.id,
       );
       setOrganizationSettings(settings);
-      setMessage("组织控制项已保存");
+      notifications.success("组织控制项已保存");
       await refreshSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -370,24 +394,24 @@ export default function OrganizationDetailPage() {
     }
   }
 
-  async function saveCustomSetting(name: string, value: string | null) {
+  async function saveCustomSetting(setting: CustomSettingSubmit) {
     if (!organization || !token || !canManage) return;
-    const settingName = name.trim();
+    const { scope: _scope, ...payload } = setting;
+    const settingName = payload.name.trim();
     if (!settingName) return;
 
     setSavingCustomSetting(true);
     setError(null);
-    setMessage(null);
     try {
       const settings = await saveOrganizationSettingsForOrganization(
         token,
         organization.id,
-        { settings: [{ name: settingName, value }] },
+        { settings: [{ ...payload, name: settingName }] },
       );
       setOrganizationSettings(settings);
-      setCustomSettingName("");
-      setCustomSettingValue("");
-      setMessage(value === null ? "自定义设置已删除" : "自定义设置已保存");
+      notifications.success(
+        payload.value === null ? "自定义设置已删除" : "自定义设置已保存",
+      );
       await refreshSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -400,7 +424,6 @@ export default function OrganizationDetailPage() {
     if (!organization || !selectedGroup || !token || !canManage) return;
     setSavingGroup(true);
     setError(null);
-    setMessage(null);
     try {
       await updateOrganizationGroup(token, organization.id, selectedGroup.id, {
         name: groupName.trim(),
@@ -412,7 +435,7 @@ export default function OrganizationDetailPage() {
         selectedGroup.id,
         groupMemberIds,
       );
-      setMessage("用户组已保存");
+      notifications.success("用户组已保存");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -425,11 +448,10 @@ export default function OrganizationDetailPage() {
     if (!organization || !selectedGroup || !token || !canManage) return;
     setSavingGroup(true);
     setError(null);
-    setMessage(null);
     try {
       await deleteOrganizationGroup(token, organization.id, selectedGroup.id);
       setSelectedGroupId(null);
-      setMessage("用户组已删除");
+      notifications.success("用户组已删除");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
@@ -452,6 +474,9 @@ export default function OrganizationDetailPage() {
     if (!canManage || user.id === currentUserId) return false;
     if (canAssignPlatformRole) return true;
     const role = roles.find((item) => item.id === user.roleId);
+    if (canManagePlatformOrganizationUsers) {
+      return !role || !isPlatformAdminRoleName(role.name);
+    }
     if (!role) return user.roleId === null;
     return getRoleRank(role.name) < getRoleRank(currentRoleName);
   }
@@ -520,12 +545,6 @@ export default function OrganizationDetailPage() {
           {error}
         </div>
       )}
-      {message && !error && (
-        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-          {message}
-        </div>
-      )}
-
       <Tabs
         onValueChange={(value) => {
           if (isOrganizationTab(value)) setActiveTab(value);
@@ -609,36 +628,43 @@ export default function OrganizationDetailPage() {
                     value={form.website}
                   />
                 </Field>
-                <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <div className="grid gap-0.5">
-                    <Label htmlFor="organization-active">启用组织</Label>
-                    <span className="text-xs">
-                      停用后该组织用户不能继续登录
-                    </span>
-                  </div>
-                  <Switch
-                    checked={form.status === "active"}
-                    disabled={!canManage}
-                    id="organization-active"
-                    onCheckedChange={(checked) =>
-                      updateField("status", checked ? "active" : "suspended")
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <div className="grid gap-0.5">
-                    <Label htmlFor="organization-default">默认组织</Label>
-                    <span className="text-xs">用于租户初始组织选择</span>
-                  </div>
-                  <Switch
-                    checked={form.isDefault}
-                    disabled={!canManage}
-                    id="organization-default"
-                    onCheckedChange={(checked) =>
-                      updateField("isDefault", checked)
-                    }
-                  />
-                </div>
+                {canViewTenantControls && (
+                  <>
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <div className="grid gap-0.5">
+                        <Label htmlFor="organization-active">启用组织</Label>
+                        <span className="text-xs">
+                          停用后该组织用户不能继续登录
+                        </span>
+                      </div>
+                      <Switch
+                        checked={form.status === "active"}
+                        disabled={!canManageTenantControls}
+                        id="organization-active"
+                        onCheckedChange={(checked) =>
+                          updateField(
+                            "status",
+                            checked ? "active" : "suspended",
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <div className="grid gap-0.5">
+                        <Label htmlFor="organization-default">默认组织</Label>
+                        <span className="text-xs">用于租户初始组织选择</span>
+                      </div>
+                      <Switch
+                        checked={form.isDefault}
+                        disabled={!canManageTenantControls}
+                        id="organization-default"
+                        onCheckedChange={(checked) =>
+                          updateField("isDefault", checked)
+                        }
+                      />
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -1080,111 +1106,131 @@ export default function OrganizationDetailPage() {
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>自定义设置</CardTitle>
-                <CardDescription>
-                  新增组织专属设置，或覆写平台自定义默认值
-                </CardDescription>
+              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle>自定义设置</CardTitle>
+                  <CardDescription>
+                    新增组织专属设置，或覆写平台自定义默认值
+                  </CardDescription>
+                </div>
+                <CustomSettingDialog
+                  disabled={!canManage || savingCustomSetting}
+                  idPrefix="organization-custom-setting"
+                  onSubmit={saveCustomSetting}
+                  saving={savingCustomSetting}
+                  scopeOptions={[{ label: "组织", value: "organization" }]}
+                  showScope
+                  title="添加组织设置"
+                />
               </CardHeader>
               <CardContent className="grid gap-4">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <Field
-                    htmlFor="organization-custom-setting-name"
-                    label="名称"
-                  >
-                    <Input
-                      disabled={!canManage || savingCustomSetting}
-                      id="organization-custom-setting-name"
-                      onChange={(event) =>
-                        setCustomSettingName(event.target.value)
-                      }
-                      placeholder="custom.setting"
-                      value={customSettingName}
-                    />
-                  </Field>
-                  <Field htmlFor="organization-custom-setting-value" label="值">
-                    <Input
-                      disabled={!canManage || savingCustomSetting}
-                      id="organization-custom-setting-value"
-                      onChange={(event) =>
-                        setCustomSettingValue(event.target.value)
-                      }
-                      value={customSettingValue}
-                    />
-                  </Field>
-                  <Button
-                    className="self-end"
-                    disabled={
-                      !canManage ||
-                      savingCustomSetting ||
-                      !customSettingName.trim()
-                    }
-                    onClick={() =>
-                      void saveCustomSetting(
-                        customSettingName,
-                        customSettingValue,
-                      )
-                    }
-                    type="button"
-                    variant="outline"
-                  >
-                    添加
-                  </Button>
-                </div>
-
                 <div className="grid gap-2 text-sm">
                   {customSettings.length === 0 ? (
                     <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
                       暂无自定义设置
                     </div>
                   ) : (
-                    customSettings.map((setting) => (
-                      <div
-                        className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
-                        key={setting.id}
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate font-mono text-xs">
-                            {setting.name}
-                          </div>
-                          <div className="text-xs">
-                            {setting.isOverridden
-                              ? "组织覆写"
-                              : `平台默认：${setting.defaultValue ?? "-"}`}
-                          </div>
-                        </div>
-                        <Input
-                          className="h-8 font-mono text-xs"
-                          defaultValue={setting.overrideValue ?? ""}
-                          disabled={!canManage || savingCustomSetting}
-                          onBlur={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            if (nextValue !== (setting.overrideValue ?? "")) {
-                              void saveCustomSetting(
-                                setting.name,
-                                nextValue || null,
-                              );
-                            }
-                          }}
-                          placeholder={setting.defaultValue ?? ""}
-                        />
-                        <Button
-                          disabled={
-                            !canManage ||
-                            savingCustomSetting ||
-                            !setting.isOverridden
-                          }
-                          onClick={() =>
-                            void saveCustomSetting(setting.name, null)
-                          }
-                          size="icon"
-                          type="button"
-                          variant="ghost"
+                    customSettings.map((setting) => {
+                      const settingValueType = resolveSettingValueType(
+                        setting.name,
+                        setting.valueType,
+                      );
+                      const settingValueOptions = resolveSettingValueOptions(
+                        setting.name,
+                        setting.valueOptions,
+                      );
+                      const settingValueOptionsPayload =
+                        cloneSettingOptions(settingValueOptions);
+                      const effectiveValue =
+                        setting.overrideValue ??
+                        (settingValueType === "boolean" ||
+                        settingValueType === "enum" ||
+                        settingValueType === "secret"
+                          ? (setting.defaultValue ?? "")
+                          : "");
+
+                      return (
+                        <div
+                          className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+                          key={setting.id}
                         >
-                          <AppIcon className="size-4" name="trash" />
-                        </Button>
-                      </div>
-                    ))
+                          <div className="min-w-0">
+                            <div className="truncate font-mono text-xs">
+                              {setting.name}
+                            </div>
+                            <div className="text-xs">
+                              {setting.isOverridden
+                                ? "组织覆写"
+                                : `平台默认：${setting.defaultValue ?? "-"}`}
+                            </div>
+                          </div>
+                          <SettingValueInput
+                            disabled={!canManage || savingCustomSetting}
+                            id={`organization-custom-${setting.id}`}
+                            inputClassName="h-8 font-mono text-xs"
+                            onCommit={(nextValue) => {
+                              if (
+                                settingValueType === "secret" ||
+                                String(nextValue ?? "") !==
+                                  (setting.overrideValue ?? "")
+                              ) {
+                                void saveCustomSetting({
+                                  name: setting.name,
+                                  value:
+                                    nextValue === "" || nextValue === null
+                                      ? null
+                                      : nextValue,
+                                  valueOptions: settingValueOptionsPayload,
+                                  valueType: settingValueType,
+                                });
+                              }
+                            }}
+                            value={effectiveValue}
+                            valueOptions={settingValueOptions}
+                            valueType={settingValueType}
+                            placeholder={setting.defaultValue ?? ""}
+                          />
+                          <SettingEditDialog
+                            disabled={!canManage || savingCustomSetting}
+                            idPrefix={`organization-custom-${setting.id}`}
+                            name={setting.name}
+                            onSubmit={(entry) =>
+                              saveCustomSetting({
+                                ...entry,
+                                value:
+                                  entry.value === "" || entry.value === null
+                                    ? null
+                                    : entry.value,
+                              })
+                            }
+                            saving={savingCustomSetting}
+                            value={effectiveValue}
+                            valueOptions={settingValueOptions}
+                            valueType={settingValueType}
+                          />
+                          <Button
+                            disabled={
+                              !canManage ||
+                              savingCustomSetting ||
+                              !setting.isOverridden
+                            }
+                            onClick={() =>
+                              void saveCustomSetting({
+                                name: setting.name,
+                                value: null,
+                                valueOptions: settingValueOptionsPayload,
+                                valueType: settingValueType,
+                              })
+                            }
+                            size="icon"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <AppIcon className="size-4" name="trash" />
+                          </Button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </CardContent>
@@ -1604,15 +1650,17 @@ function toOrganizationForm(organization: Organization): OrganizationForm {
   };
 }
 
-function toOrganizationPayload(form: OrganizationForm): OrganizationPayload {
-  return {
+function toOrganizationPayload(
+  form: OrganizationForm,
+  options: { includeTenantControls: boolean },
+): OrganizationPayload {
+  const payload: OrganizationPayload = {
     banner: nullableText(form.banner),
     brandColor: nullableText(form.brandColor),
     clientFocus: nullableText(form.clientFocus),
     currency: nullableText(form.currency),
     dateFormat: nullableText(form.dateFormat),
     imageUrl: nullableText(form.imageUrl),
-    isDefault: form.isDefault,
     name: form.name,
     officialName: nullableText(form.officialName),
     overview: nullableText(form.overview),
@@ -1621,17 +1669,29 @@ function toOrganizationPayload(form: OrganizationForm): OrganizationPayload {
     regionCode: nullableText(form.regionCode),
     shortDescription: nullableText(form.shortDescription),
     slug: form.slug,
-    status: form.status,
     subdomain: nullableText(form.subdomain),
     timeZone: nullableText(form.timeZone),
     totalEmployees: parseOptionalNumber(form.totalEmployees),
     website: nullableText(form.website),
   };
+
+  if (options.includeTenantControls) {
+    payload.isDefault = form.isDefault;
+    payload.status = form.status;
+  }
+
+  return payload;
 }
 
 function nullableText(value: string) {
   const normalized = value.trim();
   return normalized ? normalized : null;
+}
+
+function cloneSettingOptions(
+  options?: readonly { label: string; value: string }[] | null,
+) {
+  return options?.map((option) => ({ ...option })) ?? null;
 }
 
 function parseOptionalNumber(value: string) {
@@ -1645,9 +1705,10 @@ function canAssignRole(
   currentRoleName: string | null,
   role: Role,
   canAssignPlatformRole: boolean,
+  canManagePlatformOrganizationUsers: boolean,
 ) {
   if (isPlatformAdminRoleName(role.name)) return canAssignPlatformRole;
-  if (canAssignPlatformRole) return true;
+  if (canAssignPlatformRole || canManagePlatformOrganizationUsers) return true;
   return getRoleRank(role.name) < getRoleRank(currentRoleName);
 }
 

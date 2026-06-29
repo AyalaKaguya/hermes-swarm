@@ -9,6 +9,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useAdminShell } from "@/components/admin-shell";
+import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,15 +33,23 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  CustomSettingDialog,
+  SettingEditDialog,
+  SettingValueInput,
+  type CustomSettingSubmit,
+} from "@/components/settings-value-input";
+import {
   CURRENCY_OPTIONS,
   DATE_FORMAT_OPTIONS,
   KNOWN_PLATFORM_SETTING_KEYS,
   LANGUAGE_OPTIONS,
+  ORGANIZATION_STATUS_OPTIONS,
   PASSWORD_LENGTH_OPTIONS,
   PLATFORM_SETTING_DEFINITIONS,
-  PLATFORM_SETTING_KEYS,
   PLATFORM_TITLE_SETTING_KEY,
   REGION_OPTIONS,
+  resolveSettingValueOptions,
+  resolveSettingValueType,
   TIME_ZONE_OPTIONS,
 } from "@hermes-swarm/core/settings/definitions";
 import {
@@ -51,6 +60,8 @@ import {
   saveSystemSettings,
   validateSmtpConfig,
   type Organization,
+  type SettingPayloadEntry,
+  type SettingPayloadValue,
   type SmtpConfig,
   type SystemSettingDto,
 } from "@/lib/admin-api";
@@ -79,14 +90,12 @@ type PlatformForm = {
 
 export default function TenantPage() {
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
+  const notifications = useNotifications();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [form, setForm] = useState<PlatformForm>(emptyPlatformForm());
   const [systemSettings, setSystemSettings] = useState<SystemSettingDto[]>([]);
-  const [customSettingName, setCustomSettingName] = useState("");
-  const [customSettingValue, setCustomSettingValue] = useState("");
   const [savingCustomSetting, setSavingCustomSetting] = useState(false);
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
@@ -178,61 +187,40 @@ export default function TenantPage() {
 
     setSavingPlatform(true);
     setError(null);
-    setMessage(null);
     try {
       await saveSystemSettings(session.token, {
         settings: [
           {
             name: PLATFORM_TITLE_SETTING_KEY,
             value: form.platformTitle.trim() || null,
+            valueType: "string",
           },
-          {
-            name: PLATFORM_SETTING_KEYS.allowOrganizationCreation,
-            value: form.allowOrganizationCreation,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.defaultOrganizationStatus,
-            value: form.defaultOrganizationStatus,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.defaultCurrency,
-            value: form.defaultCurrency,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.defaultDateFormat,
-            value: form.defaultDateFormat,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.defaultLanguage,
-            value: form.defaultLanguage,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.defaultRegionCode,
-            value: form.defaultRegionCode,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.defaultTimeZone,
-            value: form.defaultTimeZone,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.passwordMinLength,
-            value: form.passwordMinLength,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.messageServiceEnabled,
-            value: form.messageServiceEnabled,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.messageServiceProvider,
-            value: form.messageServiceProvider.trim() || null,
-          },
-          {
-            name: PLATFORM_SETTING_KEYS.publicSmtpEnabled,
-            value: form.publicSmtpEnabled,
-          },
+          platformSettingEntry(
+            "allowOrganizationCreation",
+            form.allowOrganizationCreation,
+          ),
+          platformSettingEntry(
+            "defaultOrganizationStatus",
+            form.defaultOrganizationStatus,
+          ),
+          platformSettingEntry("defaultCurrency", form.defaultCurrency),
+          platformSettingEntry("defaultDateFormat", form.defaultDateFormat),
+          platformSettingEntry("defaultLanguage", form.defaultLanguage),
+          platformSettingEntry("defaultRegionCode", form.defaultRegionCode),
+          platformSettingEntry("defaultTimeZone", form.defaultTimeZone),
+          platformSettingEntry("passwordMinLength", form.passwordMinLength),
+          platformSettingEntry(
+            "messageServiceEnabled",
+            form.messageServiceEnabled,
+          ),
+          platformSettingEntry(
+            "messageServiceProvider",
+            form.messageServiceProvider.trim() || null,
+          ),
+          platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
         ],
       });
-      setMessage("平台设置已保存");
+      notifications.success("平台设置已保存");
       await refreshSnapshot();
       await load();
     } catch (err) {
@@ -248,7 +236,6 @@ export default function TenantPage() {
 
     setSavingSmtp(true);
     setError(null);
-    setMessage(null);
     try {
       if (form.publicSmtpEnabled || form.smtpHost.trim()) {
         await validateSmtpConfig(
@@ -278,13 +265,10 @@ export default function TenantPage() {
       }
       await saveSystemSettings(session.token, {
         settings: [
-          {
-            name: PLATFORM_SETTING_KEYS.publicSmtpEnabled,
-            value: form.publicSmtpEnabled,
-          },
+          platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
         ],
       });
-      setMessage("公共 SMTP 已保存");
+      notifications.success("公共 SMTP 已保存");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -293,22 +277,22 @@ export default function TenantPage() {
     }
   }
 
-  async function saveCustomSystemSetting(name: string, value: string | null) {
+  async function saveCustomSystemSetting(setting: CustomSettingSubmit) {
     const session = getStoredSession();
-    const settingName = name.trim();
+    const { scope: _scope, ...payload } = setting;
+    const settingName = payload.name.trim();
     if (!session?.token || !canManagePlatform || !settingName) return;
 
     setSavingCustomSetting(true);
     setError(null);
-    setMessage(null);
     try {
       await saveSystemSettings(session.token, {
-        settings: [{ name: settingName, value }],
+        settings: [{ ...payload, name: settingName }],
       });
-      setCustomSettingName("");
-      setCustomSettingValue("");
-      setMessage(
-        value === null ? "平台自定义设置已删除" : "平台自定义设置已保存",
+      notifications.success(
+        payload.value === null
+          ? "平台自定义设置已删除"
+          : "平台自定义设置已保存",
       );
       await load();
       await refreshSnapshot();
@@ -349,11 +333,6 @@ export default function TenantPage() {
         </Badge>
       </div>
 
-      {message && !error && (
-        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-          {message}
-        </div>
-      )}
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
           {error}
@@ -586,8 +565,11 @@ export default function TenantPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="active">启用</SelectItem>
-                        <SelectItem value="suspended">停用</SelectItem>
+                        {ORGANIZATION_STATUS_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </Field>
@@ -834,96 +816,100 @@ export default function TenantPage() {
 
         <TabsContent className="mt-0" value="custom">
           <Card>
-            <CardHeader>
-              <CardTitle>自定义平台设置</CardTitle>
-              <CardDescription>
-                作为组织配置的默认键值，可由组织覆写
-              </CardDescription>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>自定义平台设置</CardTitle>
+                <CardDescription>
+                  作为组织配置的默认键值，可由组织覆写
+                </CardDescription>
+              </div>
+              <CustomSettingDialog
+                disabled={!canManagePlatform || savingCustomSetting}
+                idPrefix="platform-custom-setting"
+                onSubmit={saveCustomSystemSetting}
+                saving={savingCustomSetting}
+                scopeOptions={[{ label: "平台", value: "platform" }]}
+                showScope
+                title="添加平台设置"
+              />
             </CardHeader>
             <CardContent className="grid gap-4">
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                <Field htmlFor="platform-custom-name" label="名称">
-                  <Input
-                    disabled={!canManagePlatform || savingCustomSetting}
-                    id="platform-custom-name"
-                    onChange={(event) =>
-                      setCustomSettingName(event.target.value)
-                    }
-                    placeholder="custom.setting"
-                    value={customSettingName}
-                  />
-                </Field>
-                <Field htmlFor="platform-custom-value" label="默认值">
-                  <Input
-                    disabled={!canManagePlatform || savingCustomSetting}
-                    id="platform-custom-value"
-                    onChange={(event) =>
-                      setCustomSettingValue(event.target.value)
-                    }
-                    value={customSettingValue}
-                  />
-                </Field>
-                <Button
-                  className="self-end"
-                  disabled={
-                    !canManagePlatform ||
-                    savingCustomSetting ||
-                    !customSettingName.trim()
-                  }
-                  onClick={() =>
-                    void saveCustomSystemSetting(
-                      customSettingName,
-                      customSettingValue,
-                    )
-                  }
-                  type="button"
-                >
-                  添加
-                </Button>
-              </div>
-
               <div className="grid gap-2">
                 {customSystemSettings.length === 0 ? (
                   <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
                     暂无自定义平台设置
                   </div>
                 ) : (
-                  customSystemSettings.map((setting) => (
-                    <div
-                      className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
-                      key={setting.id}
-                    >
-                      <div className="truncate font-mono text-xs">
-                        {setting.name}
-                      </div>
-                      <Input
-                        className="h-8 font-mono text-xs"
-                        disabled={!canManagePlatform || savingCustomSetting}
-                        defaultValue={setting.value ?? ""}
-                        onBlur={(event) => {
-                          if (
-                            event.currentTarget.value !== (setting.value ?? "")
-                          ) {
-                            void saveCustomSystemSetting(
-                              setting.name,
-                              event.currentTarget.value,
-                            );
-                          }
-                        }}
-                      />
-                      <Button
-                        disabled={!canManagePlatform || savingCustomSetting}
-                        onClick={() =>
-                          void saveCustomSystemSetting(setting.name, null)
-                        }
-                        size="icon"
-                        type="button"
-                        variant="ghost"
+                  customSystemSettings.map((setting) => {
+                    const settingValueType = resolveSettingValueType(
+                      setting.name,
+                      setting.valueType,
+                    );
+                    const settingValueOptions = resolveSettingValueOptions(
+                      setting.name,
+                      setting.valueOptions,
+                    );
+                    const settingValueOptionsPayload =
+                      cloneSettingOptions(settingValueOptions);
+
+                    return (
+                      <div
+                        className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+                        key={setting.id}
                       >
-                        <AppIcon className="size-4" name="trash" />
-                      </Button>
-                    </div>
-                  ))
+                        <div className="truncate font-mono text-xs">
+                          {setting.name}
+                        </div>
+                        <SettingValueInput
+                          disabled={!canManagePlatform || savingCustomSetting}
+                          id={`platform-custom-${setting.id}`}
+                          inputClassName="h-8 font-mono text-xs"
+                          onCommit={(nextValue) => {
+                            if (
+                              settingValueType === "secret" ||
+                              String(nextValue ?? "") !== (setting.value ?? "")
+                            ) {
+                              void saveCustomSystemSetting({
+                                name: setting.name,
+                                value: nextValue,
+                                valueOptions: settingValueOptionsPayload,
+                                valueType: settingValueType,
+                              });
+                            }
+                          }}
+                          value={setting.value ?? ""}
+                          valueOptions={settingValueOptions}
+                          valueType={settingValueType}
+                        />
+                        <SettingEditDialog
+                          disabled={!canManagePlatform || savingCustomSetting}
+                          idPrefix={`platform-custom-${setting.id}`}
+                          name={setting.name}
+                          onSubmit={saveCustomSystemSetting}
+                          saving={savingCustomSetting}
+                          value={setting.value ?? ""}
+                          valueOptions={settingValueOptions}
+                          valueType={settingValueType}
+                        />
+                        <Button
+                          disabled={!canManagePlatform || savingCustomSetting}
+                          onClick={() =>
+                            void saveCustomSystemSetting({
+                              name: setting.name,
+                              value: null,
+                              valueOptions: settingValueOptionsPayload,
+                              valueType: settingValueType,
+                            })
+                          }
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <AppIcon className="size-4" name="trash" />
+                        </Button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </CardContent>
@@ -1056,4 +1042,26 @@ function parseBoolean(value: string | null | undefined, fallback: boolean) {
 function nullableText(value: string) {
   const normalized = value.trim();
   return normalized ? normalized : null;
+}
+
+function platformSettingEntry<K extends keyof typeof PLATFORM_SETTING_DEFINITIONS>(
+  key: K,
+  value: SettingPayloadValue,
+): SettingPayloadEntry {
+  const definition = PLATFORM_SETTING_DEFINITIONS[key];
+  return {
+    name: definition.key,
+    value,
+    valueOptions:
+      "valueOptions" in definition
+        ? cloneSettingOptions(definition.valueOptions)
+        : null,
+    valueType: definition.valueType,
+  };
+}
+
+function cloneSettingOptions(
+  options?: readonly { label: string; value: string }[] | null,
+) {
+  return options?.map((option) => ({ ...option })) ?? null;
 }

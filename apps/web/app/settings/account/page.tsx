@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAdminShell } from "@/components/admin-shell";
+import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -54,10 +55,10 @@ const EMPTY_PASSWORD: PasswordForm = {
 
 export default function AccountPage() {
   const { refreshSnapshot } = useAdminShell();
+  const notifications = useNotifications();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
   const [password, setPassword] = useState<PasswordForm>(EMPTY_PASSWORD);
   const [profile, setProfile] = useState<ProfileForm>(emptyProfile());
   const [savingPassword, setSavingPassword] = useState(false);
@@ -103,13 +104,11 @@ export default function AccountPage() {
     if (!user) return;
     setProfile(toProfileForm(user));
     setError(null);
-    setMessage(null);
   }
 
   function resetPassword() {
     setPassword(EMPTY_PASSWORD);
     setError(null);
-    setMessage(null);
   }
 
   async function saveProfile() {
@@ -118,7 +117,6 @@ export default function AccountPage() {
 
     setSavingProfile(true);
     setError(null);
-    setMessage(null);
 
     try {
       const updated = await updateUser(session.token, user.id, {
@@ -129,7 +127,7 @@ export default function AccountPage() {
       });
       setUser(updated);
       setProfile(toProfileForm(updated));
-      setMessage("个人资料已保存");
+      notifications.success("个人资料已保存");
       await refreshSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -144,7 +142,6 @@ export default function AccountPage() {
 
     setUploadingAvatar(true);
     setError(null);
-    setMessage(null);
     try {
       const uploaded = await uploadAdminFile(session.token, file);
       const imageUrl =
@@ -157,7 +154,7 @@ export default function AccountPage() {
       }
       const updated = await updateUser(session.token, user.id, { imageUrl });
       setUser(updated);
-      setMessage("头像已上传");
+      notifications.success("头像已上传");
       await refreshSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "上传失败");
@@ -179,13 +176,11 @@ export default function AccountPage() {
     const validationError = validatePassword(password);
     if (validationError) {
       setError(validationError);
-      setMessage(null);
       return;
     }
 
     setSavingPassword(true);
     setError(null);
-    setMessage(null);
 
     try {
       await updateUserPassword(session.token, user.id, {
@@ -193,7 +188,7 @@ export default function AccountPage() {
         password: password.password,
       });
       setPassword(EMPTY_PASSWORD);
-      setMessage("密码已更新");
+      notifications.success("密码已更新");
     } catch (err) {
       setError(err instanceof Error ? err.message : "修改失败");
     } finally {
@@ -260,12 +255,6 @@ export default function AccountPage() {
           {error}
         </div>
       )}
-      {message && !error && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
-          {message}
-        </div>
-      )}
-
       <Tabs defaultValue="profile">
         <TabsList className="w-fit">
           <TabsTrigger value="profile">个人资料</TabsTrigger>

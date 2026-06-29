@@ -3,6 +3,7 @@ import "./globals.css";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { AdminShell } from "@/components/admin-shell";
+import { NotificationProvider } from "@/components/app-notifications";
 import { AppearanceController } from "@/components/appearance-controller";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -23,7 +24,9 @@ export default function RootLayout({
       <body>
         <AppearanceController />
         <TooltipProvider>
-          <AdminShell>{children}</AdminShell>
+          <NotificationProvider>
+            <AdminShell>{children}</AdminShell>
+          </NotificationProvider>
         </TooltipProvider>
       </body>
     </html>
