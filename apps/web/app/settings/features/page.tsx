@@ -35,21 +35,22 @@ export default function FeaturesPage() {
   const organizationFeatures = FEATURE_SETTING_DEFINITIONS.filter(
     (definition) => definition.scope === "organization",
   );
+  const organizationId = snapshot?.organization?.id ?? null;
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) {
+    if (!session?.token || !organizationId) {
       setLoading(false);
       return;
     }
     try {
-      setSettings(await listOrganizationSettings(session.token));
+      setSettings(await listOrganizationSettings(session.token, organizationId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     void load();
@@ -65,12 +66,12 @@ export default function FeaturesPage() {
 
   async function toggleFeature(key: string, enabled: boolean) {
     const session = getStoredSession();
-    if (!session?.token) return;
+    if (!session?.token || !organizationId) return;
     const payload = {
       settings: [{ name: key, value: enabled, valueType: "boolean" }],
     };
     try {
-      await saveOrganizationSettings(session.token, payload);
+      await saveOrganizationSettings(session.token, organizationId, payload);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");

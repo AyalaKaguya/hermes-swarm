@@ -12,11 +12,13 @@ export type Organization = {
   banner: string | null;
   brandColor: string | null;
   clientFocus: string | null;
+  createdByUserId?: string | null;
   currency: string | null;
   dateFormat: string | null;
   id: string;
   imageUrl: string | null;
   isDefault: boolean;
+  logoUrl?: string | null;
   name: string;
   officialName: string | null;
   overview: string | null;
@@ -86,23 +88,28 @@ export type User = {
   username: string | null;
   mobile: string | null;
   imageUrl: string | null;
+  nickname?: string | null;
+  avatarUrl?: string | null;
   preferredLanguage: string;
   emailVerified: boolean;
   timeZone: string | null;
-  roleId: string | null;
   status: UserStatus;
-  organizationId: string | null;
   type: "service" | "user";
   createdAt: string;
   updatedAt: string;
 };
 
 export type Role = {
+  color?: string | null;
+  description?: string | null;
+  displayName?: string | null;
   id: string;
   isSystem: boolean;
   label: string;
   name: string;
-  organizationId: string;
+  organizationId: string | null;
+  permissions?: RolePermission[];
+  scope?: "organization" | "platform";
 };
 
 export type RolePermission = {
@@ -110,7 +117,53 @@ export type RolePermission = {
   enabled: boolean;
   permission: string;
   roleId: string;
+  organizationId: string | null;
+};
+
+export type MembershipStatus = "active" | "disabled" | "invited";
+
+export type OrganizationMembership = {
+  displayName: string | null;
+  id: string;
+  joinedAt: string | null;
+  organization?: Organization;
   organizationId: string;
+  role: Role | null;
+  roleId: string | null;
+  status: MembershipStatus;
+  user: User;
+  userId: string;
+};
+
+export type OrganizationMembershipPayload = {
+  displayName?: string | null;
+  roleId?: string | null;
+  status?: MembershipStatus;
+  userId?: string;
+};
+
+export type PlatformMember = {
+  displayName: string | null;
+  id: string;
+  role: Role | null;
+  roleId: string | null;
+  status: "active" | "disabled";
+  user: User;
+  userId: string;
+};
+
+export type PlatformMemberPayload = {
+  displayName?: string | null;
+  roleId?: string | null;
+  status?: "active" | "disabled";
+  userId?: string;
+};
+
+export type RolePayload = {
+  color?: string | null;
+  description?: string | null;
+  displayName?: string;
+  name?: string;
 };
 
 export type InviteStatus = "invited" | "accepted" | "expired" | "revoked";
@@ -188,18 +241,34 @@ export type MenuPayload = {
 
 export type CurrentUser = {
   isPlatformAdmin?: boolean;
-  organization: Organization;
+  memberships?: OrganizationMembership[];
+  organization: Organization | null;
   permissions: string[];
+  platformMembership?: PlatformMember | null;
   role: Role | null;
+  user: User;
+};
+
+export type PrincipalSession = {
+  isPlatformAdmin?: boolean;
+  memberships: OrganizationMembership[];
+  organization?: Organization | null;
+  permissions: string[];
+  platformMembership: PlatformMember | null;
+  role?: Role | null;
   user: User;
 };
 
 export type Snapshot = {
   currentUser: CurrentUser;
   isPlatformAdmin: boolean;
+  memberships: OrganizationMembership[];
   menus: Menu[];
-  organization: Organization;
+  organization: Organization | null;
   organizations: Organization[];
+  permissions: string[];
+  platformMembership: PlatformMember | null;
+  role?: Role | null;
   rolePermissions: RolePermission[];
   roles: Role[];
   scope: {
@@ -208,6 +277,7 @@ export type Snapshot = {
   };
   settings: OrganizationSetting[];
   systemSettings: SystemSettingDto[];
+  user: User;
   users: User[];
 };
 
@@ -219,6 +289,11 @@ export type PublicBootstrap = {
 
 export type LoginResponse = {
   snapshot: Snapshot;
+  token: string;
+};
+
+export type AuthLoginResponse = {
+  snapshot: PrincipalSession;
   token: string;
 };
 
@@ -358,6 +433,13 @@ export function login(payload: LoginPayload) {
   });
 }
 
+export function authLogin(payload: LoginPayload) {
+  return fetchAdmin<AuthLoginResponse>("/auth/login", {
+    body: payload,
+    method: "POST",
+  });
+}
+
 export function onboard(payload: OnboardingPayload) {
   return fetchAdmin<LoginResponse>("/onboarding", {
     body: payload,
@@ -395,6 +477,45 @@ export function deleteInvite(token: string, inviteId: string) {
   });
 }
 
+export function getOrganizationInvites(token: string, organizationId: string) {
+  return fetchAdmin<Invite[]>(`/organizations/${organizationId}/invites`, {
+    token,
+  });
+}
+
+export function createOrganizationInvites(
+  token: string,
+  organizationId: string,
+  payload: { emailIds?: string[]; roleId?: string },
+) {
+  return fetchAdmin<{ ignored: number; items: Invite[]; total: number }>(
+    `/organizations/${organizationId}/invites`,
+    { body: payload, method: "POST", token },
+  );
+}
+
+export function resendOrganizationInvite(
+  token: string,
+  organizationId: string,
+  inviteId: string,
+) {
+  return fetchAdmin<Invite>(
+    `/organizations/${organizationId}/invites/${inviteId}/resend`,
+    { method: "POST", token },
+  );
+}
+
+export function deleteOrganizationInvite(
+  token: string,
+  organizationId: string,
+  inviteId: string,
+) {
+  return fetchAdmin<void>(
+    `/organizations/${organizationId}/invites/${inviteId}`,
+    { method: "DELETE", token },
+  );
+}
+
 export function buildMenuPermission(menuCode: string, action: "manage" | "view") {
   return `menu:${menuCode}:${action}`;
 }
@@ -429,7 +550,7 @@ export function replaceRolePermissions(
 }
 
 export function fetchMe(token: string) {
-  return fetchAdmin<CurrentUser>("/auth/me", { token });
+  return fetchAdmin<PrincipalSession>("/auth/me", { token });
 }
 
 export function updateUser(token: string, userId: string, payload: {
@@ -502,6 +623,7 @@ export type CreateInviteResult = {
 };
 
 type SmtpScopeOptions = {
+  organizationId?: string;
   scope?: "organization" | "platform";
 };
 
@@ -510,7 +632,13 @@ function smtpScopeSearch(options?: SmtpScopeOptions) {
 }
 
 export function getSmtpConfig(token: string, options?: SmtpScopeOptions) {
-  return fetchAdmin<SmtpConfig | null>(`/mail/smtp${smtpScopeSearch(options)}`, { token });
+  if (!options?.organizationId) {
+    throw new Error("缺少组织 ID");
+  }
+  return fetchAdmin<SmtpConfig | null>(
+    `/organizations/${options.organizationId}/mail/smtp`,
+    { token },
+  );
 }
 
 export function saveSmtpConfig(token: string, payload: {
@@ -522,7 +650,13 @@ export function saveSmtpConfig(token: string, payload: {
   secure?: boolean;
   username?: string | null;
 }, options?: SmtpScopeOptions) {
-  return fetchAdmin<SmtpConfig>(`/mail/smtp${smtpScopeSearch(options)}`, { body: payload, method: "PUT", token });
+  if (!options?.organizationId) {
+    throw new Error("缺少组织 ID");
+  }
+  return fetchAdmin<SmtpConfig>(
+    `/organizations/${options.organizationId}/mail/smtp`,
+    { body: payload, method: "PUT", token },
+  );
 }
 
 export function validateSmtpConfig(token: string, payload: {
@@ -533,7 +667,13 @@ export function validateSmtpConfig(token: string, payload: {
   secure?: boolean;
   username?: string | null;
 }, options?: SmtpScopeOptions) {
-  return fetchAdmin<{ ok: boolean }>(`/mail/smtp/validate${smtpScopeSearch(options)}`, { body: payload, method: "POST", token });
+  if (!options?.organizationId) {
+    throw new Error("缺少组织 ID");
+  }
+  return fetchAdmin<{ ok: boolean }>(
+    `/organizations/${options.organizationId}/mail/smtp/validate`,
+    { body: payload, method: "POST", token },
+  );
 }
 
 export function createUser(token: string, payload: {
@@ -562,54 +702,73 @@ export function createInvites(token: string, payload: {
   return fetchAdmin<CreateInviteResult>("/invites", { body: payload, method: "POST", token });
 }
 
-export function listEmailTemplates(token: string) {
-  return fetchAdmin<EmailTemplateDto[]>("/mail/templates", { token });
+export function listEmailTemplates(token: string, organizationId: string) {
+  return fetchAdmin<EmailTemplateDto[]>(
+    `/organizations/${organizationId}/mail/templates`,
+    { token },
+  );
 }
 
-export function createEmailTemplate(token: string, payload: {
+export function createEmailTemplate(token: string, organizationId: string, payload: {
   hbs: string;
   languageCode: string;
   mjml?: string | null;
   name: string;
   subject?: string | null;
 }) {
-  return fetchAdmin<EmailTemplateDto>("/mail/templates", { body: payload, method: "POST", token });
+  return fetchAdmin<EmailTemplateDto>(
+    `/organizations/${organizationId}/mail/templates`,
+    { body: payload, method: "POST", token },
+  );
 }
 
-export function updateEmailTemplate(token: string, templateId: string, payload: Partial<{
+export function updateEmailTemplate(token: string, organizationId: string, templateId: string, payload: Partial<{
   hbs: string;
   languageCode: string;
   mjml: string | null;
   name: string;
   subject: string | null;
 }>) {
-  return fetchAdmin<EmailTemplateDto>(`/mail/templates/${templateId}`, { body: payload, method: "PATCH", token });
+  return fetchAdmin<EmailTemplateDto>(
+    `/organizations/${organizationId}/mail/templates/${templateId}`,
+    { body: payload, method: "PATCH", token },
+  );
 }
 
-export function deleteEmailTemplate(token: string, templateId: string) {
-  return fetchAdmin<void>(`/mail/templates/${templateId}`, { method: "DELETE", token });
+export function deleteEmailTemplate(token: string, organizationId: string, templateId: string) {
+  return fetchAdmin<void>(
+    `/organizations/${organizationId}/mail/templates/${templateId}`,
+    { method: "DELETE", token },
+  );
 }
 
 export function listSystemSettings(token: string) {
-  return fetchAdmin<SystemSettingDto[]>("/system-settings", { token });
+  return fetchAdmin<SystemSettingDto[]>("/platform/settings", { token });
 }
 
-export function listOrganizationSettings(token: string) {
-  return fetchAdmin<OrganizationSetting[]>("/settings", { token });
+export function listOrganizationSettings(token: string, organizationId: string) {
+  return fetchAdmin<OrganizationSetting[]>(
+    `/organizations/${organizationId}/settings`,
+    { token },
+  );
 }
 
 export function saveOrganizationSettings(
   token: string,
+  organizationId: string,
   settings: SaveSettingsPayload,
 ) {
-  return fetchAdmin<OrganizationSetting[]>("/settings", { body: settings, method: "PUT", token });
+  return fetchAdmin<OrganizationSetting[]>(
+    `/organizations/${organizationId}/settings`,
+    { body: settings, method: "PUT", token },
+  );
 }
 
 export function saveSystemSettings(
   token: string,
   settings: SaveSettingsPayload,
 ) {
-  return fetchAdmin<SystemSettingDto[]>("/system-settings", { body: settings, method: "PUT", token });
+  return fetchAdmin<SystemSettingDto[]>("/platform/settings", { body: settings, method: "PUT", token });
 }
 
 export function listGroups(token: string) {
@@ -695,6 +854,47 @@ export function listOrganizationUsers(token: string, organizationId: string) {
   return fetchAdmin<User[]>(`/organizations/${organizationId}/users`, { token });
 }
 
+export function listOrganizationMembers(token: string, organizationId: string) {
+  return fetchAdmin<OrganizationMembership[]>(
+    `/organizations/${organizationId}/members`,
+    { token },
+  );
+}
+
+export function createOrganizationMember(
+  token: string,
+  organizationId: string,
+  payload: OrganizationMembershipPayload,
+) {
+  return fetchAdmin<OrganizationMembership>(
+    `/organizations/${organizationId}/members`,
+    { body: payload, method: "POST", token },
+  );
+}
+
+export function updateOrganizationMember(
+  token: string,
+  organizationId: string,
+  membershipId: string,
+  payload: OrganizationMembershipPayload,
+) {
+  return fetchAdmin<OrganizationMembership>(
+    `/organizations/${organizationId}/members/${membershipId}`,
+    { body: payload, method: "PATCH", token },
+  );
+}
+
+export function deleteOrganizationMember(
+  token: string,
+  organizationId: string,
+  membershipId: string,
+) {
+  return fetchAdmin<void>(
+    `/organizations/${organizationId}/members/${membershipId}`,
+    { method: "DELETE", token },
+  );
+}
+
 export function createOrganizationUser(
   token: string,
   organizationId: string,
@@ -733,6 +933,128 @@ export function updateOrganizationUser(
 
 export function listOrganizationRoles(token: string, organizationId: string) {
   return fetchAdmin<Role[]>(`/organizations/${organizationId}/roles`, { token });
+}
+
+export function createOrganizationRole(
+  token: string,
+  organizationId: string,
+  payload: RolePayload,
+) {
+  return fetchAdmin<Role>(`/organizations/${organizationId}/roles`, {
+    body: payload,
+    method: "POST",
+    token,
+  });
+}
+
+export function updateOrganizationRole(
+  token: string,
+  organizationId: string,
+  roleId: string,
+  payload: RolePayload,
+) {
+  return fetchAdmin<Role>(`/organizations/${organizationId}/roles/${roleId}`, {
+    body: payload,
+    method: "PATCH",
+    token,
+  });
+}
+
+export function replaceOrganizationRolePermissions(
+  token: string,
+  organizationId: string,
+  roleId: string,
+  permissions: Array<{ enabled?: boolean; permission?: string }>,
+) {
+  return fetchAdmin<RolePermission[]>(
+    `/organizations/${organizationId}/roles/${roleId}/permissions`,
+    { body: { permissions }, method: "PUT", token },
+  );
+}
+
+export function deleteOrganizationRole(
+  token: string,
+  organizationId: string,
+  roleId: string,
+) {
+  return fetchAdmin<void>(`/organizations/${organizationId}/roles/${roleId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function listPlatformMembers(token: string) {
+  return fetchAdmin<PlatformMember[]>("/platform/members", { token });
+}
+
+export function createPlatformMember(token: string, payload: PlatformMemberPayload) {
+  return fetchAdmin<PlatformMember>("/platform/members", {
+    body: payload,
+    method: "POST",
+    token,
+  });
+}
+
+export function updatePlatformMember(
+  token: string,
+  memberId: string,
+  payload: PlatformMemberPayload,
+) {
+  return fetchAdmin<PlatformMember>(`/platform/members/${memberId}`, {
+    body: payload,
+    method: "PATCH",
+    token,
+  });
+}
+
+export function deletePlatformMember(token: string, memberId: string) {
+  return fetchAdmin<void>(`/platform/members/${memberId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function listPlatformRoles(token: string) {
+  return fetchAdmin<Role[]>("/platform/roles", { token });
+}
+
+export function createPlatformRole(token: string, payload: RolePayload) {
+  return fetchAdmin<Role>("/platform/roles", {
+    body: payload,
+    method: "POST",
+    token,
+  });
+}
+
+export function updatePlatformRole(
+  token: string,
+  roleId: string,
+  payload: RolePayload,
+) {
+  return fetchAdmin<Role>(`/platform/roles/${roleId}`, {
+    body: payload,
+    method: "PATCH",
+    token,
+  });
+}
+
+export function replacePlatformRolePermissions(
+  token: string,
+  roleId: string,
+  permissions: Array<{ enabled?: boolean; permission?: string }>,
+) {
+  return fetchAdmin<RolePermission[]>(`/platform/roles/${roleId}/permissions`, {
+    body: { permissions },
+    method: "PUT",
+    token,
+  });
+}
+
+export function deletePlatformRole(token: string, roleId: string) {
+  return fetchAdmin<void>(`/platform/roles/${roleId}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export function listOrganizationGroups(token: string, organizationId: string) {
@@ -796,28 +1118,38 @@ export function deleteOrganizationGroup(
   });
 }
 
-export function listNotificationDestinationTypes(token: string) {
-  return fetchAdmin<NotificationDestinationType[]>("/notification-destinations/types", { token });
+export function listNotificationDestinationTypes(token: string, organizationId: string) {
+  return fetchAdmin<NotificationDestinationType[]>(
+    `/organizations/${organizationId}/notification-destinations/types`,
+    { token },
+  );
 }
 
-export function listNotificationDestinations(token: string) {
-  return fetchAdmin<NotificationDestination[]>("/notification-destinations", { token });
+export function listNotificationDestinations(token: string, organizationId: string) {
+  return fetchAdmin<NotificationDestination[]>(
+    `/organizations/${organizationId}/notification-destinations`,
+    { token },
+  );
 }
 
-export function createNotificationDestination(token: string, payload: {
+export function createNotificationDestination(token: string, organizationId: string, payload: {
   name: string;
   options?: Record<string, unknown> | null;
   type: string;
 }) {
-  return fetchAdmin<NotificationDestination>("/notification-destinations", {
-    body: payload,
-    method: "POST",
-    token,
-  });
+  return fetchAdmin<NotificationDestination>(
+    `/organizations/${organizationId}/notification-destinations`,
+    {
+      body: payload,
+      method: "POST",
+      token,
+    },
+  );
 }
 
 export function updateNotificationDestination(
   token: string,
+  organizationId: string,
   destinationId: string,
   payload: Partial<{
     name: string;
@@ -825,23 +1157,29 @@ export function updateNotificationDestination(
     type: string;
   }>,
 ) {
-  return fetchAdmin<NotificationDestination>(`/notification-destinations/${destinationId}`, {
-    body: payload,
-    method: "PATCH",
-    token,
-  });
+  return fetchAdmin<NotificationDestination>(
+    `/organizations/${organizationId}/notification-destinations/${destinationId}`,
+    {
+      body: payload,
+      method: "PATCH",
+      token,
+    },
+  );
 }
 
-export function deleteNotificationDestination(token: string, destinationId: string) {
-  return fetchAdmin<void>(`/notification-destinations/${destinationId}`, {
-    method: "DELETE",
-    token,
-  });
+export function deleteNotificationDestination(token: string, organizationId: string, destinationId: string) {
+  return fetchAdmin<void>(
+    `/organizations/${organizationId}/notification-destinations/${destinationId}`,
+    {
+      method: "DELETE",
+      token,
+    },
+  );
 }
 
-export function listNotificationDestinationGroups(token: string, destinationId: string) {
+export function listNotificationDestinationGroups(token: string, organizationId: string, destinationId: string) {
   return fetchAdmin<NotificationDestinationGroup[]>(
-    `/notification-destinations/${destinationId}/groups`,
+    `/organizations/${organizationId}/notification-destinations/${destinationId}/groups`,
     { token },
   );
 }

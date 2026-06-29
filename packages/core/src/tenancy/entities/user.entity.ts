@@ -1,39 +1,14 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, DeleteDateColumn } from "typeorm";
-import type { Role } from "./role.entity.js";
-import type { Organization } from "./organization.entity.js";
+import { Column, DeleteDateColumn, Entity, Index } from "typeorm";
 
 export type UserStatus = "active" | "disabled";
 export type UserType = "service" | "user";
 export type PreferredLanguage = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
 
 @Entity({ name: "users" })
-@Index(["organizationId", "email"], { unique: true })
 @Index(["email"], { unique: true })
 export class User {
   @Column({ type: "uuid", primary: true, default: () => "uuid_generate_v4()" })
   id!: string;
-
-  @Column({ name: "organization_id", type: "uuid", nullable: true })
-  @Index()
-  organizationId!: string | null;
-
-  @ManyToOne("Organization", "users", {
-    nullable: true,
-    onDelete: "CASCADE",
-  })
-  @JoinColumn({ name: "organization_id" })
-  organization!: Organization | null;
-
-  @Column({ name: "role_id", type: "uuid", nullable: true })
-  @Index()
-  roleId!: string | null;
-
-  @ManyToOne("Role", "users", {
-    nullable: true,
-    onDelete: "SET NULL",
-  })
-  @JoinColumn({ name: "role_id" })
-  role!: Role | null;
 
   @Column({ type: "varchar", length: 24, default: "user" })
   type!: UserType;

@@ -12,6 +12,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@casl/ability": "^7.0.0",
     "@hermes-swarm/core": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -108,7 +109,10 @@ export class UsersService {
     userId: string,
     payload: UpdateUserPayload,
   ) {
-    this.requireSessionUserId(authorization);
+    const currentUserId = this.requireSessionUserId(authorization);
+    if (currentUserId !== userId) {
+      throw new ForbiddenException("只能更新自己的账号信息");
+    }
     const user = await this.getUserOrThrow(userId);
 
     if (payload.email !== undefined) {
@@ -157,6 +161,9 @@ export class UsersService {
     payload: UpdateUserPasswordPayload,
   ) {
     const currentUserId = this.requireSessionUserId(authorization);
+    if (currentUserId !== userId) {
+      throw new ForbiddenException("只能更新自己的密码");
+    }
     const user = await this.getUserOrThrow(userId);
 
     if (currentUserId === user.id && payload.currentPassword) {
@@ -178,7 +185,10 @@ export class UsersService {
     userId: string,
     payload: UpdatePreferredLanguagePayload,
   ) {
-    this.requireSessionUserId(authorization);
+    const currentUserId = this.requireSessionUserId(authorization);
+    if (currentUserId !== userId) {
+      throw new ForbiddenException("只能更新自己的语言偏好");
+    }
     const user = await this.getUserOrThrow(userId);
     user.preferredLanguage = requireText(
       payload.preferredLanguage,

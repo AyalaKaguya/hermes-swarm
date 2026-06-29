@@ -9,10 +9,10 @@ export default function OrganizationPage() {
   const { snapshot } = useAdminShell();
 
   useEffect(() => {
-    if (snapshot?.organization.id) {
+    if (snapshot?.organization?.id) {
       router.replace(`/settings/organizations/${snapshot.organization.id}`);
     }
-  }, [router, snapshot?.organization.id]);
+  }, [router, snapshot?.organization?.id]);
 
   return (
     <div className="flex items-center justify-center py-16 text-sm">

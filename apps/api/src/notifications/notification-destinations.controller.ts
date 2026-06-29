@@ -1,60 +1,94 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
+import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { NotificationDestinationsService } from "./notification-destinations.service.js";
 
-@Controller("admin/notification-destinations")
-/**
- */
+@Controller("admin/organizations/:organizationId/notification-destinations")
 export class NotificationDestinationsController {
   constructor(private readonly service: NotificationDestinationsService) {}
 
   @Get()
-  list(@Headers("authorization") authorization?: string) {
-    return this.service.list(authorization);
+  @RequirePermission({
+    action: "read",
+    entity: "notification",
+    scope: "organization",
+  })
+  list(@Param("organizationId") organizationId: string) {
+    return this.service.list(organizationId);
   }
 
   @Get("types")
-  types(@Headers("authorization") authorization?: string) {
-    return this.service.types(authorization);
+  @RequirePermission({
+    action: "read",
+    entity: "notification",
+    scope: "organization",
+  })
+  types() {
+    return this.service.types();
   }
 
   @Get(":destinationId")
+  @RequirePermission({
+    action: "read",
+    entity: "notification",
+    scope: "organization",
+  })
   getOne(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Param("destinationId") destinationId: string,
   ) {
-    return this.service.getOne(authorization, destinationId);
+    return this.service.getOne(organizationId, destinationId);
   }
 
   @Get(":destinationId/groups")
+  @RequirePermission({
+    action: "read",
+    entity: "notification",
+    scope: "organization",
+  })
   groups(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Param("destinationId") destinationId: string,
   ) {
-    return this.service.groups(authorization, destinationId);
+    return this.service.groups(organizationId, destinationId);
   }
 
   @Post()
+  @RequirePermission({
+    action: "create",
+    entity: "notification",
+    scope: "organization",
+  })
   create(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Body() payload: unknown,
   ) {
-    return this.service.create(authorization, payload);
+    return this.service.create(organizationId, payload);
   }
 
   @Patch(":destinationId")
+  @RequirePermission({
+    action: "update",
+    entity: "notification",
+    scope: "organization",
+  })
   update(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Param("destinationId") destinationId: string,
     @Body() payload: unknown,
   ) {
-    return this.service.update(authorization, destinationId, payload);
+    return this.service.update(organizationId, destinationId, payload);
   }
 
   @Delete(":destinationId")
+  @RequirePermission({
+    action: "delete",
+    entity: "notification",
+    scope: "organization",
+  })
   delete(
-    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Param("destinationId") destinationId: string,
   ) {
-    return this.service.delete(authorization, destinationId);
+    return this.service.delete(organizationId, destinationId);
   }
 }

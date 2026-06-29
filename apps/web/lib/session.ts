@@ -1,11 +1,10 @@
-import type { CurrentUser, Snapshot } from "./admin-api";
-import { buildMenuPermission } from "./admin-api";
+import type { CurrentUser, PrincipalSession, Snapshot } from "./admin-api";
 
 export type UserSession = {
   token: string;
 };
 
-export type ResolvedSession = CurrentUser;
+export type ResolvedSession = CurrentUser | PrincipalSession;
 
 const SESSION_KEY = "hermes-swarm.admin-session";
 
@@ -38,12 +37,39 @@ export function clearStoredSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
-export function resolveSession(snapshot: Snapshot): ResolvedSession {
-  return snapshot.currentUser;
+export function resolveSession(snapshot: Snapshot | PrincipalSession): ResolvedSession {
+  if ("currentUser" in snapshot) {
+    return snapshot.currentUser;
+  }
+
+  const activeMembership = snapshot.memberships[0] ?? null;
+  return {
+    ...snapshot,
+    organization: snapshot.organization ?? activeMembership?.organization ?? null,
+    role: snapshot.role ?? snapshot.platformMembership?.role ?? activeMembership?.role ?? null,
+  };
 }
 
+const MENU_PERMISSION_MAP: Record<
+  string,
+  { entity: string; scope: "organization" | "own" | "platform" }
+> = {
+  account: { entity: "user", scope: "own" },
+  "custom-smtp": { entity: "mail", scope: "organization" },
+  "email-templates": { entity: "mail", scope: "organization" },
+  features: { entity: "setting", scope: "organization" },
+  "notification-destinations": {
+    entity: "notification",
+    scope: "organization",
+  },
+  organization: { entity: "organization", scope: "organization" },
+  organizations: { entity: "organization", scope: "platform" },
+  roles: { entity: "role", scope: "organization" },
+  tenant: { entity: "setting", scope: "platform" },
+};
+
 export function hasMenuAccess(
-  snapshot: Snapshot,
+  snapshot: Pick<Snapshot, "isPlatformAdmin">,
   resolvedSession: ResolvedSession | null,
   menuCode: string,
   action: "manage" | "view" = "view",
@@ -55,20 +81,31 @@ export function hasMenuAccess(
     return true;
   }
 
-  const expectedPermission = buildMenuPermission(menuCode, action);
-  const managePermission = buildMenuPermission(menuCode, "manage");
+  const mapped = MENU_PERMISSION_MAP[menuCode];
+  if (!mapped) return false;
 
-  return (
-    resolvedSession.permissions.includes(expectedPermission) ||
-    (action === "view" && resolvedSession.permissions.includes(managePermission))
-  );
+  const permissionAction = action === "view" ? "read" : "update";
+  const expectedPermission = `${mapped.entity}:${permissionAction}:${mapped.scope}`;
+  const createPermission = `${mapped.entity}:create:${mapped.scope}`;
+  const deletePermission = `${mapped.entity}:delete:${mapped.scope}`;
+  return action === "view"
+    ? resolvedSession.permissions.includes(expectedPermission) ||
+        resolvedSession.permissions.includes(createPermission) ||
+        resolvedSession.permissions.includes(deletePermission)
+    : resolvedSession.permissions.includes(expectedPermission) ||
+        resolvedSession.permissions.includes(createPermission) ||
+        resolvedSession.permissions.includes(deletePermission);
 }
 
 export function hasAnyManagementAccess(
-  snapshot: Snapshot,
+  snapshot: Pick<Snapshot, "isPlatformAdmin" | "menus">,
   resolvedSession: ResolvedSession | null,
 ) {
-  return snapshot.menus.some((menu) =>
-    hasMenuAccess(snapshot, resolvedSession, menu.code),
+  return Boolean(
+    resolvedSession &&
+      (snapshot.isPlatformAdmin ||
+        resolvedSession.isPlatformAdmin ||
+        resolvedSession.memberships?.length ||
+        resolvedSession.platformMembership),
   );
 }

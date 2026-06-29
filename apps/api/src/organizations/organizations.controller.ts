@@ -11,16 +11,10 @@ import {
 } from "@nestjs/common";
 import type {
   CreateOrganizationPayload,
-  CreateUserPayload,
-  SaveSettingsPayload,
+  ReplaceRolePermissionsPayload,
   UpdateOrganizationPayload,
-  UpdateUserPayload,
 } from "../tenancy/tenancy.types.js";
-import type {
-  CreateGroupPayload,
-  UpdateGroupMembersPayload,
-  UpdateGroupPayload,
-} from "../tenancy/groups.service.js";
+import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { OrganizationsService } from "./organizations.service.js";
 
 @Controller("admin")
@@ -32,61 +26,42 @@ export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
   /**
-   * Returns the active organization for the authenticated admin.
-   */
-  @Get("organization")
-  current(@Headers("authorization") authorization?: string) {
-    return this.organizationsService.current(authorization);
-  }
-
-  /**
-   * Updates the active organization for the authenticated admin.
-   */
-  @Patch("organization")
-  updateCurrent(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: UpdateOrganizationPayload,
-  ) {
-    return this.organizationsService.updateCurrent(authorization, payload);
-  }
-
-  /**
    * Lists organizations managed through the admin backend.
    */
   @Get("organizations")
-  list(@Headers("authorization") authorization?: string) {
-    return this.organizationsService.list(authorization);
+  @RequirePermission({
+    action: "read",
+    entity: "organization",
+    scope: "platform",
+  })
+  list() {
+    return this.organizationsService.list();
   }
 
   /**
    * Returns a managed organization selected by id.
    */
   @Get("organizations/:organizationId")
+  @RequirePermission({
+    action: "read",
+    entity: "organization",
+    scope: "organization",
+  })
   get(
-    @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
   ) {
-    return this.organizationsService.get(authorization, organizationId);
-  }
-
-  /**
-   * Returns organization settings selected by explicit organization id.
-   */
-  @Get("organizations/:organizationId/settings")
-  listSettings(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
-  ) {
-    return this.organizationsService.listSettings(
-      authorization,
-      organizationId,
-    );
+    return this.organizationsService.get(organizationId);
   }
 
   /**
    * Creates a managed organization and provisions its admin infrastructure.
    */
   @Post("organizations")
+  @RequirePermission({
+    action: "create",
+    entity: "organization",
+    scope: "platform",
+  })
   create(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: CreateOrganizationPayload,
@@ -98,166 +73,135 @@ export class OrganizationsController {
    * Updates a managed organization selected by id.
    */
   @Patch("organizations/:organizationId")
+  @RequirePermission({
+    action: "update",
+    entity: "organization",
+    scope: "organization",
+  })
   update(
-    @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
     @Body() payload: UpdateOrganizationPayload,
   ) {
     return this.organizationsService.update(
-      authorization,
       organizationId,
       payload,
     );
   }
 
   /**
-   * Saves organization settings selected by explicit organization id.
+   * Deletes a managed organization selected by id.
    */
-  @Put("organizations/:organizationId/settings")
-  saveSettings(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
-    @Body() payload: SaveSettingsPayload,
-  ) {
-    return this.organizationsService.saveSettings(
-      authorization,
-      organizationId,
-      payload,
-    );
-  }
-
-  /**
-   * Lists users in a managed organization selected by id.
-   */
-  @Get("organizations/:organizationId/users")
-  listUsers(
-    @Headers("authorization") authorization: string | undefined,
+  @Delete("organizations/:organizationId")
+  @RequirePermission({
+    action: "delete",
+    entity: "organization",
+    scope: "platform",
+  })
+  delete(
     @Param("organizationId") organizationId: string,
   ) {
-    return this.organizationsService.listUsers(authorization, organizationId);
-  }
-
-  /**
-   * Creates a user in a managed organization selected by id.
-   */
-  @Post("organizations/:organizationId/users")
-  createUser(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
-    @Body() payload: CreateUserPayload,
-  ) {
-    return this.organizationsService.createUser(
-      authorization,
-      organizationId,
-      payload,
-    );
-  }
-
-  /**
-   * Updates a user in a managed organization selected by id.
-   */
-  @Patch("organizations/:organizationId/users/:userId")
-  updateUser(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
-    @Param("userId") userId: string,
-    @Body() payload: UpdateUserPayload,
-  ) {
-    return this.organizationsService.updateUser(
-      authorization,
-      organizationId,
-      userId,
-      payload,
-    );
+    return this.organizationsService.delete(organizationId);
   }
 
   /**
    * Lists roles in a managed organization selected by id.
    */
   @Get("organizations/:organizationId/roles")
+  @RequirePermission({
+    action: "read",
+    entity: "role",
+    scope: "organization",
+  })
   listRoles(
-    @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
   ) {
-    return this.organizationsService.listRoles(authorization, organizationId);
+    return this.organizationsService.listRoles(organizationId);
   }
 
   /**
-   * Lists user groups in a managed organization selected by id.
+   * Creates a role in a managed organization selected by id.
    */
-  @Get("organizations/:organizationId/groups")
-  listGroups(
-    @Headers("authorization") authorization: string | undefined,
+  @Post("organizations/:organizationId/roles")
+  @RequirePermission({
+    action: "create",
+    entity: "role",
+    scope: "organization",
+  })
+  createRole(
     @Param("organizationId") organizationId: string,
+    @Body() payload: OrganizationRolePayload,
   ) {
-    return this.organizationsService.listGroups(authorization, organizationId);
-  }
-
-  /**
-   * Creates a user group in a managed organization selected by id.
-   */
-  @Post("organizations/:organizationId/groups")
-  createGroup(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
-    @Body() payload: CreateGroupPayload,
-  ) {
-    return this.organizationsService.createGroup(
-      authorization,
+    return this.organizationsService.createRole(
       organizationId,
       payload,
     );
   }
 
   /**
-   * Updates a user group in a managed organization selected by id.
+   * Updates a role in a managed organization selected by id.
    */
-  @Patch("organizations/:organizationId/groups/:groupId")
-  updateGroup(
-    @Headers("authorization") authorization: string | undefined,
+  @Patch("organizations/:organizationId/roles/:roleId")
+  @RequirePermission({
+    action: "update",
+    entity: "role",
+    scope: "organization",
+  })
+  updateRole(
     @Param("organizationId") organizationId: string,
-    @Param("groupId") groupId: string,
-    @Body() payload: UpdateGroupPayload,
+    @Param("roleId") roleId: string,
+    @Body() payload: Partial<OrganizationRolePayload>,
   ) {
-    return this.organizationsService.updateGroup(
-      authorization,
+    return this.organizationsService.updateRole(
       organizationId,
-      groupId,
+      roleId,
       payload,
     );
   }
 
   /**
-   * Replaces members for a user group in a managed organization selected by id.
+   * Replaces a role permission set with entity CRUD permissions.
    */
-  @Put("organizations/:organizationId/groups/:groupId/members")
-  updateGroupMembers(
-    @Headers("authorization") authorization: string | undefined,
+  @Put("organizations/:organizationId/roles/:roleId/permissions")
+  @RequirePermission({
+    action: "update",
+    entity: "role",
+    scope: "organization",
+  })
+  replaceRolePermissions(
     @Param("organizationId") organizationId: string,
-    @Param("groupId") groupId: string,
-    @Body() payload: UpdateGroupMembersPayload,
+    @Param("roleId") roleId: string,
+    @Body() payload: ReplaceRolePermissionsPayload,
   ) {
-    return this.organizationsService.updateGroupMembers(
-      authorization,
+    return this.organizationsService.replaceRolePermissions(
       organizationId,
-      groupId,
+      roleId,
       payload,
     );
   }
 
   /**
-   * Deletes a user group in a managed organization selected by id.
+   * Deletes a role in a managed organization selected by id.
    */
-  @Delete("organizations/:organizationId/groups/:groupId")
-  deleteGroup(
-    @Headers("authorization") authorization: string | undefined,
+  @Delete("organizations/:organizationId/roles/:roleId")
+  @RequirePermission({
+    action: "delete",
+    entity: "role",
+    scope: "organization",
+  })
+  deleteRole(
     @Param("organizationId") organizationId: string,
-    @Param("groupId") groupId: string,
+    @Param("roleId") roleId: string,
   ) {
-    return this.organizationsService.deleteGroup(
-      authorization,
+    return this.organizationsService.deleteRole(
       organizationId,
-      groupId,
+      roleId,
     );
   }
 }
+
+export type OrganizationRolePayload = {
+  color?: string | null;
+  description?: string | null;
+  displayName?: string;
+  name?: string;
+};

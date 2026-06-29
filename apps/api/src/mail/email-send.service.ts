@@ -4,7 +4,6 @@ import Handlebars from "handlebars";
 import nodemailer from "nodemailer";
 import { Repository } from "typeorm";
 import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
-import { TenancyService } from "../tenancy/tenancy.service.js";
 
 export type EmailLanguageCode = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
 
@@ -27,7 +26,6 @@ export class EmailSendService {
     private readonly templateRepository: Repository<EmailTemplate>,
     @InjectRepository(EmailLog)
     private readonly emailLogRepository: Repository<EmailLog>,
-    private readonly tenancyService: TenancyService,
   ) {}
 
   async send(ctx: SendEmailContext): Promise<void> {

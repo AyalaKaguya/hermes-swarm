@@ -1,28 +1,28 @@
-import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
 import { createClient } from "redis";
+import { Repository } from "typeorm";
 import {
+  FEATURE_SETTING_DEFINITIONS,
   maskSettingValue,
+  mergeEffectiveOrganizationSettings,
   OrganizationSetting,
   PlatformSetting,
+  PLATFORM_SETTING_DEFINITIONS,
   resolveSettingValueOptions,
   resolveSettingValueType,
+  type EffectiveOrganizationSetting,
+  type SettingValueOption,
 } from "@hermes-swarm/core";
 import { getRedisUrl } from "@hermes-swarm/core/config/redis";
 import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
-import { TenancyService } from "../tenancy/tenancy.service.js";
 import {
   normalizeSettingEntry,
   parseSettingsPayload,
 } from "./settings-value-normalizer.js";
 
 @Injectable()
-/**
- * Persists migrated organization-level and global system settings using the
- * existing tenancy settings plus the new shared SystemSetting entity.
- */
-export class SettingsService {
+export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
   private redisClientPromise: Promise<ReturnType<typeof createClient> | null> | null =
     null;
@@ -32,58 +32,89 @@ export class SettingsService {
     private readonly platformSettingRepository: Repository<PlatformSetting>,
     @InjectRepository(OrganizationSetting)
     private readonly organizationSettingRepository: Repository<OrganizationSetting>,
-    private readonly tenancyService: TenancyService,
   ) {}
 
-  /**
-   * Lists settings scoped to the authenticated admin's current organization.
-   */
-  async listOrganizationSettings(authorization: string | undefined) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.listSettings(context);
+  async onModuleInit() {
+    await this.ensureDefaultPlatformSettings();
   }
 
-  /**
-   * Saves organization settings from either key-value or array payload shapes.
-   */
-  async saveOrganizationSettings(
-    authorization: string | undefined,
+  async listOrganizationSettingsForOrganization(
+    organizationId: string,
+  ): Promise<EffectiveOrganizationSetting[]> {
+    const [organizationSettings, platformSettings] = await Promise.all([
+      this.organizationSettingRepository.find({
+        order: { name: "ASC" },
+        where: { organizationId },
+      }),
+      this.platformSettingRepository.find({ order: { name: "ASC" } }),
+    ]);
+
+    return mergeEffectiveOrganizationSettings(
+      organizationSettings,
+      platformSettings,
+      organizationId,
+    );
+  }
+
+  async saveOrganizationSettingsForOrganization(
+    organizationId: string,
     payload: SaveSettingsPayload,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
     const entries = parseSettingsPayload(payload);
-    const result = await this.tenancyService.saveSettings(context, payload);
-    await Promise.all(
-      entries.map((entry) =>
-        this.deleteCache(this.organizationCacheKey(context.organizationId, entry.name)),
-      ),
-    );
-    return result;
+
+    for (const entry of entries) {
+      const [existing, platformSetting] = await Promise.all([
+        this.organizationSettingRepository.findOne({
+          where: { name: entry.name, organizationId },
+        }),
+        this.platformSettingRepository.findOne({
+          where: { name: entry.name },
+        }),
+      ]);
+
+      if (entry.value === null || entry.value === undefined) {
+        await this.organizationSettingRepository.delete({
+          name: entry.name,
+          organizationId,
+        });
+        await this.deleteCache(this.organizationCacheKey(organizationId, entry.name));
+        continue;
+      }
+
+      const normalized = normalizeSettingEntry(entry, [
+        existing,
+        platformSetting,
+      ]);
+      const setting =
+        existing ??
+        this.organizationSettingRepository.create({
+          name: entry.name,
+          organizationId,
+        });
+
+      setting.value = normalized.value;
+      setting.valueOptions = normalized.valueOptions;
+      setting.valueType = normalized.valueType;
+
+      const persisted = await this.organizationSettingRepository.save(setting);
+      await this.setCache(
+        this.organizationCacheKey(organizationId, entry.name),
+        persisted.value,
+      );
+    }
+
+    return this.listOrganizationSettingsForOrganization(organizationId);
   }
 
-  /**
-   * Lists global system settings after verifying settings view permission.
-   */
-  async listSystemSettings(authorization: string | undefined) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.ensureSystemSettingsPermission(context, "view");
+  async listPlatformSettings() {
     const settings = await this.platformSettingRepository.find({
       order: { name: "ASC" },
     });
     return settings.map(toPlatformSettingDto);
   }
 
-  /**
-   * Creates or updates global system settings after settings manage permission.
-   */
-  async saveSystemSettings(
-    authorization: string | undefined,
-    payload: SaveSettingsPayload,
-  ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    this.ensureSystemSettingsPermission(context, "manage");
+  async savePlatformSettings(payload: SaveSettingsPayload) {
     const entries = parseSettingsPayload(payload);
-    const saved: PlatformSetting[] = [];
 
     for (const entry of entries) {
       if (entry.value === null || entry.value === undefined) {
@@ -92,29 +123,26 @@ export class SettingsService {
         continue;
       }
 
-      let setting = await this.platformSettingRepository.findOne({
+      const existing = await this.platformSettingRepository.findOne({
         where: { name: entry.name },
       });
-      const normalized = normalizeSettingEntry(entry, [setting]);
-      if (!setting) {
-        setting = this.platformSettingRepository.create({
+      const normalized = normalizeSettingEntry(entry, [existing]);
+      const setting =
+        existing ??
+        this.platformSettingRepository.create({
           name: entry.name,
           scope: "global",
-          value: normalized.value,
-          valueOptions: normalized.valueOptions,
-          valueType: normalized.valueType,
         });
-      } else {
-        setting.value = normalized.value;
-        setting.valueOptions = normalized.valueOptions;
-        setting.valueType = normalized.valueType;
-      }
+
+      setting.value = normalized.value;
+      setting.valueOptions = normalized.valueOptions;
+      setting.valueType = normalized.valueType;
+
       const persisted = await this.platformSettingRepository.save(setting);
       await this.setCache(this.platformCacheKey(entry.name), persisted.value);
-      saved.push(persisted);
     }
 
-    return saved.map(toPlatformSettingDto);
+    return this.listPlatformSettings();
   }
 
   async getPlatformValue(name: string, fallback: string | null = null) {
@@ -150,14 +178,35 @@ export class SettingsService {
     return this.getPlatformValue(name, fallback);
   }
 
-  private ensureSystemSettingsPermission(
-    context: Awaited<ReturnType<TenancyService["requireAuthContext"]>>,
-    action: "manage" | "view",
-  ) {
-    try {
-      this.tenancyService.ensurePlatformScope(context, "tenant", action);
-    } catch {
-      throw new ForbiddenException("只有平台管理员可以访问平台设置");
+  private async ensureDefaultPlatformSettings() {
+    const definitions = [
+      ...Object.values(PLATFORM_SETTING_DEFINITIONS),
+      ...FEATURE_SETTING_DEFINITIONS.map((definition) => ({
+        defaultValue: "false",
+        key: definition.key,
+        scope: definition.scope === "system" ? "platform" : "organization",
+        valueOptions:
+          "valueOptions" in definition ? definition.valueOptions : undefined,
+        valueType: definition.valueType,
+      })),
+    ];
+
+    for (const definition of definitions) {
+      const existing = await this.platformSettingRepository.findOne({
+        where: { name: definition.key },
+      });
+      if (existing) continue;
+
+      const valueOptions = getDefinitionValueOptions(definition);
+      await this.platformSettingRepository.save(
+        this.platformSettingRepository.create({
+          name: definition.key,
+          scope: definition.scope ?? "global",
+          value: definition.defaultValue ?? null,
+          valueOptions,
+          valueType: definition.valueType,
+        }),
+      );
     }
   }
 
@@ -203,7 +252,9 @@ export class SettingsService {
     try {
       await client.del(key);
     } catch (error) {
-      this.logger.warn(`Redis settings cache invalidation failed: ${String(error)}`);
+      this.logger.warn(
+        `Redis settings cache invalidation failed: ${String(error)}`,
+      );
     }
   }
 
@@ -218,7 +269,9 @@ export class SettingsService {
     try {
       const client = createClient({ url: getRedisUrl() });
       client.on("error", (error) => {
-        this.logger.warn(`Redis settings cache connection error: ${String(error)}`);
+        this.logger.warn(
+          `Redis settings cache connection error: ${String(error)}`,
+        );
       });
       await client.connect();
       return client;
@@ -229,9 +282,16 @@ export class SettingsService {
   }
 }
 
-/**
- * Projects the shared PlatformSetting entity into the admin API response shape.
- */
+function getDefinitionValueOptions(definition: unknown) {
+  const valueOptions =
+    definition && typeof definition === "object" && "valueOptions" in definition
+      ? (definition as { valueOptions?: unknown }).valueOptions
+      : null;
+  return Array.isArray(valueOptions)
+    ? ([...valueOptions] as SettingValueOption[])
+    : null;
+}
+
 function toPlatformSettingDto(setting: PlatformSetting) {
   const valueType = resolveSettingValueType(setting.name, setting.valueType);
   const valueOptions = resolveSettingValueOptions(

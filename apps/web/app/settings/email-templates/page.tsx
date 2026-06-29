@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,8 @@ const LANGUAGE_LABELS: Record<LanguageFilter, string> = {
 };
 
 export default function EmailTemplatesPage() {
+  const { snapshot } = useAdminShell();
+  const organizationId = snapshot?.organization?.id ?? null;
   const [templates, setTemplates] = useState<EmailTemplateDto[]>([]);
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
@@ -65,20 +68,20 @@ export default function EmailTemplatesPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) {
+    if (!session?.token || !organizationId) {
       setLoading(false);
       return;
     }
     setToken(session.token);
     try {
-      const data = await listEmailTemplates(session.token);
+      const data = await listEmailTemplates(session.token, organizationId);
       setTemplates(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     void load();
@@ -86,7 +89,8 @@ export default function EmailTemplatesPage() {
 
   async function remove(templateId: string) {
     try {
-      await deleteEmailTemplate(token, templateId);
+      if (!organizationId) return;
+      await deleteEmailTemplate(token, organizationId, templateId);
       setMsg("已删除");
       setDeleteTemplate(null);
       await load();
@@ -136,6 +140,7 @@ export default function EmailTemplatesPage() {
               <DialogTitle>创建邮件模板</DialogTitle>
             </DialogHeader>
             <CreateTemplateForm
+              organizationId={organizationId}
               token={token}
               onDone={() => {
                 setCreateOpen(false);
@@ -245,6 +250,7 @@ export default function EmailTemplatesPage() {
               <DialogTitle>编辑模板</DialogTitle>
             </DialogHeader>
             <EditTemplateForm
+              organizationId={organizationId}
               template={editTemplate}
               token={token}
               onDone={() => {
@@ -273,9 +279,11 @@ export default function EmailTemplatesPage() {
 }
 
 function CreateTemplateForm({
+  organizationId,
   token,
   onDone,
 }: {
+  organizationId: string | null;
   token: string;
   onDone: () => void;
 }) {
@@ -288,17 +296,21 @@ function CreateTemplateForm({
   const [msg, setMsg] = useState("");
 
   async function submit() {
-    if (!name.trim()) return;
+    if (!name.trim() || !organizationId) return;
     setSaving(true);
     setMsg("");
     try {
-      await createEmailTemplate(token, {
-        name: name.trim(),
-        languageCode,
-        subject: subject.trim() || null,
-        hbs: hbs.trim(),
-        mjml: mjml.trim() || null,
-      });
+      await createEmailTemplate(
+        token,
+        organizationId,
+        {
+          name: name.trim(),
+          languageCode,
+          subject: subject.trim() || null,
+          hbs: hbs.trim(),
+          mjml: mjml.trim() || null,
+        },
+      );
       onDone();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "创建失败");
@@ -370,10 +382,12 @@ function CreateTemplateForm({
 }
 
 function EditTemplateForm({
+  organizationId,
   template,
   token,
   onDone,
 }: {
+  organizationId: string | null;
   template: EmailTemplateDto;
   token: string;
   onDone: () => void;
@@ -390,13 +404,19 @@ function EditTemplateForm({
     setSaving(true);
     setMsg("");
     try {
-      await updateEmailTemplate(token, template.id, {
-        name: name.trim(),
-        languageCode,
-        subject: subject.trim() || null,
-        hbs: hbs.trim(),
-        mjml: mjml.trim() || null,
-      });
+      if (!organizationId) return;
+      await updateEmailTemplate(
+        token,
+        organizationId,
+        template.id,
+        {
+          name: name.trim(),
+          languageCode,
+          subject: subject.trim() || null,
+          hbs: hbs.trim(),
+          mjml: mjml.trim() || null,
+        },
+      );
       onDone();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "保存失败");

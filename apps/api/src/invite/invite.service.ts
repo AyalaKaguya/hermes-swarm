@@ -5,17 +5,21 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { randomBytes, pbkdf2Sync } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { MoreThanOrEqual, Repository } from "typeorm";
-import { Invite, Organization, User } from "@hermes-swarm/core";
-import { TenancyService } from "../tenancy/tenancy.service.js";
+import {
+  Invite,
+  Organization,
+  Role,
+  User,
+  UserOrganization,
+} from "@hermes-swarm/core";
 import type {
   AcceptInvitePayload,
-  AuthContext,
   CreateBulkInvitesPayload,
   InviteDto,
 } from "../tenancy/tenancy.types.js";
+import { hashPassword } from "../common/security/password-hash.js";
 
 const INVITE_JWT_SECRET =
   process.env.INVITE_JWT_SECRET || "hermes-swarm-invite-secret-change-me";
@@ -52,18 +56,22 @@ export class InviteService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
-    private readonly tenancyService: TenancyService,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
+    @InjectRepository(UserOrganization)
+    private readonly membershipRepository: Repository<UserOrganization>,
   ) {}
 
   /**
    * Creates bulk invites from a list of emails, skipping already-invited or
    * already-registered addresses.
    */
-  async createBulk(
-    context: AuthContext,
+  async createBulkForOrganization(
+    organizationId: string,
+    invitedById: string,
     payload: CreateBulkInvitesPayload,
   ): Promise<{ items: InviteDto[]; total: number; ignored: number }> {
-    this.tenancyService.ensurePermission(context, "users", "manage");
+    await this.getOrganizationOrThrow(organizationId);
 
     const emails = (payload.emailIds ?? [])
       .map(normalizeEmail)
@@ -74,18 +82,14 @@ export class InviteService {
     }
 
     const roleId = payload.roleId
-      ? await this.tenancyService.resolveAssignableRoleId(
-          context,
-          context.organizationId,
-          payload.roleId,
-        )
+      ? await this.resolveAssignableRoleId(organizationId, payload.roleId)
       : null;
 
     // Skip addresses that already have an active invite or are already users
     const existingInvites = await this.inviteRepository
       .createQueryBuilder("invite")
       .select("invite.email", "email")
-      .where("invite.organizationId = :orgId", { orgId: context.organizationId })
+      .where("invite.organizationId = :orgId", { orgId: organizationId })
       .andWhere("invite.email IN (:...emails)", { emails })
       .andWhere("invite.status = :status", { status: "invited" })
       .andWhere(
@@ -94,10 +98,13 @@ export class InviteService {
       )
       .getRawMany<{ email: string }>();
 
-    const existingUsers = await this.userRepository
-      .createQueryBuilder("user")
+    const existingUsers = await this.membershipRepository
+      .createQueryBuilder("membership")
+      .innerJoin(User, "user", "user.id = membership.userId")
       .select("user.email", "email")
-      .where("user.organizationId = :orgId", { orgId: context.organizationId })
+      .where("membership.organizationId = :orgId", {
+        orgId: organizationId,
+      })
       .andWhere("user.email IN (:...emails)", { emails })
       .getRawMany<{ email: string }>();
 
@@ -111,7 +118,7 @@ export class InviteService {
 
     for (const email of emailsToCreate) {
       const token = jwt.sign(
-        { email, organizationId: context.organizationId },
+        { email, organizationId },
         INVITE_JWT_SECRET,
       );
       invites.push(
@@ -119,9 +126,9 @@ export class InviteService {
           token,
           email,
           roleId: roleId || null,
-          invitedById: context.userId,
+          invitedById,
           status: "invited",
-          organizationId: context.organizationId,
+          organizationId,
         }),
       );
     }
@@ -203,40 +210,53 @@ export class InviteService {
       throw new NotFoundException("邀请不存在");
     }
 
-    const organization = await this.organizationRepository.findOne({
-      where: { id: inviteEntity.organizationId as string },
-    });
+    const organizationId = inviteEntity.organizationId;
+    if (!organizationId) throw new BadRequestException("邀请缺少组织信息");
 
-    // Check if user with this email already exists in the org
-    const existing = await this.userRepository.findOne({
-      where: { email: inviteEntity.email, organizationId: inviteEntity.organizationId as string },
+    const organization = await this.organizationRepository.findOne({
+      where: { id: organizationId },
     });
-    if (existing) {
-      throw new ConflictException("该邮箱已注册");
+    if (!organization) throw new NotFoundException("组织不存在");
+
+    let user = await this.userRepository.findOne({
+      where: { email: inviteEntity.email },
+    });
+    if (user) {
+      const existingMembership = await this.membershipRepository.findOne({
+        where: { organizationId, userId: user.id },
+      });
+      if (existingMembership) {
+        throw new ConflictException("该邮箱已加入组织");
+      }
     }
 
-    // Create the user (password hashing is handled by TenancyService style)
-    
-    const salt = randomBytes(16).toString("base64url");
-    const hash = pbkdf2Sync(
-      password,
-      salt,
-      310_000,
-      32,
-      "sha256",
-    ).toString("base64url");
-    const passwordHash = `pbkdf2_sha256$${310_000}$${salt}$${hash}`;
+    if (!user) {
+      user = await this.userRepository.save(
+        this.userRepository.create({
+          displayName,
+          email: inviteEntity.email,
+          nickname: displayName,
+          passwordHash: hashPassword(password),
+          status: "active",
+          type: "user",
+          preferredLanguage: "zh-CN",
+        }),
+      );
+    } else if (!user.passwordHash) {
+      user.passwordHash = hashPassword(password);
+      user.displayName = user.displayName || displayName;
+      user.nickname = user.nickname || displayName;
+      user = await this.userRepository.save(user);
+    }
 
-    await this.userRepository.save(
-      this.userRepository.create({
+    await this.membershipRepository.save(
+      this.membershipRepository.create({
         displayName,
-        email: inviteEntity.email,
-        passwordHash,
+        joinedAt: new Date(),
+        organizationId,
         roleId: inviteEntity.roleId,
         status: "active",
-        organizationId: inviteEntity.organizationId,
-        type: "user",
-        preferredLanguage: "zh-CN",
+        userId: user.id,
       }),
     );
 
@@ -251,10 +271,10 @@ export class InviteService {
   /**
    * Lists all invites for the current organization.
    */
-  async list(context: AuthContext): Promise<InviteDto[]> {
-    this.tenancyService.ensurePermission(context, "users", "view");
+  async listForOrganization(organizationId: string): Promise<InviteDto[]> {
+    await this.getOrganizationOrThrow(organizationId);
     const invites = await this.inviteRepository.find({
-      where: { organizationId: context.organizationId },
+      where: { organizationId },
       order: { createdAt: "DESC" },
     });
     return invites.map(toInviteDto);
@@ -263,10 +283,12 @@ export class InviteService {
   /**
    * Deletes an invite by id within the current organization.
    */
-  async delete(context: AuthContext, inviteId: string): Promise<void> {
-    this.tenancyService.ensurePermission(context, "users", "manage");
+  async deleteForOrganization(
+    organizationId: string,
+    inviteId: string,
+  ): Promise<void> {
     const invite = await this.inviteRepository.findOne({
-      where: { id: inviteId, organizationId: context.organizationId },
+      where: { id: inviteId, organizationId },
     });
     if (!invite) throw new NotFoundException("邀请不存在");
     await this.inviteRepository.remove(invite);
@@ -275,27 +297,43 @@ export class InviteService {
   /**
    * Resends an existing invite by regenerating the token.
    */
-  async resend(
-    context: AuthContext,
+  async resendForOrganization(
+    organizationId: string,
+    invitedById: string,
     inviteId: string,
   ): Promise<InviteDto> {
-    this.tenancyService.ensurePermission(context, "users", "manage");
     const invite = await this.inviteRepository.findOne({
-      where: { id: inviteId, organizationId: context.organizationId },
+      where: { id: inviteId, organizationId },
     });
     if (!invite) throw new NotFoundException("邀请不存在");
 
     const token = jwt.sign(
-      { email: invite.email, organizationId: context.organizationId },
+      { email: invite.email, organizationId },
       INVITE_JWT_SECRET,
     );
 
     invite.token = token;
     invite.status = "invited";
     invite.actionDate = null;
-    invite.invitedById = context.userId;
+    invite.invitedById = invitedById;
     await this.inviteRepository.save(invite);
 
     return toInviteDto(invite);
+  }
+
+  private async getOrganizationOrThrow(organizationId: string) {
+    const organization = await this.organizationRepository.findOne({
+      where: { id: organizationId },
+    });
+    if (!organization) throw new NotFoundException("组织不存在");
+    return organization;
+  }
+
+  private async resolveAssignableRoleId(organizationId: string, roleId: string) {
+    const role = await this.roleRepository.findOne({
+      where: { id: roleId, organizationId, scope: "organization" },
+    });
+    if (!role) throw new BadRequestException("角色不属于该组织");
+    return role.id;
   }
 }

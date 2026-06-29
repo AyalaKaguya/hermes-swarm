@@ -1,241 +1,516 @@
-import { Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import {
+  DEFAULT_PERMISSION_KEYS,
+  defaultPermissionsForRole,
+  Organization,
+  Permission,
+  Role,
+  RolePermission,
+  UserOrganization,
+  type OrganizationStatus,
+} from "@hermes-swarm/core";
+import { Repository } from "typeorm";
 import type {
   CreateOrganizationPayload,
-  CreateUserPayload,
-  SaveSettingsPayload,
+  ReplaceRolePermissionsPayload,
   UpdateOrganizationPayload,
-  UpdateUserPayload,
 } from "../tenancy/tenancy.types.js";
-import { TenancyService } from "../tenancy/tenancy.service.js";
-import {
-  GroupsService,
-  type CreateGroupPayload,
-  type UpdateGroupMembersPayload,
-  type UpdateGroupPayload,
-} from "../tenancy/groups.service.js";
+import { parseAuthSessionToken } from "../tenancy/admin-session.js";
+import type { OrganizationRolePayload } from "./organizations.controller.js";
 
 @Injectable()
-/**
- * Handles tenant/organization management using the current Organization model
- */
 export class OrganizationsService {
   constructor(
-    private readonly groupsService: GroupsService,
-    private readonly tenancyService: TenancyService,
+    @InjectRepository(Organization)
+    private readonly organizationRepository: Repository<Organization>,
+    @InjectRepository(Permission)
+    private readonly permissionRepository: Repository<Permission>,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
+    @InjectRepository(RolePermission)
+    private readonly rolePermissionRepository: Repository<RolePermission>,
+    @InjectRepository(UserOrganization)
+    private readonly membershipRepository: Repository<UserOrganization>,
   ) {}
 
-  /**
-   * Returns the organization associated with the current admin session.
-   */
-  async current(authorization: string | undefined) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.getCurrentOrganization(context);
+  async list() {
+    const organizations = await this.organizationRepository.find({
+      order: { createdAt: "ASC" },
+    });
+    return organizations.map(toOrganizationDto);
   }
 
-  /**
-   * Updates the current organization profile and operational settings.
-   */
-  async updateCurrent(
-    authorization: string | undefined,
-    payload: UpdateOrganizationPayload,
-  ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.updateOrganization(context, payload);
+  async get(organizationId: string) {
+    return toOrganizationDto(await this.getOrganizationOrThrow(organizationId));
   }
 
-  /**
-   * Lists organizations available to admins with organization view access.
-   */
-  async list(authorization: string | undefined) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.listOrganizations(context);
-  }
-
-  /**
-   * Loads one organization by explicit id.
-   */
-  async get(authorization: string | undefined, organizationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.getOrganizationById(context, organizationId);
-  }
-
-  /**
-   * Lists settings for an organization selected by explicit id.
-   */
-  async listSettings(authorization: string | undefined, organizationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.listSettingsForOrganization(
-      context,
-      organizationId,
-    );
-  }
-
-  /**
-   * Creates an organization and initializes its roles, permissions, and defaults.
-   */
   async create(
     authorization: string | undefined,
     payload: CreateOrganizationPayload,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.createOrganization(context, payload);
+    const userId = requireSessionUserId(authorization);
+    const name = requireText(payload.name, "组织名称");
+    const slug = normalizeSlug(payload.slug || name, "org");
+    await this.assertUniqueOrganizationSlug(slug);
+
+    const organization = await this.organizationRepository.save(
+      this.organizationRepository.create({
+        banner: normalizeNullableText(payload.banner),
+        brandColor: normalizeNullableText(payload.brandColor),
+        clientFocus: normalizeNullableText(payload.clientFocus),
+        createdByUserId: userId,
+        currency: normalizeNullableText(payload.currency),
+        dateFormat: normalizeNullableText(payload.dateFormat),
+        imageUrl: normalizeNullableText(payload.imageUrl),
+        isDefault: Boolean(payload.isDefault),
+        logoUrl: normalizeNullableText(payload.imageUrl),
+        name,
+        officialName: normalizeNullableText(payload.officialName),
+        overview: normalizeNullableText(payload.overview),
+        preferredLanguage: normalizeNullableText(payload.preferredLanguage),
+        profileLink: normalizeNullableText(payload.profileLink),
+        regionCode: normalizeNullableText(payload.regionCode),
+        shortDescription: normalizeNullableText(payload.shortDescription),
+        slug,
+        status: payload.status ?? "active",
+        subdomain: normalizeNullableText(payload.subdomain),
+        timeZone: normalizeNullableText(payload.timeZone),
+        totalEmployees: normalizeOptionalInteger(payload.totalEmployees),
+        website: normalizeNullableText(payload.website),
+      }),
+    );
+
+    const ownerRole = await this.createDefaultOrganizationRoles(organization.id);
+    await this.membershipRepository.save(
+      this.membershipRepository.create({
+        displayName: null,
+        joinedAt: new Date(),
+        organizationId: organization.id,
+        roleId: ownerRole.id,
+        status: "active",
+        userId,
+      }),
+    );
+
+    return toOrganizationDto(organization);
   }
 
-  /**
-   * Updates an organization selected by id from the admin organization list.
-   */
   async update(
-    authorization: string | undefined,
     organizationId: string,
     payload: UpdateOrganizationPayload,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.updateOrganizationById(
-      context,
-      organizationId,
-      payload,
+    const organization = await this.getOrganizationOrThrow(organizationId);
+
+    if (payload.name !== undefined) {
+      organization.name = requireText(payload.name, "组织名称");
+    }
+    if (payload.slug !== undefined) {
+      const slug = normalizeSlug(payload.slug, "org");
+      if (slug !== organization.slug) {
+        await this.assertUniqueOrganizationSlug(slug, organization.id);
+      }
+      organization.slug = slug;
+    }
+    if (payload.status !== undefined) organization.status = payload.status;
+    if (payload.website !== undefined) {
+      organization.website = normalizeNullableText(payload.website);
+    }
+    if (payload.imageUrl !== undefined) {
+      organization.imageUrl = normalizeNullableText(payload.imageUrl);
+      organization.logoUrl = organization.imageUrl;
+    }
+    if (payload.banner !== undefined) {
+      organization.banner = normalizeNullableText(payload.banner);
+    }
+    if (payload.brandColor !== undefined) {
+      organization.brandColor = normalizeNullableText(payload.brandColor);
+    }
+    if (payload.clientFocus !== undefined) {
+      organization.clientFocus = normalizeNullableText(payload.clientFocus);
+    }
+    if (payload.currency !== undefined) {
+      organization.currency = normalizeNullableText(payload.currency);
+    }
+    if (payload.dateFormat !== undefined) {
+      organization.dateFormat = normalizeNullableText(payload.dateFormat);
+    }
+    if (payload.isDefault !== undefined) {
+      organization.isDefault = Boolean(payload.isDefault);
+    }
+    if (payload.officialName !== undefined) {
+      organization.officialName = normalizeNullableText(payload.officialName);
+    }
+    if (payload.overview !== undefined) {
+      organization.overview = normalizeNullableText(payload.overview);
+    }
+    if (payload.preferredLanguage !== undefined) {
+      organization.preferredLanguage = normalizeNullableText(
+        payload.preferredLanguage,
+      );
+    }
+    if (payload.profileLink !== undefined) {
+      organization.profileLink = normalizeNullableText(payload.profileLink);
+    }
+    if (payload.regionCode !== undefined) {
+      organization.regionCode = normalizeNullableText(payload.regionCode);
+    }
+    if (payload.shortDescription !== undefined) {
+      organization.shortDescription = normalizeNullableText(
+        payload.shortDescription,
+      );
+    }
+    if (payload.subdomain !== undefined) {
+      organization.subdomain = normalizeNullableText(payload.subdomain);
+    }
+    if (payload.timeZone !== undefined) {
+      organization.timeZone = normalizeNullableText(payload.timeZone);
+    }
+    if (payload.totalEmployees !== undefined) {
+      organization.totalEmployees = normalizeOptionalInteger(
+        payload.totalEmployees,
+      );
+    }
+
+    return toOrganizationDto(
+      await this.organizationRepository.save(organization),
     );
   }
 
-  /**
-   * Saves settings for an organization selected by explicit id.
-   */
-  async saveSettings(
-    authorization: string | undefined,
+  async delete(organizationId: string) {
+    const organization = await this.getOrganizationOrThrow(organizationId);
+    await this.organizationRepository.delete({ id: organization.id });
+  }
+
+  async listRoles(organizationId: string) {
+    await this.getOrganizationOrThrow(organizationId);
+    const roles = await this.roleRepository.find({
+      order: { createdAt: "ASC" },
+      relations: { rolePermissions: true },
+      where: { organizationId, scope: "organization" },
+    });
+    return roles.map(toRoleDto);
+  }
+
+  async createRole(
     organizationId: string,
-    payload: SaveSettingsPayload,
+    payload: OrganizationRolePayload,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.saveSettingsForOrganization(
-      context,
-      organizationId,
-      payload,
+    await this.getOrganizationOrThrow(organizationId);
+    const displayName = requireText(
+      payload.displayName ?? payload.name,
+      "角色名称",
     );
+    const name = normalizeSlug(payload.name ?? displayName, "role");
+    await this.assertUniqueRoleName(organizationId, name);
+
+    const role = await this.roleRepository.save(
+      this.roleRepository.create({
+        color: normalizeNullableText(payload.color),
+        description: normalizeNullableText(payload.description),
+        displayName,
+        isSystem: false,
+        label: displayName,
+        name,
+        organizationId,
+        scope: "organization",
+      }),
+    );
+    return toRoleDto(role);
   }
 
-  /**
-   * Lists users for an organization selected by explicit id.
-   */
-  async listUsers(authorization: string | undefined, organizationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.listUsersForOrganization(context, organizationId);
-  }
-
-  /**
-   * Creates a user for an organization selected by explicit id.
-   */
-  async createUser(
-    authorization: string | undefined,
+  async updateRole(
     organizationId: string,
-    payload: CreateUserPayload,
+    roleId: string,
+    payload: Partial<OrganizationRolePayload>,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.createUserForOrganization(
-      context,
-      organizationId,
-      payload,
-    );
+    const role = await this.getOrganizationRoleOrThrow(organizationId, roleId);
+    if (payload.displayName !== undefined) {
+      role.displayName = requireText(payload.displayName, "角色名称");
+      role.label = role.displayName;
+    }
+    if (payload.name !== undefined) {
+      const name = normalizeSlug(payload.name, "role");
+      if (name !== role.name) {
+        await this.assertUniqueRoleName(organizationId, name, role.id);
+      }
+      role.name = name;
+    }
+    if (payload.color !== undefined) {
+      role.color = normalizeNullableText(payload.color);
+    }
+    if (payload.description !== undefined) {
+      role.description = normalizeNullableText(payload.description);
+    }
+    return toRoleDto(await this.roleRepository.save(role));
   }
 
-  /**
-   * Updates a user for an organization selected by explicit id.
-   */
-  async updateUser(
-    authorization: string | undefined,
+  async replaceRolePermissions(
     organizationId: string,
-    userId: string,
-    payload: UpdateUserPayload,
+    roleId: string,
+    payload: ReplaceRolePermissionsPayload,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.updateUserForOrganization(
-      context,
-      organizationId,
-      userId,
-      payload,
+    const role = await this.getOrganizationRoleOrThrow(organizationId, roleId);
+    const permissions = payload.permissions ?? [];
+
+    await this.rolePermissionRepository.delete({ roleId: role.id });
+    const records = await Promise.all(
+      permissions
+        .filter((item) => item.permission && item.enabled !== false)
+        .map((item) => this.getPermissionOrThrow(item.permission, "organization")),
+    );
+
+    return this.rolePermissionRepository.save(
+      records.map(({ key, permission }) =>
+        this.rolePermissionRepository.create({
+          enabled: true,
+          organizationId,
+          permission: key,
+          permissionId: permission.id,
+          roleId: role.id,
+        }),
+      ),
     );
   }
 
-  /**
-   * Lists roles for an organization selected by explicit id.
-   */
-  async listRoles(authorization: string | undefined, organizationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.tenancyService.listRolesForOrganization(context, organizationId);
+  async deleteRole(organizationId: string, roleId: string) {
+    const role = await this.getOrganizationRoleOrThrow(organizationId, roleId);
+    if (role.isSystem) throw new BadRequestException("系统角色不能删除");
+    await this.roleRepository.delete({ id: role.id });
   }
 
-  /**
-   * Lists user groups for an organization selected by explicit id.
-   */
-  async listGroups(authorization: string | undefined, organizationId: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.groupsService.listGroupsForOrganization(context, organizationId);
+  private async getOrganizationOrThrow(organizationId: string) {
+    const organization = await this.organizationRepository.findOne({
+      where: { id: organizationId },
+    });
+    if (!organization) throw new NotFoundException("组织不存在");
+    return organization;
   }
 
-  /**
-   * Creates a user group for an organization selected by explicit id.
-   */
-  async createGroup(
-    authorization: string | undefined,
+  private async assertUniqueOrganizationSlug(
+    slug: string,
+    exceptOrganizationId?: string,
+  ) {
+    const existing = await this.organizationRepository.findOne({
+      where: { slug },
+    });
+    if (existing && existing.id !== exceptOrganizationId) {
+      throw new BadRequestException("组织标识已被使用");
+    }
+  }
+
+  private async getOrganizationRoleOrThrow(
     organizationId: string,
-    payload: CreateGroupPayload,
+    roleId: string,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.groupsService.createGroupForOrganization(
-      context,
-      organizationId,
-      payload,
-    );
+    const role = await this.roleRepository.findOne({
+      relations: { rolePermissions: true },
+      where: { id: roleId, organizationId, scope: "organization" },
+    });
+    if (!role) throw new NotFoundException("角色不存在");
+    return role;
   }
 
-  /**
-   * Updates a user group for an organization selected by explicit id.
-   */
-  async updateGroup(
-    authorization: string | undefined,
+  private async assertUniqueRoleName(
     organizationId: string,
-    groupId: string,
-    payload: UpdateGroupPayload,
+    name: string,
+    exceptRoleId?: string,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.groupsService.updateGroupForOrganization(
-      context,
-      organizationId,
-      groupId,
-      payload,
-    );
+    const existing = await this.roleRepository.findOne({
+      where: { name, organizationId, scope: "organization" },
+    });
+    if (existing && existing.id !== exceptRoleId) {
+      throw new BadRequestException("角色标识已被使用");
+    }
   }
 
-  /**
-   * Replaces user group members for an organization selected by explicit id.
-   */
-  async updateGroupMembers(
-    authorization: string | undefined,
-    organizationId: string,
-    groupId: string,
-    payload: UpdateGroupMembersPayload,
-  ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.groupsService.updateMembersForOrganization(
-      context,
-      organizationId,
-      groupId,
-      payload,
+  private async createDefaultOrganizationRoles(organizationId: string) {
+    const roles = [
+      {
+        color: "#2563eb",
+        description: "Organization owner with all organization permissions.",
+        displayName: "Owner",
+        name: "owner",
+      },
+      {
+        color: "#16a34a",
+        description: "Organization admin with management permissions.",
+        displayName: "Admin",
+        name: "admin",
+      },
+      {
+        color: "#64748b",
+        description: "Organization member with standard permissions.",
+        displayName: "Member",
+        name: "member",
+      },
+      {
+        color: "#94a3b8",
+        description: "Read-only organization viewer.",
+        displayName: "Viewer",
+        name: "viewer",
+      },
+    ];
+
+    const savedRoles = await Promise.all(
+      roles.map((role) =>
+        this.roleRepository.save(
+          this.roleRepository.create({
+            ...role,
+            isSystem: true,
+            label: role.displayName,
+            organizationId,
+            scope: "organization",
+          }),
+        ),
+      ),
     );
+
+    for (const role of savedRoles) {
+      const permissionKeys = defaultPermissionsForRole(role.name).filter(
+        (permission) => permission.endsWith(":organization"),
+      );
+      const records = await Promise.all(
+        permissionKeys.map((permission) =>
+          this.getPermissionOrThrow(permission, "organization"),
+        ),
+      );
+      await this.rolePermissionRepository.save(
+        records.map(({ key, permission }) =>
+          this.rolePermissionRepository.create({
+            enabled: true,
+            organizationId,
+            permission: key,
+            permissionId: permission.id,
+            roleId: role.id,
+          }),
+        ),
+      );
+    }
+
+    const ownerRole = savedRoles.find((role) => role.name === "owner");
+    if (!ownerRole) throw new BadRequestException("组织 Owner 角色初始化失败");
+    return ownerRole;
   }
 
-  /**
-   * Deletes a user group for an organization selected by explicit id.
-   */
-  async deleteGroup(
-    authorization: string | undefined,
-    organizationId: string,
-    groupId: string,
-  ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.groupsService.deleteGroupForOrganization(
-      context,
-      organizationId,
-      groupId,
-    );
+  private async getPermissionOrThrow(permissionKey: string | undefined, scope: string) {
+    const key = requireEntityCrudPermission(permissionKey, scope);
+    const [entity, action, permissionScope] = key.split(":");
+    const permission = await this.permissionRepository.findOne({
+      where: { action: action as Permission["action"], entity, scope: permissionScope as Permission["scope"] },
+    });
+    if (!permission) throw new BadRequestException("权限目录不存在");
+    return { key, permission };
   }
+}
+
+function requireSessionUserId(authorization: string | undefined) {
+  const token = authorization?.replace(/^Bearer\s+/i, "").trim();
+  const session = parseAuthSessionToken(token);
+  if (!session) throw new UnauthorizedException("登录已失效，请重新登录");
+  return session.userId;
+}
+
+function requireText(value: string | undefined | null, label: string) {
+  const text = value?.trim();
+  if (!text) throw new BadRequestException(`${label}不能为空`);
+  return text;
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  const text = value?.trim();
+  return text || null;
+}
+
+function normalizeOptionalInteger(value: number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new BadRequestException("人数必须是非负整数");
+  }
+  return value;
+}
+
+function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
+  const slug = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || `${fallbackPrefix}-${Date.now().toString(36)}`;
+}
+
+function requireEntityCrudPermission(
+  permission: string | undefined,
+  requiredScope: string,
+) {
+  const value = requireText(permission, "权限");
+  const [, action, scope] = value.split(":");
+  if (
+    !["create", "read", "update", "delete"].includes(action) ||
+    scope !== requiredScope
+  ) {
+    throw new BadRequestException("角色只能绑定对应范围的实体 CRUD 权限");
+  }
+  if (!DEFAULT_PERMISSION_KEYS.includes(value as typeof DEFAULT_PERMISSION_KEYS[number])) {
+    throw new BadRequestException("权限不在默认权限目录中");
+  }
+  return value;
+}
+
+function toOrganizationDto(organization: Organization) {
+  return {
+    banner: organization.banner,
+    brandColor: organization.brandColor,
+    clientFocus: organization.clientFocus,
+    createdAt: organization.createdAt,
+    createdByUserId: organization.createdByUserId,
+    currency: organization.currency,
+    dateFormat: organization.dateFormat,
+    id: organization.id,
+    imageUrl: organization.imageUrl,
+    isDefault: organization.isDefault,
+    logoUrl: organization.logoUrl,
+    name: organization.name,
+    officialName: organization.officialName,
+    overview: organization.overview,
+    preferredLanguage: organization.preferredLanguage,
+    profileLink: organization.profileLink,
+    regionCode: organization.regionCode,
+    shortDescription: organization.shortDescription,
+    slug: organization.slug,
+    status: organization.status as OrganizationStatus,
+    subdomain: organization.subdomain,
+    timeZone: organization.timeZone,
+    totalEmployees: organization.totalEmployees,
+    updatedAt: organization.updatedAt,
+    website: organization.website,
+  };
+}
+
+function toRoleDto(role: Role) {
+  return {
+    color: role.color,
+    description: role.description,
+    displayName: role.displayName ?? role.label,
+    id: role.id,
+    isSystem: role.isSystem,
+    label: role.label,
+    name: role.name,
+    organizationId: role.organizationId,
+    permissions:
+      role.rolePermissions?.map((permission) => ({
+        enabled: permission.enabled,
+        id: permission.id,
+        organizationId: permission.organizationId,
+        permission: permission.permission,
+        permissionId: permission.permissionId,
+        roleId: permission.roleId,
+      })) ?? [],
+    scope: role.scope,
+  };
 }

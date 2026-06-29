@@ -4,7 +4,6 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { randomBytes, pbkdf2Sync } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { MoreThan, Repository } from "typeorm";
 import { PasswordReset, User } from "@hermes-swarm/core";
@@ -12,14 +11,12 @@ import type {
   RequestPasswordResetPayload,
   ResetPasswordPayload,
 } from "../tenancy/tenancy.types.js";
+import { hashPassword } from "../common/security/password-hash.js";
 
 const PASSWORD_RESET_JWT_SECRET =
   process.env.PASSWORD_RESET_JWT_SECRET ||
   process.env.JWT_SECRET ||
   "hermes-swarm-password-reset-secret";
-const PASSWORD_ITERATIONS = 310_000;
-const PASSWORD_KEY_LENGTH = 32;
-const PASSWORD_HASH_PREFIX = "pbkdf2_sha256";
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
 @Injectable()
@@ -52,7 +49,7 @@ export class PasswordResetService {
     }
 
     const token = jwt.sign(
-      { userId: user.id, email: user.email, organizationId: user.organizationId },
+      { userId: user.id, email: user.email },
       PASSWORD_RESET_JWT_SECRET,
       { expiresIn: "10m" },
     );
@@ -61,7 +58,6 @@ export class PasswordResetService {
       this.passwordResetRepository.create({
         email: user.email,
         token,
-        organizationId: user.organizationId,
       }),
     );
 
@@ -83,7 +79,7 @@ export class PasswordResetService {
     }
 
     // Verify the JWT token
-    let decoded: { userId: string; email: string; organizationId: string };
+    let decoded: { userId: string; email: string };
     try {
       decoded = jwt.verify(token, PASSWORD_RESET_JWT_SECRET) as typeof decoded;
     } catch {
@@ -110,10 +106,7 @@ export class PasswordResetService {
 
     // Find the user
     const user = await this.userRepository.findOne({
-      where: {
-        id: decoded.userId,
-        organizationId: decoded.organizationId,
-      },
+      where: { id: decoded.userId },
     });
 
     if (!user) {
@@ -121,15 +114,7 @@ export class PasswordResetService {
     }
 
     // Update password hash
-    const salt = randomBytes(16).toString("base64url");
-    const hash = pbkdf2Sync(
-      password,
-      salt,
-      PASSWORD_ITERATIONS,
-      PASSWORD_KEY_LENGTH,
-      "sha256",
-    ).toString("base64url");
-    user.passwordHash = `${PASSWORD_HASH_PREFIX}$${PASSWORD_ITERATIONS}$${salt}$${hash}`;
+    user.passwordHash = hashPassword(password);
     user.emailVerified = true;
 
     await this.userRepository.save(user);

@@ -1,38 +1,63 @@
 import type { AppShellNavSection } from "@/components/app-shell";
-import { DEFAULT_ADMIN_MENUS } from "@hermes-swarm/core/tenancy/permissions";
 
 export type SettingsNavItem = AppShellNavSection["items"][number];
 
-type AdminMenuCode = (typeof DEFAULT_ADMIN_MENUS)[number]["code"];
-
-const SETTINGS_NAV_UI: Record<
-  AdminMenuCode,
+export const SETTINGS_NAV_ITEMS = [
   {
-    icon: SettingsNavItem["icon"];
-    label?: string;
-  }
-> = {
-  account: { icon: "user" },
-  "custom-smtp": { icon: "settings" },
-  "email-templates": { icon: "file" },
-  features: { icon: "grid" },
-  menus: { icon: "menu" },
-  "notification-destinations": { icon: "bell" },
-  organization: { icon: "building", label: "常规" },
-  organizations: { icon: "building" },
-  roles: { icon: "shield" },
-  tenant: { icon: "server", label: "平台设置" },
-};
-
-export const SETTINGS_NAV_ITEMS = DEFAULT_ADMIN_MENUS.map((menu) => {
-  const ui = SETTINGS_NAV_UI[menu.code];
-  return {
-    href: menu.path,
-    icon: ui.icon,
-    key: menu.code,
-    label: ui.label ?? menu.label,
-  };
-}) satisfies SettingsNavItem[];
+    href: "/settings/account",
+    icon: "user",
+    key: "account",
+    label: "账号",
+  },
+  {
+    href: "/settings/organization",
+    icon: "building",
+    key: "organization",
+    label: "常规",
+  },
+  {
+    href: "/settings/custom-smtp",
+    icon: "settings",
+    key: "custom-smtp",
+    label: "自定义邮件",
+  },
+  {
+    href: "/settings/email-templates",
+    icon: "file",
+    key: "email-templates",
+    label: "邮件模板",
+  },
+  {
+    href: "/settings/notification-destinations",
+    icon: "bell",
+    key: "notification-destinations",
+    label: "通知",
+  },
+  {
+    href: "/settings/features",
+    icon: "grid",
+    key: "features",
+    label: "功能",
+  },
+  {
+    href: "/settings/roles",
+    icon: "shield",
+    key: "roles",
+    label: "角色和权限",
+  },
+  {
+    href: "/settings/tenant",
+    icon: "server",
+    key: "tenant",
+    label: "平台设置",
+  },
+  {
+    href: "/settings/organizations",
+    icon: "building",
+    key: "organizations",
+    label: "组织列表",
+  },
+] satisfies SettingsNavItem[];
 
 export const SETTINGS_NAV_SECTIONS = [
   {
@@ -49,7 +74,6 @@ export const SETTINGS_NAV_SECTIONS = [
         "notification-destinations",
         "features",
         "roles",
-        "menus",
       ].includes(item.key),
     ),
     key: "organization",

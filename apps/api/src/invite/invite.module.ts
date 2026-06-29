@@ -1,14 +1,18 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { Invite, Organization, Role, User } from "@hermes-swarm/core";
-import { TenancyModule } from "../tenancy/tenancy.module.js";
+import {
+  Invite,
+  Organization,
+  Role,
+  User,
+  UserOrganization,
+} from "@hermes-swarm/core";
 import { InviteController } from "./invite.controller.js";
 import { InviteService } from "./invite.service.js";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Invite, User, Organization, Role]),
-    TenancyModule,
+    TypeOrmModule.forFeature([Invite, User, Organization, Role, UserOrganization]),
   ],
   controllers: [InviteController],
   providers: [InviteService],

@@ -1,7 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from "typeorm";
 import type { PlatformMember } from "./platform-member.entity.js";
 import type { RolePermission } from "./role-permission.entity.js";
-import type { User } from "./user.entity.js";
 import type { UserOrganization } from "./user-organization.entity.js";
 import { OrganizationBaseEntity } from "./organization-base.entity.js";
 
@@ -33,9 +32,6 @@ export class Role extends OrganizationBaseEntity {
 
   @OneToMany("RolePermission", "role")
   rolePermissions!: RolePermission[];
-
-  @OneToMany("User", "role")
-  users!: User[];
 
   @OneToMany("UserOrganization", "role")
   organizationMembers!: UserOrganization[];

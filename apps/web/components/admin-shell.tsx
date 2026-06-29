@@ -12,8 +12,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import {
-  getSnapshot,
-  switchOrganizationScope,
+  fetchMe,
   type Snapshot,
 } from "@/lib/admin-api";
 import {
@@ -61,7 +60,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
         setLoading(true);
       }
       try {
-        const data = await getSnapshot(session.token);
+        const principal = await fetchMe(session.token);
+        const data = createShellSnapshot(principal);
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
       } catch {
@@ -87,13 +87,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   async function switchOrganization(organizationId: string) {
     const session = getStoredSession();
-    if (!session?.token || organizationId === snapshot?.organization.id) {
+    if (!session?.token || organizationId === snapshot?.organization?.id) {
       return;
     }
-    const result = await switchOrganizationScope(session.token, organizationId);
-    storeSession({ token: result.token });
-    setSnapshot(result.snapshot);
-    setResolvedSession(resolveSession(result.snapshot));
+    const principal = await fetchMe(session.token);
+    const result = createShellSnapshot(principal, organizationId);
+    storeSession({ token: session.token });
+    setSnapshot(result);
+    setResolvedSession(resolveSession(result));
     if (pathname.startsWith("/settings/organizations/")) {
       router.replace(`/settings/organizations/${organizationId}`);
     }
@@ -129,11 +130,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <AppShell
       contentClassName={pathname.startsWith("/settings") ? "p-0" : undefined}
-      currentOrganizationId={snapshot.organization.id}
+      currentOrganizationId={snapshot.organization?.id}
       onOrganizationSwitch={switchOrganization}
       onUserUpdated={() => loadSnapshot({ showLoading: false })}
       organizationName={
-        snapshot.organization.name ?? resolvedSession.organization?.name
+        snapshot.organization?.name ?? resolvedSession.organization?.name
       }
       organizations={snapshot.organizations}
       platformName={platformName}
@@ -169,4 +170,51 @@ function resolvePlatformName(
       ?.value?.trim() ||
     null
   );
+}
+
+function createShellSnapshot(
+  principal: Awaited<ReturnType<typeof fetchMe>>,
+  preferredOrganizationId?: string,
+): Snapshot {
+  const memberships = principal.memberships ?? [];
+  const organizations = memberships
+    .map((membership) => membership.organization)
+    .filter((organization): organization is NonNullable<typeof organization> =>
+      Boolean(organization),
+    );
+  const activeMembership =
+    memberships.find(
+      (membership) => membership.organizationId === preferredOrganizationId,
+    ) ??
+    memberships[0] ??
+    null;
+  const organization = activeMembership?.organization ?? organizations[0] ?? null;
+  const role = activeMembership?.role ?? principal.platformMembership?.role ?? null;
+  const isPlatformAdmin = Boolean(principal.platformMembership);
+
+  return {
+    ...principal,
+    currentUser: {
+      isPlatformAdmin,
+      memberships,
+      organization,
+      permissions: principal.permissions,
+      platformMembership: principal.platformMembership,
+      role,
+      user: principal.user,
+    },
+    isPlatformAdmin,
+    menus: [],
+    organization,
+    organizations,
+    rolePermissions: role?.permissions ?? [],
+    roles: role ? [role] : [],
+    scope: {
+      level: organization ? "organization" : "platform",
+      organizationId: organization?.id ?? null,
+    },
+    settings: [],
+    systemSettings: [],
+    users: [],
+  };
 }

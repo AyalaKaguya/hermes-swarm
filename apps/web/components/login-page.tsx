@@ -14,11 +14,9 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getPublicBootstrap, login } from "@/lib/admin-api";
+import { authLogin, getPublicBootstrap } from "@/lib/admin-api";
 import {
   clearStoredSession,
-  hasAnyManagementAccess,
-  resolveSession,
   storeSession,
 } from "@/lib/session";
 
@@ -57,10 +55,11 @@ export function LoginPage() {
     setError("");
 
     try {
-      const response = await login({ email, password });
-      const resolvedSession = resolveSession(response.snapshot);
-
-      if (!hasAnyManagementAccess(response.snapshot, resolvedSession)) {
+      const response = await authLogin({ email, password });
+      if (
+        response.snapshot.memberships.length === 0 &&
+        !response.snapshot.platformMembership
+      ) {
         setError("当前用户没有管理端访问权限");
         return;
       }

@@ -8,71 +8,68 @@ import {
   HttpStatus,
   Param,
   Post,
+  UnauthorizedException,
 } from "@nestjs/common";
 import type {
   AcceptInvitePayload,
   CreateBulkInvitesPayload,
 } from "../tenancy/tenancy.types.js";
-import { TenancyService } from "../tenancy/tenancy.service.js";
+import { parseAuthSessionToken } from "../tenancy/admin-session.js";
+import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { InviteService } from "./invite.service.js";
 
-@Controller("admin/invites")
+@Controller("admin")
 export class InviteController {
-  constructor(
-    private readonly inviteService: InviteService,
-    private readonly tenancyService: TenancyService,
-  ) {}
+  constructor(private readonly inviteService: InviteService) {}
 
-  /**
-   * Lists invites in the current organization.
-   */
-  @Get()
-  async list(@Headers("authorization") authorization?: string) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.inviteService.list(context);
+  @Get("organizations/:organizationId/invites")
+  @RequirePermission({ action: "read", entity: "invite", scope: "organization" })
+  async listForOrganization(@Param("organizationId") organizationId: string) {
+    return this.inviteService.listForOrganization(organizationId);
   }
 
-  /**
-   * Creates bulk email invites for the current organization.
-   */
-  @Post()
-  async createBulk(
+  @Post("organizations/:organizationId/invites")
+  @RequirePermission({ action: "create", entity: "invite", scope: "organization" })
+  async createBulkForOrganization(
     @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Body() payload: CreateBulkInvitesPayload,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.inviteService.createBulk(context, payload);
+    return this.inviteService.createBulkForOrganization(
+      organizationId,
+      requireSessionUserId(authorization),
+      payload,
+    );
   }
 
-  /**
-   * Resends an existing invite by regenerating the token.
-   */
-  @Post(":inviteId/resend")
-  async resend(
+  @Post("organizations/:organizationId/invites/:inviteId/resend")
+  @RequirePermission({ action: "update", entity: "invite", scope: "organization" })
+  async resendForOrganization(
     @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
     @Param("inviteId") inviteId: string,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    return this.inviteService.resend(context, inviteId);
+    return this.inviteService.resendForOrganization(
+      organizationId,
+      requireSessionUserId(authorization),
+      inviteId,
+    );
   }
 
-  /**
-   * Deletes an invite.
-   */
-  @Delete(":inviteId")
+  @Delete("organizations/:organizationId/invites/:inviteId")
+  @RequirePermission({ action: "delete", entity: "invite", scope: "organization" })
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(
-    @Headers("authorization") authorization: string | undefined,
+  async deleteForOrganization(
+    @Param("organizationId") organizationId: string,
     @Param("inviteId") inviteId: string,
   ) {
-    const context = await this.tenancyService.requireAuthContext(authorization);
-    await this.inviteService.delete(context, inviteId);
+    await this.inviteService.deleteForOrganization(organizationId, inviteId);
   }
 
   /**
    * Public endpoint to validate an invite token.
    */
-  @Post("validate")
+  @Post("invites/validate")
   async validate(
     @Body("email") email?: string,
     @Body("token") token?: string,
@@ -83,8 +80,15 @@ export class InviteController {
   /**
    * Public endpoint to accept an invite and register the user.
    */
-  @Post("accept")
+  @Post("invites/accept")
   async accept(@Body() payload: AcceptInvitePayload) {
     return this.inviteService.accept(payload);
   }
+}
+
+function requireSessionUserId(authorization: string | undefined) {
+  const token = authorization?.replace(/^Bearer\s+/i, "").trim();
+  const session = parseAuthSessionToken(token);
+  if (!session) throw new UnauthorizedException("登录已失效，请重新登录");
+  return session.userId;
 }

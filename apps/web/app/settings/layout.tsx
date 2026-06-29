@@ -33,23 +33,17 @@ export default function SettingsLayout({
   const { resolvedSession, snapshot } = useAdminShell();
   const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] =
     useState(false);
-  const activeOrganizationId = snapshot?.organization.id ?? "none";
+  const activeOrganizationId = snapshot?.organization?.id ?? "none";
 
   const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
     ...section,
     items: section.items
       .filter((item) => {
         if (!snapshot || !resolvedSession) return false;
-        const menu = snapshot.menus.find(
-          (candidate) => candidate.code === item.key,
-        );
-        return (
-          Boolean(menu?.isActive) &&
-          hasMenuAccess(snapshot, resolvedSession, item.key)
-        );
+        return hasMenuAccess(snapshot, resolvedSession, item.key);
       })
       .map((item) =>
-        item.key === "organization" && snapshot?.organization.id
+        item.key === "organization" && snapshot?.organization?.id
           ? {
               ...item,
               href: `/settings/organizations/${snapshot.organization.id}`,
