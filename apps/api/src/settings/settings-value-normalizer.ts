@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import {
+  SECRET_SETTING_MASK,
   isSettingValueType,
   resolveSettingValueOptions,
   resolveSettingValueType,
@@ -16,6 +17,7 @@ export type ParsedSettingPayloadEntry = {
 };
 
 export type SettingMetadataSource = {
+  value?: unknown;
   valueOptions?: unknown;
   valueType?: unknown;
 } | null;
@@ -66,7 +68,12 @@ export function normalizeSettingEntry(
   const valueOptions = resolveValueOptions(entry, metadataSources);
   return {
     name: entry.name,
-    value: serializeSettingValue(entry.value, valueType, valueOptions),
+    value: serializeSettingValue(
+      entry.value,
+      valueType,
+      valueOptions,
+      metadataSources,
+    ),
     valueOptions,
     valueType,
   };
@@ -139,6 +146,7 @@ function serializeSettingValue(
   value: unknown,
   valueType: SettingValueType,
   valueOptions: SettingValueOption[] | null,
+  metadataSources: SettingMetadataSource[],
 ) {
   if (value === undefined || value === null) return null;
 
@@ -191,6 +199,15 @@ function serializeSettingValue(
       throw new BadRequestException("密钥设置值不能是对象");
     }
     const normalized = String(value);
+    if (normalized === SECRET_SETTING_MASK) {
+      const existingValue = metadataSources.find(
+        (source: SettingMetadataSource) => typeof source?.value === "string",
+      )?.value;
+      if (typeof existingValue === "string" && existingValue) {
+        return existingValue;
+      }
+      throw new BadRequestException("密钥设置值不能为空");
+    }
     if (!normalized) {
       throw new BadRequestException("密钥设置值不能为空");
     }
