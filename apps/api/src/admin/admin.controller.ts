@@ -15,11 +15,10 @@ import { Repository } from "typeorm";
 import { hashPassword } from "../common/security/password-hash.js";
 import {
   createAuthSessionToken,
-} from "../tenancy/admin-session.js";
+} from "../auth/auth-session.js";
 import type {
-  LoginPayload,
   OnboardingPayload,
-} from "../tenancy/tenancy.types.js";
+} from "../common/admin-api.types.js";
 import { AuthService } from "../auth/auth.service.js";
 
 @Controller("admin")
@@ -51,7 +50,6 @@ export class AdminController {
     ]);
 
     return {
-      menus: [],
       onboardingRequired: organizationCount === 0 || userCount === 0,
       organizations,
     };
@@ -126,11 +124,6 @@ export class AdminController {
       snapshot: await this.authService.me(`Bearer ${token}`),
       token,
     };
-  }
-
-  @Post("login")
-  login(@Body() payload: LoginPayload) {
-    return this.authService.login(payload);
   }
 
   private async createPlatformAdminRole() {

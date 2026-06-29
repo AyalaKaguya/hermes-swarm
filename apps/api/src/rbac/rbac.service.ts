@@ -44,12 +44,30 @@ export class RbacService {
       return true;
     }
 
-    const roleId =
-      requirement.scope === "platform"
-        ? await this.findPlatformRoleId(userId)
-        : await this.findOrganizationRoleId(userId, organizationId);
+    if (requirement.scope === "platform") {
+      const roleId = await this.findPlatformRoleId(userId);
+      return roleId ? this.roleAllows(roleId, requirement) : false;
+    }
 
-    if (!roleId) return false;
+    const organizationRoleId = await this.findOrganizationRoleId(
+      userId,
+      organizationId,
+    );
+    if (
+      organizationRoleId &&
+      (await this.roleAllows(organizationRoleId, requirement))
+    ) {
+      return true;
+    }
+
+    const platformRoleId = await this.findPlatformRoleId(userId);
+    return platformRoleId ? this.roleAllows(platformRoleId, requirement) : false;
+  }
+
+  private async roleAllows(
+    roleId: string,
+    requirement: PermissionRequirement,
+  ) {
     const ability = await this.buildAbilityForRole(roleId);
     return ability.can(
       requirement.action,

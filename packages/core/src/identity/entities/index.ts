@@ -1,8 +1,6 @@
 export { BaseEntity } from "./base.entity.js";
 export { EmailVerification } from "./email-verification.entity.js";
-export { Group } from "./group.entity.js";
 export { Invite, type InviteStatus } from "./invite.entity.js";
-export { Menu } from "./menu.entity.js";
 export {
   Organization,
   type OrganizationStatus,

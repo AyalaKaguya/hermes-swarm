@@ -1,5 +1,5 @@
 import { Column, Entity, Index } from "typeorm";
-import { OrganizationBaseEntity } from "../../tenancy/entities/organization-base.entity.js";
+import { OrganizationBaseEntity } from "../../identity/entities/organization-base.entity.js";
 
 @Entity({ name: "email_templates" })
 @Index(["organizationId", "name", "languageCode"], { unique: true })

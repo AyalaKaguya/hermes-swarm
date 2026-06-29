@@ -10,7 +10,7 @@ import { PasswordReset, User } from "@hermes-swarm/core";
 import type {
   RequestPasswordResetPayload,
   ResetPasswordPayload,
-} from "../tenancy/tenancy.types.js";
+} from "../common/admin-api.types.js";
 import { hashPassword } from "../common/security/password-hash.js";
 
 const PASSWORD_RESET_JWT_SECRET =

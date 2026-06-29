@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { parseAuthSessionToken } from "../tenancy/admin-session.js";
+import { parseAuthSessionToken } from "../auth/auth-session.js";
 import {
   REQUIRE_PERMISSION_METADATA,
 } from "./require-permission.decorator.js";

@@ -6,7 +6,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { DEFAULT_PERMISSION_KEYS, Permission, Role, RolePermission } from "@hermes-swarm/core";
 import { IsNull, Repository } from "typeorm";
-import type { ReplaceRolePermissionsPayload } from "../tenancy/tenancy.types.js";
+import type { ReplaceRolePermissionsPayload } from "../common/admin-api.types.js";
 import type { PlatformRolePayload } from "./platform-roles.controller.js";
 
 @Injectable()

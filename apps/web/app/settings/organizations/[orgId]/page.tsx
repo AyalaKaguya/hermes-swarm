@@ -23,7 +23,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -62,7 +61,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import {
   getRoleRank,
   isPlatformAdminRoleName,
-} from "@hermes-swarm/core/tenancy/permissions";
+} from "@hermes-swarm/core/identity/permissions";
 import {
   ORGANIZATION_CONTROL_SETTING_DEFINITIONS,
   ORGANIZATION_DEFAULT_FIELD_DEFINITIONS,
@@ -71,20 +70,16 @@ import {
   type SettingOption,
 } from "@hermes-swarm/core/settings/definitions";
 import {
-  createOrganizationGroup,
-  createOrganizationUser,
-  deleteOrganizationGroup,
+  createOrganizationMember,
   getOrganization,
   listOrganizationMembers,
   listOrganizationRoles,
   listOrganizationSettingsForOrganization,
   saveOrganizationSettingsForOrganization,
-  updateOrganizationGroup,
-  updateOrganizationGroupMembers,
-  updateOrganizationUser,
+  updateOrganizationMember,
   updateOrganization,
   uploadAdminFile,
-  type GroupDto,
+  type OrganizationMembership,
   type Organization,
   type OrganizationPayload,
   type OrganizationSetting,
@@ -93,7 +88,6 @@ import {
   type UserStatus,
 } from "@/lib/admin-api";
 import { getStoredSession, hasMenuAccess } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 const CONTROL_KEYS = ORGANIZATION_CONTROL_SETTING_DEFINITIONS;
 const ORGANIZATION_DEFAULT_FIELDS = ORGANIZATION_DEFAULT_FIELD_DEFINITIONS;
@@ -128,7 +122,6 @@ type OrganizationForm = {
 type OrganizationTab =
   | "controls"
   | "general"
-  | "groups"
   | "members"
   | "profile";
 
@@ -141,7 +134,6 @@ export default function OrganizationDetailPage() {
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<OrganizationTab>("general");
-  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const notifications = useNotifications();
@@ -151,21 +143,16 @@ export default function OrganizationDetailPage() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<OrganizationForm>(emptyOrganizationForm());
-  const [groupDescription, setGroupDescription] = useState("");
-  const [groupMemberIds, setGroupMemberIds] = useState<string[]>([]);
-  const [groupName, setGroupName] = useState("");
-  const [groups, setGroups] = useState<GroupDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [organizationSettings, setOrganizationSettings] = useState<
     OrganizationSetting[]
   >([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [savingGroup, setSavingGroup] = useState(false);
+  const [memberships, setMemberships] = useState<OrganizationMembership[]>([]);
   const [saving, setSaving] = useState(false);
   const [savingControls, setSavingControls] = useState(false);
   const [savingCustomSetting, setSavingCustomSetting] = useState(false);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
@@ -176,8 +163,8 @@ export default function OrganizationDetailPage() {
       ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage") ||
         hasMenuAccess(snapshot, resolvedSession, "organization", "manage")
       : false);
-  const canViewTenantControls = isPlatformAdmin;
-  const canManageTenantControls = canViewTenantControls && Boolean(canManage);
+  const canViewPlatformControls = isPlatformAdmin;
+  const canManagePlatformControls = canViewPlatformControls && Boolean(canManage);
   const canManagePlatformOrganizationUsers =
     isPlatformAdmin ||
     (snapshot && resolvedSession
@@ -228,18 +215,12 @@ export default function OrganizationDetailPage() {
           listOrganizationMembers(session.token, organizationId),
           listOrganizationRoles(session.token, organizationId),
         ]);
-      const groupItems: GroupDto[] = [];
       setOrganization(data);
       setForm(toOrganizationForm(data));
       setOrganizationSettings(settings);
+      setMemberships(userItems);
       setUsers(userItems.map((membership) => membership.user));
       setRoles(roleItems);
-      setGroups(groupItems);
-      setSelectedGroupId((current) =>
-        current && groupItems.some((group) => group.id === current)
-          ? current
-          : (groupItems[0]?.id ?? null),
-      );
       setControlValues(
         Object.fromEntries(
           CONTROL_KEYS.map((item) => [
@@ -272,10 +253,6 @@ export default function OrganizationDetailPage() {
       JSON.stringify(form) !== JSON.stringify(toOrganizationForm(organization))
     );
   }, [form, organization]);
-  const selectedGroup = useMemo(
-    () => groups.find((group) => group.id === selectedGroupId) ?? null,
-    [groups, selectedGroupId],
-  );
   const customSettings = useMemo(
     () =>
       organizationSettings.filter(
@@ -283,18 +260,6 @@ export default function OrganizationDetailPage() {
       ),
     [organizationSettings],
   );
-
-  useEffect(() => {
-    if (!selectedGroup) {
-      setGroupName("");
-      setGroupDescription("");
-      setGroupMemberIds([]);
-      return;
-    }
-    setGroupName(selectedGroup.name);
-    setGroupDescription(selectedGroup.description ?? "");
-    setGroupMemberIds(selectedGroup.memberIds);
-  }, [selectedGroup]);
 
   function findSetting(name: string) {
     return (
@@ -328,7 +293,7 @@ export default function OrganizationDetailPage() {
         token,
         organization.id,
         toOrganizationPayload(form, {
-          includeTenantControls: canManageTenantControls,
+          includePlatformControls: canManagePlatformControls,
         }),
       );
       setOrganization(updated);
@@ -422,46 +387,6 @@ export default function OrganizationDetailPage() {
     }
   }
 
-  async function saveGroupDetails() {
-    if (!organization || !selectedGroup || !token || !canManage) return;
-    setSavingGroup(true);
-    setError(null);
-    try {
-      await updateOrganizationGroup(token, organization.id, selectedGroup.id, {
-        name: groupName.trim(),
-        description: groupDescription.trim() || null,
-      });
-      await updateOrganizationGroupMembers(
-        token,
-        organization.id,
-        selectedGroup.id,
-        groupMemberIds,
-      );
-      notifications.success("用户组已保存");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
-    } finally {
-      setSavingGroup(false);
-    }
-  }
-
-  async function deleteSelectedGroup() {
-    if (!organization || !selectedGroup || !token || !canManage) return;
-    setSavingGroup(true);
-    setError(null);
-    try {
-      await deleteOrganizationGroup(token, organization.id, selectedGroup.id);
-      setSelectedGroupId(null);
-      notifications.success("用户组已删除");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
-    } finally {
-      setSavingGroup(false);
-    }
-  }
-
   function onLogoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (file) void uploadLogo(file);
@@ -472,23 +397,20 @@ export default function OrganizationDetailPage() {
     return roles.find((role) => role.id === roleId)?.label ?? "受限角色";
   }
 
+  function membershipForUser(userId: string) {
+    return memberships.find((membership) => membership.userId === userId) ?? null;
+  }
+
   function canEditUser(user: User) {
     if (!canManage || user.id === currentUserId) return false;
     if (canAssignPlatformRole) return true;
-    const role = roles.find((item) => item.id === user.roleId);
+    const membership = membershipForUser(user.id);
+    const role = roles.find((item) => item.id === membership?.roleId);
     if (canManagePlatformOrganizationUsers) {
       return !role || !isPlatformAdminRoleName(role.name);
     }
-    if (!role) return user.roleId === null;
+    if (!role) return membership?.roleId === null;
     return getRoleRank(role.name) < getRoleRank(currentRoleName);
-  }
-
-  function toggleGroupMember(userId: string) {
-    setGroupMemberIds((current) =>
-      current.includes(userId)
-        ? current.filter((id) => id !== userId)
-        : [...current, userId],
-    );
   }
 
   if (loading) {
@@ -556,7 +478,6 @@ export default function OrganizationDetailPage() {
         <TabsList>
           <TabsTrigger value="general">常规</TabsTrigger>
           <TabsTrigger value="members">成员</TabsTrigger>
-          <TabsTrigger value="groups">用户组</TabsTrigger>
           <TabsTrigger value="controls">控制项</TabsTrigger>
           <TabsTrigger value="profile">展示</TabsTrigger>
         </TabsList>
@@ -630,7 +551,7 @@ export default function OrganizationDetailPage() {
                     value={form.website}
                   />
                 </Field>
-                {canViewTenantControls && (
+                {canViewPlatformControls && (
                   <>
                     <div className="flex items-center justify-between rounded-md border px-3 py-2">
                       <div className="grid gap-0.5">
@@ -641,7 +562,7 @@ export default function OrganizationDetailPage() {
                       </div>
                       <Switch
                         checked={form.status === "active"}
-                        disabled={!canManageTenantControls}
+                        disabled={!canManagePlatformControls}
                         id="organization-active"
                         onCheckedChange={(checked) =>
                           updateField(
@@ -654,11 +575,11 @@ export default function OrganizationDetailPage() {
                     <div className="flex items-center justify-between rounded-md border px-3 py-2">
                       <div className="grid gap-0.5">
                         <Label htmlFor="organization-default">默认组织</Label>
-                        <span className="text-xs">用于租户初始组织选择</span>
+                        <span className="text-xs">用于平台默认组织选择</span>
                       </div>
                       <Switch
                         checked={form.isDefault}
-                        disabled={!canManageTenantControls}
+                        disabled={!canManagePlatformControls}
                         id="organization-default"
                         onCheckedChange={(checked) =>
                           updateField("isDefault", checked)
@@ -793,7 +714,7 @@ export default function OrganizationDetailPage() {
                         <TableCell className="text-sm">{user.email}</TableCell>
                         <TableCell>
                           <Badge className="text-xs" variant="outline">
-                            {roleLabel(user.roleId)}
+                            {roleLabel(membershipForUser(user.id)?.roleId ?? null)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -821,185 +742,6 @@ export default function OrganizationDetailPage() {
                   )}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent className="mt-3" value="groups">
-          <Card>
-            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle>用户组</CardTitle>
-                <CardDescription>
-                  维护该组织内的访问分组和成员关系
-                </CardDescription>
-              </div>
-              <Dialog onOpenChange={setCreateGroupOpen} open={createGroupOpen}>
-                <DialogTrigger asChild>
-                  <Button disabled={!canManage} size="sm">
-                    <AppIcon className="size-3.5" name="layers" />
-                    添加用户组
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>添加用户组</DialogTitle>
-                  </DialogHeader>
-                  <OrganizationGroupForm
-                    organizationId={organization.id}
-                    token={token}
-                    onDone={(group) => {
-                      setCreateGroupOpen(false);
-                      setSelectedGroupId(group.id);
-                      void load();
-                    }}
-                  />
-                </DialogContent>
-              </Dialog>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-                <div className="rounded-md border">
-                  {groups.length === 0 ? (
-                    <div className="px-4 py-10 text-center text-sm">
-                      暂无用户组
-                    </div>
-                  ) : (
-                    groups.map((group) => (
-                      <Button
-                        className={cn(
-                          "h-auto w-full justify-between rounded-none border-b px-4 py-3 text-left last:border-b-0",
-                          group.id === selectedGroupId && "bg-muted",
-                        )}
-                        key={group.id}
-                        onClick={() => setSelectedGroupId(group.id)}
-                        variant="ghost"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">
-                            {group.name}
-                          </span>
-                          <span className="block truncate text-xs">
-                            {group.description || "无描述"}
-                          </span>
-                        </span>
-                        <Badge variant="secondary">{group.memberCount}</Badge>
-                      </Button>
-                    ))
-                  )}
-                </div>
-
-                {selectedGroup ? (
-                  <div className="grid gap-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field htmlFor="organization-group-name" label="名称">
-                        <Input
-                          disabled={!canManage}
-                          id="organization-group-name"
-                          onChange={(event) => setGroupName(event.target.value)}
-                          value={groupName}
-                        />
-                      </Field>
-                      <Field
-                        htmlFor="organization-group-created-at"
-                        label="创建时间"
-                      >
-                        <Input
-                          disabled
-                          id="organization-group-created-at"
-                          value={new Date(
-                            selectedGroup.createdAt,
-                          ).toLocaleString("zh-CN")}
-                        />
-                      </Field>
-                    </div>
-                    <Field
-                      htmlFor="organization-group-description"
-                      label="描述"
-                    >
-                      <Textarea
-                        disabled={!canManage}
-                        id="organization-group-description"
-                        onChange={(event) =>
-                          setGroupDescription(event.target.value)
-                        }
-                        value={groupDescription}
-                      />
-                    </Field>
-                    <div className="rounded-md border">
-                      <div className="flex items-center justify-between border-b px-4 py-3">
-                        <div>
-                          <div className="text-sm font-medium">成员</div>
-                          <div className="text-xs">仅显示该组织内用户</div>
-                        </div>
-                        <Badge variant="outline">
-                          {groupMemberIds.length} 人
-                        </Badge>
-                      </div>
-                      <div className="max-h-[360px] divide-y overflow-auto">
-                        {users.length === 0 ? (
-                          <div className="px-4 py-8 text-center text-sm">
-                            暂无可选成员
-                          </div>
-                        ) : (
-                          users.map((user) => (
-                            <label
-                              className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-muted/50"
-                              key={user.id}
-                            >
-                              <Checkbox
-                                checked={groupMemberIds.includes(user.id)}
-                                disabled={!canManage}
-                                onCheckedChange={() =>
-                                  toggleGroupMember(user.id)
-                                }
-                              />
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium">
-                                  {user.displayName}
-                                </span>
-                                <span className="block truncate text-xs">
-                                  {user.email}
-                                </span>
-                              </span>
-                              <Badge
-                                variant={
-                                  user.status === "active"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                              >
-                                {user.status === "active" ? "启用" : "禁用"}
-                              </Badge>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        disabled={!canManage || savingGroup}
-                        onClick={() => void deleteSelectedGroup()}
-                        variant="outline"
-                      >
-                        删除用户组
-                      </Button>
-                      <Button
-                        disabled={
-                          !canManage || savingGroup || !groupName.trim()
-                        }
-                        onClick={() => void saveGroupDetails()}
-                      >
-                        {savingGroup ? "保存中..." : "保存用户组"}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex min-h-80 items-center justify-center rounded-md border text-sm">
-                    选择或创建一个用户组
-                  </div>
-                )}
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1245,6 +987,7 @@ export default function OrganizationDetailPage() {
             <CardHeader>
               <CardTitle>展示资料</CardTitle>
               <CardDescription>
+                维护组织公开展示字段
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -1322,6 +1065,8 @@ export default function OrganizationDetailPage() {
               <DialogTitle>编辑成员</DialogTitle>
             </DialogHeader>
             <OrganizationUserForm
+              initialRoleId={membershipForUser(editUser.id)?.roleId ?? null}
+              membershipId={membershipForUser(editUser.id)?.id ?? null}
               mode="edit"
               organizationId={organization.id}
               roles={assignableRoles}
@@ -1354,6 +1099,8 @@ export default function OrganizationDetailPage() {
 }
 
 function OrganizationUserForm({
+  initialRoleId,
+  membershipId,
   mode,
   organizationId,
   roles,
@@ -1361,6 +1108,8 @@ function OrganizationUserForm({
   user,
   onDone,
 }: {
+  initialRoleId?: string | null;
+  membershipId?: string | null;
   mode: "create" | "edit";
   organizationId: string;
   roles: Role[];
@@ -1371,7 +1120,7 @@ function OrganizationUserForm({
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
-  const [roleId, setRoleId] = useState(user?.roleId ?? roles[0]?.id ?? "none");
+  const [roleId, setRoleId] = useState(initialRoleId ?? roles[0]?.id ?? "none");
   const [status, setStatus] = useState<UserStatus>(user?.status ?? "active");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -1381,17 +1130,16 @@ function OrganizationUserForm({
     setMsg("");
     try {
       if (mode === "create") {
-        await createOrganizationUser(token, organizationId, {
+        await createOrganizationMember(token, organizationId, {
           displayName,
           email,
           password,
           roleId: roleId === "none" ? null : roleId,
           status,
         });
-      } else if (user) {
-        await updateOrganizationUser(token, organizationId, user.id, {
+      } else if (membershipId) {
+        await updateOrganizationMember(token, organizationId, membershipId, {
           displayName,
-          email,
           roleId: roleId === "none" ? null : roleId,
           status,
         });
@@ -1415,6 +1163,7 @@ function OrganizationUserForm({
       </Field>
       <Field htmlFor="organization-user-email" label="邮箱">
         <Input
+          disabled={mode === "edit"}
           id="organization-user-email"
           onChange={(event) => setEmail(event.target.value)}
           type="email"
@@ -1471,60 +1220,6 @@ function OrganizationUserForm({
         onClick={submit}
       >
         {saving ? "保存中..." : mode === "create" ? "创建成员" : "保存成员"}
-      </Button>
-    </div>
-  );
-}
-
-function OrganizationGroupForm({
-  organizationId,
-  token,
-  onDone,
-}: {
-  organizationId: string;
-  token: string;
-  onDone: (group: GroupDto) => void;
-}) {
-  const [description, setDescription] = useState("");
-  const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  async function submit() {
-    setSaving(true);
-    setMsg("");
-    try {
-      const group = await createOrganizationGroup(token, organizationId, {
-        name: name.trim(),
-        description: description.trim() || null,
-      });
-      onDone(group);
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "创建失败");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Field htmlFor="organization-new-group-name" label="名称">
-        <Input
-          id="organization-new-group-name"
-          onChange={(event) => setName(event.target.value)}
-          value={name}
-        />
-      </Field>
-      <Field htmlFor="organization-new-group-description" label="描述">
-        <Textarea
-          id="organization-new-group-description"
-          onChange={(event) => setDescription(event.target.value)}
-          value={description}
-        />
-      </Field>
-      {msg && <div className="text-sm">{msg}</div>}
-      <Button disabled={saving || !name.trim()} onClick={submit}>
-        {saving ? "创建中..." : "创建用户组"}
       </Button>
     </div>
   );
@@ -1653,7 +1348,7 @@ function toOrganizationForm(organization: Organization): OrganizationForm {
 
 function toOrganizationPayload(
   form: OrganizationForm,
-  options: { includeTenantControls: boolean },
+  options: { includePlatformControls: boolean },
 ): OrganizationPayload {
   const payload: OrganizationPayload = {
     banner: nullableText(form.banner),
@@ -1676,7 +1371,7 @@ function toOrganizationPayload(
     website: nullableText(form.website),
   };
 
-  if (options.includeTenantControls) {
+  if (options.includePlatformControls) {
     payload.isDefault = form.isDefault;
     payload.status = form.status;
   }
@@ -1717,7 +1412,6 @@ function isOrganizationTab(value: string | null): value is OrganizationTab {
   return (
     value === "general" ||
     value === "members" ||
-    value === "groups" ||
     value === "controls" ||
     value === "profile"
   );

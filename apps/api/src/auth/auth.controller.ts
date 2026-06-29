@@ -1,11 +1,10 @@
 import { Body, Controller, Get, Headers, Post } from "@nestjs/common";
-import type { LoginPayload } from "../tenancy/tenancy.types.js";
+import type { LoginPayload } from "../common/admin-api.types.js";
 import { AuthService } from "./auth.service.js";
 
 @Controller("admin/auth")
 /**
- * Provides auth-focused admin endpoints under `/api/admin/auth` while the
- * legacy `/api/admin/login` alias remains in the admin controller.
+ * Provides auth-focused admin endpoints under `/api/admin/auth`.
  */
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

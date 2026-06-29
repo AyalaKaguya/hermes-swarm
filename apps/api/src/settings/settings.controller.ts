@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Put } from "@nestjs/common";
-import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
+import type { SaveSettingsPayload } from "../common/admin-api.types.js";
 import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { SettingsService } from "./settings.service.js";
 

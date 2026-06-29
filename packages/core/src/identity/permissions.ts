@@ -1,83 +1,18 @@
-export const TENANCY_PERMISSION_ACTIONS = [
+export const PERMISSION_ACTIONS = [
   "create",
   "read",
   "update",
   "delete",
 ] as const;
 
-export const TENANCY_PERMISSION_SCOPES = [
+export const PERMISSION_SCOPES = [
   "platform",
   "organization",
   "own",
 ] as const;
 
-export type TenancyPermissionAction = (typeof TENANCY_PERMISSION_ACTIONS)[number];
-export type TenancyPermissionScope = (typeof TENANCY_PERMISSION_SCOPES)[number];
-
-export const TENANCY_MENU_PERMISSION_PREFIX = "menu";
-export type MenuPermissionAction = "manage" | "view";
-
-export const DEFAULT_ADMIN_MENUS = [
-  { code: "account", label: "账号", path: "/settings/account", sortOrder: 10 },
-  {
-    code: "organization",
-    label: "组织常规",
-    path: "/settings/organization",
-    sortOrder: 20,
-  },
-  {
-    code: "custom-smtp",
-    label: "自定义邮件",
-    path: "/settings/custom-smtp",
-    sortOrder: 40,
-  },
-  {
-    code: "email-templates",
-    label: "邮件模板",
-    path: "/settings/email-templates",
-    sortOrder: 50,
-  },
-  {
-    code: "notification-destinations",
-    label: "通知",
-    path: "/settings/notification-destinations",
-    sortOrder: 60,
-  },
-  { code: "features", label: "功能", path: "/settings/features", sortOrder: 70 },
-  {
-    code: "roles",
-    label: "角色和权限",
-    path: "/settings/roles",
-    sortOrder: 80,
-  },
-  {
-    code: "menus",
-    label: "网页",
-    path: "/settings/menus",
-    sortOrder: 90,
-  },
-  {
-    code: "tenant",
-    label: "租户",
-    path: "/settings/tenant",
-    sortOrder: 100,
-  },
-  {
-    code: "organizations",
-    label: "组织列表",
-    path: "/settings/organizations",
-    sortOrder: 110,
-  },
-] as const;
-
-export const DEPRECATED_ADMIN_MENU_CODES = [
-  "groups",
-  "organization-controls",
-  "permissions",
-  "settings",
-  "user-groups",
-  "users",
-] as const;
+export type EntityPermissionAction = (typeof PERMISSION_ACTIONS)[number];
+export type EntityPermissionScope = (typeof PERMISSION_SCOPES)[number];
 
 export const SYSTEM_ROLES = [
   { name: "platform-admin", label: "Platform Admin", isSystem: true },
@@ -101,9 +36,6 @@ export const ROLE_RANKS: Record<SystemRoleName, number> = {
 
 export const CUSTOM_ROLE_RANK = 150;
 
-export const PLATFORM_MENU_CODES = ["tenant", "organizations"] as const;
-export const PLATFORM_MENU_CODE_SET = new Set<string>(PLATFORM_MENU_CODES);
-
 export function getRoleRank(roleName: string | null | undefined) {
   if (!roleName) return 0;
   return ROLE_RANKS[roleName as SystemRoleName] ?? CUSTOM_ROLE_RANK;
@@ -111,17 +43,6 @@ export function getRoleRank(roleName: string | null | undefined) {
 
 export function isPlatformAdminRoleName(roleName: string | null | undefined) {
   return roleName === PLATFORM_ADMIN_ROLE_NAME;
-}
-
-export function isPlatformMenuCode(menuCode: string) {
-  return PLATFORM_MENU_CODE_SET.has(menuCode);
-}
-
-export function buildMenuPermissionKey(
-  menuCode: string,
-  action: MenuPermissionAction,
-) {
-  return `${TENANCY_MENU_PERMISSION_PREFIX}:${menuCode}:${action}`;
 }
 
 export function defaultPermissionsForRole(roleName: string) {
@@ -139,10 +60,14 @@ export function defaultPermissionsForRole(roleName: string) {
   }
 
   if (roleName === "member") {
-    return ["user:read:own", "organization:read:organization"];
+    return [
+      "user:read:own",
+      "user:update:own",
+      "organization:read:organization",
+    ];
   }
 
-  return ["user:read:own"];
+  return ["user:read:own", "user:update:own"];
 }
 
 export const DEFAULT_PERMISSION_KEYS = [
@@ -155,6 +80,8 @@ export const DEFAULT_PERMISSION_KEYS = [
   "user:update:organization",
   "user:delete:organization",
   "organization:create:platform",
+  "organization:read:platform",
+  "organization:update:platform",
   "organization:read:organization",
   "organization:update:organization",
   "organization:delete:platform",
@@ -182,4 +109,5 @@ export const DEFAULT_PERMISSION_KEYS = [
   "notification:read:organization",
   "notification:update:organization",
   "notification:delete:organization",
+  "user:update:own",
 ] as const;

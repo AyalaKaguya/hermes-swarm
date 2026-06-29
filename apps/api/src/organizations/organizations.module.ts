@@ -9,9 +9,11 @@ import {
 } from "@hermes-swarm/core";
 import { OrganizationsController } from "./organizations.controller.js";
 import { OrganizationsService } from "./organizations.service.js";
+import { SettingsModule } from "../settings/settings.module.js";
 
 @Module({
   imports: [
+    SettingsModule,
     TypeOrmModule.forFeature([
       Organization,
       Permission,

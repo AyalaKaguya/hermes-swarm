@@ -85,7 +85,7 @@ type PlatformForm = {
   smtpUsername: string;
 };
 
-export default function TenantPage() {
+export default function PlatformPage() {
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const notifications = useNotifications();
   const [error, setError] = useState<string | null>(null);
@@ -101,14 +101,14 @@ export default function TenantPage() {
     Boolean(snapshot?.isPlatformAdmin) &&
     Boolean(
       snapshot && resolvedSession
-        ? hasMenuAccess(snapshot, resolvedSession, "tenant", "view")
+        ? hasMenuAccess(snapshot, resolvedSession, "platform", "view")
         : false,
     );
   const canManagePlatform =
     Boolean(snapshot?.isPlatformAdmin) &&
     Boolean(
       snapshot && resolvedSession
-        ? hasMenuAccess(snapshot, resolvedSession, "tenant", "manage")
+        ? hasMenuAccess(snapshot, resolvedSession, "platform", "manage")
         : false,
     );
   const canViewOrganizations =
@@ -295,7 +295,7 @@ export default function TenantPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">平台设置</h1>
-          <p className="text-sm">租户级默认值、组织治理与公共服务</p>
+          <p className="text-sm">平台默认值、组织治理与公共服务</p>
         </div>
         <Badge variant="secondary">
           {activeOrganizations}/{organizations.length} 活跃组织
@@ -329,10 +329,10 @@ export default function TenantPage() {
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="max-w-xl">
-                <Field htmlFor="tenant-title" label="平台名称">
+                <Field htmlFor="platform-title" label="平台名称">
                   <Input
                     disabled={!canManagePlatform}
-                    id="tenant-title"
+                    id="platform-title"
                     onChange={(event) =>
                       updateField("platformTitle", event.target.value)
                     }
@@ -359,7 +359,7 @@ export default function TenantPage() {
             <CardHeader>
               <CardTitle>默认控制项</CardTitle>
               <CardDescription>
-                作为组织控制项的租户级默认值，组织可按需覆写
+                作为组织控制项的平台默认值，组织可按需覆写
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -559,7 +559,7 @@ export default function TenantPage() {
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                 <div>
                   <CardTitle>组织配置</CardTitle>
-                  <CardDescription>租户下全部组织的配置入口</CardDescription>
+                  <CardDescription>平台下全部组织的配置入口</CardDescription>
                 </div>
                 <Button asChild size="sm" variant="outline">
                   <Link href="/settings/organizations">
@@ -662,7 +662,7 @@ export default function TenantPage() {
             <CardHeader>
               <CardTitle>公共 SMTP</CardTitle>
               <CardDescription>
-                组织未配置 SMTP 时使用的租户级邮件服务
+                组织未配置 SMTP 时使用的平台邮件服务
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -965,11 +965,7 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
     settings.find((setting) => setting.name === name)?.value;
   const getDefined = (name: keyof typeof PLATFORM_SETTING_DEFINITIONS) => {
     const definition = PLATFORM_SETTING_DEFINITIONS[name];
-    const legacyValue =
-      "legacyKeys" in definition
-        ? definition.legacyKeys.map((key) => get(key)).find(Boolean)
-        : undefined;
-    return get(definition.key) ?? legacyValue ?? definition.defaultValue ?? "";
+    return get(definition.key) ?? definition.defaultValue ?? "";
   };
   return {
     allowOrganizationCreation: parseBoolean(

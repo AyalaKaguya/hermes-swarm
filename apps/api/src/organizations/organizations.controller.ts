@@ -13,7 +13,7 @@ import type {
   CreateOrganizationPayload,
   ReplaceRolePermissionsPayload,
   UpdateOrganizationPayload,
-} from "../tenancy/tenancy.types.js";
+} from "../common/admin-api.types.js";
 import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { OrganizationsService } from "./organizations.service.js";
 

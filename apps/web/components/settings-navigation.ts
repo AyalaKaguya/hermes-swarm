@@ -46,9 +46,9 @@ export const SETTINGS_NAV_ITEMS = [
     label: "角色和权限",
   },
   {
-    href: "/settings/tenant",
+    href: "/settings/platform",
     icon: "server",
-    key: "tenant",
+    key: "platform",
     label: "平台设置",
   },
   {
@@ -81,10 +81,10 @@ export const SETTINGS_NAV_SECTIONS = [
   },
   {
     items: SETTINGS_NAV_ITEMS.filter((item) =>
-      ["tenant", "organizations"].includes(item.key),
+      ["platform", "organizations"].includes(item.key),
     ),
-    key: "tenant",
-    label: "租户管理",
+    key: "platform",
+    label: "平台",
   },
 ];
 

@@ -164,7 +164,7 @@ function SettingsSidebar({
         {!collapsed && (
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">配置</div>
-            <div className="truncate text-xs">个人、组织与租户管理</div>
+            <div className="truncate text-xs">个人、组织与平台管理</div>
           </div>
         )}
       </div>

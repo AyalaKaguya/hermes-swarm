@@ -15,7 +15,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseAuthSessionToken } from "../tenancy/admin-session.js";
+import { parseAuthSessionToken } from "../auth/auth-session.js";
 
 type UploadedImage = {
   buffer?: Buffer;

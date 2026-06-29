@@ -1,5 +1,5 @@
 import { Column, Entity, Index } from "typeorm";
-import { BaseEntity } from "../../tenancy/entities/base.entity.js";
+import { BaseEntity } from "../../identity/entities/base.entity.js";
 import type {
   SettingValueOption,
   SettingValueType,

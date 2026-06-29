@@ -21,8 +21,7 @@ export type OrganizationStatus = "active" | "suspended";
 @Entity({ name: "organizations" })
 @Index(["slug"], { unique: true })
 /**
- * Represents the tenant/organization boundary used by the migrated admin
- * backend.
+ * Represents an organization boundary in the admin backend.
  */
 export class Organization extends BaseEntity {
   /**
@@ -49,7 +48,7 @@ export class Organization extends BaseEntity {
   slug!: string;
 
   /**
-   * Optional tenant subdomain used by onboarding and host resolution.
+   * Optional organization subdomain used by onboarding and host resolution.
    */
   @Column({ type: "varchar", length: 80, nullable: true, unique: true })
   subdomain!: string | null;
@@ -61,12 +60,13 @@ export class Organization extends BaseEntity {
   status!: OrganizationStatus;
 
   /**
-   * Marks the default organization when a tenant has multiple organizations.
+   * Marks the default organization.
    */
   @Column({ name: "is_default", type: "boolean", default: false })
   isDefault!: boolean;
 
   /**
+   * Public profile link for the organization profile.
    */
   @Column({ name: "profile_link", type: "varchar", length: 240, nullable: true })
   profileLink!: string | null;
@@ -90,6 +90,7 @@ export class Organization extends BaseEntity {
   shortDescription!: string | null;
 
   /**
+   * Customer or domain focus text for organization settings.
    */
   @Column({ name: "client_focus", type: "text", nullable: true })
   clientFocus!: string | null;

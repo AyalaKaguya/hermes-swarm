@@ -64,8 +64,8 @@ const MENU_PERMISSION_MAP: Record<
   },
   organization: { entity: "organization", scope: "organization" },
   organizations: { entity: "organization", scope: "platform" },
+  platform: { entity: "setting", scope: "platform" },
   roles: { entity: "role", scope: "organization" },
-  tenant: { entity: "setting", scope: "platform" },
 };
 
 export function hasMenuAccess(
@@ -98,7 +98,7 @@ export function hasMenuAccess(
 }
 
 export function hasAnyManagementAccess(
-  snapshot: Pick<Snapshot, "isPlatformAdmin" | "menus">,
+  snapshot: Pick<Snapshot, "isPlatformAdmin">,
   resolvedSession: ResolvedSession | null,
 ) {
   return Boolean(

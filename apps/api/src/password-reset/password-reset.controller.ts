@@ -2,7 +2,7 @@ import { Body, Controller, Post } from "@nestjs/common";
 import type {
   RequestPasswordResetPayload,
   ResetPasswordPayload,
-} from "../tenancy/tenancy.types.js";
+} from "../common/admin-api.types.js";
 import { PasswordResetService } from "./password-reset.service.js";
 
 @Controller("admin/auth")

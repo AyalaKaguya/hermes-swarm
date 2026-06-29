@@ -15,7 +15,7 @@ import {
   type SettingValueOption,
 } from "@hermes-swarm/core";
 import { getRedisUrl } from "@hermes-swarm/core/config/redis";
-import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
+import type { SaveSettingsPayload } from "../common/admin-api.types.js";
 import {
   normalizeSettingEntry,
   parseSettingsPayload,
@@ -78,6 +78,11 @@ export class SettingsService implements OnModuleInit {
           organizationId,
         });
         await this.deleteCache(this.organizationCacheKey(organizationId, entry.name));
+        await this.publishSettingsInvalidation({
+          name: entry.name,
+          organizationId,
+          scope: "organization",
+        });
         continue;
       }
 
@@ -101,6 +106,11 @@ export class SettingsService implements OnModuleInit {
         this.organizationCacheKey(organizationId, entry.name),
         persisted.value,
       );
+      await this.publishSettingsInvalidation({
+        name: entry.name,
+        organizationId,
+        scope: "organization",
+      });
     }
 
     return this.listOrganizationSettingsForOrganization(organizationId);
@@ -120,6 +130,10 @@ export class SettingsService implements OnModuleInit {
       if (entry.value === null || entry.value === undefined) {
         await this.platformSettingRepository.delete({ name: entry.name });
         await this.deleteCache(this.platformCacheKey(entry.name));
+        await this.publishSettingsInvalidation({
+          name: entry.name,
+          scope: "platform",
+        });
         continue;
       }
 
@@ -140,6 +154,10 @@ export class SettingsService implements OnModuleInit {
 
       const persisted = await this.platformSettingRepository.save(setting);
       await this.setCache(this.platformCacheKey(entry.name), persisted.value);
+      await this.publishSettingsInvalidation({
+        name: entry.name,
+        scope: "platform",
+      });
     }
 
     return this.listPlatformSettings();
@@ -258,11 +276,34 @@ export class SettingsService implements OnModuleInit {
     }
   }
 
-  private getRedisClient() {
+  private async publishSettingsInvalidation(event: SettingsInvalidationEvent) {
+    const client = await this.getRedisClient();
+    if (!client) return;
+
+    try {
+      await client.publish(
+        SETTINGS_INVALIDATION_CHANNEL,
+        JSON.stringify({
+          ...event,
+          at: new Date().toISOString(),
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Redis settings invalidation publish failed: ${String(error)}`,
+      );
+    }
+  }
+
+  private async getRedisClient() {
     if (!this.redisClientPromise) {
       this.redisClientPromise = this.connectRedis();
     }
-    return this.redisClientPromise;
+    const client = await this.redisClientPromise;
+    if (!client) {
+      this.redisClientPromise = null;
+    }
+    return client;
   }
 
   private async connectRedis() {
@@ -281,6 +322,19 @@ export class SettingsService implements OnModuleInit {
     }
   }
 }
+
+const SETTINGS_INVALIDATION_CHANNEL = "settings:invalidate";
+
+type SettingsInvalidationEvent =
+  | {
+      name: string;
+      scope: "platform";
+    }
+  | {
+      name: string;
+      organizationId: string;
+      scope: "organization";
+    };
 
 function getDefinitionValueOptions(definition: unknown) {
   const valueOptions =
