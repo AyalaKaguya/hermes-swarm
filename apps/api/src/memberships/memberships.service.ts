@@ -11,6 +11,7 @@ import {
   UserOrganization,
 } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
+import { hashPassword } from "../common/security/password-hash.js";
 import type { MembershipPayload } from "./memberships.controller.js";
 
 @Injectable()
@@ -38,9 +39,8 @@ export class MembershipsService {
 
   async create(organizationId: string, payload: MembershipPayload) {
     await this.ensureOrganization(organizationId);
-    const userId = requireText(payload.userId, "用户 ID");
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException("用户不存在");
+    const user = await this.resolveOrCreateUser(payload);
+    const userId = user.id;
 
     const existing = await this.membershipRepository.findOne({
       where: { organizationId, userId },
@@ -128,6 +128,35 @@ export class MembershipsService {
     }
     return role.id;
   }
+
+  private async resolveOrCreateUser(payload: MembershipPayload) {
+    if (payload.userId) {
+      const user = await this.userRepository.findOne({
+        where: { id: requireText(payload.userId, "用户 ID") },
+      });
+      if (!user) throw new NotFoundException("用户不存在");
+      return user;
+    }
+
+    const email = normalizeEmail(payload.email);
+    const existing = await this.userRepository.findOne({ where: { email } });
+    if (existing) return existing;
+
+    const displayName =
+      normalizeNullableText(payload.displayName) ?? email.split("@")[0] ?? email;
+    return this.userRepository.save(
+      this.userRepository.create({
+        displayName,
+        email,
+        nickname: displayName,
+        passwordHash: payload.password
+          ? hashPassword(requirePassword(payload.password))
+          : null,
+        status: "active",
+        type: "user",
+      }),
+    );
+  }
 }
 
 function requireText(value: string | undefined, label: string) {
@@ -136,9 +165,23 @@ function requireText(value: string | undefined, label: string) {
   return text;
 }
 
+function normalizeEmail(value: string | undefined) {
+  const email = requireText(value, "邮箱").toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new BadRequestException("邮箱格式不正确");
+  }
+  return email;
+}
+
 function normalizeNullableText(value: string | null | undefined) {
   const text = value?.trim();
   return text || null;
+}
+
+function requirePassword(value: string | undefined) {
+  const password = requireText(value, "密码");
+  if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
+  return password;
 }
 
 function toMembershipDto(membership: UserOrganization) {

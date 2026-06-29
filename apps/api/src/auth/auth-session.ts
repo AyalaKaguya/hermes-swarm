@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { AuthSessionTokenPayload } from "./tenancy.types.js";
+import type { AuthSessionTokenPayload } from "../common/admin-api.types.js";
 
 const TOKEN_VERSION = "v1";
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12;
@@ -46,8 +46,6 @@ export function parseAuthSessionToken(
     }
     return {
       exp: payload.exp,
-      organizationId: payload.organizationId ?? null,
-      scopeLevel: payload.scopeLevel === "platform" ? "platform" : "organization",
       userId: payload.userId,
     };
   } catch {

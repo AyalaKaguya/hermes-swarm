@@ -13,8 +13,8 @@ import type {
   UpdatePreferredLanguagePayload,
   UpdateUserPasswordPayload,
   UpdateUserPayload,
-} from "../tenancy/tenancy.types.js";
-import { parseAuthSessionToken } from "../tenancy/admin-session.js";
+} from "../common/admin-api.types.js";
+import { parseAuthSessionToken } from "../auth/auth-session.js";
 import {
   hashPassword,
   verifyPassword,
@@ -23,8 +23,7 @@ import { toUserDto } from "./user-dto.js";
 
 @Injectable()
 /**
- * Implements migrated user-management operations on top of the shared tenancy
- * service so route ownership is split without duplicating auth logic.
+ * Implements global user-management operations.
  */
 export class UsersService {
   constructor(
@@ -114,42 +113,29 @@ export class UsersService {
       throw new ForbiddenException("只能更新自己的账号信息");
     }
     const user = await this.getUserOrThrow(userId);
+    return this.applyUserPatch(user, payload);
+  }
 
-    if (payload.email !== undefined) {
-      const email = normalizeEmail(payload.email);
-      if (email !== user.email) await this.assertUniqueEmail(email, user.id);
-      user.email = email;
-    }
-    if (payload.displayName !== undefined) {
-      const displayName = requireText(payload.displayName, "显示名称");
-      user.displayName = displayName;
-      user.nickname = displayName;
-    }
-    if (payload.firstName !== undefined) {
-      user.firstName = normalizeNullableText(payload.firstName);
-    }
-    if (payload.lastName !== undefined) {
-      user.lastName = normalizeNullableText(payload.lastName);
-    }
-    if (payload.imageUrl !== undefined) {
-      user.imageUrl = normalizeNullableText(payload.imageUrl);
-      user.avatarUrl = user.imageUrl;
-    }
-    if (payload.mobile !== undefined) {
-      user.mobile = normalizeNullableText(payload.mobile);
-    }
-    if (payload.username !== undefined) {
-      user.username = normalizeNullableText(payload.username);
-    }
-    if (payload.status !== undefined) {
-      user.status = payload.status;
-    }
-    if (payload.password !== undefined) {
-      user.passwordHash = hashPassword(requirePassword(payload.password));
-    }
+  /**
+   * Updates mutable fields for a global user from platform administration.
+   */
+  async updateManaged(
+    authorization: string | undefined,
+    userId: string,
+    payload: UpdateUserPayload,
+  ) {
+    this.requireSessionUserId(authorization);
+    const user = await this.getUserOrThrow(userId);
+    return this.applyUserPatch(user, payload);
+  }
 
-    user.updatedAt = new Date();
-    return toUserDto(await this.userRepository.save(user));
+  /**
+   * Deletes a global user from platform administration.
+   */
+  async deleteManaged(authorization: string | undefined, userId: string) {
+    this.requireSessionUserId(authorization);
+    const user = await this.getUserOrThrow(userId);
+    await this.userRepository.softDelete({ id: user.id });
   }
 
   /**
@@ -194,6 +180,44 @@ export class UsersService {
       payload.preferredLanguage,
       "首选语言",
     ) as User["preferredLanguage"];
+    user.updatedAt = new Date();
+    return toUserDto(await this.userRepository.save(user));
+  }
+
+  private async applyUserPatch(user: User, payload: UpdateUserPayload) {
+    if (payload.email !== undefined) {
+      const email = normalizeEmail(payload.email);
+      if (email !== user.email) await this.assertUniqueEmail(email, user.id);
+      user.email = email;
+    }
+    if (payload.displayName !== undefined) {
+      const displayName = requireText(payload.displayName, "显示名称");
+      user.displayName = displayName;
+      user.nickname = displayName;
+    }
+    if (payload.firstName !== undefined) {
+      user.firstName = normalizeNullableText(payload.firstName);
+    }
+    if (payload.lastName !== undefined) {
+      user.lastName = normalizeNullableText(payload.lastName);
+    }
+    if (payload.imageUrl !== undefined) {
+      user.imageUrl = normalizeNullableText(payload.imageUrl);
+      user.avatarUrl = user.imageUrl;
+    }
+    if (payload.mobile !== undefined) {
+      user.mobile = normalizeNullableText(payload.mobile);
+    }
+    if (payload.username !== undefined) {
+      user.username = normalizeNullableText(payload.username);
+    }
+    if (payload.status !== undefined) {
+      user.status = payload.status;
+    }
+    if (payload.password !== undefined) {
+      user.passwordHash = hashPassword(requirePassword(payload.password));
+    }
+
     user.updatedAt = new Date();
     return toUserDto(await this.userRepository.save(user));
   }

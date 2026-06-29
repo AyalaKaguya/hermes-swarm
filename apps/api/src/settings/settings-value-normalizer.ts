@@ -7,7 +7,7 @@ import {
   type SettingValueOption,
   type SettingValueType,
 } from "@hermes-swarm/core";
-import type { SaveSettingsPayload } from "../tenancy/tenancy.types.js";
+import type { SaveSettingsPayload } from "../common/admin-api.types.js";
 
 export type ParsedSettingPayloadEntry = {
   name: string;

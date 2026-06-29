@@ -145,7 +145,7 @@ export default function OrganizationsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">组织列表</h1>
-          <p className="text-sm">租户范围内的组织管理视图</p>
+          <p className="text-sm">平台范围内的组织管理视图</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Input

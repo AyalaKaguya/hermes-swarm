@@ -161,12 +161,12 @@ function resolvePlatformName(
 ) {
   const settings = snapshot.systemSettings ?? [];
   const languageKey = preferredLanguage
-    ? `tenant_title_${preferredLanguage}`
+    ? `platform.title.${preferredLanguage}`
     : "";
   return (
     settings.find((setting) => setting.name === languageKey)?.value?.trim() ||
     settings
-      .find((setting) => setting.name === "tenant_title")
+      .find((setting) => setting.name === "platform.title")
       ?.value?.trim() ||
     null
   );
@@ -204,7 +204,6 @@ function createShellSnapshot(
       user: principal.user,
     },
     isPlatformAdmin,
-    menus: [],
     organization,
     organizations,
     rolePermissions: role?.permissions ?? [],

@@ -7,18 +7,17 @@ import {
   UserOrganization,
 } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
-import type { LoginPayload } from "../tenancy/tenancy.types.js";
+import type { LoginPayload } from "../common/admin-api.types.js";
 import {
   createAuthSessionToken,
   parseAuthSessionToken,
-} from "../tenancy/admin-session.js";
+} from "./auth-session.js";
 import { verifyPassword } from "../common/security/password-hash.js";
 import { toUserDto } from "../users/user-dto.js";
 
 @Injectable()
 /**
- * Wraps the current lightweight admin session implementation behind an auth
- * module boundary compatible with the xpert migration shape.
+ * Owns admin authentication and principal resolution.
  */
 export class AuthService {
   constructor(
@@ -33,7 +32,7 @@ export class AuthService {
   ) {}
 
   /**
-   * Authenticates an admin user and returns the session token plus snapshot.
+   * Authenticates an admin user and returns the session token plus principal.
    */
   async login(payload: LoginPayload) {
     const email = normalizeEmail(payload.email);
@@ -55,7 +54,7 @@ export class AuthService {
   }
 
   /**
-   * Checks whether the bearer token resolves to an active user and organization.
+   * Checks whether the bearer token resolves to an active user.
    */
   async authenticated(authorization: string | undefined) {
     try {

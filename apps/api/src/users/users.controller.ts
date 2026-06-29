@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -14,7 +17,7 @@ import type {
   UpdatePreferredLanguagePayload,
   UpdateUserPasswordPayload,
   UpdateUserPayload,
-} from "../tenancy/tenancy.types.js";
+} from "../common/admin-api.types.js";
 import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { UsersService } from "./users.service.js";
 
@@ -56,6 +59,32 @@ export class UsersController {
     @Body() payload: CreateUserPayload,
   ) {
     return this.usersService.create(authorization, payload);
+  }
+
+  /**
+   * Updates a global user through platform user management.
+   */
+  @Patch("platform/:userId")
+  @RequirePermission({ action: "update", entity: "user", scope: "platform" })
+  updateManaged(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("userId") userId: string,
+    @Body() payload: UpdateUserPayload,
+  ) {
+    return this.usersService.updateManaged(authorization, userId, payload);
+  }
+
+  /**
+   * Deletes a global user through platform user management.
+   */
+  @Delete("platform/:userId")
+  @RequirePermission({ action: "delete", entity: "user", scope: "platform" })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteManaged(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("userId") userId: string,
+  ) {
+    await this.usersService.deleteManaged(authorization, userId);
   }
 
   /**

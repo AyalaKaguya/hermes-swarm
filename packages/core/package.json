@@ -10,17 +10,17 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./tenancy": {
-      "types": "./dist/tenancy/index.d.ts",
-      "import": "./dist/tenancy/index.js"
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "import": "./dist/identity/index.js"
     },
-    "./tenancy/permissions": {
-      "types": "./dist/tenancy/permissions.d.ts",
-      "import": "./dist/tenancy/permissions.js"
+    "./identity/permissions": {
+      "types": "./dist/identity/permissions.d.ts",
+      "import": "./dist/identity/permissions.js"
     },
-    "./tenancy/entities": {
-      "types": "./dist/tenancy/entities/index.d.ts",
-      "import": "./dist/tenancy/entities/index.js"
+    "./identity/entities": {
+      "types": "./dist/identity/entities/index.d.ts",
+      "import": "./dist/identity/entities/index.js"
     },
     "./config": {
       "types": "./dist/config/index.d.ts",

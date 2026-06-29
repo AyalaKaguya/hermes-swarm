@@ -9,7 +9,8 @@
     "test": "nx run-many --target=test",
     "lint": "nx run-many --target=lint",
     "clean": "nx run-many --target=clean",
-    "graph": "nx graph"
+    "graph": "nx graph",
+    "verify:refactor": "node scripts/verify-refactor.mjs"
   },
   "engines": {
     "node": ">=20.9",

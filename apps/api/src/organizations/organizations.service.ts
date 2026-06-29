@@ -15,13 +15,15 @@ import {
   UserOrganization,
   type OrganizationStatus,
 } from "@hermes-swarm/core";
+import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import { Repository } from "typeorm";
 import type {
   CreateOrganizationPayload,
   ReplaceRolePermissionsPayload,
   UpdateOrganizationPayload,
-} from "../tenancy/tenancy.types.js";
-import { parseAuthSessionToken } from "../tenancy/admin-session.js";
+} from "../common/admin-api.types.js";
+import { parseAuthSessionToken } from "../auth/auth-session.js";
+import { SettingsService } from "../settings/settings.service.js";
 import type { OrganizationRolePayload } from "./organizations.controller.js";
 
 @Injectable()
@@ -37,6 +39,7 @@ export class OrganizationsService {
     private readonly rolePermissionRepository: Repository<RolePermission>,
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async list() {
@@ -55,6 +58,14 @@ export class OrganizationsService {
     payload: CreateOrganizationPayload,
   ) {
     const userId = requireSessionUserId(authorization);
+    const creationEnabled = await this.settingsService.getPlatformValue(
+      PLATFORM_SETTING_KEYS.allowOrganizationCreation,
+      "true",
+    );
+    if (creationEnabled !== "true") {
+      throw new BadRequestException("平台当前不允许创建组织");
+    }
+
     const name = requireText(payload.name, "组织名称");
     const slug = normalizeSlug(payload.slug || name, "org");
     await this.assertUniqueOrganizationSlug(slug);

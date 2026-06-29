@@ -8,7 +8,7 @@ import {
   Post,
   Put,
 } from "@nestjs/common";
-import type { ReplaceRolePermissionsPayload } from "../tenancy/tenancy.types.js";
+import type { ReplaceRolePermissionsPayload } from "../common/admin-api.types.js";
 import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { PlatformRolesService } from "./platform-roles.service.js";
 

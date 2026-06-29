@@ -10,31 +10,11 @@ import type {
  */
 export type AuthSessionTokenPayload = {
   exp: number;
-  organizationId?: string | null;
-  scopeLevel?: RequestScopeLevel;
   userId: string;
 };
 
 /**
- * Active request scope carried by the admin session token.
- */
-export type RequestScopeLevel = "organization" | "platform";
-
-/**
- * Authorization context resolved from the admin session token.
- */
-export type AuthContext = {
-  isPlatformAdmin: boolean;
-  organizationId: string;
-  permissions: string[];
-  roleId: string | null;
-  roleName: string | null;
-  scopeLevel: RequestScopeLevel;
-  userId: string;
-};
-
-/**
- * Credentials used by both the legacy admin login route and the auth module.
+ * Credentials used by the admin auth module.
  */
 export type LoginPayload = {
   email?: string;
@@ -150,30 +130,6 @@ export type SaveSettingsPayload =
     };
 
 /**
- * Admin menu creation payload.
- */
-export type CreateMenuPayload = {
-  code?: string;
-  label?: string;
-  path?: string;
-  parentId?: string | null;
-  sortOrder?: number;
-  isActive?: boolean;
-};
-
-/**
- * Admin menu update payload.
- */
-export type UpdateMenuPayload = Partial<CreateMenuPayload>;
-
-/**
- * Admin menu listing options.
- */
-export type ListMenusOptions = {
-  includeInactive?: boolean;
-};
-
-/**
  * Individual role permission payload entry.
  */
 export type RolePermissionPayload = {
@@ -186,13 +142,6 @@ export type RolePermissionPayload = {
  */
 export type ReplaceRolePermissionsPayload = {
   permissions?: RolePermissionPayload[];
-};
-
-/**
- * Active organization switch payload.
- */
-export type SwitchOrganizationPayload = {
-  organizationId?: string;
 };
 
 /**

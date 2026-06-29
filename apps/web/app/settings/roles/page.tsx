@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
@@ -8,14 +14,28 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  createOrganizationRole,
+  deleteOrganizationRole,
   listOrganizationRoles,
   replaceOrganizationRolePermissions,
+  updateOrganizationRole,
   type Role,
   type RolePermission,
+  type RolePayload,
 } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { DEFAULT_PERMISSION_KEYS } from "@hermes-swarm/core/tenancy/permissions";
+import { DEFAULT_PERMISSION_KEYS } from "@hermes-swarm/core/identity/permissions";
 
 const ORGANIZATION_PERMISSION_KEYS = DEFAULT_PERMISSION_KEYS.filter(
   (permission) => permission.endsWith(":organization"),
@@ -28,6 +48,23 @@ const ACTION_LABELS: Record<string, string> = {
   update: "更新",
 };
 
+type RoleDialogState =
+  | {
+      mode: "create";
+      role?: never;
+    }
+  | {
+      mode: "edit";
+      role: Role;
+    };
+
+type RoleForm = {
+  color: string;
+  description: string;
+  displayName: string;
+  name: string;
+};
+
 export default function RolesPage() {
   const { snapshot } = useAdminShell();
   const organizationId = snapshot?.organization?.id ?? null;
@@ -38,6 +75,9 @@ export default function RolesPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [savingRole, setSavingRole] = useState(false);
+  const [roleDialog, setRoleDialog] = useState<RoleDialogState | null>(null);
+  const [roleForm, setRoleForm] = useState<RoleForm>(emptyRoleForm());
   const [localPerms, setLocalPerms] = useState<
     Record<string, Record<string, boolean>>
   >({});
@@ -160,6 +200,64 @@ export default function RolesPage() {
     }
   }
 
+  function openRoleDialog(next: RoleDialogState) {
+    setRoleDialog(next);
+    setRoleForm(
+      next.mode === "edit" ? roleToForm(next.role) : emptyRoleForm(),
+    );
+  }
+
+  async function submitRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!organizationId || !roleDialog) return;
+    setSavingRole(true);
+    setError(null);
+    try {
+      const payload: RolePayload = {
+        color: nullableText(roleForm.color),
+        description: nullableText(roleForm.description),
+        displayName: roleForm.displayName.trim(),
+        name: roleForm.name.trim() || undefined,
+      };
+
+      const saved =
+        roleDialog.mode === "create"
+          ? await createOrganizationRole(token, organizationId, payload)
+          : await updateOrganizationRole(
+              token,
+              organizationId,
+              roleDialog.role.id,
+              payload,
+            );
+
+      setSelectedRoleId(saved.id);
+      setRoleDialog(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingRole(false);
+    }
+  }
+
+  async function removeRole(role: Role) {
+    if (!organizationId || role.isSystem) return;
+    const confirmed = window.confirm(`删除角色「${role.displayName ?? role.label}」？`);
+    if (!confirmed) return;
+
+    setSavingRole(true);
+    setError(null);
+    try {
+      await deleteOrganizationRole(token, organizationId, role.id);
+      setSelectedRoleId(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
+    } finally {
+      setSavingRole(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
@@ -182,6 +280,14 @@ export default function RolesPage() {
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <h1 className="truncate text-lg font-semibold">角色与权限</h1>
+        <Button
+          onClick={() => openRoleDialog({ mode: "create" })}
+          size="sm"
+          type="button"
+        >
+          <AppIcon className="size-3.5" name="plus" />
+          新建角色
+        </Button>
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(220px,280px)_1fr]">
@@ -271,6 +377,26 @@ export default function RolesPage() {
                   >
                     {saving === selectedRole.id ? "保存中..." : "保存"}
                   </Button>
+                  <Button
+                    disabled={savingRole}
+                    onClick={() =>
+                      openRoleDialog({ mode: "edit", role: selectedRole })
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    disabled={savingRole || selectedRole.isSystem}
+                    onClick={() => void removeRole(selectedRole)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    删除
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
@@ -317,6 +443,128 @@ export default function RolesPage() {
           )}
         </Card>
       </div>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open && !savingRole) setRoleDialog(null);
+        }}
+        open={Boolean(roleDialog)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {roleDialog?.mode === "edit" ? "编辑角色" : "新建角色"}
+            </DialogTitle>
+          </DialogHeader>
+          <form className="grid gap-4" onSubmit={submitRole}>
+            <div className="grid gap-2">
+              <Label htmlFor="role-display-name">显示名称</Label>
+              <Input
+                id="role-display-name"
+                onChange={(event) =>
+                  setRoleForm((current) => ({
+                    ...current,
+                    displayName: event.target.value,
+                  }))
+                }
+                required
+                value={roleForm.displayName}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="role-name">标识</Label>
+              <Input
+                id="role-name"
+                onChange={(event) =>
+                  setRoleForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                placeholder="留空后根据显示名称生成"
+                value={roleForm.name}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="role-color">颜色</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  className="h-9 w-14 p-1"
+                  id="role-color"
+                  onChange={(event) =>
+                    setRoleForm((current) => ({
+                      ...current,
+                      color: event.target.value,
+                    }))
+                  }
+                  type="color"
+                  value={roleForm.color || "#64748b"}
+                />
+                <Input
+                  onChange={(event) =>
+                    setRoleForm((current) => ({
+                      ...current,
+                      color: event.target.value,
+                    }))
+                  }
+                  placeholder="#64748b"
+                  value={roleForm.color}
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="role-description">描述</Label>
+              <Textarea
+                id="role-description"
+                onChange={(event) =>
+                  setRoleForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                rows={3}
+                value={roleForm.description}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                disabled={savingRole}
+                onClick={() => setRoleDialog(null)}
+                type="button"
+                variant="outline"
+              >
+                取消
+              </Button>
+              <Button disabled={savingRole || !roleForm.displayName.trim()}>
+                {savingRole ? "保存中..." : "保存"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function emptyRoleForm(): RoleForm {
+  return {
+    color: "#64748b",
+    description: "",
+    displayName: "",
+    name: "",
+  };
+}
+
+function roleToForm(role: Role): RoleForm {
+  return {
+    color: role.color ?? "#64748b",
+    description: role.description ?? "",
+    displayName: role.displayName ?? role.label,
+    name: role.name,
+  };
+}
+
+function nullableText(value: string) {
+  const normalized = value.trim();
+  return normalized ? normalized : null;
 }

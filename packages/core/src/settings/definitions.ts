@@ -41,7 +41,6 @@ const SECRET_SETTING_KEY_PATTERNS = [
 export type PlatformSettingDefinition = {
   defaultValue?: string;
   key: string;
-  legacyKeys?: readonly string[];
   scope?: "organization" | "platform";
   valueOptions?: readonly SettingValueOption[];
   valueType: SettingValueType;
@@ -78,7 +77,7 @@ export type FeatureSettingDefinition = {
   valueType: "boolean";
 };
 
-export const PLATFORM_TITLE_SETTING_KEY = "tenant_title";
+export const PLATFORM_TITLE_SETTING_KEY = "platform.title";
 
 export const PLATFORM_SETTING_KEYS = {
   allowOrganizationCreation: "platform.allowOrganizationCreation",
@@ -92,11 +91,6 @@ export const PLATFORM_SETTING_KEYS = {
   messageServiceProvider: "platform.messageServiceProvider",
   passwordMinLength: "auth.passwordPolicy.minLength",
   publicSmtpEnabled: "platform.publicSmtpEnabled",
-} as const;
-
-export const LEGACY_PLATFORM_SETTING_KEYS = {
-  defaultLanguage: "platform.defaultLanguage",
-  defaultTimeZone: "platform.defaultTimeZone",
 } as const;
 
 export const CURRENCY_OPTIONS = [
@@ -222,7 +216,6 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   defaultLanguage: {
     defaultValue: "zh-CN",
     key: PLATFORM_SETTING_KEYS.defaultLanguage,
-    legacyKeys: [LEGACY_PLATFORM_SETTING_KEYS.defaultLanguage],
     scope: "organization",
     valueOptions: LANGUAGE_OPTIONS,
     valueType: "enum",
@@ -244,7 +237,6 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   defaultTimeZone: {
     defaultValue: "Asia/Shanghai",
     key: PLATFORM_SETTING_KEYS.defaultTimeZone,
-    legacyKeys: [LEGACY_PLATFORM_SETTING_KEYS.defaultTimeZone],
     scope: "organization",
     valueOptions: TIME_ZONE_OPTIONS,
     valueType: "enum",
@@ -339,7 +331,6 @@ export const PLATFORM_ORGANIZATION_SETTING_DEFAULTS: readonly PlatformDefaultSet
 export const KNOWN_PLATFORM_SETTING_KEYS = [
   PLATFORM_TITLE_SETTING_KEY,
   ...Object.values(PLATFORM_SETTING_KEYS),
-  ...Object.values(LEGACY_PLATFORM_SETTING_KEYS),
 ] as const;
 
 function getPlatformSettingDefinitionName(key: string) {

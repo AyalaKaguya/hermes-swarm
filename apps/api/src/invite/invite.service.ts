@@ -18,7 +18,7 @@ import type {
   AcceptInvitePayload,
   CreateBulkInvitesPayload,
   InviteDto,
-} from "../tenancy/tenancy.types.js";
+} from "../common/admin-api.types.js";
 import { hashPassword } from "../common/security/password-hash.js";
 
 const INVITE_JWT_SECRET =

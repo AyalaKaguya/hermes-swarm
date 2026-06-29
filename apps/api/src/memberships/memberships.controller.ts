@@ -55,6 +55,8 @@ export class MembershipsController {
 
 export type MembershipPayload = {
   displayName?: string | null;
+  email?: string;
+  password?: string;
   roleId?: string | null;
   status?: "active" | "disabled" | "invited";
   userId?: string;

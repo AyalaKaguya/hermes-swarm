@@ -137,6 +137,8 @@ export type OrganizationMembership = {
 
 export type OrganizationMembershipPayload = {
   displayName?: string | null;
+  email?: string;
+  password?: string;
   roleId?: string | null;
   status?: MembershipStatus;
   userId?: string;
@@ -220,25 +222,6 @@ export type SaveSettingsPayload =
   | Record<string, SettingPayloadValue>
   | { settings: SettingPayloadEntry[] };
 
-export type Menu = {
-  id: string;
-  parentId: string | null;
-  code: string;
-  label: string;
-  path: string;
-  sortOrder: number;
-  isActive: boolean;
-};
-
-export type MenuPayload = {
-  code?: string;
-  label?: string;
-  path?: string;
-  parentId?: string | null;
-  sortOrder?: number;
-  isActive?: boolean;
-};
-
 export type CurrentUser = {
   isPlatformAdmin?: boolean;
   memberships?: OrganizationMembership[];
@@ -263,7 +246,6 @@ export type Snapshot = {
   currentUser: CurrentUser;
   isPlatformAdmin: boolean;
   memberships: OrganizationMembership[];
-  menus: Menu[];
   organization: Organization | null;
   organizations: Organization[];
   permissions: string[];
@@ -282,14 +264,8 @@ export type Snapshot = {
 };
 
 export type PublicBootstrap = {
-  menus: Menu[];
   onboardingRequired: boolean;
   organizations: Organization[];
-};
-
-export type LoginResponse = {
-  snapshot: Snapshot;
-  token: string;
 };
 
 export type AuthLoginResponse = {
@@ -426,13 +402,6 @@ export function getPublicBootstrap() {
   return fetchAdmin<PublicBootstrap>("/bootstrap");
 }
 
-export function login(payload: LoginPayload) {
-  return fetchAdmin<LoginResponse>("/login", {
-    body: payload,
-    method: "POST",
-  });
-}
-
 export function authLogin(payload: LoginPayload) {
   return fetchAdmin<AuthLoginResponse>("/auth/login", {
     body: payload,
@@ -441,21 +410,9 @@ export function authLogin(payload: LoginPayload) {
 }
 
 export function onboard(payload: OnboardingPayload) {
-  return fetchAdmin<LoginResponse>("/onboarding", {
+  return fetchAdmin<AuthLoginResponse>("/onboarding", {
     body: payload,
     method: "POST",
-  });
-}
-
-export function getSnapshot(token: string) {
-  return fetchAdmin<Snapshot>("/snapshot", { token });
-}
-
-export function switchOrganizationScope(token: string, organizationId: string) {
-  return fetchAdmin<LoginResponse>("/scope/organization", {
-    body: { organizationId },
-    method: "POST",
-    token,
   });
 }
 
@@ -514,27 +471,6 @@ export function deleteOrganizationInvite(
     `/organizations/${organizationId}/invites/${inviteId}`,
     { method: "DELETE", token },
   );
-}
-
-export function buildMenuPermission(menuCode: string, action: "manage" | "view") {
-  return `menu:${menuCode}:${action}`;
-}
-
-export function listMenus(token: string, options: { includeInactive?: boolean } = {}) {
-  const search = options.includeInactive ? "?includeInactive=true" : "";
-  return fetchAdmin<Menu[]>(`/menus${search}`, { token });
-}
-
-export function createMenu(token: string, payload: MenuPayload) {
-  return fetchAdmin<Menu>("/menus", { body: payload, method: "POST", token });
-}
-
-export function updateMenu(token: string, menuId: string, payload: MenuPayload) {
-  return fetchAdmin<Menu>(`/menus/${menuId}`, { body: payload, method: "PATCH", token });
-}
-
-export function deleteMenu(token: string, menuId: string) {
-  return fetchAdmin<Menu>(`/menus/${menuId}`, { method: "DELETE", token });
 }
 
 export function replaceRolePermissions(
@@ -603,17 +539,6 @@ export type EmailTemplateDto = {
   name: string;
   organizationId: string | null;
   subject: string | null;
-};
-
-export type GroupDto = {
-  id: string;
-  name: string;
-  description: string | null;
-  organizationId: string;
-  memberIds: string[];
-  memberCount: number;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type CreateInviteResult = {
@@ -692,7 +617,14 @@ export function updateManagedUser(token: string, userId: string, payload: {
   roleId?: string | null;
   status?: UserStatus;
 }) {
-  return fetchAdmin<User>(`/users/${userId}`, { body: payload, method: "PATCH", token });
+  return fetchAdmin<User>(`/users/platform/${userId}`, { body: payload, method: "PATCH", token });
+}
+
+export function deleteManagedUser(token: string, userId: string) {
+  return fetchAdmin<void>(`/users/platform/${userId}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export function createInvites(token: string, payload: {
@@ -769,36 +701,6 @@ export function saveSystemSettings(
   settings: SaveSettingsPayload,
 ) {
   return fetchAdmin<SystemSettingDto[]>("/platform/settings", { body: settings, method: "PUT", token });
-}
-
-export function listGroups(token: string) {
-  return fetchAdmin<GroupDto[]>("/groups", { token });
-}
-
-export function createGroup(token: string, payload: {
-  name: string;
-  description?: string | null;
-}) {
-  return fetchAdmin<GroupDto>("/groups", { body: payload, method: "POST", token });
-}
-
-export function updateGroup(token: string, groupId: string, payload: {
-  name?: string;
-  description?: string | null;
-}) {
-  return fetchAdmin<GroupDto>(`/groups/${groupId}`, { body: payload, method: "PATCH", token });
-}
-
-export function updateGroupMembers(token: string, groupId: string, userIds: string[]) {
-  return fetchAdmin<GroupDto>(`/groups/${groupId}/members`, {
-    body: { userIds },
-    method: "PUT",
-    token,
-  });
-}
-
-export function deleteGroup(token: string, groupId: string) {
-  return fetchAdmin<void>(`/groups/${groupId}`, { method: "DELETE", token });
 }
 
 export function listOrganizations(token: string) {
@@ -1052,67 +954,6 @@ export function replacePlatformRolePermissions(
 
 export function deletePlatformRole(token: string, roleId: string) {
   return fetchAdmin<void>(`/platform/roles/${roleId}`, {
-    method: "DELETE",
-    token,
-  });
-}
-
-export function listOrganizationGroups(token: string, organizationId: string) {
-  return fetchAdmin<GroupDto[]>(`/organizations/${organizationId}/groups`, { token });
-}
-
-export function createOrganizationGroup(
-  token: string,
-  organizationId: string,
-  payload: {
-    name: string;
-    description?: string | null;
-  },
-) {
-  return fetchAdmin<GroupDto>(`/organizations/${organizationId}/groups`, {
-    body: payload,
-    method: "POST",
-    token,
-  });
-}
-
-export function updateOrganizationGroup(
-  token: string,
-  organizationId: string,
-  groupId: string,
-  payload: {
-    name?: string;
-    description?: string | null;
-  },
-) {
-  return fetchAdmin<GroupDto>(
-    `/organizations/${organizationId}/groups/${groupId}`,
-    { body: payload, method: "PATCH", token },
-  );
-}
-
-export function updateOrganizationGroupMembers(
-  token: string,
-  organizationId: string,
-  groupId: string,
-  userIds: string[],
-) {
-  return fetchAdmin<GroupDto>(
-    `/organizations/${organizationId}/groups/${groupId}/members`,
-    {
-      body: { userIds },
-      method: "PUT",
-      token,
-    },
-  );
-}
-
-export function deleteOrganizationGroup(
-  token: string,
-  organizationId: string,
-  groupId: string,
-) {
-  return fetchAdmin<void>(`/organizations/${organizationId}/groups/${groupId}`, {
     method: "DELETE",
     token,
   });

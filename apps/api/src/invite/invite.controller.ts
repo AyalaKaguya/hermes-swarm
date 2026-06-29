@@ -13,8 +13,8 @@ import {
 import type {
   AcceptInvitePayload,
   CreateBulkInvitesPayload,
-} from "../tenancy/tenancy.types.js";
-import { parseAuthSessionToken } from "../tenancy/admin-session.js";
+} from "../common/admin-api.types.js";
+import { parseAuthSessionToken } from "../auth/auth-session.js";
 import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { InviteService } from "./invite.service.js";
 
