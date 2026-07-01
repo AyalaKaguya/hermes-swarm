@@ -6,8 +6,6 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
-  DEFAULT_PERMISSION_KEYS,
-  defaultPermissionsForRole,
   Organization,
   Permission,
   Role,
@@ -383,20 +381,20 @@ export class OrganizationsService {
     );
 
     for (const role of savedRoles) {
-      const permissionKeys = defaultPermissionsForRole(role.name).filter(
-        (permission) => permission.endsWith(":organization"),
-      );
-      const records = await Promise.all(
-        permissionKeys.map((permission) =>
-          this.getPermissionOrThrow(permission, "organization"),
-        ),
+      const records = (
+        await this.permissionRepository.find({
+          order: { code: "ASC" },
+          where: { scope: "organization" },
+        })
+      ).filter((permission) =>
+        permission.defaultRoles?.includes(role.name),
       );
       await this.rolePermissionRepository.save(
-        records.map(({ key, permission }) =>
+        records.map((permission) =>
           this.rolePermissionRepository.create({
             enabled: true,
             organizationId,
-            permission: key,
+            permission: permission.code ?? "",
             permissionId: permission.id,
             roleId: role.id,
           }),
@@ -410,10 +408,9 @@ export class OrganizationsService {
   }
 
   private async getPermissionOrThrow(permissionKey: string | undefined, scope: string) {
-    const key = requireEntityCrudPermission(permissionKey, scope);
-    const [entity, action, permissionScope] = key.split(":");
+    const key = requirePermissionCode(permissionKey);
     const permission = await this.permissionRepository.findOne({
-      where: { action: action as Permission["action"], entity, scope: permissionScope as Permission["scope"] },
+      where: { code: key, scope: scope as Permission["scope"] },
     });
     if (!permission) throw new BadRequestException("权限目录不存在");
     return { key, permission };
@@ -455,21 +452,8 @@ function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
   return slug || `${fallbackPrefix}-${Date.now().toString(36)}`;
 }
 
-function requireEntityCrudPermission(
-  permission: string | undefined,
-  requiredScope: string,
-) {
+function requirePermissionCode(permission: string | undefined) {
   const value = requireText(permission, "权限");
-  const [, action, scope] = value.split(":");
-  if (
-    !["create", "read", "update", "delete"].includes(action) ||
-    scope !== requiredScope
-  ) {
-    throw new BadRequestException("角色只能绑定对应范围的实体 CRUD 权限");
-  }
-  if (!DEFAULT_PERMISSION_KEYS.includes(value as typeof DEFAULT_PERMISSION_KEYS[number])) {
-    throw new BadRequestException("权限不在默认权限目录中");
-  }
   return value;
 }
 

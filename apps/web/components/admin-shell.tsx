@@ -44,6 +44,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [resolvedSession, setResolvedSession] =
     useState<ResolvedSession | null>(null);
   const [loading, setLoading] = useState(!isPublicRoute);
+  const [redirectingToLogin, setRedirectingToLogin] = useState(false);
 
   const loadSnapshot = useCallback(
     async (options: { showLoading?: boolean } = {}) => {
@@ -51,12 +52,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
       if (!session?.token) {
         setSnapshot(null);
         setResolvedSession(null);
+        setRedirectingToLogin(true);
         setLoading(false);
         router.replace("/login");
         return;
       }
 
       if (options.showLoading ?? true) {
+        setRedirectingToLogin(false);
         setLoading(true);
       }
       try {
@@ -64,10 +67,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
         const data = createShellSnapshot(principal);
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
+        setRedirectingToLogin(false);
       } catch {
         clearStoredSession();
         setSnapshot(null);
         setResolvedSession(null);
+        setRedirectingToLogin(true);
         router.replace("/login");
       } finally {
         setLoading(false);
@@ -78,6 +83,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isPublicRoute) {
+      setRedirectingToLogin(false);
       setLoading(false);
       return;
     }
@@ -114,12 +120,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
     return children;
   }
 
-  if (loading || !snapshot || !resolvedSession) {
+  if (loading || redirectingToLogin) {
     return (
       <div className="flex h-screen items-center justify-center">
         <span className="text-sm">加载中...</span>
       </div>
     );
+  }
+
+  if (!snapshot || !resolvedSession) {
+    return null;
   }
 
   const platformName = resolvePlatformName(

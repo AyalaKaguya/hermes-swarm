@@ -6,7 +6,6 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
-  OrganizationFeatureGroupAccess,
   OrganizationGroup,
   OrganizationGroupMember,
   UserOrganization,
@@ -29,8 +28,6 @@ export class GroupsService {
   constructor(
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
-    @InjectRepository(OrganizationFeatureGroupAccess)
-    private readonly featureAccessRepository: Repository<OrganizationFeatureGroupAccess>,
     @InjectRepository(OrganizationGroup)
     private readonly groupRepository: Repository<OrganizationGroup>,
     @InjectRepository(OrganizationGroupMember)
@@ -118,10 +115,10 @@ export class GroupsService {
 
   async remove(organizationId: string, groupId: string) {
     const group = await this.getGroupOrThrow(organizationId, groupId);
-    await Promise.all([
-      this.groupMemberRepository.delete({ groupId: group.id, organizationId }),
-      this.featureAccessRepository.delete({ groupId: group.id, organizationId }),
-    ]);
+    await this.groupMemberRepository.delete({
+      groupId: group.id,
+      organizationId,
+    });
     await this.groupRepository.delete({ id: group.id, organizationId });
   }
 

@@ -52,21 +52,69 @@ export function resolveSession(snapshot: Snapshot | PrincipalSession): ResolvedS
 
 const MENU_PERMISSION_MAP: Record<
   string,
-  { entity: string; scope: "organization" | "own" | "platform" }
+  { manage: string[]; view: string[] }
 > = {
-  account: { entity: "user", scope: "own" },
-  "custom-smtp": { entity: "mail", scope: "organization" },
-  "email-templates": { entity: "mail", scope: "organization" },
-  features: { entity: "setting", scope: "organization" },
-  groups: { entity: "group", scope: "organization" },
-  "notification-destinations": {
-    entity: "notification",
-    scope: "organization",
+  account: {
+    manage: ["user.self_profile.update_profile:own"],
+    view: ["user.self_profile.update_profile:own"],
   },
-  organization: { entity: "organization", scope: "organization" },
-  organizations: { entity: "organization", scope: "platform" },
-  platform: { entity: "setting", scope: "platform" },
-  roles: { entity: "role", scope: "organization" },
+  "custom-smtp": {
+    manage: ["mail.smtp.save:organization"],
+    view: ["mail.smtp.view:organization"],
+  },
+  "email-templates": {
+    manage: [
+      "mail.template.create:organization",
+      "mail.template.update:organization",
+      "mail.template.delete:organization",
+    ],
+    view: ["mail.template.list:organization"],
+  },
+  features: {
+    manage: ["setting.organization_config.save:organization"],
+    view: ["setting.organization_config.list:organization"],
+  },
+  groups: {
+    manage: [
+      "group.organization_group.create:organization",
+      "group.organization_group.update_basic:organization",
+      "group.organization_group.delete:organization",
+      "group.organization_group.replace_members:organization",
+    ],
+    view: ["group.organization_group.list:organization"],
+  },
+  "notification-destinations": {
+    manage: [
+      "notification.destination.create:organization",
+      "notification.destination.update:organization",
+      "notification.destination.delete:organization",
+    ],
+    view: ["notification.destination.list:organization"],
+  },
+  organization: {
+    manage: ["organization.profile.update_basic:organization"],
+    view: ["organization.profile.view:organization"],
+  },
+  organizations: {
+    manage: [
+      "organization.platform_organization.create:platform",
+      "organization.platform_organization.delete:platform",
+    ],
+    view: ["organization.platform_organization.list:platform"],
+  },
+  platform: {
+    manage: ["setting.platform_config.save:platform"],
+    view: ["setting.platform_config.list:platform"],
+  },
+  roles: {
+    manage: [
+      "role.organization_role.create:organization",
+      "role.organization_role.update_basic:organization",
+      "role.organization_role.replace_permissions:organization",
+      "role.organization_role.delete:organization",
+    ],
+    view: ["role.organization_role.list:organization"],
+  },
 };
 
 export function hasMenuAccess(
@@ -85,17 +133,13 @@ export function hasMenuAccess(
   const mapped = MENU_PERMISSION_MAP[menuCode];
   if (!mapped) return false;
 
-  const permissionAction = action === "view" ? "read" : "update";
-  const expectedPermission = `${mapped.entity}:${permissionAction}:${mapped.scope}`;
-  const createPermission = `${mapped.entity}:create:${mapped.scope}`;
-  const deletePermission = `${mapped.entity}:delete:${mapped.scope}`;
-  return action === "view"
-    ? resolvedSession.permissions.includes(expectedPermission) ||
-        resolvedSession.permissions.includes(createPermission) ||
-        resolvedSession.permissions.includes(deletePermission)
-    : resolvedSession.permissions.includes(expectedPermission) ||
-        resolvedSession.permissions.includes(createPermission) ||
-        resolvedSession.permissions.includes(deletePermission);
+  const accepted =
+    action === "view"
+      ? [...mapped.view, ...mapped.manage]
+      : mapped.manage;
+  return accepted.some((permission) =>
+    resolvedSession.permissions.includes(permission),
+  );
 }
 
 export function hasAnyManagementAccess(

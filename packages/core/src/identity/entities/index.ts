@@ -7,7 +7,6 @@ export {
 } from "./organization.entity.js";
 export { OrganizationBaseEntity } from "./organization-base.entity.js";
 export { OrganizationContact } from "./organization-contact.entity.js";
-export { OrganizationFeatureGroupAccess } from "./organization-feature-group-access.entity.js";
 export { OrganizationGroup } from "./organization-group.entity.js";
 export { OrganizationGroupMember } from "./organization-group-member.entity.js";
 export { OrganizationLanguage } from "./organization-language.entity.js";
@@ -16,6 +15,7 @@ export { PasswordReset } from "./password-reset.entity.js";
 export {
   Permission,
   type PermissionAction,
+  type PermissionCatalogSource,
   type PermissionScope,
 } from "./permission.entity.js";
 export {

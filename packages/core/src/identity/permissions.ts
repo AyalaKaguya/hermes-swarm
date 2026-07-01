@@ -1,9 +1,4 @@
-export const PERMISSION_ACTIONS = [
-  "create",
-  "read",
-  "update",
-  "delete",
-] as const;
+export const PERMISSION_ACTIONS = [] as const;
 
 export const PERMISSION_SCOPES = [
   "platform",
@@ -46,72 +41,8 @@ export function isPlatformAdminRoleName(roleName: string | null | undefined) {
 }
 
 export function defaultPermissionsForRole(roleName: string) {
-  const allPermissions = DEFAULT_PERMISSION_KEYS;
-  const organizationPermissions = DEFAULT_PERMISSION_KEYS.filter(
-    (permission) => !permission.endsWith(":platform"),
-  );
-
-  if (isPlatformAdminRoleName(roleName)) {
-    return allPermissions;
-  }
-
-  if (roleName === "owner" || roleName === "admin") {
-    return organizationPermissions;
-  }
-
-  if (roleName === "member") {
-    return [
-      "user:read:own",
-      "user:update:own",
-      "organization:read:organization",
-    ];
-  }
-
-  return ["user:read:own", "user:update:own"];
+  void roleName;
+  return [];
 }
 
-export const DEFAULT_PERMISSION_KEYS = [
-  "user:create:platform",
-  "user:read:platform",
-  "user:update:platform",
-  "user:delete:platform",
-  "user:create:organization",
-  "user:read:organization",
-  "user:update:organization",
-  "user:delete:organization",
-  "organization:create:platform",
-  "organization:read:platform",
-  "organization:update:platform",
-  "organization:read:organization",
-  "organization:update:organization",
-  "organization:delete:platform",
-  "role:create:platform",
-  "role:read:platform",
-  "role:update:platform",
-  "role:delete:platform",
-  "role:create:organization",
-  "role:read:organization",
-  "role:update:organization",
-  "role:delete:organization",
-  "group:create:organization",
-  "group:read:organization",
-  "group:update:organization",
-  "group:delete:organization",
-  "setting:read:organization",
-  "setting:update:organization",
-  "setting:read:platform",
-  "setting:update:platform",
-  "invite:create:organization",
-  "invite:read:organization",
-  "invite:update:organization",
-  "invite:delete:organization",
-  "mail:create:organization",
-  "mail:read:organization",
-  "mail:update:organization",
-  "mail:delete:organization",
-  "notification:create:organization",
-  "notification:read:organization",
-  "notification:update:organization",
-  "notification:delete:organization",
-  "user:update:own",
-] as const;
+export const DEFAULT_PERMISSION_KEYS = [] as const;

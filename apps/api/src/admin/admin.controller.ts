@@ -1,8 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Post } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
-  DEFAULT_PERMISSION_KEYS,
-  defaultPermissionsForRole,
   Organization,
   Permission,
   PlatformMember,
@@ -140,7 +138,7 @@ export class AdminController {
       }),
     );
 
-    await this.assignPermissions(role, DEFAULT_PERMISSION_KEYS);
+    await this.assignDefaultPermissions(role);
     return role;
   }
 
@@ -158,43 +156,31 @@ export class AdminController {
       }),
     );
 
-    await this.assignPermissions(
-      role,
-      defaultPermissionsForRole("owner").filter((permission) =>
-        permission.endsWith(":organization"),
-      ),
-    );
+    await this.assignDefaultPermissions(role);
     return role;
   }
 
-  private async assignPermissions(role: Role, permissionKeys: readonly string[]) {
-    const records = await Promise.all(
-      permissionKeys.map((key) => this.getPermissionOrThrow(key)),
+  private async assignDefaultPermissions(role: Role) {
+    const records = await this.permissionRepository.find({
+      order: { code: "ASC" },
+      where: {
+        scope: role.scope as Permission["scope"],
+      },
+    });
+    const permissions = records.filter((permission) =>
+      permission.defaultRoles?.includes(role.name),
     );
     await this.rolePermissionRepository.save(
-      records.map(({ key, permission }) =>
+      permissions.map((permission) =>
         this.rolePermissionRepository.create({
           enabled: true,
           organizationId: role.organizationId,
-          permission: key,
+          permission: permission.code ?? "",
           permissionId: permission.id,
           roleId: role.id,
         }),
       ),
     );
-  }
-
-  private async getPermissionOrThrow(key: string) {
-    const [entity, action, scope] = key.split(":");
-    const permission = await this.permissionRepository.findOne({
-      where: {
-        action: action as Permission["action"],
-        entity,
-        scope: scope as Permission["scope"],
-      },
-    });
-    if (!permission) throw new BadRequestException("权限目录不存在");
-    return { key, permission };
   }
 }
 

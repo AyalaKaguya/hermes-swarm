@@ -34,8 +34,10 @@ export class SettingsService implements OnModuleInit {
     private readonly organizationSettingRepository: Repository<OrganizationSetting>,
   ) {}
 
-  async onModuleInit() {
-    await this.ensureDefaultPlatformSettings();
+  onModuleInit() {
+    void this.ensureDefaultPlatformSettings().catch((error) => {
+      this.logger.error(`平台默认配置初始化失败: ${String(error)}`);
+    });
   }
 
   async listOrganizationSettingsForOrganization(

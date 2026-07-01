@@ -144,6 +144,31 @@ export type ReplaceRolePermissionsPayload = {
   permissions?: RolePermissionPayload[];
 };
 
+export type PermissionCatalogDto = {
+  scopes: Array<{
+    entities: Array<{
+      entity: string;
+      label: string;
+      order?: number | null;
+      purposes: Array<{
+        label: string;
+        operations: Array<{
+          description?: string | null;
+          isDangerous?: boolean;
+          label: string;
+          operation: string;
+          order?: number | null;
+          permission: string;
+        }>;
+        order?: number | null;
+        purpose: string;
+      }>;
+    }>;
+    label: string;
+    scope: "platform" | "organization" | "own";
+  }>;
+};
+
 /**
  * Bulk invite creation payload.
  */

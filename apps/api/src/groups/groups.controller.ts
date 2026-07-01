@@ -14,10 +14,9 @@ import {
 } from "@nestjs/common";
 import { parseAuthSessionToken } from "../auth/auth-session.js";
 import {
-  FeatureAccessService,
-  type FeatureAccessPayload,
-} from "../feature-access/feature-access.service.js";
-import { RequirePermission } from "../rbac/require-permission.decorator.js";
+  PermissionOperation,
+  PermissionResource,
+} from "../rbac/require-permission.decorator.js";
 import {
   GroupsService,
   type OrganizationGroupPayload,
@@ -25,23 +24,35 @@ import {
 } from "./groups.service.js";
 
 @Controller("admin/organizations/:organizationId")
+@PermissionResource({
+  entity: "group",
+  entityLabel: "用户组",
+  entityOrder: 50,
+  purpose: "organization_group",
+  purposeLabel: "组织用户组",
+  purposeOrder: 10,
+  scope: "organization",
+})
 export class GroupsController {
-  constructor(
-    private readonly featureAccessService: FeatureAccessService,
-    private readonly groupsService: GroupsService,
-  ) {}
+  constructor(private readonly groupsService: GroupsService) {}
 
   @Get("groups")
-  @RequirePermission({ action: "read", entity: "group", scope: "organization" })
+  @PermissionOperation({
+    description: "查看当前组织的用户组列表。",
+    label: "查看用户组列表",
+    operation: "list",
+    sortOrder: 10,
+  })
   list(@Param("organizationId") organizationId: string) {
     return this.groupsService.list(organizationId);
   }
 
   @Post("groups")
-  @RequirePermission({
-    action: "create",
-    entity: "group",
-    scope: "organization",
+  @PermissionOperation({
+    description: "创建当前组织的用户组。",
+    label: "创建用户组",
+    operation: "create",
+    sortOrder: 20,
   })
   create(
     @Headers("authorization") authorization: string | undefined,
@@ -56,7 +67,12 @@ export class GroupsController {
   }
 
   @Get("groups/:groupId")
-  @RequirePermission({ action: "read", entity: "group", scope: "organization" })
+  @PermissionOperation({
+    description: "查看当前组织的用户组详情。",
+    label: "查看用户组详情",
+    operation: "view",
+    sortOrder: 30,
+  })
   get(
     @Param("organizationId") organizationId: string,
     @Param("groupId") groupId: string,
@@ -65,10 +81,11 @@ export class GroupsController {
   }
 
   @Patch("groups/:groupId")
-  @RequirePermission({
-    action: "update",
-    entity: "group",
-    scope: "organization",
+  @PermissionOperation({
+    description: "更新当前组织的用户组信息。",
+    label: "更新用户组",
+    operation: "update_basic",
+    sortOrder: 40,
   })
   update(
     @Param("organizationId") organizationId: string,
@@ -79,10 +96,12 @@ export class GroupsController {
   }
 
   @Delete("groups/:groupId")
-  @RequirePermission({
-    action: "delete",
-    entity: "group",
-    scope: "organization",
+  @PermissionOperation({
+    description: "删除当前组织的用户组。",
+    isDangerous: true,
+    label: "删除用户组",
+    operation: "delete",
+    sortOrder: 90,
   })
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
@@ -93,7 +112,12 @@ export class GroupsController {
   }
 
   @Get("groups/:groupId/members")
-  @RequirePermission({ action: "read", entity: "group", scope: "organization" })
+  @PermissionOperation({
+    description: "查看用户组成员。",
+    label: "查看用户组成员",
+    operation: "list_members",
+    sortOrder: 50,
+  })
   listMembers(
     @Param("organizationId") organizationId: string,
     @Param("groupId") groupId: string,
@@ -102,10 +126,11 @@ export class GroupsController {
   }
 
   @Put("groups/:groupId/members")
-  @RequirePermission({
-    action: "update",
-    entity: "group",
-    scope: "organization",
+  @PermissionOperation({
+    description: "替换用户组成员。",
+    label: "配置用户组成员",
+    operation: "replace_members",
+    sortOrder: 60,
   })
   replaceMembers(
     @Param("organizationId") organizationId: string,
@@ -119,28 +144,6 @@ export class GroupsController {
     );
   }
 
-  @Get("feature-access")
-  @RequirePermission({
-    action: "read",
-    entity: "setting",
-    scope: "organization",
-  })
-  listFeatureAccess(@Param("organizationId") organizationId: string) {
-    return this.featureAccessService.list(organizationId);
-  }
-
-  @Put("feature-access")
-  @RequirePermission({
-    action: "update",
-    entity: "setting",
-    scope: "organization",
-  })
-  replaceFeatureAccess(
-    @Param("organizationId") organizationId: string,
-    @Body() payload: FeatureAccessPayload,
-  ) {
-    return this.featureAccessService.replace(organizationId, payload);
-  }
 }
 
 function requireSessionUserId(authorization: string | undefined) {

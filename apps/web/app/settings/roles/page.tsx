@@ -9,10 +9,10 @@ import {
 } from "react";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
+import { PermissionTree } from "@/components/permission-tree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -26,27 +26,17 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createOrganizationRole,
   deleteOrganizationRole,
+  listPermissionCatalog,
   listOrganizationRoles,
   replaceOrganizationRolePermissions,
   updateOrganizationRole,
+  type PermissionCatalog,
   type Role,
   type RolePermission,
   type RolePayload,
 } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { DEFAULT_PERMISSION_KEYS } from "@hermes-swarm/core/identity/permissions";
-
-const ORGANIZATION_PERMISSION_KEYS = DEFAULT_PERMISSION_KEYS.filter(
-  (permission) => permission.endsWith(":organization"),
-);
-
-const ACTION_LABELS: Record<string, string> = {
-  create: "创建",
-  delete: "删除",
-  read: "查看",
-  update: "更新",
-};
 
 type RoleDialogState =
   | {
@@ -70,6 +60,7 @@ export default function RolesPage() {
   const organizationId = snapshot?.organization?.id ?? null;
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<RolePermission[]>([]);
+  const [catalog, setCatalog] = useState<PermissionCatalog | null>(null);
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,8 +81,12 @@ export default function RolesPage() {
     }
     setToken(session.token);
     try {
-      const roleItems = await listOrganizationRoles(session.token, organizationId);
+      const [roleItems, nextCatalog] = await Promise.all([
+        listOrganizationRoles(session.token, organizationId),
+        listPermissionCatalog(session.token, "organization"),
+      ]);
       setRoles(roleItems);
+      setCatalog(nextCatalog);
       setPermissions(roleItems.flatMap((role) => role.permissions ?? []));
       setSelectedRoleId((current) =>
         roleItems.some((role) => role.id === current)
@@ -109,17 +104,7 @@ export default function RolesPage() {
     void load();
   }, [load]);
 
-  const permissionRows = useMemo(() => {
-    const byEntity = new Map<string, string[]>();
-    for (const permission of ORGANIZATION_PERMISSION_KEYS) {
-      const [entity] = permission.split(":");
-      byEntity.set(entity, [...(byEntity.get(entity) ?? []), permission]);
-    }
-    return [...byEntity.entries()].map(([entity, items]) => ({
-      entity,
-      items,
-    }));
-  }, []);
+  const permissionKeys = useMemo(() => flattenCatalog(catalog), [catalog]);
 
   const selectedRole =
     roles.find((role) => role.id === selectedRoleId) ?? roles[0] ?? null;
@@ -138,7 +123,7 @@ export default function RolesPage() {
   }
 
   function enabledPermissionCount(roleId: string) {
-    return ORGANIZATION_PERMISSION_KEYS.reduce(
+    return permissionKeys.reduce(
       (count, permission) => count + (isChecked(roleId, permission) ? 1 : 0),
       0,
     );
@@ -154,12 +139,12 @@ export default function RolesPage() {
     );
   }
 
-  function togglePerm(roleId: string, key: string) {
+  function togglePerm(roleId: string, key: string, enabledValue?: boolean) {
     setLocalPerms((prev) => {
       const next = { ...prev };
       const roleChanges = { ...(next[roleId] ?? {}) };
       const persisted = persistedPermission(roleId, key);
-      const enabled = !(roleChanges[key] ?? persisted);
+      const enabled = enabledValue ?? !(roleChanges[key] ?? persisted);
       if (enabled === persisted) {
         delete roleChanges[key];
       } else {
@@ -182,7 +167,7 @@ export default function RolesPage() {
         token,
         organizationId,
         roleId,
-        ORGANIZATION_PERMISSION_KEYS.map((permission) => ({
+        permissionKeys.map((permission) => ({
           enabled: isChecked(roleId, permission),
           permission,
         })),
@@ -336,7 +321,7 @@ export default function RolesPage() {
                       )}
                       <Badge className="px-1.5 text-[11px]" variant="outline">
                         {enabledPermissionCount(role.id)}/
-                        {ORGANIZATION_PERMISSION_KEYS.length}
+                        {permissionKeys.length}
                       </Badge>
                     </span>
                   </button>
@@ -362,7 +347,7 @@ export default function RolesPage() {
                       </Badge>
                       <span>
                         {enabledPermissionCount(selectedRole.id)} /{" "}
-                        {ORGANIZATION_PERMISSION_KEYS.length} 已启用
+                        {permissionKeys.length} 已启用
                       </span>
                     </div>
                   </div>
@@ -400,40 +385,16 @@ export default function RolesPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="grid grid-cols-[minmax(100px,1fr)_repeat(4,72px)] items-center gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium">
-                  <div>实体</div>
-                  {["create", "read", "update", "delete"].map((action) => (
-                    <div className="text-center" key={action}>
-                      {ACTION_LABELS[action]}
-                    </div>
-                  ))}
-                </div>
-                <div className="divide-y">
-                  {permissionRows.map((row) => (
-                    <div
-                      className="grid grid-cols-[minmax(100px,1fr)_repeat(4,72px)] items-center gap-2 px-4 py-2"
-                      key={row.entity}
-                    >
-                      <div className="truncate text-sm font-medium">
-                        {row.entity}
-                      </div>
-                      {["create", "read", "update", "delete"].map((action) => {
-                        const key = `${row.entity}:${action}:organization`;
-                        return (
-                          <div className="flex justify-center" key={key}>
-                            <Checkbox
-                              aria-label={`${row.entity} ${ACTION_LABELS[action]}`}
-                              checked={isChecked(selectedRole.id, key)}
-                              onCheckedChange={() =>
-                                togglePerm(selectedRole.id, key)
-                              }
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
+                <PermissionTree
+                  catalog={catalog}
+                  disabled={saving === selectedRole.id}
+                  isChecked={(permission) =>
+                    isChecked(selectedRole.id, permission)
+                  }
+                  onToggle={(permission, enabled) =>
+                    togglePerm(selectedRole.id, permission, enabled)
+                  }
+                />
               </CardContent>
             </>
           ) : (
@@ -567,4 +528,16 @@ function roleToForm(role: Role): RoleForm {
 function nullableText(value: string) {
   const normalized = value.trim();
   return normalized ? normalized : null;
+}
+
+function flattenCatalog(catalog: PermissionCatalog | null) {
+  return (
+    catalog?.scopes.flatMap((scope) =>
+      scope.entities.flatMap((entity) =>
+        entity.purposes.flatMap((purpose) =>
+          purpose.operations.map((operation) => operation.permission),
+        ),
+      ),
+    ) ?? []
+  );
 }

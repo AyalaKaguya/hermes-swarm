@@ -28,7 +28,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
@@ -122,7 +121,7 @@ export function AppShell({
         } as CSSProperties
       }
     >
-      <Sidebar collapsible="icon" className="border-r">
+      <Sidebar collapsible="icon" className="border-r-0">
         <SidebarHeader className="gap-2 p-2">
           <div className="flex min-h-10 items-center gap-2">
             <Link
@@ -215,7 +214,6 @@ export function AppShell({
             </div>
           )}
         </SidebarFooter>
-        <SidebarRail />
       </Sidebar>
 
       <SidebarInset className="min-w-0 overflow-auto">
