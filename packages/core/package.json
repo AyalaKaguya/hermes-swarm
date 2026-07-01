@@ -22,18 +22,6 @@
       "types": "./dist/identity/entities/index.d.ts",
       "import": "./dist/identity/entities/index.js"
     },
-    "./config": {
-      "types": "./dist/config/index.d.ts",
-      "import": "./dist/config/index.js"
-    },
-    "./config/database": {
-      "types": "./dist/config/database.d.ts",
-      "import": "./dist/config/database.js"
-    },
-    "./config/redis": {
-      "types": "./dist/config/redis.d.ts",
-      "import": "./dist/config/redis.js"
-    },
     "./mail": {
       "types": "./dist/mail/index.d.ts",
       "import": "./dist/mail/index.js"

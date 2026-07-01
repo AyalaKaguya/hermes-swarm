@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { createClient } from "redis";
 import { Repository } from "typeorm";
@@ -14,7 +15,6 @@ import {
   type EffectiveOrganizationSetting,
   type SettingValueOption,
 } from "@hermes-swarm/core";
-import { getRedisUrl } from "@hermes-swarm/core/config/redis";
 import type { SaveSettingsPayload } from "../common/admin-api.types.js";
 import {
   normalizeSettingEntry,
@@ -32,6 +32,7 @@ export class SettingsService implements OnModuleInit {
     private readonly platformSettingRepository: Repository<PlatformSetting>,
     @InjectRepository(OrganizationSetting)
     private readonly organizationSettingRepository: Repository<OrganizationSetting>,
+    private readonly configService: ConfigService,
   ) {}
 
   onModuleInit() {
@@ -310,7 +311,9 @@ export class SettingsService implements OnModuleInit {
 
   private async connectRedis() {
     try {
-      const client = createClient({ url: getRedisUrl() });
+      const client = createClient({
+        url: this.configService.getOrThrow<string>("redis.url"),
+      });
       client.on("error", (error) => {
         this.logger.warn(
           `Redis settings cache connection error: ${String(error)}`,
