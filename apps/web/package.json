@@ -11,6 +11,7 @@
     "clean": "rm -rf .next out"
   },
   "dependencies": {
+    "@hermes-swarm/access": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@tailwindcss/postcss": "^4.3.1",
     "class-variance-authority": "^0.7.1",

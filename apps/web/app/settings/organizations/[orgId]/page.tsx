@@ -87,7 +87,8 @@ import {
   type User,
   type UserStatus,
 } from "@/lib/admin-api";
-import { getStoredSession, hasMenuAccess } from "@/lib/session";
+import { usePermission } from "@/hooks/use-permission";
+import { getStoredSession } from "@/lib/session";
 
 const CONTROL_KEYS = ORGANIZATION_CONTROL_SETTING_DEFINITIONS;
 const ORGANIZATION_DEFAULT_FIELDS = ORGANIZATION_DEFAULT_FIELD_DEFINITIONS;
@@ -132,6 +133,7 @@ export default function OrganizationDetailPage() {
     ? params.orgId[0]
     : params.orgId;
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
+  const access = usePermission();
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<OrganizationTab>("general");
   const [createUserOpen, setCreateUserOpen] = useState(false);
@@ -160,19 +162,25 @@ export default function OrganizationDetailPage() {
   const canManage =
     isPlatformAdmin ||
     (snapshot && resolvedSession
-      ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage") ||
-        hasMenuAccess(snapshot, resolvedSession, "organization", "manage")
+      ? access.hasPermission([
+          "organization.platform_organization.create:platform",
+          "organization.platform_organization.delete:platform",
+          "organization.profile.update_basic:organization",
+        ])
       : false);
   const canViewPlatformControls = isPlatformAdmin;
   const canManagePlatformControls = canViewPlatformControls && Boolean(canManage);
   const canManagePlatformOrganizationUsers =
     isPlatformAdmin ||
     (snapshot && resolvedSession
-      ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage")
+      ? access.hasPermission([
+          "organization.platform_organization.create:platform",
+          "organization.platform_organization.delete:platform",
+        ])
       : false);
   const canViewOrganizationsList =
     snapshot && resolvedSession
-      ? hasMenuAccess(snapshot, resolvedSession, "organizations", "view")
+      ? access.hasPageAccess("settings.organizations")
       : false;
   const currentRoleName = snapshot?.currentUser.role?.name ?? null;
   const currentUserId = snapshot?.currentUser.user.id ?? null;

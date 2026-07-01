@@ -1,7 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { DiscoveryService } from "@nestjs/core";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Permission, type PermissionScope } from "@hermes-swarm/core";
+import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/access";
+import {
+  Permission,
+  Role,
+  RolePermission,
+  type PermissionScope,
+} from "@hermes-swarm/core";
 import { In, Repository } from "typeorm";
 import {
   PERMISSION_RESOURCE_METADATA,
@@ -35,10 +41,17 @@ export class RbacCatalogService implements OnModuleInit {
     private readonly discoveryService: DiscoveryService,
     @InjectRepository(Permission)
     private readonly permissionRepository: Repository<Permission>,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
+    @InjectRepository(RolePermission)
+    private readonly rolePermissionRepository: Repository<RolePermission>,
   ) {}
 
   onModuleInit() {
-    this.definitions = this.scanDefinitions();
+    this.definitions = [
+      ...this.scanDefinitions(),
+      ...resolveNavigationDefinitions(),
+    ].sort(compareDefinition);
     void this.syncCatalog().catch((error) => {
       this.logger.error(`权限目录同步失败: ${String(error)}`);
     });
@@ -206,13 +219,63 @@ export class RbacCatalogService implements OnModuleInit {
       permission.operation = definition.operation;
       permission.operationLabel = definition.operationLabel;
       permission.operationOrder = definition.operationOrder;
-      permission.action = definition.operation;
+      permission.action =
+        definition.source === "navigation" ? "access" : definition.operation;
       permission.scope = definition.scope;
       permission.description = definition.description;
       permission.isDangerous = definition.isDangerous;
-      permission.source = "controller";
+      permission.source = definition.source ?? "controller";
       permission.defaultRoles = definition.defaultRoles;
       await this.permissionRepository.save(permission);
+    }
+
+    await this.backfillMissingDefaultRolePermissions();
+  }
+
+  private async backfillMissingDefaultRolePermissions() {
+    const roles = await this.roleRepository.find({
+      where: { isSystem: true },
+    });
+    if (roles.length === 0) return;
+
+    const permissions = await this.permissionRepository.find({
+      order: { code: "ASC" },
+    });
+    const existingRows = await this.rolePermissionRepository.find({
+      where: { roleId: In(roles.map((role) => role.id)) },
+    });
+    const existing = new Set(
+      existingRows.map((row) => `${row.roleId}:${row.permission}`),
+    );
+    const missingRows: RolePermission[] = [];
+
+    for (const role of roles) {
+      const rolePermissions = permissions.filter((permission) => {
+        if (!permission.defaultRoles?.includes(role.name)) return false;
+        if (role.scope === "platform") return permission.scope === "platform";
+        return permission.scope === "organization" || permission.scope === "own";
+      });
+
+      for (const permission of rolePermissions) {
+        const permissionCode = permission.code;
+        if (!permissionCode) continue;
+        const key = `${role.id}:${permissionCode}`;
+        if (existing.has(key)) continue;
+        existing.add(key);
+        missingRows.push(
+          this.rolePermissionRepository.create({
+            enabled: true,
+            organizationId: role.organizationId,
+            permission: permissionCode,
+            permissionId: permission.id,
+            roleId: role.id,
+          }),
+        );
+      }
+    }
+
+    if (missingRows.length > 0) {
+      await this.rolePermissionRepository.save(missingRows);
     }
   }
 }
@@ -275,8 +338,29 @@ export function resolvePermissionDefinition(
     purposeLabel,
     purposeOrder: operation.purposeOrder ?? resource?.purposeOrder ?? null,
     scope,
+    source: "controller" as const,
   };
   return definition;
+}
+
+function resolveNavigationDefinitions(): ResolvedPermissionDefinition[] {
+  return PAGE_ACCESS_DEFINITIONS.map((definition) => ({
+    defaultRoles: [...definition.defaultRoles],
+    description: definition.description,
+    entity: "navigation",
+    entityLabel: "菜单和页面",
+    entityOrder: 0,
+    id: definition.permission,
+    isDangerous: false,
+    operation: definition.key,
+    operationLabel: definition.label,
+    operationOrder: definition.order,
+    purpose: "page_access",
+    purposeLabel: "页面访问",
+    purposeOrder: 0,
+    scope: definition.scope,
+    source: "navigation",
+  }));
 }
 
 function resolveFallbackDefaultRoles(

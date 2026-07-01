@@ -4,6 +4,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Permission,
   PlatformMember,
+  Role,
   RolePermission,
   UserOrganization,
 } from "@hermes-swarm/core";
@@ -18,6 +19,7 @@ import { RbacService } from "./rbac.service.js";
     TypeOrmModule.forFeature([
       Permission,
       PlatformMember,
+      Role,
       RolePermission,
       UserOrganization,
     ]),

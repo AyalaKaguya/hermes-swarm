@@ -78,7 +78,7 @@ export function OnboardingPage() {
       <Card className="w-full max-w-2xl" size="sm">
         <CardHeader className="gap-3">
           <div className="flex items-center gap-2">
-            <div className="grid size-9 place-items-center rounded-lg bg-primary">
+            <div className="grid size-9 place-items-center rounded-lg border bg-muted text-muted-foreground">
               <AppIcon className="size-4" name="sparkles" />
             </div>
             <div className="min-w-0">

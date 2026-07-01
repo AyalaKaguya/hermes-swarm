@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@casl/ability": "^7.0.0",
+    "@hermes-swarm/access": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/config": "^4.0.4",

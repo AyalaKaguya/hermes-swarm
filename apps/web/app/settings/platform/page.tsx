@@ -63,7 +63,8 @@ import {
   type SmtpConfig,
   type SystemSettingDto,
 } from "@/lib/admin-api";
-import { getStoredSession, hasMenuAccess } from "@/lib/session";
+import { usePermission } from "@/hooks/use-permission";
+import { getStoredSession } from "@/lib/session";
 
 type PlatformForm = {
   allowOrganizationCreation: boolean;
@@ -88,6 +89,7 @@ type PlatformForm = {
 
 export default function PlatformPage() {
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
+  const access = usePermission();
   const notifications = useNotifications();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,24 +101,18 @@ export default function PlatformPage() {
   const [savingSmtp, setSavingSmtp] = useState(false);
 
   const canViewPlatform =
-    Boolean(snapshot?.isPlatformAdmin) &&
-    Boolean(
-      snapshot && resolvedSession
-        ? hasMenuAccess(snapshot, resolvedSession, "platform", "view")
-        : false,
-    );
+    snapshot && resolvedSession
+      ? access.hasPageAccess("settings.platform")
+      : false;
   const canManagePlatform =
-    Boolean(snapshot?.isPlatformAdmin) &&
-    Boolean(
-      snapshot && resolvedSession
-        ? hasMenuAccess(snapshot, resolvedSession, "platform", "manage")
-        : false,
-    );
+    snapshot && resolvedSession
+      ? access.hasPermission("setting.platform_config.save:platform")
+      : false;
   const canViewOrganizations =
     canViewPlatform &&
     Boolean(
       snapshot && resolvedSession
-        ? hasMenuAccess(snapshot, resolvedSession, "organizations", "view")
+        ? access.hasPageAccess("settings.organizations")
         : false,
     );
 

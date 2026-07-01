@@ -54,7 +54,7 @@ const EMPTY_PASSWORD: PasswordForm = {
 };
 
 export default function AccountPage() {
-  const { refreshSnapshot } = useAdminShell();
+  const { refreshSnapshot, snapshot } = useAdminShell();
   const notifications = useNotifications();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +66,15 @@ export default function AccountPage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
+  const shellUser = snapshot?.user ?? null;
+
   const load = useCallback(async () => {
     const session = getStoredSession();
+    if (shellUser) {
+      setUser(shellUser);
+      setProfile(toProfileForm(shellUser));
+    }
+
     if (!session?.token) {
       setLoading(false);
       return;
@@ -83,7 +90,7 @@ export default function AccountPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [shellUser]);
 
   useEffect(() => {
     void load();
@@ -206,8 +213,11 @@ export default function AccountPage() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center py-16 text-sm">
-        请先登录
+      <div
+        className="flex items-center justify-center py-16 text-sm"
+        role={error ? "alert" : undefined}
+      >
+        {error ?? "请先登录"}
       </div>
     );
   }
@@ -243,9 +253,16 @@ export default function AccountPage() {
               <AppIcon className="size-3.5" name="image-upload" />
               {uploadingAvatar ? "上传中..." : "上传头像"}
             </Button>
-            <div className="text-xs">
-              {user.status === "active" ? "账号正常" : "账号已停用"}
-            </div>
+            <span
+              aria-label={user.status === "active" ? "账号正常" : "账号已停用"}
+              className={
+                user.status === "active"
+                  ? "size-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15"
+                  : "size-2.5 rounded-full bg-rose-500 ring-4 ring-rose-500/15"
+              }
+              role="status"
+              title={user.status === "active" ? "账号正常" : "账号已停用"}
+            />
           </div>
         </CardContent>
       </Card>

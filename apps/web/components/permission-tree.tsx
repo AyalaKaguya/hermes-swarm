@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,21 @@ export function PermissionTree({
   isChecked,
   onToggle,
 }: PermissionTreeProps) {
-  const scopes = catalog?.scopes ?? [];
+  const scopes = useMemo(() => catalog?.scopes ?? [], [catalog]);
+  const entityKeys = useMemo(
+    () =>
+      scopes.flatMap((scope) =>
+        scope.entities.map((entity) => getEntityKey(scope.scope, entity.entity)),
+      ),
+    [scopes],
+  );
+  const [expandedEntityKeys, setExpandedEntityKeys] = useState<Set<string>>(
+    () => new Set(entityKeys),
+  );
+
+  useEffect(() => {
+    setExpandedEntityKeys(new Set(entityKeys));
+  }, [entityKeys]);
 
   if (scopes.length === 0) {
     return (
@@ -35,6 +50,28 @@ export function PermissionTree({
 
   return (
     <div className="divide-y">
+      <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-2">
+        <Button
+          disabled={expandedEntityKeys.size === entityKeys.length}
+          onClick={() => setExpandedEntityKeys(new Set(entityKeys))}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <AppIcon className="size-3.5" name="chevron-down" />
+          展开全部
+        </Button>
+        <Button
+          disabled={expandedEntityKeys.size === 0}
+          onClick={() => setExpandedEntityKeys(new Set())}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <AppIcon className="size-3.5 rotate-180" name="chevron-down" />
+          收起全部
+        </Button>
+      </div>
       {scopes.map((scope) => (
         <div className="grid gap-2 p-3" key={scope.scope}>
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -42,37 +79,63 @@ export function PermissionTree({
             {scope.label}
           </div>
           <div className="grid gap-2">
-            {scope.entities.map((entity) => (
-              <details
-                className="group rounded-md border bg-background"
-                key={`${scope.scope}:${entity.entity}`}
-                open
-              >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium hover:bg-muted/50">
-                  <span className="min-w-0 truncate">{entity.label}</span>
-                  <span className="text-xs">
-                    {enabledCount(entity.purposes, isChecked)}/
-                    {totalCount(entity.purposes)}
-                  </span>
-                </summary>
-                <div className="grid gap-2 border-t p-2">
-                  {entity.purposes.map((purpose) => (
-                    <PurposeNode
-                      disabled={disabled}
-                      isChecked={isChecked}
-                      key={`${entity.entity}:${purpose.purpose}`}
-                      onToggle={onToggle}
-                      purpose={purpose}
-                    />
-                  ))}
-                </div>
-              </details>
-            ))}
+            {scope.entities.map((entity) => {
+              const entityKey = getEntityKey(scope.scope, entity.entity);
+              const expanded = expandedEntityKeys.has(entityKey);
+              return (
+                <details
+                  className="group rounded-md border bg-background"
+                  key={entityKey}
+                  onToggle={(event) => {
+                    const isOpen = event.currentTarget.open;
+                    setExpandedEntityKeys((current) => {
+                      const next = new Set(current);
+                      if (isOpen) {
+                        next.add(entityKey);
+                      } else {
+                        next.delete(entityKey);
+                      }
+                      return next;
+                    });
+                  }}
+                  open={expanded}
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/50">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <AppIcon
+                        className="size-3.5 shrink-0 transition-transform group-open:rotate-180"
+                        name="chevron-down"
+                      />
+                      <span className="min-w-0 truncate">{entity.label}</span>
+                    </span>
+                    <span className="text-xs">
+                      {enabledCount(entity.purposes, isChecked)}/
+                      {totalCount(entity.purposes)}
+                    </span>
+                  </summary>
+                  <div className="grid gap-2 border-t p-2">
+                    {entity.purposes.map((purpose) => (
+                      <PurposeNode
+                        disabled={disabled}
+                        isChecked={isChecked}
+                        key={`${entity.entity}:${purpose.purpose}`}
+                        onToggle={onToggle}
+                        purpose={purpose}
+                      />
+                    ))}
+                  </div>
+                </details>
+              );
+            })}
           </div>
         </div>
       ))}
     </div>
   );
+}
+
+function getEntityKey(scope: string, entity: string) {
+  return `${scope}:${entity}`;
 }
 
 function PurposeNode({

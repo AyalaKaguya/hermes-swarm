@@ -81,12 +81,13 @@ export default function RolesPage() {
     }
     setToken(session.token);
     try {
-      const [roleItems, nextCatalog] = await Promise.all([
+      const [roleItems, organizationCatalog, ownCatalog] = await Promise.all([
         listOrganizationRoles(session.token, organizationId),
         listPermissionCatalog(session.token, "organization"),
+        listPermissionCatalog(session.token, "own"),
       ]);
       setRoles(roleItems);
-      setCatalog(nextCatalog);
+      setCatalog(mergeCatalogs(organizationCatalog, ownCatalog));
       setPermissions(roleItems.flatMap((role) => role.permissions ?? []));
       setSelectedRoleId((current) =>
         roleItems.some((role) => role.id === current)
@@ -542,4 +543,10 @@ function flattenCatalog(catalog: PermissionCatalog | null) {
       ),
     ) ?? []
   );
+}
+
+function mergeCatalogs(...catalogs: PermissionCatalog[]) {
+  return {
+    scopes: catalogs.flatMap((catalog) => catalog.scopes),
+  };
 }

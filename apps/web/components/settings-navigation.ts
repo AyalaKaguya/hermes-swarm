@@ -1,99 +1,38 @@
+import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/access";
 import type { AppShellNavSection } from "@/components/app-shell";
+import type { AppIconName } from "@/components/app-icon";
 
-export type SettingsNavItem = AppShellNavSection["items"][number];
+export type SettingsNavItem = AppShellNavSection["items"][number] & {
+  pageKey: string;
+  permission: string;
+};
 
-export const SETTINGS_NAV_ITEMS = [
-  {
-    href: "/settings/account",
-    icon: "user",
-    key: "account",
-    label: "账号",
-  },
-  {
-    href: "/settings/organization",
-    icon: "building",
-    key: "organization",
-    label: "常规",
-  },
-  {
-    href: "/settings/custom-smtp",
-    icon: "settings",
-    key: "custom-smtp",
-    label: "自定义邮件",
-  },
-  {
-    href: "/settings/email-templates",
-    icon: "file",
-    key: "email-templates",
-    label: "邮件模板",
-  },
-  {
-    href: "/settings/notification-destinations",
-    icon: "bell",
-    key: "notification-destinations",
-    label: "通知",
-  },
-  {
-    href: "/settings/features",
-    icon: "grid",
-    key: "features",
-    label: "功能",
-  },
-  {
-    href: "/settings/groups",
-    icon: "users",
-    key: "groups",
-    label: "用户组",
-  },
-  {
-    href: "/settings/roles",
-    icon: "shield",
-    key: "roles",
-    label: "角色和权限",
-  },
-  {
-    href: "/settings/platform",
-    icon: "server",
-    key: "platform",
-    label: "平台设置",
-  },
-  {
-    href: "/settings/organizations",
-    icon: "building",
-    key: "organizations",
-    label: "组织列表",
-  },
-] satisfies SettingsNavItem[];
+export const SETTINGS_NAV_ITEMS = PAGE_ACCESS_DEFINITIONS.map((item) => ({
+  href: item.href,
+  icon: item.icon as AppIconName,
+  key: item.key,
+  label: item.label,
+  pageKey: item.key,
+  permission: item.permission,
+})) satisfies SettingsNavItem[];
 
-export const SETTINGS_NAV_SECTIONS = [
-  {
-    items: SETTINGS_NAV_ITEMS.filter((item) => item.key === "account"),
-    key: "personal",
-    label: "个人",
+export const SETTINGS_NAV_SECTIONS = ["personal", "organization", "platform"].map(
+  (section) => {
+    const definition = PAGE_ACCESS_DEFINITIONS.find(
+      (item) => item.section === section,
+    );
+    return {
+      items: SETTINGS_NAV_ITEMS.filter((item) =>
+        PAGE_ACCESS_DEFINITIONS.some(
+          (definition) =>
+            definition.key === item.pageKey && definition.section === section,
+        ),
+      ),
+      key: section,
+      label: definition?.sectionLabel ?? section,
+    };
   },
-  {
-    items: SETTINGS_NAV_ITEMS.filter((item) =>
-      [
-        "organization",
-        "custom-smtp",
-        "email-templates",
-        "notification-destinations",
-        "features",
-        "groups",
-        "roles",
-      ].includes(item.key),
-    ),
-    key: "organization",
-    label: "组织",
-  },
-  {
-    items: SETTINGS_NAV_ITEMS.filter((item) =>
-      ["platform", "organizations"].includes(item.key),
-    ),
-    key: "platform",
-    label: "平台",
-  },
-];
+);
 
 export function getSettingsNavLabel(activeItem: string) {
   return (

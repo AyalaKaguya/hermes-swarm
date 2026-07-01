@@ -38,21 +38,23 @@ import {
   type Organization,
   type OrganizationPayload,
 } from "@/lib/admin-api";
-import { getStoredSession, hasMenuAccess } from "@/lib/session";
+import { usePermission } from "@/hooks/use-permission";
+import { getStoredSession } from "@/lib/session";
 
 export default function OrganizationsPage() {
   const router = useRouter();
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
+  const access = usePermission();
   const canViewPlatformOrganizations =
-    Boolean(snapshot?.isPlatformAdmin) &&
-    Boolean(
-      snapshot && resolvedSession
-        ? hasMenuAccess(snapshot, resolvedSession, "organizations", "view")
-        : false,
-    );
+    snapshot && resolvedSession
+      ? access.hasPageAccess("settings.organizations")
+      : false;
   const canManage =
     canViewPlatformOrganizations && snapshot && resolvedSession
-      ? hasMenuAccess(snapshot, resolvedSession, "organizations", "manage")
+      ? access.hasPermission([
+          "organization.platform_organization.create:platform",
+          "organization.platform_organization.delete:platform",
+        ])
       : false;
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({

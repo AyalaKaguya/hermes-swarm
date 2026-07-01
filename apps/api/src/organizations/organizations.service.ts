@@ -384,7 +384,7 @@ export class OrganizationsService {
       const records = (
         await this.permissionRepository.find({
           order: { code: "ASC" },
-          where: { scope: "organization" },
+          where: [{ scope: "organization" }, { scope: "own" }],
         })
       ).filter((permission) =>
         permission.defaultRoles?.includes(role.name),
@@ -409,8 +409,13 @@ export class OrganizationsService {
 
   private async getPermissionOrThrow(permissionKey: string | undefined, scope: string) {
     const key = requirePermissionCode(permissionKey);
+    const acceptedScopes =
+      scope === "organization" ? ["organization", "own"] : [scope];
     const permission = await this.permissionRepository.findOne({
-      where: { code: key, scope: scope as Permission["scope"] },
+      where: acceptedScopes.map((item) => ({
+        code: key,
+        scope: item as Permission["scope"],
+      })),
     });
     if (!permission) throw new BadRequestException("权限目录不存在");
     return { key, permission };
