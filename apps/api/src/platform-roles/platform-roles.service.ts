@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DEFAULT_PERMISSION_KEYS, Permission, Role, RolePermission } from "@hermes-swarm/core";
+import { Permission, Role, RolePermission } from "@hermes-swarm/core";
 import { IsNull, Repository } from "typeorm";
 import type { ReplaceRolePermissionsPayload } from "../common/admin-api.types.js";
 import type { PlatformRolePayload } from "./platform-roles.controller.js";
@@ -124,13 +124,11 @@ export class PlatformRolesService {
   }
 
   private async getPermissionOrThrow(permissionKey: string | undefined) {
-    const key = requirePlatformPermission(permissionKey);
-    const [entity, action, scope] = key.split(":");
+    const key = requirePermissionCode(permissionKey);
     const permission = await this.permissionRepository.findOne({
       where: {
-        action: action as Permission["action"],
-        entity,
-        scope: scope as Permission["scope"],
+        code: key,
+        scope: "platform",
       },
     });
     if (!permission) throw new BadRequestException("权限目录不存在");
@@ -158,15 +156,8 @@ function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
   return slug || `${fallbackPrefix}-${Date.now().toString(36)}`;
 }
 
-function requirePlatformPermission(permission: string | undefined) {
+function requirePermissionCode(permission: string | undefined) {
   const value = requireText(permission, "权限");
-  const [, action, scope] = value.split(":");
-  if (!["create", "read", "update", "delete"].includes(action) || scope !== "platform") {
-    throw new BadRequestException("平台角色只能绑定平台范围的实体 CRUD 权限");
-  }
-  if (!DEFAULT_PERMISSION_KEYS.includes(value as typeof DEFAULT_PERMISSION_KEYS[number])) {
-    throw new BadRequestException("权限不在默认权限目录中");
-  }
   return value;
 }
 

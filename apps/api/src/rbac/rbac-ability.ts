@@ -3,20 +3,17 @@ import {
   createMongoAbility,
   type MongoAbility,
 } from "@casl/ability";
-import type {
-  PermissionAction,
-  PermissionScope,
-} from "@hermes-swarm/core";
-import type { PermissionRequirement } from "./rbac.types.js";
+import type { PermissionScope } from "@hermes-swarm/core";
+import type { ResolvedPermissionDefinition } from "./rbac.types.js";
 
 export type RbacSubject = `${string}:${PermissionScope}`;
-export type RbacAbility = MongoAbility<[PermissionAction, RbacSubject]>;
+export type RbacAbility = MongoAbility<[string, RbacSubject]>;
 
-export function buildRbacAbility(requirements: PermissionRequirement[]) {
+export function buildRbacAbility(requirements: ResolvedPermissionDefinition[]) {
   const { can, build } = new AbilityBuilder<RbacAbility>(createMongoAbility);
   for (const requirement of requirements) {
     can(
-      requirement.action,
+      requirement.operation,
       toRbacSubject(requirement.entity, requirement.scope),
     );
   }

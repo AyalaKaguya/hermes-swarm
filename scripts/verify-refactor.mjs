@@ -145,10 +145,9 @@ assertIncludes(
   '@Entity({ name: "organization_group_members" })',
   "organization_group_members table should exist",
 );
-assertIncludes(
-  "packages/core/src/identity/entities/organization-feature-group-access.entity.ts",
-  '@Entity({ name: "organization_feature_group_access" })',
-  "organization feature group access table should exist",
+assert(
+  !exists("packages/core/src/identity/entities/organization-feature-group-access.entity.ts"),
+  "organization feature group access table should not exist",
 );
 assertIncludes(
   "packages/core/src/identity/permissions.ts",
@@ -223,25 +222,30 @@ assertIncludes(
   '@Get("groups")',
   "groups controller should expose organization group list",
 );
-assertIncludes(
+assertNotIncludes(
   "apps/api/src/groups/groups.controller.ts",
   '@Put("feature-access")',
-  "groups controller should expose feature access replacement",
+  "groups controller should not expose feature access replacement",
 );
 assertIncludes(
   "apps/api/src/feature-access/feature-access.guard.ts",
+  "isFeatureEnabled",
+  "feature access guard should enforce organization feature switches",
+);
+assertNotIncludes(
+  "apps/api/src/feature-access/feature-access.guard.ts",
   "isFeatureEnabledForUser",
-  "feature access guard should enforce feature group access",
+  "feature access guard should not enforce feature group access",
 );
 assertIncludes(
   "apps/api/src/invite/invite.controller.ts",
   '@RequireFeature("feature:invite:enabled")',
-  "invite endpoints should require invite feature access",
+  "invite endpoints should require invite feature switch",
 );
 assertIncludes(
   "apps/api/src/mail/mail.controller.ts",
   '@RequireFeature("feature:email:enabled")',
-  "mail endpoints should require email feature access",
+  "mail endpoints should require email feature switch",
 );
 
 assertIncludes(
@@ -313,8 +317,13 @@ assertIncludes(
 );
 assertIncludes(
   "apps/web/app/settings/features/page.tsx",
+  "saveOrganizationSettings",
+  "feature UI should save organization feature switches",
+);
+assertNotIncludes(
+  "apps/web/app/settings/features/page.tsx",
   "replaceOrganizationFeatureAccess",
-  "feature UI should manage group access allow-list",
+  "feature UI should not manage group access allow-list",
 );
 assertIncludes(
   "apps/web/components/settings-navigation.ts",

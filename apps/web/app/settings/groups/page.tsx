@@ -263,7 +263,7 @@ export default function GroupsPage() {
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold">用户组</h1>
           <p className="text-sm text-muted-foreground">
-            为组织内功能配置访问人员范围。
+            管理组织内成员分组，便于协作和细分管理。
           </p>
         </div>
         <Button
@@ -301,7 +301,7 @@ export default function GroupsPage() {
               <div className="grid gap-2 px-2 py-8 text-center">
                 <div className="text-sm font-medium">暂无用户组</div>
                 <div className="text-xs text-muted-foreground">
-                  创建用户组后，可以在功能管理中限定访问人员。
+                  创建用户组后，可以按团队或职责维护成员集合。
                 </div>
               </div>
             ) : (

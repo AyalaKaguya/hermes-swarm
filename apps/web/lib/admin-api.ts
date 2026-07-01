@@ -120,6 +120,41 @@ export type RolePermission = {
   organizationId: string | null;
 };
 
+export type PermissionScope = "organization" | "own" | "platform";
+
+export type PermissionCatalogOperation = {
+  description?: string | null;
+  isDangerous?: boolean;
+  label: string;
+  operation: string;
+  order?: number | null;
+  permission: string;
+};
+
+export type PermissionCatalogPurpose = {
+  label: string;
+  operations: PermissionCatalogOperation[];
+  order?: number | null;
+  purpose: string;
+};
+
+export type PermissionCatalogEntity = {
+  entity: string;
+  label: string;
+  order?: number | null;
+  purposes: PermissionCatalogPurpose[];
+};
+
+export type PermissionCatalogScope = {
+  entities: PermissionCatalogEntity[];
+  label: string;
+  scope: PermissionScope;
+};
+
+export type PermissionCatalog = {
+  scopes: PermissionCatalogScope[];
+};
+
 export type MembershipStatus = "active" | "disabled" | "invited";
 
 export type OrganizationGroupBrief = {
@@ -202,12 +237,6 @@ export type OrganizationGroupMember = {
   organizationId: string;
   user: User;
   userId: string;
-};
-
-export type OrganizationFeatureAccess = {
-  featureKey: string;
-  groupIds: string[];
-  groups: OrganizationGroupBrief[];
 };
 
 export type InviteStatus = "invited" | "accepted" | "expired" | "revoked";
@@ -345,6 +374,7 @@ export type FileUploadResponse = {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3200/api";
 const ADMIN_API_BASE_URL = `${API_BASE_URL.replace(/\/$/, "")}/admin`;
+const REQUEST_TIMEOUT_MS = 12_000;
 
 export async function fetchAdmin<T>(
   path: string,
@@ -362,11 +392,25 @@ export async function fetchAdmin<T>(
     headers.set("Authorization", `Bearer ${options.token}`);
   }
 
-  const response = await fetch(`${ADMIN_API_BASE_URL}${path}`, {
-    method: options?.method ?? "GET",
-    headers,
-    body: options?.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(`${ADMIN_API_BASE_URL}${path}`, {
+      method: options?.method ?? "GET",
+      headers,
+      body: options?.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("请求超时，请确认 API 服务已启动");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const detail = await response.json().catch(() => undefined);
@@ -862,27 +906,6 @@ export function replaceOrganizationGroupMembers(
   );
 }
 
-export function listOrganizationFeatureAccess(
-  token: string,
-  organizationId: string,
-) {
-  return fetchAdmin<OrganizationFeatureAccess[]>(
-    `/organizations/${organizationId}/feature-access`,
-    { token },
-  );
-}
-
-export function replaceOrganizationFeatureAccess(
-  token: string,
-  organizationId: string,
-  payload: { featureKey: string; groupIds: string[] },
-) {
-  return fetchAdmin<OrganizationFeatureAccess>(
-    `/organizations/${organizationId}/feature-access`,
-    { body: payload, method: "PUT", token },
-  );
-}
-
 export function listOrganizationRoles(token: string, organizationId: string) {
   return fetchAdmin<Role[]>(`/organizations/${organizationId}/roles`, { token });
 }
@@ -931,6 +954,16 @@ export function deleteOrganizationRole(
 ) {
   return fetchAdmin<void>(`/organizations/${organizationId}/roles/${roleId}`, {
     method: "DELETE",
+    token,
+  });
+}
+
+export function listPermissionCatalog(
+  token: string,
+  scope?: PermissionScope,
+) {
+  const suffix = scope ? `?scope=${encodeURIComponent(scope)}` : "";
+  return fetchAdmin<PermissionCatalog>(`/permissions/catalog${suffix}`, {
     token,
   });
 }

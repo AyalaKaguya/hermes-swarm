@@ -68,8 +68,8 @@ flowchart TB
   Admin --> Organizations["OrganizationsModule<br/>organization CRUD + org roles"]
   Admin --> Memberships["MembershipsModule<br/>user_organizations"]
   Admin --> Settings["SettingsModule<br/>platform/org settings"]
-  Admin --> Groups["GroupsModule<br/>organization groups + feature access allow-list"]
-  Admin --> FeatureAccess["FeatureAccessModule<br/>APP_GUARD + feature group access"]
+  Admin --> Groups["GroupsModule<br/>organization groups"]
+  Admin --> FeatureAccess["FeatureAccessModule<br/>APP_GUARD + organization feature switches"]
   Admin --> Invite["InviteModule<br/>organization invites"]
   Admin --> Files["FilesModule<br/>admin file upload/download"]
   Admin --> Mail["MailModule<br/>SMTP, templates, logs"]
@@ -79,9 +79,7 @@ flowchart TB
   Admin --> PasswordReset["PasswordResetModule<br/>password reset"]
 
   Organizations --> Settings
-  Groups --> FeatureAccess
   FeatureAccess --> Settings
-  FeatureAccess --> Rbac
   Rbac --> IdentityEntities["@hermes-swarm/core identity entities"]
   Settings --> SettingsEntities["@hermes-swarm/core settings entities"]
   Mail --> MailEntities["@hermes-swarm/core mail entities"]
@@ -96,8 +94,8 @@ flowchart TB
 | `UsersModule` | 全局用户账号、个人资料、密码、语言偏好、平台用户管理 | `User`, `PlatformMember`, `Role` |
 | `OrganizationsModule` | 组织 CRUD、组织角色 CRUD、组织角色权限矩阵 | `Organization`, `Role`, `RolePermission`, `Permission`, `UserOrganization` |
 | `MembershipsModule` | 组织成员列表、创建、角色/显示名/状态修改、删除 | `User`, `Organization`, `Role`, `UserOrganization` |
-| `GroupsModule` | 组织用户组 CRUD、用户组成员维护、feature 访问人员 allow-list | `OrganizationGroup`, `OrganizationGroupMember`, `OrganizationFeatureGroupAccess`, `UserOrganization` |
-| `FeatureAccessModule` | `@RequireFeature` 全局守卫，按组织 feature 开关和用户组限制收窄访问 | `OrganizationFeatureGroupAccess`, `OrganizationGroupMember` |
+| `GroupsModule` | 组织用户组 CRUD、用户组成员维护 | `OrganizationGroup`, `OrganizationGroupMember`, `UserOrganization` |
+| `FeatureAccessModule` | `@RequireFeature` 全局守卫，按组织 feature 开关控制接口可用性 | `OrganizationSetting` |
 | `PlatformMembersModule` | 平台成员管理 | `PlatformMember`, `User`, `Role` |
 | `PlatformRolesModule` | 平台角色和平台角色权限矩阵 | `Role`, `Permission`, `RolePermission` |
 | `RbacModule` | 全局 `@RequirePermission` 权限守卫，CASL ability 构建，权限目录初始化 | `Permission`, `PlatformMember`, `UserOrganization`, `RolePermission` |
@@ -147,7 +145,7 @@ erDiagram
 
 | Area | Tables |
 | --- | --- |
-| Identity | `users`, `organizations`, `user_organizations`, `platform_members`, `organization_groups`, `organization_group_members`, `organization_feature_group_access` |
+| Identity | `users`, `organizations`, `user_organizations`, `platform_members`, `organization_groups`, `organization_group_members` |
 | RBAC | `roles`, `permissions`, `role_permissions` |
 | Settings | `platform_settings`, `organization_settings` |
 | Invite/Auth | `invites`, `password_reset`, `email_verifications` |
@@ -192,7 +190,7 @@ sequenceDiagram
 
 当前默认权限实体包括：`user`、`organization`、`role`、`group`、`setting`、`invite`、`mail`、`notification`。
 
-功能访问 guard 在 RBAC 之后执行。`@RequireFeature(featureKey)` 先读取组织 feature 开关；如果 feature 已开启且没有用户组限制，则保持现有 RBAC 行为；如果配置了用户组，普通成员必须属于至少一个允许组。平台管理员和具备组织设置/用户组管理能力的用户可绕过用户组 allow-list，但仍需通过 RBAC。
+功能访问 guard 在 RBAC 之后执行。`@RequireFeature(featureKey)` 只读取组织 feature 开关；开关为 `"true"` 时保持现有 RBAC 行为，未开启时返回 `403 功能未启用`。
 
 ## 6. 设置与 Redis 引用图
 
@@ -240,7 +238,6 @@ ValueType：
 | `/api/admin/organizations/:organizationId/members` | `MembershipsModule` | `user:*:organization` |
 | `/api/admin/organizations/:organizationId/groups` | `GroupsModule` | `group:*:organization` |
 | `/api/admin/organizations/:organizationId/groups/:groupId/members` | `GroupsModule` | `group:*:organization` |
-| `/api/admin/organizations/:organizationId/feature-access` | `GroupsModule` | read/update uses `setting:*:organization` |
 | `/api/admin/organizations/:organizationId/roles` | `OrganizationsModule` | `role:*:organization` |
 | `/api/admin/organizations/:organizationId/settings` | `SettingsModule` | `setting:*:organization` |
 | `/api/admin/organizations/:organizationId/invites` | `InviteModule` | `invite:*:organization` |
@@ -286,7 +283,7 @@ Settings 页面职责：
 | `/settings/platform` | 平台默认配置、平台成员、平台角色、组织概览 | `listSystemSettings`, `saveSystemSettings`, `listPlatformMembers`, `listPlatformRoles` |
 | `/settings/roles` | 当前组织角色与权限矩阵 | `listOrganizationRoles`, `replaceOrganizationRolePermissions` |
 | `/settings/groups` | 当前组织用户组与成员维护 | `listOrganizationGroups`, `replaceOrganizationGroupMembers` |
-| `/settings/features` | 组织 feature KV 开关与访问人员限制 | `listOrganizationSettings`, `saveOrganizationSettings`, `replaceOrganizationFeatureAccess` |
+| `/settings/features` | 组织 feature KV 开关 | `listOrganizationSettings`, `saveOrganizationSettings` |
 | `/settings/custom-smtp` | 组织 SMTP | `getSmtpConfig`, `saveSmtpConfig`, `validateSmtpConfig` |
 | `/settings/email-templates` | 组织邮件模板 | `listEmailTemplates`, `createEmailTemplate`, `updateEmailTemplate`, `deleteEmailTemplate` |
 | `/settings/notification-destinations` | 组织通知目标 | `listNotificationDestinations`, `listNotificationDestinationTypes` |

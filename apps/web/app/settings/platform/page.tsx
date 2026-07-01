@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useAdminShell } from "@/components/admin-shell";
 import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
+import { PlatformRolePermissions } from "@/components/platform-role-permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -316,6 +317,7 @@ export default function PlatformPage() {
           <TabsTrigger value="messaging">消息服务</TabsTrigger>
           <TabsTrigger value="smtp">公共 SMTP</TabsTrigger>
           <TabsTrigger value="admins">平台用户</TabsTrigger>
+          <TabsTrigger value="roles">平台角色</TabsTrigger>
           <TabsTrigger value="custom">自定义设置</TabsTrigger>
         </TabsList>
 
@@ -781,6 +783,10 @@ export default function PlatformPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent className="mt-0" value="roles">
+          <PlatformRolePermissions disabled={!canManagePlatform} />
         </TabsContent>
 
         <TabsContent className="mt-0" value="custom">

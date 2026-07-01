@@ -1,6 +1,5 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from "typeorm";
 import type { Organization } from "./organization.entity.js";
-import type { OrganizationFeatureGroupAccess } from "./organization-feature-group-access.entity.js";
 import type { OrganizationGroupMember } from "./organization-group-member.entity.js";
 import type { User } from "./user.entity.js";
 import { BaseEntity } from "./base.entity.js";
@@ -43,7 +42,4 @@ export class OrganizationGroup extends BaseEntity {
 
   @OneToMany("OrganizationGroupMember", "group")
   members!: OrganizationGroupMember[];
-
-  @OneToMany("OrganizationFeatureGroupAccess", "group")
-  featureAccess!: OrganizationFeatureGroupAccess[];
 }

@@ -16,22 +16,44 @@ import type {
 } from "../common/admin-api.types.js";
 import { parseAuthSessionToken } from "../auth/auth-session.js";
 import { RequireFeature } from "../feature-access/require-feature.decorator.js";
-import { RequirePermission } from "../rbac/require-permission.decorator.js";
+import {
+  PermissionOperation,
+  PermissionResource,
+} from "../rbac/require-permission.decorator.js";
 import { InviteService } from "./invite.service.js";
 
 @Controller("admin")
+@PermissionResource({
+  entity: "invite",
+  entityLabel: "邀请",
+  entityOrder: 70,
+  purpose: "organization_invite",
+  purposeLabel: "组织邀请",
+  purposeOrder: 10,
+  scope: "organization",
+})
 export class InviteController {
   constructor(private readonly inviteService: InviteService) {}
 
   @Get("organizations/:organizationId/invites")
-  @RequirePermission({ action: "read", entity: "invite", scope: "organization" })
+  @PermissionOperation({
+    description: "查看当前组织的邀请列表。",
+    label: "查看邀请",
+    operation: "list",
+    sortOrder: 10,
+  })
   @RequireFeature("feature:invite:enabled")
   async listForOrganization(@Param("organizationId") organizationId: string) {
     return this.inviteService.listForOrganization(organizationId);
   }
 
   @Post("organizations/:organizationId/invites")
-  @RequirePermission({ action: "create", entity: "invite", scope: "organization" })
+  @PermissionOperation({
+    description: "批量创建当前组织的邀请。",
+    label: "创建邀请",
+    operation: "create_bulk",
+    sortOrder: 20,
+  })
   @RequireFeature("feature:invite:enabled")
   async createBulkForOrganization(
     @Headers("authorization") authorization: string | undefined,
@@ -46,7 +68,12 @@ export class InviteController {
   }
 
   @Post("organizations/:organizationId/invites/:inviteId/resend")
-  @RequirePermission({ action: "update", entity: "invite", scope: "organization" })
+  @PermissionOperation({
+    description: "重新发送当前组织的邀请。",
+    label: "重发邀请",
+    operation: "resend",
+    sortOrder: 30,
+  })
   @RequireFeature("feature:invite:enabled")
   async resendForOrganization(
     @Headers("authorization") authorization: string | undefined,
@@ -61,7 +88,13 @@ export class InviteController {
   }
 
   @Delete("organizations/:organizationId/invites/:inviteId")
-  @RequirePermission({ action: "delete", entity: "invite", scope: "organization" })
+  @PermissionOperation({
+    description: "撤销或删除当前组织的邀请。",
+    isDangerous: true,
+    label: "删除邀请",
+    operation: "delete",
+    sortOrder: 90,
+  })
   @RequireFeature("feature:invite:enabled")
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteForOrganization(

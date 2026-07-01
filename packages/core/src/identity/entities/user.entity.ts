@@ -5,7 +5,6 @@ export type UserType = "service" | "user";
 export type PreferredLanguage = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
 
 @Entity({ name: "users" })
-@Index(["email"], { unique: true })
 export class User {
   @Column({ type: "uuid", primary: true, default: () => "uuid_generate_v4()" })
   id!: string;
@@ -26,7 +25,7 @@ export class User {
   lastName!: string | null;
 
   @Column({ type: "varchar", length: 160 })
-  @Index()
+  @Index("IDX_users_email_unique", { unique: true })
   email!: string;
 
   @Column({ type: "varchar", length: 80, nullable: true })

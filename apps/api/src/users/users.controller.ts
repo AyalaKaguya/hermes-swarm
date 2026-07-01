@@ -18,10 +18,22 @@ import type {
   UpdateUserPasswordPayload,
   UpdateUserPayload,
 } from "../common/admin-api.types.js";
-import { RequirePermission } from "../rbac/require-permission.decorator.js";
+import {
+  PermissionOperation,
+  PermissionResource,
+} from "../rbac/require-permission.decorator.js";
 import { UsersService } from "./users.service.js";
 
 @Controller("admin/users")
+@PermissionResource({
+  entity: "user",
+  entityLabel: "用户",
+  entityOrder: 10,
+  purpose: "platform_user",
+  purposeLabel: "平台用户",
+  purposeOrder: 10,
+  scope: "platform",
+})
 /**
  * Exposes migrated user management endpoints under the admin namespace.
  */
@@ -32,7 +44,12 @@ export class UsersController {
    * Lists organization users visible to the current admin.
    */
   @Get()
-  @RequirePermission({ action: "read", entity: "user", scope: "platform" })
+  @PermissionOperation({
+    description: "查看平台用户列表。",
+    label: "查看用户列表",
+    operation: "list",
+    sortOrder: 10,
+  })
   list(@Headers("authorization") authorization?: string) {
     return this.usersService.list(authorization);
   }
@@ -41,7 +58,12 @@ export class UsersController {
    * Searches organization users by a normalized free-text query.
    */
   @Get("search")
-  @RequirePermission({ action: "read", entity: "user", scope: "platform" })
+  @PermissionOperation({
+    description: "按邮箱、昵称或名称搜索平台用户。",
+    label: "搜索用户",
+    operation: "search",
+    sortOrder: 20,
+  })
   search(
     @Headers("authorization") authorization: string | undefined,
     @Query() query: SearchUsersQuery,
@@ -53,7 +75,12 @@ export class UsersController {
    * Creates a user in the current organization.
    */
   @Post()
-  @RequirePermission({ action: "create", entity: "user", scope: "platform" })
+  @PermissionOperation({
+    description: "创建新的平台用户账号。",
+    label: "创建用户",
+    operation: "create",
+    sortOrder: 30,
+  })
   create(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: CreateUserPayload,
@@ -65,7 +92,12 @@ export class UsersController {
    * Updates a global user through platform user management.
    */
   @Patch("platform/:userId")
-  @RequirePermission({ action: "update", entity: "user", scope: "platform" })
+  @PermissionOperation({
+    description: "更新平台用户的基础资料和状态。",
+    label: "更新用户",
+    operation: "update_basic",
+    sortOrder: 40,
+  })
   updateManaged(
     @Headers("authorization") authorization: string | undefined,
     @Param("userId") userId: string,
@@ -78,7 +110,13 @@ export class UsersController {
    * Deletes a global user through platform user management.
    */
   @Delete("platform/:userId")
-  @RequirePermission({ action: "delete", entity: "user", scope: "platform" })
+  @PermissionOperation({
+    description: "删除平台用户账号。",
+    isDangerous: true,
+    label: "删除用户",
+    operation: "delete",
+    sortOrder: 90,
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteManaged(
     @Headers("authorization") authorization: string | undefined,
@@ -91,7 +129,17 @@ export class UsersController {
    * Updates an existing user profile or administrative state.
    */
   @Patch(":userId")
-  @RequirePermission({ action: "update", entity: "user", scope: "own" })
+  @PermissionOperation({
+    description: "更新自己的个人资料。",
+    entity: "user",
+    entityLabel: "用户",
+    operation: "update_profile",
+    label: "更新个人资料",
+    purpose: "self_profile",
+    purposeLabel: "个人资料",
+    scope: "own",
+    sortOrder: 10,
+  })
   update(
     @Headers("authorization") authorization: string | undefined,
     @Param("userId") userId: string,
@@ -104,7 +152,17 @@ export class UsersController {
    * Changes a user's password through admin or self-service flow.
    */
   @Post(":userId/password")
-  @RequirePermission({ action: "update", entity: "user", scope: "own" })
+  @PermissionOperation({
+    description: "修改自己的登录密码。",
+    entity: "user",
+    entityLabel: "用户",
+    operation: "change_password",
+    label: "修改密码",
+    purpose: "self_profile",
+    purposeLabel: "个人资料",
+    scope: "own",
+    sortOrder: 20,
+  })
   updatePassword(
     @Headers("authorization") authorization: string | undefined,
     @Param("userId") userId: string,
@@ -117,7 +175,17 @@ export class UsersController {
    * Updates the preferred language of the selected user.
    */
   @Patch(":userId/preferred-language")
-  @RequirePermission({ action: "update", entity: "user", scope: "own" })
+  @PermissionOperation({
+    description: "修改自己的界面语言偏好。",
+    entity: "user",
+    entityLabel: "用户",
+    operation: "update_language",
+    label: "修改语言偏好",
+    purpose: "self_profile",
+    purposeLabel: "个人资料",
+    scope: "own",
+    sortOrder: 30,
+  })
   updatePreferredLanguage(
     @Headers("authorization") authorization: string | undefined,
     @Param("userId") userId: string,

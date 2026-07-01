@@ -10,6 +10,7 @@ import {
   UserOrganization,
 } from "@hermes-swarm/core";
 import { AuthModule } from "../auth/auth.module.js";
+import { FeatureAccessModule } from "../feature-access/feature-access.module.js";
 import { FilesModule } from "../files/files.module.js";
 import { GroupsModule } from "../groups/groups.module.js";
 import { MailModule } from "../mail/mail.module.js";
@@ -36,6 +37,7 @@ import { AdminController } from "./admin.controller.js";
       UserOrganization,
     ]),
     AuthModule,
+    FeatureAccessModule,
     UsersModule,
     OrganizationsModule,
     SettingsModule,

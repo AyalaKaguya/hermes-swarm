@@ -14,10 +14,22 @@ import type {
   ReplaceRolePermissionsPayload,
   UpdateOrganizationPayload,
 } from "../common/admin-api.types.js";
-import { RequirePermission } from "../rbac/require-permission.decorator.js";
+import {
+  PermissionOperation,
+  PermissionResource,
+} from "../rbac/require-permission.decorator.js";
 import { OrganizationsService } from "./organizations.service.js";
 
 @Controller("admin")
+@PermissionResource({
+  entity: "organization",
+  entityLabel: "组织",
+  entityOrder: 20,
+  purpose: "profile",
+  purposeLabel: "组织资料",
+  purposeOrder: 10,
+  scope: "organization",
+})
 /**
  * Exposes current-organization and organization-list management endpoints
  * under the shared admin route namespace.
@@ -29,10 +41,16 @@ export class OrganizationsController {
    * Lists organizations managed through the admin backend.
    */
   @Get("organizations")
-  @RequirePermission({
-    action: "read",
+  @PermissionOperation({
+    description: "查看平台内的组织列表。",
     entity: "organization",
+    entityLabel: "组织",
+    label: "查看组织列表",
+    operation: "list",
+    purpose: "platform_organization",
+    purposeLabel: "平台组织",
     scope: "platform",
+    sortOrder: 10,
   })
   list() {
     return this.organizationsService.list();
@@ -42,10 +60,11 @@ export class OrganizationsController {
    * Returns a managed organization selected by id.
    */
   @Get("organizations/:organizationId")
-  @RequirePermission({
-    action: "read",
-    entity: "organization",
-    scope: "organization",
+  @PermissionOperation({
+    description: "查看当前组织的基础资料。",
+    label: "查看组织资料",
+    operation: "view",
+    sortOrder: 10,
   })
   get(
     @Param("organizationId") organizationId: string,
@@ -57,10 +76,16 @@ export class OrganizationsController {
    * Creates a managed organization and provisions its admin infrastructure.
    */
   @Post("organizations")
-  @RequirePermission({
-    action: "create",
+  @PermissionOperation({
+    description: "创建新的组织并初始化组织角色。",
     entity: "organization",
+    entityLabel: "组织",
+    label: "创建组织",
+    operation: "create",
+    purpose: "platform_organization",
+    purposeLabel: "平台组织",
     scope: "platform",
+    sortOrder: 20,
   })
   create(
     @Headers("authorization") authorization: string | undefined,
@@ -73,10 +98,11 @@ export class OrganizationsController {
    * Updates a managed organization selected by id.
    */
   @Patch("organizations/:organizationId")
-  @RequirePermission({
-    action: "update",
-    entity: "organization",
-    scope: "organization",
+  @PermissionOperation({
+    description: "更新当前组织的基础资料。",
+    label: "更新组织资料",
+    operation: "update_basic",
+    sortOrder: 20,
   })
   update(
     @Param("organizationId") organizationId: string,
@@ -92,10 +118,17 @@ export class OrganizationsController {
    * Deletes a managed organization selected by id.
    */
   @Delete("organizations/:organizationId")
-  @RequirePermission({
-    action: "delete",
+  @PermissionOperation({
+    description: "删除平台中的组织。",
     entity: "organization",
+    entityLabel: "组织",
+    isDangerous: true,
+    label: "删除组织",
+    operation: "delete",
+    purpose: "platform_organization",
+    purposeLabel: "平台组织",
     scope: "platform",
+    sortOrder: 90,
   })
   delete(
     @Param("organizationId") organizationId: string,
@@ -107,10 +140,17 @@ export class OrganizationsController {
    * Lists roles in a managed organization selected by id.
    */
   @Get("organizations/:organizationId/roles")
-  @RequirePermission({
-    action: "read",
+  @PermissionOperation({
+    description: "查看当前组织的角色列表。",
     entity: "role",
-    scope: "organization",
+    entityLabel: "角色",
+    entityOrder: 30,
+    label: "查看角色列表",
+    operation: "list",
+    purpose: "organization_role",
+    purposeLabel: "组织角色",
+    purposeOrder: 10,
+    sortOrder: 10,
   })
   listRoles(
     @Param("organizationId") organizationId: string,
@@ -122,10 +162,17 @@ export class OrganizationsController {
    * Creates a role in a managed organization selected by id.
    */
   @Post("organizations/:organizationId/roles")
-  @RequirePermission({
-    action: "create",
+  @PermissionOperation({
+    description: "创建当前组织内的自定义角色。",
     entity: "role",
-    scope: "organization",
+    entityLabel: "角色",
+    entityOrder: 30,
+    label: "创建角色",
+    operation: "create",
+    purpose: "organization_role",
+    purposeLabel: "组织角色",
+    purposeOrder: 10,
+    sortOrder: 20,
   })
   createRole(
     @Param("organizationId") organizationId: string,
@@ -141,10 +188,17 @@ export class OrganizationsController {
    * Updates a role in a managed organization selected by id.
    */
   @Patch("organizations/:organizationId/roles/:roleId")
-  @RequirePermission({
-    action: "update",
+  @PermissionOperation({
+    description: "更新当前组织角色的名称、颜色和描述。",
     entity: "role",
-    scope: "organization",
+    entityLabel: "角色",
+    entityOrder: 30,
+    label: "更新角色",
+    operation: "update_basic",
+    purpose: "organization_role",
+    purposeLabel: "组织角色",
+    purposeOrder: 10,
+    sortOrder: 30,
   })
   updateRole(
     @Param("organizationId") organizationId: string,
@@ -162,10 +216,18 @@ export class OrganizationsController {
    * Replaces a role permission set with entity CRUD permissions.
    */
   @Put("organizations/:organizationId/roles/:roleId/permissions")
-  @RequirePermission({
-    action: "update",
+  @PermissionOperation({
+    description: "替换当前组织角色拥有的权限。",
     entity: "role",
-    scope: "organization",
+    entityLabel: "角色",
+    entityOrder: 30,
+    isDangerous: true,
+    label: "配置角色权限",
+    operation: "replace_permissions",
+    purpose: "organization_role",
+    purposeLabel: "组织角色",
+    purposeOrder: 10,
+    sortOrder: 40,
   })
   replaceRolePermissions(
     @Param("organizationId") organizationId: string,
@@ -183,10 +245,18 @@ export class OrganizationsController {
    * Deletes a role in a managed organization selected by id.
    */
   @Delete("organizations/:organizationId/roles/:roleId")
-  @RequirePermission({
-    action: "delete",
+  @PermissionOperation({
+    description: "删除当前组织内的自定义角色。",
     entity: "role",
-    scope: "organization",
+    entityLabel: "角色",
+    entityOrder: 30,
+    isDangerous: true,
+    label: "删除角色",
+    operation: "delete",
+    purpose: "organization_role",
+    purposeLabel: "组织角色",
+    purposeOrder: 10,
+    sortOrder: 90,
   })
   deleteRole(
     @Param("organizationId") organizationId: string,
