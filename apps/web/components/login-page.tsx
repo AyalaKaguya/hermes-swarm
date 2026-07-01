@@ -56,10 +56,7 @@ export function LoginPage() {
 
     try {
       const response = await authLogin({ email, password });
-      if (
-        response.snapshot.memberships.length === 0 &&
-        !response.snapshot.platformMembership
-      ) {
+      if (response.snapshot.permissions.length === 0) {
         setError("当前用户没有管理端访问权限");
         return;
       }

@@ -51,14 +51,17 @@ export function resolveSession(snapshot: Snapshot | PrincipalSession): ResolvedS
 }
 
 export function hasAnyManagementAccess(
-  snapshot: Pick<Snapshot, "isPlatformAdmin">,
+  _snapshot: Pick<Snapshot, "isPlatformAdmin">,
   resolvedSession: ResolvedSession | null,
 ) {
   return Boolean(
     resolvedSession &&
-      (snapshot.isPlatformAdmin ||
-        resolvedSession.isPlatformAdmin ||
-        resolvedSession.memberships?.length ||
-        resolvedSession.platformMembership),
+      (resolvedSession.permissions?.length ||
+        resolvedSession.memberships?.some(
+          (membership) => membership.role?.permissions?.some((item) => item.enabled),
+        ) ||
+        resolvedSession.platformMembership?.role?.permissions?.some(
+          (item) => item.enabled,
+        )),
   );
 }

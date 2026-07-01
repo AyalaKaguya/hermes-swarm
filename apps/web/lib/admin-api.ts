@@ -564,6 +564,13 @@ export function fetchMe(token: string) {
   return fetchAdmin<PrincipalSession>("/auth/me", { token });
 }
 
+export function searchUsers(token: string, search: string) {
+  const suffix = search.trim()
+    ? `?search=${encodeURIComponent(search.trim())}`
+    : "";
+  return fetchAdmin<User[]>(`/users/search${suffix}`, { token });
+}
+
 export function updateUser(token: string, userId: string, payload: {
   displayName?: string;
   email?: string;

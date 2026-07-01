@@ -7,7 +7,7 @@ export type SettingsNavItem = AppShellNavSection["items"][number] & {
   permission: string;
 };
 
-export const SETTINGS_NAV_ITEMS = PAGE_ACCESS_DEFINITIONS.map((item) => ({
+const BASE_SETTINGS_NAV_ITEMS = PAGE_ACCESS_DEFINITIONS.map((item) => ({
   href: item.href,
   icon: item.icon as AppIconName,
   key: item.key,
@@ -15,6 +15,98 @@ export const SETTINGS_NAV_ITEMS = PAGE_ACCESS_DEFINITIONS.map((item) => ({
   pageKey: item.key,
   permission: item.permission,
 })) satisfies SettingsNavItem[];
+
+export const SETTINGS_NAV_ITEMS = BASE_SETTINGS_NAV_ITEMS.flatMap((item) =>
+  item.key === "settings.organization"
+    ? [
+        item,
+        {
+          href: "/settings/organization?tab=members",
+          icon: "users" as AppIconName,
+          key: "settings.organization.members",
+          label: "成员",
+          pageKey: item.pageKey,
+          permission: item.permission,
+        },
+        {
+          href: "/settings/organization?tab=controls",
+          icon: "settings" as AppIconName,
+          key: "settings.organization.controls",
+          label: "控制项",
+          pageKey: item.pageKey,
+          permission: item.permission,
+        },
+        {
+          href: "/settings/organization?tab=profile",
+          icon: "palette" as AppIconName,
+          key: "settings.organization.profile",
+          label: "展示",
+          pageKey: item.pageKey,
+          permission: item.permission,
+        },
+      ]
+    : item.key === "settings.platform"
+      ? [
+          item,
+          {
+            href: "/settings/platform?tab=defaults",
+            icon: "settings" as AppIconName,
+            key: "settings.platform.defaults",
+            label: "默认控制项",
+            pageKey: item.pageKey,
+            permission: item.permission,
+          },
+          {
+            href: "/settings/platform?tab=organization",
+            icon: "building" as AppIconName,
+            key: "settings.platform.organization",
+            label: "组织创建",
+            pageKey: item.pageKey,
+            permission: item.permission,
+          },
+          {
+            href: "/settings/platform?tab=messaging",
+            icon: "bell" as AppIconName,
+            key: "settings.platform.messaging",
+            label: "消息服务",
+            pageKey: item.pageKey,
+            permission: item.permission,
+          },
+          {
+            href: "/settings/platform?tab=smtp",
+            icon: "plug" as AppIconName,
+            key: "settings.platform.smtp",
+            label: "公共 SMTP",
+            pageKey: item.pageKey,
+            permission: item.permission,
+          },
+          {
+            href: "/settings/platform?tab=admins",
+            icon: "users" as AppIconName,
+            key: "settings.platform.admins",
+            label: "平台用户",
+            pageKey: item.pageKey,
+            permission: item.permission,
+          },
+          {
+            href: "/settings/platform?tab=roles",
+            icon: "shield" as AppIconName,
+            key: "settings.platform.roles",
+            label: "平台角色",
+            pageKey: item.pageKey,
+            permission: item.permission,
+          },
+          {
+            href: "/settings/platform?tab=custom",
+            icon: "database" as AppIconName,
+            key: "settings.platform.custom",
+            label: "自定义设置",
+            pageKey: item.pageKey,
+            permission: item.permission,
+          },
+        ]
+    : [item],
+) satisfies SettingsNavItem[];
 
 export const SETTINGS_NAV_SECTIONS = ["personal", "organization", "platform"].map(
   (section) => {
