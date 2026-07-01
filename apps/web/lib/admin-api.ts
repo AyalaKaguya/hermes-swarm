@@ -376,6 +376,21 @@ const API_BASE_URL =
 const ADMIN_API_BASE_URL = `${API_BASE_URL.replace(/\/$/, "")}/admin`;
 const REQUEST_TIMEOUT_MS = 12_000;
 
+export class AdminApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "AdminApiError";
+  }
+}
+
+export function isUnauthorizedApiError(error: unknown) {
+  return error instanceof AdminApiError && error.status === 401;
+}
+
 export async function fetchAdmin<T>(
   path: string,
   options?: {
@@ -417,7 +432,11 @@ export async function fetchAdmin<T>(
     const message = Array.isArray(detail?.message)
       ? detail.message.join(", ")
       : detail?.message;
-    throw new Error(message || `请求失败：${response.status}`);
+    throw new AdminApiError(
+      message || `请求失败：${response.status}`,
+      response.status,
+      typeof detail?.code === "string" ? detail.code : undefined,
+    );
   }
 
   if (response.status === 204) {

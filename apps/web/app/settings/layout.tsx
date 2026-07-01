@@ -15,7 +15,10 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
-import { hasMenuAccess } from "@/lib/session";
+import {
+  findPageAccessDefinitionsByPath,
+} from "@hermes-swarm/access";
+import { usePermission } from "@/hooks/use-permission";
 import { cn } from "@/lib/utils";
 
 const SETTINGS_SIDEBAR_DEFAULT_SIZE = "240px";
@@ -31,19 +34,31 @@ export default function SettingsLayout({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { resolvedSession, snapshot } = useAdminShell();
+  const access = usePermission();
   const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] =
     useState(false);
   const activeOrganizationId = snapshot?.organization?.id ?? "none";
+  const currentPages = findPageAccessDefinitionsByPath(pathname);
+  const routeOrganizationId = getRouteOrganizationId(pathname);
+  const canAccessCurrentPage =
+    currentPages.length > 0 &&
+    currentPages.some((page) =>
+      access.hasPageAccess(page.key, {
+        organizationId: routeOrganizationId ?? snapshot?.organization?.id,
+      }),
+    );
 
   const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
     ...section,
     items: section.items
       .filter((item) => {
         if (!snapshot || !resolvedSession) return false;
-        return hasMenuAccess(snapshot, resolvedSession, item.key);
+        return access.hasPageAccess(item.pageKey, {
+          organizationId: snapshot.organization?.id,
+        });
       })
       .map((item) =>
-        item.key === "organization" && snapshot?.organization?.id
+        item.pageKey === "settings.organization" && snapshot?.organization?.id
           ? {
               ...item,
               href: `/settings/organizations/${snapshot.organization.id}`,
@@ -97,7 +112,11 @@ export default function SettingsLayout({
               className="mx-auto flex max-w-7xl flex-col gap-4"
               key={activeOrganizationId}
             >
-              {children}
+              {canAccessCurrentPage ? (
+                children
+              ) : (
+                <SettingsAccessDenied pages={currentPages} />
+              )}
             </div>
           </div>
         </ResizablePanel>
@@ -124,7 +143,13 @@ export default function SettingsLayout({
             </div>
           ))}
         </div>
-        <div key={activeOrganizationId}>{children}</div>
+        <div key={activeOrganizationId}>
+          {canAccessCurrentPage ? (
+            children
+          ) : (
+            <SettingsAccessDenied pages={currentPages} />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -225,4 +250,36 @@ function matchesSettingsHref(
 
   if (queryOnly) return false;
   return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
+}
+
+function getRouteOrganizationId(pathname: string) {
+  const match = pathname.match(/^\/settings\/organizations\/([^/]+)$/);
+  return match?.[1] ?? null;
+}
+
+function SettingsAccessDenied({
+  pages,
+}: {
+  pages: ReturnType<typeof findPageAccessDefinitionsByPath>;
+}) {
+  const page = pages[0] ?? null;
+  return (
+    <div className="flex min-h-[360px] items-center justify-center">
+      <div className="grid max-w-md gap-2 text-center">
+        <div className="text-base font-semibold">没有页面访问权限</div>
+        <div className="text-sm text-muted-foreground">
+          {page
+            ? `当前角色不能访问“${page.label}”。`
+            : "当前角色不能访问此页面。"}
+        </div>
+        {pages.length > 0 && (
+          <div className="grid gap-1 font-mono text-xs text-muted-foreground">
+            {pages.map((item) => (
+              <span key={item.permission}>{item.permission}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

@@ -1,0 +1,177 @@
+import type {
+  PageAccessDefinition,
+  PermissionScope,
+} from "./types.js";
+import { matchRoutePattern } from "./route-pattern.js";
+
+export const PAGE_ACCESS_DEFINITIONS = [
+  definePageAccess({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "允许访问个人账号资料与密码设置页面。",
+    href: "/settings/account",
+    icon: "user",
+    key: "settings.account",
+    label: "账号",
+    order: 10,
+    routePatterns: ["/settings", "/settings/account"],
+    scope: "own",
+    section: "personal",
+    sectionLabel: "个人",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "允许访问当前组织的基础资料页面。",
+    href: "/settings/organization",
+    icon: "building",
+    key: "settings.organization",
+    label: "常规",
+    order: 10,
+    routePatterns: [
+      "/settings/organization",
+      "/settings/organization-controls",
+      "/settings/organizations/:organizationId",
+    ],
+    scope: "organization",
+    section: "organization",
+    sectionLabel: "组织",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin"],
+    description: "允许访问组织自定义 SMTP 配置页面。",
+    href: "/settings/custom-smtp",
+    icon: "settings",
+    key: "settings.custom-smtp",
+    label: "自定义邮件",
+    order: 20,
+    routePatterns: ["/settings/custom-smtp"],
+    scope: "organization",
+    section: "organization",
+    sectionLabel: "组织",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "允许访问组织邮件模板页面。",
+    href: "/settings/email-templates",
+    icon: "file",
+    key: "settings.email-templates",
+    label: "邮件模板",
+    order: 30,
+    routePatterns: ["/settings/email-templates"],
+    scope: "organization",
+    section: "organization",
+    sectionLabel: "组织",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "允许访问组织通知配置页面。",
+    href: "/settings/notification-destinations",
+    icon: "bell",
+    key: "settings.notification-destinations",
+    label: "通知",
+    order: 40,
+    routePatterns: ["/settings/notification-destinations"],
+    scope: "organization",
+    section: "organization",
+    sectionLabel: "组织",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin"],
+    description: "允许访问组织功能开关页面。",
+    href: "/settings/features",
+    icon: "grid",
+    key: "settings.features",
+    label: "功能",
+    order: 50,
+    routePatterns: ["/settings/features"],
+    scope: "organization",
+    section: "organization",
+    sectionLabel: "组织",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "允许访问组织用户组页面。",
+    href: "/settings/groups",
+    icon: "users",
+    key: "settings.groups",
+    label: "用户组",
+    order: 60,
+    routePatterns: ["/settings/groups"],
+    scope: "organization",
+    section: "organization",
+    sectionLabel: "组织",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "允许访问组织角色和权限页面。",
+    href: "/settings/roles",
+    icon: "shield",
+    key: "settings.roles",
+    label: "角色和权限",
+    order: 70,
+    routePatterns: ["/settings/roles"],
+    scope: "organization",
+    section: "organization",
+    sectionLabel: "组织",
+  }),
+  definePageAccess({
+    defaultRoles: ["platform-admin"],
+    description: "允许访问平台设置页面。",
+    href: "/settings/platform",
+    icon: "server",
+    key: "settings.platform",
+    label: "平台设置",
+    order: 10,
+    routePatterns: ["/settings/platform"],
+    scope: "platform",
+    section: "platform",
+    sectionLabel: "平台",
+  }),
+  definePageAccess({
+    defaultRoles: ["platform-admin"],
+    description: "允许访问平台组织列表与组织管理入口。",
+    href: "/settings/organizations",
+    icon: "building",
+    key: "settings.organizations",
+    label: "组织列表",
+    order: 20,
+    routePatterns: ["/settings/organizations", "/settings/organizations/:organizationId"],
+    scope: "platform",
+    section: "platform",
+    sectionLabel: "平台",
+  }),
+] as const satisfies PageAccessDefinition[];
+
+export function getPageAccessPermissionId(
+  pageKey: string,
+  scope: PermissionScope,
+) {
+  return `page.${pageKey}.access:${scope}`;
+}
+
+export function getPageAccessDefinition(pageKey: string) {
+  return (
+    PAGE_ACCESS_DEFINITIONS.find((definition) => definition.key === pageKey) ??
+    null
+  );
+}
+
+export function findPageAccessDefinitionByPath(pathname: string) {
+  return findPageAccessDefinitionsByPath(pathname)[0] ?? null;
+}
+
+export function findPageAccessDefinitionsByPath(pathname: string) {
+  return (
+    PAGE_ACCESS_DEFINITIONS.filter((definition) =>
+      definition.routePatterns.some((pattern) => matchRoutePattern(pattern, pathname)),
+    )
+  );
+}
+
+function definePageAccess(
+  definition: Omit<PageAccessDefinition, "permission">,
+): PageAccessDefinition {
+  return {
+    ...definition,
+    permission: getPageAccessPermissionId(definition.key, definition.scope),
+  };
+}

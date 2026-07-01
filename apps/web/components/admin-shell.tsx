@@ -13,6 +13,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import {
   fetchMe,
+  isUnauthorizedApiError,
   type Snapshot,
 } from "@/lib/admin-api";
 import {
@@ -22,6 +23,7 @@ import {
   storeSession,
   type ResolvedSession,
 } from "@/lib/session";
+import { isPlatformAdminRoleName } from "@hermes-swarm/access";
 
 type AdminShellContextValue = {
   loading: boolean;
@@ -44,6 +46,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [resolvedSession, setResolvedSession] =
     useState<ResolvedSession | null>(null);
   const [loading, setLoading] = useState(!isPublicRoute);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [redirectingToLogin, setRedirectingToLogin] = useState(false);
 
   const loadSnapshot = useCallback(
@@ -52,6 +55,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       if (!session?.token) {
         setSnapshot(null);
         setResolvedSession(null);
+        setLoadError(null);
         setRedirectingToLogin(true);
         setLoading(false);
         router.replace("/login");
@@ -67,13 +71,20 @@ export function AdminShell({ children }: { children: ReactNode }) {
         const data = createShellSnapshot(principal);
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
+        setLoadError(null);
         setRedirectingToLogin(false);
-      } catch {
-        clearStoredSession();
-        setSnapshot(null);
-        setResolvedSession(null);
-        setRedirectingToLogin(true);
-        router.replace("/login");
+      } catch (error) {
+        if (isUnauthorizedApiError(error)) {
+          clearStoredSession();
+          setSnapshot(null);
+          setResolvedSession(null);
+          setLoadError(null);
+          setRedirectingToLogin(true);
+          router.replace("/login");
+          return;
+        }
+        setLoadError(error instanceof Error ? error.message : "加载登录状态失败");
+        setRedirectingToLogin(false);
       } finally {
         setLoading(false);
       }
@@ -118,6 +129,24 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   if (isPublicRoute) {
     return children;
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-screen items-center justify-center p-4">
+        <div className="grid max-w-sm gap-3 text-center">
+          <div className="text-sm font-medium">无法加载当前登录状态</div>
+          <div className="text-xs text-muted-foreground">{loadError}</div>
+          <button
+            className="mx-auto h-8 rounded-md border px-3 text-sm transition-colors hover:bg-muted"
+            onClick={() => loadSnapshot({ showLoading: true })}
+            type="button"
+          >
+            重试
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (loading || redirectingToLogin) {
@@ -200,7 +229,10 @@ function createShellSnapshot(
     null;
   const organization = activeMembership?.organization ?? organizations[0] ?? null;
   const role = activeMembership?.role ?? principal.platformMembership?.role ?? null;
-  const isPlatformAdmin = Boolean(principal.platformMembership);
+  const activePermissions = resolveActivePermissions(principal, activeMembership);
+  const isPlatformAdmin = isPlatformAdminRoleName(
+    principal.platformMembership?.role?.name,
+  );
 
   return {
     ...principal,
@@ -208,7 +240,7 @@ function createShellSnapshot(
       isPlatformAdmin,
       memberships,
       organization,
-      permissions: principal.permissions,
+      permissions: activePermissions,
       platformMembership: principal.platformMembership,
       role,
       user: principal.user,
@@ -216,6 +248,7 @@ function createShellSnapshot(
     isPlatformAdmin,
     organization,
     organizations,
+    permissions: activePermissions,
     rolePermissions: role?.permissions ?? [],
     roles: role ? [role] : [],
     scope: {
@@ -226,4 +259,27 @@ function createShellSnapshot(
     systemSettings: [],
     users: [],
   };
+}
+
+function resolveActivePermissions(
+  principal: Awaited<ReturnType<typeof fetchMe>>,
+  activeMembership: Awaited<ReturnType<typeof fetchMe>>["memberships"][number] | null,
+) {
+  const permissionSources = [
+    activeMembership?.role?.permissions,
+    principal.platformMembership?.role?.permissions,
+  ].filter((items): items is NonNullable<typeof items> => Array.isArray(items));
+
+  if (permissionSources.length === 0) {
+    return principal.permissions;
+  }
+
+  return [
+    ...new Set(
+      permissionSources
+        .flat()
+        .filter((permission) => permission.enabled)
+        .map((permission) => permission.permission),
+    ),
+  ];
 }

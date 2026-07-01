@@ -21,10 +21,12 @@ import {
   saveOrganizationSettings,
   type OrganizationSetting,
 } from "@/lib/admin-api";
-import { getStoredSession, hasMenuAccess } from "@/lib/session";
+import { usePermission } from "@/hooks/use-permission";
+import { getStoredSession } from "@/lib/session";
 
 export default function FeaturesPage() {
   const { resolvedSession, snapshot } = useAdminShell();
+  const access = usePermission();
   const [settings, setSettings] = useState<OrganizationSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +34,7 @@ export default function FeaturesPage() {
   const [msg, setMsg] = useState("");
   const canManageFeatures =
     snapshot && resolvedSession
-      ? hasMenuAccess(snapshot, resolvedSession, "features", "manage")
+      ? access.hasPermission("setting.organization_config.save:organization")
       : false;
   const organizationFeatures = FEATURE_SETTING_DEFINITIONS.filter(
     (definition) => definition.scope === "organization",

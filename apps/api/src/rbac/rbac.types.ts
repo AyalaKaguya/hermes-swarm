@@ -1,4 +1,4 @@
-import type { PermissionScope } from "@hermes-swarm/core";
+import type { PermissionCatalogSource, PermissionScope } from "@hermes-swarm/core";
 
 export type PermissionDefaultRole =
   | "admin"
@@ -36,4 +36,5 @@ export type ResolvedPermissionDefinition = PermissionResourceMetadata & {
   operation: string;
   operationLabel: string;
   operationOrder: number | null;
+  source?: PermissionCatalogSource;
 };

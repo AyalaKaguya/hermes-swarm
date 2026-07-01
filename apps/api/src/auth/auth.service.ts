@@ -113,6 +113,7 @@ export class AuthService {
           where: roleIds.map((roleId) => ({ enabled: true, roleId })),
         })
       : [];
+    const permissionsByRoleId = groupPermissionsByRoleId(permissions);
     const groupsByMembership = await this.loadGroupsByMembership(
       memberships.map((membership) => membership.id),
     );
@@ -128,7 +129,15 @@ export class AuthService {
           joinedAt: membership.joinedAt,
           organization: membership.organization,
           organizationId: membership.organizationId,
-          role: membership.role,
+          role: membership.role
+            ? {
+                ...membership.role,
+                permissions:
+                  permissionsByRoleId.get(
+                    membership.roleId ?? membership.role.id,
+                  ) ?? [],
+              }
+            : null,
           roleId: membership.roleId,
           status: membership.status,
           user: membership.user,
@@ -140,7 +149,15 @@ export class AuthService {
         ? {
             displayName: platformMembership.displayName,
             id: platformMembership.id,
-            role: platformMembership.role,
+            role: platformMembership.role
+              ? {
+                  ...platformMembership.role,
+                  permissions:
+                    permissionsByRoleId.get(
+                      platformMembership.roleId ?? platformMembership.role.id,
+                    ) ?? [],
+                }
+              : null,
             roleId: platformMembership.roleId,
             status: platformMembership.status,
           }
@@ -166,6 +183,17 @@ export class AuthService {
     }
     return groupsByMembership;
   }
+}
+
+function groupPermissionsByRoleId(permissions: RolePermission[]) {
+  const permissionsByRoleId = new Map<string, RolePermission[]>();
+  for (const permission of permissions) {
+    permissionsByRoleId.set(permission.roleId, [
+      ...(permissionsByRoleId.get(permission.roleId) ?? []),
+      permission,
+    ]);
+  }
+  return permissionsByRoleId;
 }
 
 function normalizeEmail(value: string | undefined) {

@@ -35,7 +35,8 @@ import {
   type OrganizationGroupPayload,
   type OrganizationMembership,
 } from "@/lib/admin-api";
-import { getStoredSession, hasMenuAccess } from "@/lib/session";
+import { usePermission } from "@/hooks/use-permission";
+import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 type GroupDialogState =
@@ -57,10 +58,16 @@ type GroupForm = {
 
 export default function GroupsPage() {
   const { resolvedSession, snapshot } = useAdminShell();
+  const access = usePermission();
   const organizationId = snapshot?.organization?.id ?? null;
   const canManage =
     snapshot && resolvedSession
-      ? hasMenuAccess(snapshot, resolvedSession, "groups", "manage")
+      ? access.hasPermission([
+          "group.organization_group.create:organization",
+          "group.organization_group.update_basic:organization",
+          "group.organization_group.delete:organization",
+          "group.organization_group.replace_members:organization",
+        ])
       : false;
 
   const [groups, setGroups] = useState<OrganizationGroup[]>([]);

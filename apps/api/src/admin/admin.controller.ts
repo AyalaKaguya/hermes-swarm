@@ -163,9 +163,10 @@ export class AdminController {
   private async assignDefaultPermissions(role: Role) {
     const records = await this.permissionRepository.find({
       order: { code: "ASC" },
-      where: {
-        scope: role.scope as Permission["scope"],
-      },
+      where:
+        role.scope === "organization"
+          ? [{ scope: "organization" }, { scope: "own" }]
+          : { scope: role.scope as Permission["scope"] },
     });
     const permissions = records.filter((permission) =>
       permission.defaultRoles?.includes(role.name),
