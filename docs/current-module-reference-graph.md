@@ -10,7 +10,7 @@
 
 ```mermaid
 flowchart LR
-  Web["@hermes-swarm/web<br/>Next.js admin UI"] --> Core["@hermes-swarm/core<br/>shared entities, settings, config"]
+  Web["@hermes-swarm/web<br/>Next.js admin UI"] --> Core["@hermes-swarm/core<br/>shared entities, settings"]
   Api["@hermes-swarm/api<br/>NestJS admin API"] --> Core
   Web -. "HTTP /api/admin/**" .-> Api
   Api -. "TypeORM" .-> Postgres[("Postgres")]
@@ -30,7 +30,6 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  Core["@hermes-swarm/core"] --> Config["config<br/>database, redis"]
   Core --> Identity["identity<br/>users, organizations, roles, permissions"]
   Core --> Settings["settings<br/>platform/org KV definitions"]
   Core --> Mail["mail<br/>smtp, templates, delivery logs"]
@@ -47,8 +46,7 @@ flowchart TB
 | `@hermes-swarm/core/identity/entities` | TypeORM identity entities |
 | `@hermes-swarm/core/settings` | ValueType、平台配置定义、有效配置合并 |
 | `@hermes-swarm/core/settings/entities` | `PlatformSetting` |
-| `@hermes-swarm/core/config/database` | Postgres URL |
-| `@hermes-swarm/core/config/redis` | Redis URL 与 TypeORM Redis cache options |
+| `apps/api/src/common/config/runtime-config` | Nest `ConfigModule` runtime config, env validation, Postgres/Redis/API port |
 | `@hermes-swarm/core/mail` | SMTP、模板、邮件日志实体 |
 | `@hermes-swarm/core/notifications` | 通知目标实体 |
 
@@ -58,7 +56,9 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-  App["AppModule"] --> Database["DatabaseModule<br/>TypeORM Postgres<br/>optional Redis query cache"]
+  App["AppModule"] --> Config["ConfigModule<br/>env loading + validation"]
+  App --> Database["DatabaseModule<br/>TypeORM Postgres<br/>optional Redis query cache"]
+  Config --> Database
   App --> Health["HealthModule<br/>GET /api/health"]
   App --> Rbac["RbacModule<br/>APP_GUARD + RbacService"]
   App --> Admin["AdminModule<br/>/api/admin bootstrap + onboarding"]

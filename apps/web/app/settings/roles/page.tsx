@@ -335,7 +335,7 @@ export default function RolesPage() {
           {selectedRole ? (
             <>
               <CardHeader className="border-b px-4 py-3">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center">
                   <div className="min-w-0">
                     <CardTitle className="truncate text-lg">
                       {selectedRole.displayName ?? selectedRole.label}
@@ -351,37 +351,39 @@ export default function RolesPage() {
                       </span>
                     </div>
                   </div>
-                  <Button
-                    disabled={
-                      saving === selectedRole.id ||
-                      !hasLocalChanges(selectedRole.id)
-                    }
-                    onClick={() => savePermissions(selectedRole.id)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    {saving === selectedRole.id ? "保存中..." : "保存"}
-                  </Button>
-                  <Button
-                    disabled={savingRole}
-                    onClick={() =>
-                      openRoleDialog({ mode: "edit", role: selectedRole })
-                    }
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    编辑
-                  </Button>
-                  <Button
-                    disabled={savingRole || selectedRole.isSystem}
-                    onClick={() => void removeRole(selectedRole)}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    删除
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-end gap-2 md:ml-auto">
+                    <Button
+                      disabled={
+                        saving === selectedRole.id ||
+                        !hasLocalChanges(selectedRole.id)
+                      }
+                      onClick={() => savePermissions(selectedRole.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {saving === selectedRole.id ? "保存中..." : "保存"}
+                    </Button>
+                    <Button
+                      disabled={savingRole}
+                      onClick={() =>
+                        openRoleDialog({ mode: "edit", role: selectedRole })
+                      }
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      编辑
+                    </Button>
+                    <Button
+                      disabled={savingRole || selectedRole.isSystem}
+                      onClick={() => void removeRole(selectedRole)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      删除
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
