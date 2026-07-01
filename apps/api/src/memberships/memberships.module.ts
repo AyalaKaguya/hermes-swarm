@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Organization,
+  OrganizationGroupMember,
   Role,
   User,
   UserOrganization,
@@ -11,7 +12,13 @@ import { MembershipsService } from "./memberships.service.js";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Organization, Role, User, UserOrganization]),
+    TypeOrmModule.forFeature([
+      Organization,
+      OrganizationGroupMember,
+      Role,
+      User,
+      UserOrganization,
+    ]),
   ],
   controllers: [MembershipsController],
   providers: [MembershipsService],

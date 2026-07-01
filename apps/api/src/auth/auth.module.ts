@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  OrganizationGroupMember,
   PlatformMember,
   RolePermission,
   User,
@@ -12,6 +13,7 @@ import { AuthService } from "./auth.service.js";
 @Module({
   imports: [
     TypeOrmModule.forFeature([
+      OrganizationGroupMember,
       PlatformMember,
       RolePermission,
       User,

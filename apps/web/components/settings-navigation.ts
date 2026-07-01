@@ -40,6 +40,12 @@ export const SETTINGS_NAV_ITEMS = [
     label: "功能",
   },
   {
+    href: "/settings/groups",
+    icon: "users",
+    key: "groups",
+    label: "用户组",
+  },
+  {
     href: "/settings/roles",
     icon: "shield",
     key: "roles",
@@ -73,6 +79,7 @@ export const SETTINGS_NAV_SECTIONS = [
         "email-templates",
         "notification-destinations",
         "features",
+        "groups",
         "roles",
       ].includes(item.key),
     ),

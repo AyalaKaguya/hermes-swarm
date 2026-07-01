@@ -15,6 +15,7 @@ import type {
   CreateBulkInvitesPayload,
 } from "../common/admin-api.types.js";
 import { parseAuthSessionToken } from "../auth/auth-session.js";
+import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import { RequirePermission } from "../rbac/require-permission.decorator.js";
 import { InviteService } from "./invite.service.js";
 
@@ -24,12 +25,14 @@ export class InviteController {
 
   @Get("organizations/:organizationId/invites")
   @RequirePermission({ action: "read", entity: "invite", scope: "organization" })
+  @RequireFeature("feature:invite:enabled")
   async listForOrganization(@Param("organizationId") organizationId: string) {
     return this.inviteService.listForOrganization(organizationId);
   }
 
   @Post("organizations/:organizationId/invites")
   @RequirePermission({ action: "create", entity: "invite", scope: "organization" })
+  @RequireFeature("feature:invite:enabled")
   async createBulkForOrganization(
     @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
@@ -44,6 +47,7 @@ export class InviteController {
 
   @Post("organizations/:organizationId/invites/:inviteId/resend")
   @RequirePermission({ action: "update", entity: "invite", scope: "organization" })
+  @RequireFeature("feature:invite:enabled")
   async resendForOrganization(
     @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
@@ -58,6 +62,7 @@ export class InviteController {
 
   @Delete("organizations/:organizationId/invites/:inviteId")
   @RequirePermission({ action: "delete", entity: "invite", scope: "organization" })
+  @RequireFeature("feature:invite:enabled")
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteForOrganization(
     @Param("organizationId") organizationId: string,

@@ -68,9 +68,10 @@ assert(exists("apps/web/app/settings/platform/page.tsx"), "platform settings rou
 
 assertNoPattern(
   sourceFiles,
-  /\btenancy\b|TENANCY|Tenancy|settings\/tenant|租户|tenant_title|legacyKeys|DEFAULT_ADMIN_MENUS|GroupDto|TagsModule|tag\.entity|menu\.entity|group\.entity/,
-  "old tenancy/menu/group/tag terminology should not remain",
+  /\btenancy\b|TENANCY|Tenancy|settings\/tenant|租户|tenant_title|legacyKeys|DEFAULT_ADMIN_MENUS|\bGroupDto\b|TagsModule|tag\.entity|menu\.entity/,
+  "old tenancy/menu/tag terminology should not remain",
 );
+assert(!exists("packages/core/src/identity/entities/group.entity.ts"), "old generic group entity should not exist");
 
 const userEntity = read("packages/core/src/identity/entities/user.entity.ts");
 assert(userEntity.includes('@Entity({ name: "users" })'), "users table entity should be global");
@@ -134,6 +135,31 @@ assertIncludes(
   '@Entity({ name: "organization_settings" })',
   "organization_settings table should exist",
 );
+assertIncludes(
+  "packages/core/src/identity/entities/organization-group.entity.ts",
+  '@Entity({ name: "organization_groups" })',
+  "organization_groups table should exist",
+);
+assertIncludes(
+  "packages/core/src/identity/entities/organization-group-member.entity.ts",
+  '@Entity({ name: "organization_group_members" })',
+  "organization_group_members table should exist",
+);
+assertIncludes(
+  "packages/core/src/identity/entities/organization-feature-group-access.entity.ts",
+  '@Entity({ name: "organization_feature_group_access" })',
+  "organization feature group access table should exist",
+);
+assertIncludes(
+  "packages/core/src/identity/permissions.ts",
+  '"group:create:organization"',
+  "organization group create permission should exist",
+);
+assertIncludes(
+  "packages/core/src/identity/permissions.ts",
+  '"group:update:organization"',
+  "organization group update permission should exist",
+);
 
 const corePackage = JSON.parse(read("packages/core/package.json"));
 assert(corePackage.exports?.["./identity"], "core should export identity subpath");
@@ -191,6 +217,31 @@ assertIncludes(
   "apps/api/src/organizations/organizations.service.ts",
   "PLATFORM_SETTING_KEYS.allowOrganizationCreation",
   "organization creation should honor platform setting",
+);
+assertIncludes(
+  "apps/api/src/groups/groups.controller.ts",
+  '@Get("groups")',
+  "groups controller should expose organization group list",
+);
+assertIncludes(
+  "apps/api/src/groups/groups.controller.ts",
+  '@Put("feature-access")',
+  "groups controller should expose feature access replacement",
+);
+assertIncludes(
+  "apps/api/src/feature-access/feature-access.guard.ts",
+  "isFeatureEnabledForUser",
+  "feature access guard should enforce feature group access",
+);
+assertIncludes(
+  "apps/api/src/invite/invite.controller.ts",
+  '@RequireFeature("feature:invite:enabled")',
+  "invite endpoints should require invite feature access",
+);
+assertIncludes(
+  "apps/api/src/mail/mail.controller.ts",
+  '@RequireFeature("feature:email:enabled")',
+  "mail endpoints should require email feature access",
 );
 
 assertIncludes(
@@ -254,6 +305,26 @@ assertIncludes(
   "apps/web/app/settings/organizations/[orgId]/page.tsx",
   "listOrganizationMembers",
   "organization UI should list memberships",
+);
+assertIncludes(
+  "apps/web/app/settings/groups/page.tsx",
+  "replaceOrganizationGroupMembers",
+  "group UI should manage organization group members",
+);
+assertIncludes(
+  "apps/web/app/settings/features/page.tsx",
+  "replaceOrganizationFeatureAccess",
+  "feature UI should manage group access allow-list",
+);
+assertIncludes(
+  "apps/web/components/settings-navigation.ts",
+  'key: "groups"',
+  "settings navigation should include organization groups",
+);
+assertIncludes(
+  "apps/web/lib/session.ts",
+  'groups: { entity: "group", scope: "organization" }',
+  "frontend menu access should map groups to group organization permissions",
 );
 
 const { buildRbacAbility, toRbacSubject } = await import("../apps/api/dist/rbac/rbac-ability.js");

@@ -1,12 +1,14 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
+  OrganizationGroup,
+  OrganizationGroupMember,
   PlatformMember,
   RolePermission,
   User,
   UserOrganization,
 } from "@hermes-swarm/core";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import type { LoginPayload } from "../common/admin-api.types.js";
 import {
   createAuthSessionToken,
@@ -25,6 +27,8 @@ export class AuthService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
+    @InjectRepository(OrganizationGroupMember)
+    private readonly groupMemberRepository: Repository<OrganizationGroupMember>,
     @InjectRepository(PlatformMember)
     private readonly platformMemberRepository: Repository<PlatformMember>,
     @InjectRepository(RolePermission)
@@ -91,7 +95,7 @@ export class AuthService {
   private async getPrincipalSnapshot(user: User) {
     const [memberships, platformMembership] = await Promise.all([
       this.membershipRepository.find({
-        relations: { organization: true, role: true },
+        relations: { organization: true, role: true, user: true },
         where: { status: "active", userId: user.id },
       }),
       this.platformMemberRepository.findOne({
@@ -109,17 +113,28 @@ export class AuthService {
           where: roleIds.map((roleId) => ({ enabled: true, roleId })),
         })
       : [];
+    const groupsByMembership = await this.loadGroupsByMembership(
+      memberships.map((membership) => membership.id),
+    );
 
     return {
-      memberships: memberships.map((membership) => ({
-        displayName: membership.displayName,
-        id: membership.id,
-        organization: membership.organization,
-        organizationId: membership.organizationId,
-        role: membership.role,
-        roleId: membership.roleId,
-        status: membership.status,
-      })),
+      memberships: memberships.map((membership) => {
+        const groups = groupsByMembership.get(membership.id) ?? [];
+        return {
+          displayName: membership.displayName,
+          groupIds: groups.map((group) => group.id),
+          groups: groups.map(toGroupBriefDto),
+          id: membership.id,
+          joinedAt: membership.joinedAt,
+          organization: membership.organization,
+          organizationId: membership.organizationId,
+          role: membership.role,
+          roleId: membership.roleId,
+          status: membership.status,
+          user: membership.user,
+          userId: membership.userId,
+        };
+      }),
       permissions: permissions.map((permission) => permission.permission),
       platformMembership: platformMembership
         ? {
@@ -133,6 +148,24 @@ export class AuthService {
       user: toUserDto(user),
     };
   }
+
+  private async loadGroupsByMembership(membershipIds: string[]) {
+    if (membershipIds.length === 0) return new Map<string, OrganizationGroup[]>();
+
+    const rows = await this.groupMemberRepository.find({
+      relations: { group: true },
+      where: { membershipId: In(membershipIds) },
+    });
+    const groupsByMembership = new Map<string, OrganizationGroup[]>();
+    for (const row of rows) {
+      if (!row.group) continue;
+      groupsByMembership.set(row.membershipId, [
+        ...(groupsByMembership.get(row.membershipId) ?? []),
+        row.group,
+      ]);
+    }
+    return groupsByMembership;
+  }
 }
 
 function normalizeEmail(value: string | undefined) {
@@ -143,4 +176,14 @@ function requireText(value: string | undefined, label: string) {
   const text = value?.trim();
   if (!text) throw new UnauthorizedException(`${label}不能为空`);
   return text;
+}
+
+function toGroupBriefDto(group: OrganizationGroup) {
+  return {
+    color: group.color,
+    displayName: group.displayName,
+    id: group.id,
+    name: group.name,
+    organizationId: group.organizationId,
+  };
 }

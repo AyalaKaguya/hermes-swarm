@@ -1,84 +1,150 @@
-# 后端用户/组织/权限体系彻底重构方案
+# 组织用户组与功能访问限制实现文档
 
 ## Summary
 
-- 将当前集中在 `TenancyService` 的用户、组织、角色、权限、设置逻辑拆成清晰模块：`Auth`、`Users`、`Organizations`、`Memberships`、`RBAC`、`Settings`、`Invites`、`Mail`、`Notifications`。
-- 重建数据库 schema，不做旧 API 或旧表兼容；用户已确认采用“重建 Schema、组织内角色、平台成员表”。
-- 权限层采用 Nest Guard + Decorator + CASL Ability Factory。Nest 官方授权文档也推荐 CASL 适合更复杂的 subject/attribute 权限场景；参考：[Nest Authorization](https://docs.nestjs.com/security/authorization)、[CASL](https://casl.js.org/v6/en/guide/intro/)。
-- 删除组织标签功能，包括实体、模块、接口、权限、菜单和 UI 入口；保留邀请、组织邮箱/SMTP、邮件模板、用户通知/通知目标。
+新增组织内“用户组”能力，用于在角色权限之外做更细的访问人员限定。角色仍负责授予能力，用户组只负责收窄某个组织功能的可用人群。
+
+默认语义：
+
+- 用户组不授予权限，只作为功能 allow-list。
+- 某个功能没有配置用户组时，保持现有角色权限行为。
+- 某个功能配置了用户组后，普通成员必须属于至少一个允许组才能使用。
+- 平台管理员和组织管理员绕过用户组限制，但仍受原 RBAC 权限控制。
+- 第一版只覆盖现有 `feature:*` 组织功能开关，不做通用 route/resource 策略。
 
 ## Key Changes
 
-- 新数据模型：
-  - `users`: 全局用户表，只保存账号身份信息，如 `id`、`email`、`passwordHash`、`nickname`、`avatarUrl`、`status`、`emailVerified`、`preferredLanguage`、时间戳；不再保存 `organizationId` 或 `roleId`。
-  - `organizations`: 组织基础表，保存 `id`、`name`、`slug`、`website`、`createdByUserId`、`status`、`logoUrl`、时间戳。
-  - `user_organizations`: 用户组织成员表，保存 `userId`、`organizationId`、`roleId`、`displayName`、`status`、`joinedAt`；唯一约束为 `(userId, organizationId)`。
-  - `roles`: 统一角色表，字段为 `id`、`scope`、`organizationId`、`displayName`、`color`、`description`、`isSystem`；组织角色带 `organizationId`，平台角色 `organizationId = null`。
-  - `platform_members`: 平台成员表，保存 `userId`、`roleId`、`displayName`、`status`；普通用户默认没有平台成员记录，因此默认不能创建组织。
-  - `permissions`: 权限目录表，按实体建模，字段为 `entity`、`action`、`scope`、`description`；`action` 固定为 `create | read | update | delete`，`scope` 固定为 `platform | organization | own`。
-  - `role_permissions`: 角色权限表，关联 `roleId` 和 `permissionId`；组织角色禁止绑定 `platform` scope 权限。
-  - `platform_settings` 与 `organization_settings`: 继续 KV 设计，保留 `valueType`、`valueOptions`、secret masking 能力；组织设置覆盖平台默认值。
+### 数据模型
 
-- 后端模块重构：
-  - `AuthModule` 只负责登录、当前用户、token/session 解析；token 只表达用户身份，不再强绑定单一组织。
-  - `UsersModule` 负责全局用户账号资料、密码、邮箱、昵称等身份信息。
-  - `OrganizationsModule` 负责组织 CRUD、创建者、状态、网站等基础信息。
-  - `MembershipsModule` 负责组织成员 CRUD、成员显示名称、成员角色分配、组织切换列表。
-  - `RbacModule` 负责权限目录、角色、角色权限、CASL Ability 构建，以及 `@RequirePermission({ entity, action, scope })` 注解和全局权限 Guard。
-  - `SettingsModule` 负责平台/组织配置读取、写入、Redis 缓存和失效通知。
-  - `InviteModule` 改为基于 `user_organizations`：接受邀请时若用户不存在则创建用户，随后创建组织成员关系。
-  - `MailModule`、`NotificationsModule` 保留，但所有组织范围接口统一通过 organization scope 权限控制。
-  - 移除 `TagsModule`、`Tag` entity、tags 权限、tags 菜单、前端 tags 页面入口。
+新增 core identity entities：
 
-- API 形态：
-  - 登录与身份：`POST /api/admin/auth/login`、`GET /api/admin/auth/me`
-  - 平台范围：`GET/PUT /api/admin/platform/settings`、`POST /api/admin/organizations`、平台角色/权限接口
-  - 组织范围：`GET/PATCH /api/admin/organizations/:organizationId`、`/members`、`/roles`、`/settings`、`/invites`、`/mail/*`、`/notifications/*`
-  - 所有组织范围接口必须从 path 中拿 `organizationId`，不再依赖“当前租户服务”的隐式组织。
-  - Guard 先解析用户身份，再根据 route metadata、平台成员关系或组织成员关系生成 CASL ability；service 层仍二次校验资源 `organizationId`，避免 IDOR。
+- `organization_groups`
+  - `id`, `organization_id`, `name`, `display_name`, `color`, `description`, `created_by_user_id`, timestamps
+  - unique: `(organization_id, name)`
+- `organization_group_members`
+  - `id`, `organization_id`, `group_id`, `membership_id`, `user_id`, timestamps
+  - unique: `(group_id, membership_id)`
+  - 只允许加入同组织的 `user_organizations` 成员
+- `organization_feature_group_access`
+  - `id`, `organization_id`, `feature_key`, `group_id`, timestamps
+  - unique: `(organization_id, feature_key, group_id)`
+  - `groupIds = []` 表示该功能不限制用户组
 
-- 配置与 Redis：
-  - `SettingsService.getPlatformValue(key)` 和 `getOrganizationValue(organizationId, key)` 作为后端服务读取配置的唯一入口。
-  - 读取策略：Redis read-through cache，Redis miss 后查 DB 并回填；Redis 不可用时自动降级到 DB。
-  - 写入策略：先写 DB，再更新 Redis，并发布配置失效事件；服务下一次读取立即拿到新值。
-  - 平台配置作为默认值，组织配置只保存 override；返回有效配置时合并两层 KV。
+不复用旧库残留的 `groups` / `group_users` 表，避免和旧 schema 语义混淆。
 
-- UI 集成：
-  - 前端 session 从“当前组织用户”改为“全局用户 + memberships + platformMembership”。
-  - 组织切换基于 `user_organizations`，进入组织后台时所有接口带 `organizationId`。
-  - 菜单显示从旧 `menu:*` 权限切到实体权限，例如 `organization.read`、`user.update`、`setting.update`。
-  - 角色页面支持颜色、描述、CRUD 权限矩阵；组织成员页面编辑 `displayName` 和组织角色。
-  - 删除标签入口；保留邀请、邮箱、邮件模板、通知、平台/组织配置 UI。
+### 后端 API
+
+新增 `GroupsModule`，挂在 `AdminModule` 下。
+
+组织用户组管理：
+
+- `GET /api/admin/organizations/:organizationId/groups`
+- `POST /api/admin/organizations/:organizationId/groups`
+- `GET /api/admin/organizations/:organizationId/groups/:groupId`
+- `PATCH /api/admin/organizations/:organizationId/groups/:groupId`
+- `DELETE /api/admin/organizations/:organizationId/groups/:groupId`
+- `GET /api/admin/organizations/:organizationId/groups/:groupId/members`
+- `PUT /api/admin/organizations/:organizationId/groups/:groupId/members`
+
+功能访问限制：
+
+- `GET /api/admin/organizations/:organizationId/feature-access`
+- `PUT /api/admin/organizations/:organizationId/feature-access`
+  - body: `{ featureKey: string; groupIds: string[] }`
+  - `groupIds: []` 删除该功能的用户组限制
+
+RBAC 新增权限：
+
+- `group:create:organization`
+- `group:read:organization`
+- `group:update:organization`
+- `group:delete:organization`
+
+默认角色：
+
+- `owner` / `admin` / `platform-admin` 拥有 group CRUD。
+- `member` / `viewer` 不默认拥有 group 管理权限。
+
+### 功能访问判断
+
+新增 `FeatureAccessService`：
+
+- `isFeatureEnabledForUser(organizationId, featureKey, userId)`
+  - 先读取组织有效设置：`SettingsService.getOrganizationValue(...)`
+  - feature 开关不是 `"true"` 时返回 false
+  - 没有用户组限制时返回 true
+  - 有用户组限制时，普通成员必须命中允许组
+  - 平台管理员或具备组织管理权限的用户绕过用户组 allow-list
+
+新增 `@RequireFeature(featureKey)` decorator 与 `FeatureAccessGuard`：
+
+- RBAC guard 仍先执行。
+- Feature guard 只用于已经有组织上下文的 feature 业务接口。
+- 第一版接入组织级 feature：
+  - `feature:invite:enabled` -> 邀请相关组织接口
+  - `feature:email:enabled` -> 组织邮件 SMTP、模板、日志相关接口
+- `feature:password-reset:enabled` 和 system scope feature 暂不接用户组限制。
+
+### 前端 UI
+
+新增设置导航项：`用户组`。
+
+用户组页面：
+
+- 路由：`/settings/groups`
+- 能力：创建、编辑、删除用户组；设置颜色、描述；管理组成员。
+- 成员来源：当前组织 `user_organizations`，展示邮箱、昵称、组织显示名、角色。
+
+功能管理页面改造：
+
+- 每个组织 feature 保留启用/禁用开关。
+- 增加“访问人员”配置：
+  - 默认：所有有角色权限的人可用。
+  - 可选择一个或多个用户组。
+  - 清空用户组表示恢复默认不限制。
+- 如果当前用户没有 `setting:update:organization`，访问人员配置只读。
+
+Session/API 类型：
+
+- `OrganizationMembership` 返回 `groupIds` / `groups` 简要信息，方便前端判断和展示。
+- `apps/web/lib/admin-api.ts` 增加 group 与 feature-access 类型和 wrapper。
+- `hasMenuAccess` 增加 `groups -> group:*:organization` 映射。
 
 ## Test Plan
 
-- 类型与构建：
-  - `pnpm nx run @hermes-swarm/core:build`
-  - `pnpm nx run @hermes-swarm/api:typecheck`
-  - `pnpm nx run @hermes-swarm/web:typecheck`
+### 后端
 
-- 后端场景：
-  - 用户注册/创建后不产生组织归属字段。
-  - 普通用户默认无平台成员记录，调用创建组织接口返回 403。
-  - 平台成员拥有 `organization:create/platform` 后可以创建组织，并自动成为该组织 owner 成员。
-  - 组织成员只能操作自己所在组织；跨组织访问返回 403。
-  - CRUD 权限分别生效：有 `user.read` 不能 `user.update`，有 `user.update` 不能 `user.delete`。
-  - 组织角色不能绑定平台 scope 权限。
-  - 邀请接受后正确创建用户或复用已有用户，并创建 `user_organizations` 记录。
-  - 平台配置写入后 Redis 和 DB 一致；Redis 不可用时仍可从 DB 读取。
-  - tags 相关接口、菜单、权限全部不存在。
+- 用户组 CRUD：
+  - 创建同组织唯一 `name`。
+  - 不能把 A 组织成员加入 B 组织用户组。
+  - 删除用户组后清理成员和 feature access 记录。
+- 权限：
+  - 无 `group:*:organization` 权限不能管理用户组。
+  - owner/admin/platform-admin 可管理用户组。
+- 功能访问：
+  - feature disabled 时所有普通使用请求返回 403。
+  - feature enabled 且无 group 限制时维持现有 RBAC 行为。
+  - feature enabled 且配置 group 限制时，非组成员返回 403。
+  - 组成员可访问。
+  - 平台管理员和组织管理员绕过 group 限制，但仍需要原 RBAC 权限。
+- 回归：
+  - `pnpm nx run @hermes-swarm/core:build --skip-nx-cache`
+  - `pnpm nx run @hermes-swarm/api:typecheck --skip-nx-cache`
+  - `pnpm nx run @hermes-swarm/web:typecheck --skip-nx-cache`
+  - `pnpm verify:refactor`
 
-- UI 场景：
-  - 登录后能看到自己的全局账号信息、组织 memberships、平台权限状态。
-  - 普通用户没有创建组织入口；拥有平台权限的用户可见并可用。
-  - 组织成员列表显示成员 display name、账号邮箱、组织角色。
-  - 角色权限矩阵按实体 CRUD 展示并可保存。
-  - 组织设置读取平台默认值，保存后显示组织 override。
-  - 标签页面和菜单入口消失。
+### 前端
+
+- `/settings/groups` 可完成用户组创建、编辑、删除、成员维护。
+- 功能管理页可为 feature 选择多个用户组并回显。
+- 清空 feature 的用户组限制后恢复“所有有权限人员可用”。
+- 无管理权限用户只能查看，不能修改组和访问限制。
+- 受限用户登录后，看不到或无法使用被用户组限制的功能。
 
 ## Assumptions
 
-- 已选择不迁移旧数据，允许清空/重建开发数据库 schema。
-- 已选择角色以组织内角色为主，平台权限通过 `platform_members` + platform role 承载。
-- 后端不需要保持旧 API 兼容，但前端必须同步集成新 API。
-- 密码字段只保存 hash，不保存明文；具体 hash helper 可先复用现有实现。
+- 用户组只存在于组织范围，不做平台用户组。
+- 用户组不替代角色，也不授予权限。
+- 第一版只做 feature allow-list，不做任意资源、任意 route 或字段级策略。
+- 管理员绕过用户组限制的判定采用权限能力：平台管理员，或组织内具备 group/setting 管理权限的用户。
+- 后端是最终权限来源；前端隐藏入口只是体验优化。

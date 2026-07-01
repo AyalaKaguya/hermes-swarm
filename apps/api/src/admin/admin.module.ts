@@ -11,6 +11,7 @@ import {
 } from "@hermes-swarm/core";
 import { AuthModule } from "../auth/auth.module.js";
 import { FilesModule } from "../files/files.module.js";
+import { GroupsModule } from "../groups/groups.module.js";
 import { MailModule } from "../mail/mail.module.js";
 import { MembershipsModule } from "../memberships/memberships.module.js";
 import { OrganizationsModule } from "../organizations/organizations.module.js";
@@ -40,6 +41,7 @@ import { AdminController } from "./admin.controller.js";
     SettingsModule,
     InviteModule,
     FilesModule,
+    GroupsModule,
     MailModule,
     MembershipsModule,
     PlatformMembersModule,

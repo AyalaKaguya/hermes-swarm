@@ -9,7 +9,6 @@ export type PlatformMemberStatus = "active" | "disabled";
 @Index(["userId"], { unique: true })
 export class PlatformMember extends BaseEntity {
   @Column({ name: "user_id", type: "uuid" })
-  @Index()
   userId!: string;
 
   @ManyToOne("User", {
