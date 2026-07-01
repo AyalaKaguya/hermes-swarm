@@ -8,9 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAdminShell } from "@/components/admin-shell";
 import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
+import { PlatformMemberManagement } from "@/components/platform-member-management";
 import { PlatformRolePermissions } from "@/components/platform-role-permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
   CustomSettingDialog,
   SettingEditDialog,
@@ -87,10 +89,23 @@ type PlatformForm = {
   smtpUsername: string;
 };
 
+type PlatformTab =
+  | "admins"
+  | "custom"
+  | "defaults"
+  | "messaging"
+  | "organization"
+  | "profile"
+  | "roles"
+  | "smtp";
+
 export default function PlatformPage() {
+  const searchParams = useSearchParams();
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
   const notifications = useNotifications();
+  const requestedTab = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<PlatformTab>("profile");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -108,6 +123,38 @@ export default function PlatformPage() {
     snapshot && resolvedSession
       ? access.hasPermission("setting.platform_config.save:platform")
       : false;
+  const canViewPlatformRoles =
+    snapshot && resolvedSession
+      ? access.hasPermission("role.platform_role.list:platform")
+      : false;
+  const canCreatePlatformRole =
+    snapshot && resolvedSession
+      ? access.hasPermission("role.platform_role.create:platform")
+      : false;
+  const canConfigurePlatformRolePermissions =
+    snapshot && resolvedSession
+      ? access.hasPermission("role.platform_role.replace_permissions:platform")
+      : false;
+  const canViewPlatformMembers =
+    snapshot && resolvedSession
+      ? access.hasPermission("user.platform_member.list:platform")
+      : false;
+  const canCreatePlatformMember =
+    snapshot && resolvedSession
+      ? access.hasPermission("user.platform_member.create:platform")
+      : false;
+  const canUpdatePlatformMember =
+    snapshot && resolvedSession
+      ? access.hasPermission("user.platform_member.update:platform")
+      : false;
+  const canRemovePlatformMember =
+    snapshot && resolvedSession
+      ? access.hasPermission("user.platform_member.remove:platform")
+      : false;
+  const canSearchPlatformUsers =
+    snapshot && resolvedSession
+      ? access.hasPermission("user.platform_user.search:platform")
+      : false;
   const canViewOrganizations =
     canViewPlatform &&
     Boolean(
@@ -119,18 +166,6 @@ export default function PlatformPage() {
   const activeOrganizations = useMemo(
     () => organizations.filter((item) => item.status === "active").length,
     [organizations],
-  );
-  const platformUsers = useMemo(
-    () =>
-      snapshot?.platformMembership
-        ? [
-            {
-              role: snapshot.platformMembership.role,
-              user: snapshot.user,
-            },
-          ]
-        : [],
-    [snapshot?.platformMembership, snapshot?.user],
   );
   const customSystemSettings = useMemo(() => {
     const knownNames = new Set<string>(KNOWN_PLATFORM_SETTING_KEYS);
@@ -165,6 +200,10 @@ export default function PlatformPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setActiveTab(isPlatformTab(requestedTab) ? requestedTab : "profile");
+  }, [requestedTab]);
 
   function updateField<K extends keyof PlatformForm>(
     key: K,
@@ -294,9 +333,11 @@ export default function PlatformPage() {
           <h1 className="text-lg font-semibold">平台设置</h1>
           <p className="text-sm">平台默认值、组织治理与公共服务</p>
         </div>
-        <Badge variant="secondary">
-          {activeOrganizations}/{organizations.length} 活跃组织
-        </Badge>
+        {canViewOrganizations && (
+          <Badge variant="secondary">
+            {activeOrganizations}/{organizations.length} 活跃组织
+          </Badge>
+        )}
       </div>
 
       {error && (
@@ -305,19 +346,8 @@ export default function PlatformPage() {
         </div>
       )}
 
-      <Tabs className="grid gap-4" defaultValue="profile">
-        <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
-          <TabsTrigger value="profile">平台信息</TabsTrigger>
-          <TabsTrigger value="defaults">默认控制项</TabsTrigger>
-          <TabsTrigger value="organization">组织创建</TabsTrigger>
-          <TabsTrigger value="messaging">消息服务</TabsTrigger>
-          <TabsTrigger value="smtp">公共 SMTP</TabsTrigger>
-          <TabsTrigger value="admins">平台用户</TabsTrigger>
-          <TabsTrigger value="roles">平台角色</TabsTrigger>
-          <TabsTrigger value="custom">自定义设置</TabsTrigger>
-        </TabsList>
-
-        <TabsContent className="mt-0" value="profile">
+      <Tabs className="grid gap-4" value={activeTab}>
+        <TabsContent value="profile">
           <Card>
             <CardHeader>
               <CardTitle>平台信息</CardTitle>
@@ -352,7 +382,7 @@ export default function PlatformPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent className="mt-0" value="defaults">
+        <TabsContent value="defaults">
           <Card>
             <CardHeader>
               <CardTitle>默认控制项</CardTitle>
@@ -499,8 +529,14 @@ export default function PlatformPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent className="mt-0" value="organization">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <TabsContent value="organization">
+          <div
+            className={
+              canViewOrganizations
+                ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]"
+                : "grid gap-4"
+            }
+          >
             <Card>
               <CardHeader>
                 <CardTitle>组织创建设置</CardTitle>
@@ -553,64 +589,66 @@ export default function PlatformPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-                <div>
-                  <CardTitle>组织配置</CardTitle>
-                  <CardDescription>平台下全部组织的配置入口</CardDescription>
-                </div>
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/settings/organizations">
-                    <AppIcon className="size-3.5" name="building" />
-                    组织列表
-                  </Link>
-                </Button>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                {organizations.slice(0, 6).map((organization) => (
-                  <Link
-                    className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm hover:bg-muted/50"
-                    href={`/settings/organizations/${organization.id}`}
-                    key={organization.id}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">
-                        {organization.name}
-                      </span>
-                      <span className="block truncate font-mono text-xs">
-                        {organization.slug}
-                      </span>
-                    </span>
-                    <Badge
-                      variant={
-                        organization.status === "active"
-                          ? "default"
-                          : "secondary"
-                      }
-                    >
-                      {organization.status === "active" ? "启用" : "停用"}
-                    </Badge>
-                  </Link>
-                ))}
-                {organizations.length === 0 && (
-                  <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
-                    暂无组织
+            {canViewOrganizations && (
+              <Card>
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <CardTitle>组织配置</CardTitle>
+                    <CardDescription>平台下全部组织的配置入口</CardDescription>
                   </div>
-                )}
-                {organizations.length > 6 && (
-                  <>
-                    <Separator />
-                    <Button asChild size="sm" variant="ghost">
-                      <Link href="/settings/organizations">查看全部组织</Link>
-                    </Button>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/settings/organizations">
+                      <AppIcon className="size-3.5" name="building" />
+                      组织列表
+                    </Link>
+                  </Button>
+                </CardHeader>
+                <CardContent className="grid gap-2">
+                  {organizations.slice(0, 6).map((organization) => (
+                    <Link
+                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm hover:bg-muted/50"
+                      href={`/settings/organizations/${organization.id}`}
+                      key={organization.id}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">
+                          {organization.name}
+                        </span>
+                        <span className="block truncate font-mono text-xs">
+                          {organization.slug}
+                        </span>
+                      </span>
+                      <Badge
+                        variant={
+                          organization.status === "active"
+                            ? "default"
+                            : "secondary"
+                        }
+                      >
+                        {organization.status === "active" ? "启用" : "停用"}
+                      </Badge>
+                    </Link>
+                  ))}
+                  {organizations.length === 0 && (
+                    <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
+                      暂无组织
+                    </div>
+                  )}
+                  {organizations.length > 6 && (
+                    <>
+                      <Separator />
+                      <Button asChild size="sm" variant="ghost">
+                        <Link href="/settings/organizations">查看全部组织</Link>
+                      </Button>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
-        <TabsContent className="mt-0" value="messaging">
+        <TabsContent value="messaging">
           <Card>
             <CardHeader>
               <CardTitle>消息服务</CardTitle>
@@ -655,7 +693,7 @@ export default function PlatformPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent className="mt-0" value="smtp">
+        <TabsContent value="smtp">
           <Card>
             <CardHeader>
               <CardTitle>公共 SMTP</CardTitle>
@@ -751,41 +789,27 @@ export default function PlatformPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent className="mt-0" value="admins">
-          <Card>
-            <CardHeader>
-              <CardTitle>平台用户管理</CardTitle>
-              <CardDescription>
-                当前组织内具备平台管理能力的账号
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {platformUsers.length === 0 ? (
-                <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm sm:col-span-2 xl:col-span-3">
-                  暂无平台管理员
-                </div>
-              ) : (
-                platformUsers.map(({ role, user }) => (
-                  <div className="rounded-md border px-3 py-2" key={user.id}>
-                    <div className="truncate text-sm font-medium">
-                      {user.displayName}
-                    </div>
-                    <div className="truncate text-xs">{user.email}</div>
-                    <Badge className="mt-2" variant="outline">
-                      {role?.label ?? "Platform Admin"}
-                    </Badge>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="admins">
+          <PlatformMemberManagement
+            canCreateMember={canCreatePlatformMember}
+            canRemoveMember={canRemovePlatformMember}
+            canSearchUsers={canSearchPlatformUsers}
+            canUpdateMember={canUpdatePlatformMember}
+            canViewMembers={canViewPlatformMembers}
+            canViewRoles={canViewPlatformRoles}
+            onChanged={refreshSnapshot}
+          />
         </TabsContent>
 
-        <TabsContent className="mt-0" value="roles">
-          <PlatformRolePermissions disabled={!canManagePlatform} />
+        <TabsContent value="roles">
+          <PlatformRolePermissions
+            canCreateRole={canCreatePlatformRole}
+            canManagePermissions={canConfigurePlatformRolePermissions}
+            canViewRoles={canViewPlatformRoles}
+          />
         </TabsContent>
 
-        <TabsContent className="mt-0" value="custom">
+        <TabsContent value="custom">
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
@@ -825,59 +849,64 @@ export default function PlatformPage() {
 
                     return (
                       <div
-                        className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+                        className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,36rem)_auto] sm:items-center"
                         key={setting.id}
                       >
-                        <div className="truncate font-mono text-xs">
+                        <div className="min-w-0 truncate font-mono text-xs">
                           {setting.name}
                         </div>
-                        <SettingValueInput
-                          disabled={!canManagePlatform || savingCustomSetting}
-                          id={`platform-custom-${setting.id}`}
-                          inputClassName="h-8 font-mono text-xs"
-                          onCommit={(nextValue) => {
-                            if (
-                              settingValueType === "secret" ||
-                              String(nextValue ?? "") !== (setting.value ?? "")
-                            ) {
+                        <div className="min-w-0 sm:justify-self-end">
+                          <SettingValueInput
+                            className="justify-end"
+                            disabled={!canManagePlatform || savingCustomSetting}
+                            id={`platform-custom-${setting.id}`}
+                            inputClassName="h-8 w-full font-mono text-xs sm:min-w-72"
+                            onCommit={(nextValue) => {
+                              if (
+                                settingValueType === "secret" ||
+                                String(nextValue ?? "") !== (setting.value ?? "")
+                              ) {
+                                void saveCustomSystemSetting({
+                                  name: setting.name,
+                                  value: nextValue,
+                                  valueOptions: settingValueOptionsPayload,
+                                  valueType: settingValueType,
+                                });
+                              }
+                            }}
+                            value={setting.value ?? ""}
+                            valueOptions={settingValueOptions}
+                            valueType={settingValueType}
+                          />
+                        </div>
+                        <div className="flex items-center justify-end gap-1">
+                          <SettingEditDialog
+                            disabled={!canManagePlatform || savingCustomSetting}
+                            idPrefix={`platform-custom-${setting.id}`}
+                            name={setting.name}
+                            onSubmit={saveCustomSystemSetting}
+                            saving={savingCustomSetting}
+                            value={setting.value ?? ""}
+                            valueOptions={settingValueOptions}
+                            valueType={settingValueType}
+                          />
+                          <Button
+                            disabled={!canManagePlatform || savingCustomSetting}
+                            onClick={() =>
                               void saveCustomSystemSetting({
                                 name: setting.name,
-                                value: nextValue,
+                                value: null,
                                 valueOptions: settingValueOptionsPayload,
                                 valueType: settingValueType,
-                              });
+                              })
                             }
-                          }}
-                          value={setting.value ?? ""}
-                          valueOptions={settingValueOptions}
-                          valueType={settingValueType}
-                        />
-                        <SettingEditDialog
-                          disabled={!canManagePlatform || savingCustomSetting}
-                          idPrefix={`platform-custom-${setting.id}`}
-                          name={setting.name}
-                          onSubmit={saveCustomSystemSetting}
-                          saving={savingCustomSetting}
-                          value={setting.value ?? ""}
-                          valueOptions={settingValueOptions}
-                          valueType={settingValueType}
-                        />
-                        <Button
-                          disabled={!canManagePlatform || savingCustomSetting}
-                          onClick={() =>
-                            void saveCustomSystemSetting({
-                              name: setting.name,
-                              value: null,
-                              valueOptions: settingValueOptionsPayload,
-                              valueType: settingValueType,
-                            })
-                          }
-                          size="icon"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <AppIcon className="size-4" name="trash" />
-                        </Button>
+                            size="icon"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <AppIcon className="size-4" name="trash" />
+                          </Button>
+                        </div>
                       </div>
                     );
                   })
@@ -931,6 +960,19 @@ function ToggleField({
         onCheckedChange={onCheckedChange}
       />
     </div>
+  );
+}
+
+function isPlatformTab(value: string | null): value is PlatformTab {
+  return (
+    value === "admins" ||
+    value === "custom" ||
+    value === "defaults" ||
+    value === "messaging" ||
+    value === "organization" ||
+    value === "profile" ||
+    value === "roles" ||
+    value === "smtp"
   );
 }
 

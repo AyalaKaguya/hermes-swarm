@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { PermissionTree } from "@/components/permission-tree";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  createPlatformRole,
   listPermissionCatalog,
   listPlatformRoles,
   replacePlatformRolePermissions,
@@ -23,25 +34,32 @@ import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export function PlatformRolePermissions({
-  disabled,
+  canCreateRole,
+  canManagePermissions,
+  canViewRoles,
 }: {
-  disabled?: boolean;
+  canCreateRole?: boolean;
+  canManagePermissions?: boolean;
+  canViewRoles?: boolean;
 }) {
+  const [createOpen, setCreateOpen] = useState(false);
   const [catalog, setCatalog] = useState<PermissionCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyRoleForm());
   const [loading, setLoading] = useState(true);
   const [localPerms, setLocalPerms] = useState<
     Record<string, Record<string, boolean>>
   >({});
   const [permissions, setPermissions] = useState<RolePermission[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [savingRole, setSavingRole] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [token, setToken] = useState("");
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token) {
+    if (!session?.token || !canViewRoles) {
       setLoading(false);
       return;
     }
@@ -66,7 +84,7 @@ export function PlatformRolePermissions({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canViewRoles]);
 
   useEffect(() => {
     void load();
@@ -127,6 +145,7 @@ export function PlatformRolePermissions({
   }
 
   async function savePermissions(roleId: string) {
+    if (!canManagePermissions) return;
     setSaving(roleId);
     setError(null);
     try {
@@ -151,8 +170,40 @@ export function PlatformRolePermissions({
     }
   }
 
+  async function submitRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canCreateRole || !token || !form.displayName.trim()) return;
+
+    setSavingRole(true);
+    setError(null);
+    try {
+      const created = await createPlatformRole(token, {
+        color: nullableText(form.color),
+        description: nullableText(form.description),
+        displayName: form.displayName.trim(),
+        name: nullableText(form.name) ?? undefined,
+      });
+      setCreateOpen(false);
+      setForm(emptyRoleForm());
+      await load();
+      setSelectedRoleId(created.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingRole(false);
+    }
+  }
+
   if (loading) {
     return <div className="py-10 text-center text-sm">加载中...</div>;
+  }
+
+  if (!canViewRoles) {
+    return (
+      <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
+        当前账号无权查看平台角色。
+      </div>
+    );
   }
 
   if (error) {
@@ -167,10 +218,21 @@ export function PlatformRolePermissions({
     <div className="grid gap-3 xl:grid-cols-[minmax(220px,280px)_1fr]">
       <Card className="min-w-0 self-start overflow-hidden shadow-none">
         <CardHeader className="border-b px-4 py-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <AppIcon className="size-4" name="shield" />
-            平台角色
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <AppIcon className="size-4" name="shield" />
+              平台角色
+            </CardTitle>
+            <Button
+              disabled={!canCreateRole || savingRole}
+              onClick={() => setCreateOpen(true)}
+              size="sm"
+              type="button"
+            >
+              <AppIcon className="size-3.5" name="plus" />
+              新建
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-2">
           <div className="flex flex-col gap-1">
@@ -231,7 +293,7 @@ export function PlatformRolePermissions({
                 </div>
                 <Button
                   disabled={
-                    disabled ||
+                    !canManagePermissions ||
                     saving === selectedRole.id ||
                     !hasLocalChanges(selectedRole.id)
                   }
@@ -246,7 +308,7 @@ export function PlatformRolePermissions({
             <CardContent className="p-0">
               <PermissionTree
                 catalog={catalog}
-                disabled={disabled || saving === selectedRole.id}
+                disabled={!canManagePermissions || saving === selectedRole.id}
                 isChecked={(permission) => isChecked(selectedRole.id, permission)}
                 onToggle={(permission, enabled) =>
                   togglePerm(selectedRole.id, permission, enabled)
@@ -260,8 +322,130 @@ export function PlatformRolePermissions({
           </CardContent>
         )}
       </Card>
+
+      <Dialog onOpenChange={setCreateOpen} open={createOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新建平台角色</DialogTitle>
+          </DialogHeader>
+          <form className="grid gap-4" onSubmit={submitRole}>
+            <div className="grid gap-2">
+              <Label htmlFor="platform-role-display-name">显示名称</Label>
+              <Input
+                disabled={savingRole}
+                id="platform-role-display-name"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    displayName: event.target.value,
+                  }))
+                }
+                required
+                value={form.displayName}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="platform-role-name">标识</Label>
+              <Input
+                disabled={savingRole}
+                id="platform-role-name"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                placeholder="留空后根据显示名称生成"
+                value={form.name}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="platform-role-color">颜色</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  className="h-9 w-14 p-1"
+                  disabled={savingRole}
+                  id="platform-role-color"
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      color: event.target.value,
+                    }))
+                  }
+                  type="color"
+                  value={form.color || "#64748b"}
+                />
+                <Input
+                  disabled={savingRole}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      color: event.target.value,
+                    }))
+                  }
+                  placeholder="#64748b"
+                  value={form.color}
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="platform-role-description">描述</Label>
+              <Textarea
+                disabled={savingRole}
+                id="platform-role-description"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                rows={3}
+                value={form.description}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                disabled={savingRole}
+                onClick={() => setCreateOpen(false)}
+                type="button"
+                variant="outline"
+              >
+                取消
+              </Button>
+              <Button
+                disabled={
+                  !canCreateRole || savingRole || !form.displayName.trim()
+                }
+              >
+                {savingRole ? "保存中..." : "保存"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+type RoleForm = {
+  color: string;
+  description: string;
+  displayName: string;
+  name: string;
+};
+
+function emptyRoleForm(): RoleForm {
+  return {
+    color: "#64748b",
+    description: "",
+    displayName: "",
+    name: "",
+  };
+}
+
+function nullableText(value: string) {
+  const normalized = value.trim();
+  return normalized ? normalized : null;
 }
 
 function flattenCatalog(catalog: PermissionCatalog | null) {

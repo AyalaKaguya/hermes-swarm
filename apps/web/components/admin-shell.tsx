@@ -23,7 +23,6 @@ import {
   storeSession,
   type ResolvedSession,
 } from "@/lib/session";
-import { isPlatformAdminRoleName } from "@hermes-swarm/access";
 
 type AdminShellContextValue = {
   loading: boolean;
@@ -230,9 +229,7 @@ function createShellSnapshot(
   const organization = activeMembership?.organization ?? organizations[0] ?? null;
   const role = activeMembership?.role ?? principal.platformMembership?.role ?? null;
   const activePermissions = resolveActivePermissions(principal, activeMembership);
-  const isPlatformAdmin = isPlatformAdminRoleName(
-    principal.platformMembership?.role?.name,
-  );
+  const isPlatformAdmin = hasPlatformManagementPermission(activePermissions);
 
   return {
     ...principal,
@@ -282,4 +279,10 @@ function resolveActivePermissions(
         .map((permission) => permission.permission),
     ),
   ];
+}
+
+function hasPlatformManagementPermission(permissions: string[] | undefined) {
+  return Boolean(
+    permissions?.some((permission) => permission.endsWith(":platform")),
+  );
 }

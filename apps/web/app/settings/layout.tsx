@@ -61,7 +61,10 @@ export default function SettingsLayout({
         item.pageKey === "settings.organization" && snapshot?.organization?.id
           ? {
               ...item,
-              href: `/settings/organizations/${snapshot.organization.id}`,
+              href: getCurrentOrganizationHref(
+                item.href,
+                snapshot.organization.id,
+              ),
             }
           : item,
       ),
@@ -77,72 +80,72 @@ export default function SettingsLayout({
     )?.key;
 
   return (
-    <div className="min-h-svh min-w-0 bg-background md:h-svh md:overflow-hidden">
-      <ResizablePanelGroup
-        className="hidden h-full min-h-0 md:flex"
-        orientation="horizontal"
-      >
-        <ResizablePanel
-          className="min-h-0 border-r bg-muted/20"
-          defaultSize={SETTINGS_SIDEBAR_DEFAULT_SIZE}
-          groupResizeBehavior="preserve-pixel-size"
-          id="settings-navigation"
-          maxSize={SETTINGS_SIDEBAR_MAX_SIZE}
-          minSize={SETTINGS_SIDEBAR_MIN_SIZE}
-          onResize={(size) =>
-            setSettingsSidebarCollapsed(
-              size.inPixels <= SETTINGS_SIDEBAR_COLLAPSED_THRESHOLD,
-            )
-          }
-        >
-          <SettingsSidebar
-            activeKey={activeKey}
-            collapsed={settingsSidebarCollapsed}
-            navSections={navSections}
-          />
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel
-          className="min-h-0 min-w-0 overflow-hidden"
-          id="settings-content"
-          minSize="360px"
-        >
-          <div className="h-full min-w-0 overflow-auto px-4 py-5 md:px-5">
-            <div
-              className="mx-auto flex max-w-7xl flex-col gap-4"
-              key={activeOrganizationId}
-            >
-              {canAccessCurrentPage ? (
-                children
-              ) : (
-                <SettingsAccessDenied pages={currentPages} />
-              )}
+    <div className="min-h-svh min-w-0 bg-background lg:h-svh lg:overflow-hidden">
+      <div className="hidden h-full min-h-0 lg:block">
+        <ResizablePanelGroup className="h-full min-h-0" orientation="horizontal">
+          <ResizablePanel
+            className="min-h-0 border-r bg-muted/20"
+            defaultSize={SETTINGS_SIDEBAR_DEFAULT_SIZE}
+            groupResizeBehavior="preserve-pixel-size"
+            id="settings-navigation"
+            maxSize={SETTINGS_SIDEBAR_MAX_SIZE}
+            minSize={SETTINGS_SIDEBAR_MIN_SIZE}
+            onResize={(size) =>
+              setSettingsSidebarCollapsed(
+                size.inPixels <= SETTINGS_SIDEBAR_COLLAPSED_THRESHOLD,
+              )
+            }
+          >
+            <SettingsSidebar
+              activeKey={activeKey}
+              collapsed={settingsSidebarCollapsed}
+              navSections={navSections}
+            />
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel
+            className="min-h-0 min-w-0 overflow-hidden"
+            id="settings-content"
+            minSize="360px"
+          >
+            <div className="h-full min-w-0 overflow-auto px-4 py-5 lg:px-5">
+              <div
+                className="mx-auto flex max-w-7xl flex-col gap-4"
+                key={activeOrganizationId}
+              >
+                {canAccessCurrentPage ? (
+                  children
+                ) : (
+                  <SettingsAccessDenied pages={currentPages} />
+                )}
+              </div>
             </div>
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
 
-      <div className="grid min-w-0 gap-4 px-4 py-5 md:hidden">
-        <div className="grid gap-1 rounded-lg border bg-muted/20 p-2">
-          {navSections.map((section) => (
-            <div className="grid gap-1" key={section.key}>
-              <div className="px-2 py-1 text-xs">{section.label}</div>
-              {section.items.map((item) => (
-                <Link
-                  className={cn(
-                    "flex h-8 items-center gap-2 rounded-md px-2 text-sm",
-                    item.key === activeKey && "bg-accent",
-                  )}
-                  href={item.href}
-                  key={item.key}
-                >
-                  <AppIcon className="size-4" name={item.icon ?? "settings"} />
-                  <span>{item.label}</span>
-                </Link>
-              ))}
-            </div>
+      <div className="hidden min-w-0 gap-4 px-4 py-5 max-lg:grid">
+        <nav
+          aria-label="配置导航"
+          className="-mx-4 flex min-w-0 gap-2 overflow-x-auto border-b px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {visibleItems.map((item) => (
+            <Link
+              className={cn(
+                "flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+                item.key === activeKey && "bg-accent",
+              )}
+              href={item.href}
+              key={item.key}
+            >
+              <AppIcon
+                className="size-4 shrink-0"
+                name={item.icon ?? "settings"}
+              />
+              <span className="whitespace-nowrap">{item.label}</span>
+            </Link>
           ))}
-        </div>
+        </nav>
         <div key={activeOrganizationId}>
           {canAccessCurrentPage ? (
             children
@@ -255,6 +258,11 @@ function matchesSettingsHref(
 function getRouteOrganizationId(pathname: string) {
   const match = pathname.match(/^\/settings\/organizations\/([^/]+)$/);
   return match?.[1] ?? null;
+}
+
+function getCurrentOrganizationHref(href: string, organizationId: string) {
+  const [, query] = href.split("?");
+  return `/settings/organizations/${organizationId}${query ? `?${query}` : ""}`;
 }
 
 function SettingsAccessDenied({

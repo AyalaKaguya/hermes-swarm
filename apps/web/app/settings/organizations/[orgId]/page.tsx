@@ -49,7 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   CustomSettingDialog,
@@ -60,7 +60,6 @@ import {
 import { UserAvatar } from "@/components/user-avatar";
 import {
   getRoleRank,
-  isPlatformAdminRoleName,
 } from "@hermes-swarm/core/identity/permissions";
 import {
   ORGANIZATION_CONTROL_SETTING_DEFINITIONS,
@@ -158,45 +157,53 @@ export default function OrganizationDetailPage() {
   const [token, setToken] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
-  const isPlatformAdmin = Boolean(snapshot?.isPlatformAdmin);
   const canManage =
-    isPlatformAdmin ||
-    (snapshot && resolvedSession
+    snapshot && resolvedSession
       ? access.hasPermission([
           "organization.platform_organization.create:platform",
           "organization.platform_organization.delete:platform",
           "organization.profile.update_basic:organization",
         ])
-      : false);
-  const canViewPlatformControls = isPlatformAdmin;
-  const canManagePlatformControls = canViewPlatformControls && Boolean(canManage);
-  const canManagePlatformOrganizationUsers =
-    isPlatformAdmin ||
-    (snapshot && resolvedSession
-      ? access.hasPermission([
+      : false;
+  const canViewPlatformControls =
+    snapshot && resolvedSession
+      ? access.hasPageAccess("settings.organizations", { organizationId }) ||
+        access.hasPermission([
           "organization.platform_organization.create:platform",
           "organization.platform_organization.delete:platform",
         ])
-      : false);
-  const canViewOrganizationsList =
-    snapshot && resolvedSession
-      ? access.hasPageAccess("settings.organizations")
       : false;
+  const canManagePlatformControls =
+    canViewPlatformControls &&
+    Boolean(
+      snapshot && resolvedSession
+        ? access.hasPermission([
+            "organization.platform_organization.create:platform",
+            "organization.platform_organization.delete:platform",
+          ])
+        : false,
+    );
+  const canCreateOrganizationMember =
+    snapshot && resolvedSession
+      ? access.hasPermission("user.organization_member.create:organization")
+      : false;
+  const canUpdateOrganizationMember =
+    snapshot && resolvedSession
+      ? access.hasPermission("user.organization_member.update:organization")
+      : false;
+  const canManagePlatformOrganizationUsers = canUpdateOrganizationMember;
   const currentRoleName = snapshot?.currentUser.role?.name ?? null;
   const currentUserId = snapshot?.currentUser.user.id ?? null;
-  const canAssignPlatformRole = isPlatformAdmin;
   const assignableRoles = useMemo(
     () =>
       roles.filter((role) =>
         canAssignRole(
           currentRoleName,
           role,
-          canAssignPlatformRole,
           Boolean(canManagePlatformOrganizationUsers),
         ),
       ),
     [
-      canAssignPlatformRole,
       canManagePlatformOrganizationUsers,
       currentRoleName,
       roles,
@@ -250,9 +257,7 @@ export default function OrganizationDetailPage() {
   }, [load]);
 
   useEffect(() => {
-    if (isOrganizationTab(requestedTab)) {
-      setActiveTab(requestedTab);
-    }
+    setActiveTab(isOrganizationTab(requestedTab) ? requestedTab : "general");
   }, [requestedTab]);
 
   const dirty = useMemo(() => {
@@ -410,13 +415,10 @@ export default function OrganizationDetailPage() {
   }
 
   function canEditUser(user: User) {
-    if (!canManage || user.id === currentUserId) return false;
-    if (canAssignPlatformRole) return true;
+    if (!canUpdateOrganizationMember || user.id === currentUserId) return false;
     const membership = membershipForUser(user.id);
     const role = roles.find((item) => item.id === membership?.roleId);
-    if (canManagePlatformOrganizationUsers) {
-      return !role || !isPlatformAdminRoleName(role.name);
-    }
+    if (canManagePlatformOrganizationUsers) return true;
     if (!role) return membership?.roleId === null;
     return getRoleRank(role.name) < getRoleRank(currentRoleName);
   }
@@ -437,11 +439,6 @@ export default function OrganizationDetailPage() {
             {error}
           </div>
         )}
-        {canViewOrganizationsList && (
-          <Button asChild className="w-fit" size="sm" variant="outline">
-            <Link href="/settings/organizations">返回组织列表</Link>
-          </Button>
-        )}
       </div>
     );
   }
@@ -450,20 +447,9 @@ export default function OrganizationDetailPage() {
     <section className="grid gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          {canViewOrganizationsList && (
-            <Button asChild className="-ml-2 mb-2" size="sm" variant="ghost">
-              <Link href="/settings/organizations">
-                <AppIcon className="size-3.5" name="arrow-left" />
-                返回组织列表
-              </Link>
-            </Button>
-          )}
           <h1 className="truncate text-lg font-semibold">
             {organization.name}
           </h1>
-          <p className="break-all text-sm">
-            org_id: <span className="font-mono">{organization.id}</span>
-          </p>
         </div>
         <Badge
           variant={organization.status === "active" ? "default" : "secondary"}
@@ -483,14 +469,7 @@ export default function OrganizationDetailPage() {
         }}
         value={activeTab}
       >
-        <TabsList>
-          <TabsTrigger value="general">常规</TabsTrigger>
-          <TabsTrigger value="members">成员</TabsTrigger>
-          <TabsTrigger value="controls">控制项</TabsTrigger>
-          <TabsTrigger value="profile">展示</TabsTrigger>
-        </TabsList>
-
-        <TabsContent className="mt-3" value="general">
+        <TabsContent value="general">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
             <Card>
               <CardHeader>
@@ -498,7 +477,6 @@ export default function OrganizationDetailPage() {
                 <CardDescription>维护组织名称、标识和生命周期</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
-                <ReadOnly label="组织 ID">{organization.id}</ReadOnly>
                 <Field label="名称" htmlFor="organization-name">
                   <Input
                     disabled={!canManage}
@@ -647,19 +625,22 @@ export default function OrganizationDetailPage() {
           </div>
         </TabsContent>
 
-        <TabsContent className="mt-3" value="members">
+        <TabsContent value="members">
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle>组织成员</CardTitle>
                 <CardDescription>
-                  维护 URL 中 org_id 指定组织的成员账号和角色
+                  维护当前组织的成员账号和角色
                 </CardDescription>
               </div>
               <Dialog onOpenChange={setCreateUserOpen} open={createUserOpen}>
                 <DialogTrigger asChild>
                   <Button
-                    disabled={!canManage || assignableRoles.length === 0}
+                    disabled={
+                      !canCreateOrganizationMember ||
+                      assignableRoles.length === 0
+                    }
                     size="sm"
                   >
                     <AppIcon className="size-3.5" name="users" />
@@ -754,7 +735,7 @@ export default function OrganizationDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent className="mt-3" value="controls">
+        <TabsContent value="controls">
           <div className="grid gap-4">
             <Card>
               <CardHeader>
@@ -774,15 +755,16 @@ export default function OrganizationDetailPage() {
                       <EnumSelect
                         disabled={!canManage}
                         id={`organization-${item.field}`}
+                        inheritedLabel={settingDefaultLabel(
+                          item.key,
+                          item.options,
+                        )}
                         noneLabel="继承平台默认"
                         onChange={(value) => updateField(item.field, value)}
                         options={item.options}
                         placeholder="继承平台默认"
                         value={form[item.field]}
                       />
-                      <div className="text-xs">
-                        平台默认：{settingDefaultLabel(item.key, item.options)}
-                      </div>
                     </Field>
                   ))}
                   <Field label="员工数" htmlFor="organization-total-employees">
@@ -798,15 +780,15 @@ export default function OrganizationDetailPage() {
                     />
                   </Field>
                 </div>
-                <Button
-                  className="w-fit"
-                  disabled={!canManage || !dirty || saving}
-                  onClick={save}
-                  type="button"
-                  variant="outline"
-                >
-                  {saving ? "保存中..." : "保存默认值覆写"}
-                </Button>
+                <div className="flex justify-end">
+                  <Button
+                    disabled={!canManage || !dirty || saving}
+                    onClick={save}
+                    type="button"
+                  >
+                    {saving ? "保存中..." : "保存"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
@@ -828,6 +810,10 @@ export default function OrganizationDetailPage() {
                       <EnumSelect
                         disabled={!canManage}
                         id={`organization-setting-${item.key}`}
+                        inheritedLabel={settingDefaultLabel(
+                          item.key,
+                          item.options,
+                        )}
                         noneLabel="继承平台默认"
                         onChange={(value) =>
                           setControlValues((current) => ({
@@ -839,21 +825,18 @@ export default function OrganizationDetailPage() {
                         placeholder="继承平台默认"
                         value={controlValues[item.key] ?? ""}
                       />
-                      <div className="text-xs">
-                        平台默认：{settingDefaultLabel(item.key, item.options)}
-                      </div>
                     </Field>
                   ))}
                 </div>
-                <Button
-                  className="w-fit"
-                  disabled={!canManage || savingControls}
-                  onClick={saveControls}
-                  type="button"
-                  variant="outline"
-                >
-                  {savingControls ? "保存中..." : "保存控制项"}
-                </Button>
+                <div className="flex justify-end">
+                  <Button
+                    disabled={!canManage || savingControls}
+                    onClick={saveControls}
+                    type="button"
+                  >
+                    {savingControls ? "保存中..." : "保存"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
@@ -903,7 +886,7 @@ export default function OrganizationDetailPage() {
 
                       return (
                         <div
-                          className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+                          className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,36rem)_auto] sm:items-center"
                           key={setting.id}
                         >
                           <div className="min-w-0">
@@ -913,73 +896,78 @@ export default function OrganizationDetailPage() {
                             <div className="text-xs">
                               {setting.isOverridden
                                 ? "组织覆写"
-                                : `平台默认：${setting.defaultValue ?? "-"}`}
+                                : "继承平台设置"}
                             </div>
                           </div>
-                          <SettingValueInput
-                            disabled={!canManage || savingCustomSetting}
-                            id={`organization-custom-${setting.id}`}
-                            inputClassName="h-8 font-mono text-xs"
-                            onCommit={(nextValue) => {
-                              if (
-                                settingValueType === "secret" ||
-                                String(nextValue ?? "") !==
-                                  (setting.overrideValue ?? "")
-                              ) {
+                          <div className="min-w-0 sm:justify-self-end">
+                            <SettingValueInput
+                              className="justify-end"
+                              disabled={!canManage || savingCustomSetting}
+                              id={`organization-custom-${setting.id}`}
+                              inputClassName="h-8 w-full font-mono text-xs sm:min-w-72"
+                              onCommit={(nextValue) => {
+                                if (
+                                  settingValueType === "secret" ||
+                                  String(nextValue ?? "") !==
+                                    (setting.overrideValue ?? "")
+                                ) {
+                                  void saveCustomSetting({
+                                    name: setting.name,
+                                    value:
+                                      nextValue === "" || nextValue === null
+                                        ? null
+                                        : nextValue,
+                                    valueOptions: settingValueOptionsPayload,
+                                    valueType: settingValueType,
+                                  });
+                                }
+                              }}
+                              value={effectiveValue}
+                              valueOptions={settingValueOptions}
+                              valueType={settingValueType}
+                              placeholder={setting.defaultValue ?? ""}
+                            />
+                          </div>
+                          <div className="flex items-center justify-end gap-1">
+                            <SettingEditDialog
+                              disabled={!canManage || savingCustomSetting}
+                              idPrefix={`organization-custom-${setting.id}`}
+                              name={setting.name}
+                              onSubmit={(entry) =>
+                                saveCustomSetting({
+                                  ...entry,
+                                  value:
+                                    entry.value === "" || entry.value === null
+                                      ? null
+                                      : entry.value,
+                                })
+                              }
+                              saving={savingCustomSetting}
+                              value={effectiveValue}
+                              valueOptions={settingValueOptions}
+                              valueType={settingValueType}
+                            />
+                            <Button
+                              disabled={
+                                !canManage ||
+                                savingCustomSetting ||
+                                !setting.isOverridden
+                              }
+                              onClick={() =>
                                 void saveCustomSetting({
                                   name: setting.name,
-                                  value:
-                                    nextValue === "" || nextValue === null
-                                      ? null
-                                      : nextValue,
+                                  value: null,
                                   valueOptions: settingValueOptionsPayload,
                                   valueType: settingValueType,
-                                });
+                                })
                               }
-                            }}
-                            value={effectiveValue}
-                            valueOptions={settingValueOptions}
-                            valueType={settingValueType}
-                            placeholder={setting.defaultValue ?? ""}
-                          />
-                          <SettingEditDialog
-                            disabled={!canManage || savingCustomSetting}
-                            idPrefix={`organization-custom-${setting.id}`}
-                            name={setting.name}
-                            onSubmit={(entry) =>
-                              saveCustomSetting({
-                                ...entry,
-                                value:
-                                  entry.value === "" || entry.value === null
-                                    ? null
-                                    : entry.value,
-                              })
-                            }
-                            saving={savingCustomSetting}
-                            value={effectiveValue}
-                            valueOptions={settingValueOptions}
-                            valueType={settingValueType}
-                          />
-                          <Button
-                            disabled={
-                              !canManage ||
-                              savingCustomSetting ||
-                              !setting.isOverridden
-                            }
-                            onClick={() =>
-                              void saveCustomSetting({
-                                name: setting.name,
-                                value: null,
-                                valueOptions: settingValueOptionsPayload,
-                                valueType: settingValueType,
-                              })
-                            }
-                            size="icon"
-                            type="button"
-                            variant="ghost"
-                          >
-                            <AppIcon className="size-4" name="trash" />
-                          </Button>
+                              size="icon"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <AppIcon className="size-4" name="trash" />
+                            </Button>
+                          </div>
                         </div>
                       );
                     })
@@ -990,7 +978,7 @@ export default function OrganizationDetailPage() {
           </div>
         </TabsContent>
 
-        <TabsContent className="mt-3" value="profile">
+        <TabsContent value="profile">
           <Card>
             <CardHeader>
               <CardTitle>展示资料</CardTitle>
@@ -1099,7 +1087,7 @@ export default function OrganizationDetailPage() {
           重置
         </Button>
         <Button disabled={!canManage || !dirty || saving} onClick={save}>
-          {saving ? "保存中..." : "保存配置"}
+          {saving ? "保存中..." : "保存"}
         </Button>
       </div>
     </section>
@@ -1253,6 +1241,7 @@ function Field({
 function EnumSelect({
   disabled,
   id,
+  inheritedLabel,
   noneLabel = "未设置",
   onChange,
   options,
@@ -1261,12 +1250,18 @@ function EnumSelect({
 }: {
   disabled?: boolean;
   id: string;
+  inheritedLabel?: string;
   noneLabel?: string;
   onChange: (value: string) => void;
   options: readonly SettingOption[];
   placeholder: string;
   value: string;
 }) {
+  const displayLabel =
+    options.find((option) => option.value === value)?.label ??
+    inheritedLabel ??
+    noneLabel;
+
   return (
     <Select
       disabled={disabled}
@@ -1276,7 +1271,7 @@ function EnumSelect({
       value={value || "__none__"}
     >
       <SelectTrigger id={id}>
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>{displayLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="__none__">{noneLabel}</SelectItem>
@@ -1287,17 +1282,6 @@ function EnumSelect({
         ))}
       </SelectContent>
     </Select>
-  );
-}
-
-function ReadOnly({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid gap-1.5 sm:col-span-2">
-      <Label>{label}</Label>
-      <div className="break-all rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs">
-        {children}
-      </div>
-    </div>
   );
 }
 
@@ -1408,11 +1392,9 @@ function parseOptionalNumber(value: string) {
 function canAssignRole(
   currentRoleName: string | null,
   role: Role,
-  canAssignPlatformRole: boolean,
   canManagePlatformOrganizationUsers: boolean,
 ) {
-  if (isPlatformAdminRoleName(role.name)) return canAssignPlatformRole;
-  if (canAssignPlatformRole || canManagePlatformOrganizationUsers) return true;
+  if (canManagePlatformOrganizationUsers) return true;
   return getRoleRank(role.name) < getRoleRank(currentRoleName);
 }
 
