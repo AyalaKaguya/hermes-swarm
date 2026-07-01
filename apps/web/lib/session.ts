@@ -58,6 +58,7 @@ const MENU_PERMISSION_MAP: Record<
   "custom-smtp": { entity: "mail", scope: "organization" },
   "email-templates": { entity: "mail", scope: "organization" },
   features: { entity: "setting", scope: "organization" },
+  groups: { entity: "group", scope: "organization" },
   "notification-destinations": {
     entity: "notification",
     scope: "organization",

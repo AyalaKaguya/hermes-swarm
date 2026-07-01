@@ -6,11 +6,13 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
+  OrganizationGroup,
+  OrganizationGroupMember,
   Role,
   User,
   UserOrganization,
 } from "@hermes-swarm/core";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { hashPassword } from "../common/security/password-hash.js";
 import type { MembershipPayload } from "./memberships.controller.js";
 
@@ -23,6 +25,8 @@ export class MembershipsService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
+    @InjectRepository(OrganizationGroupMember)
+    private readonly groupMemberRepository: Repository<OrganizationGroupMember>,
     @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
   ) {}
@@ -34,7 +38,12 @@ export class MembershipsService {
       relations: { role: true, user: true },
       where: { organizationId },
     });
-    return memberships.map(toMembershipDto);
+    const groupsByMembership = await this.loadGroupsByMembership(
+      memberships.map((membership) => membership.id),
+    );
+    return memberships.map((membership) =>
+      toMembershipDto(membership, groupsByMembership.get(membership.id) ?? []),
+    );
   }
 
   async create(organizationId: string, payload: MembershipPayload) {
@@ -56,9 +65,7 @@ export class MembershipsService {
       status: payload.status ?? "active",
       userId,
     });
-    return toMembershipDto(
-      await this.membershipRepository.save(membership),
-    );
+    return toMembershipDto(await this.membershipRepository.save(membership));
   }
 
   async update(
@@ -157,6 +164,25 @@ export class MembershipsService {
       }),
     );
   }
+
+  private async loadGroupsByMembership(membershipIds: string[]) {
+    if (membershipIds.length === 0) return new Map<string, OrganizationGroup[]>();
+
+    const rows = await this.groupMemberRepository.find({
+      order: { createdAt: "ASC" },
+      relations: { group: true },
+      where: { membershipId: In(membershipIds) },
+    });
+    const groupsByMembership = new Map<string, OrganizationGroup[]>();
+    for (const row of rows) {
+      if (!row.group) continue;
+      groupsByMembership.set(row.membershipId, [
+        ...(groupsByMembership.get(row.membershipId) ?? []),
+        row.group,
+      ]);
+    }
+    return groupsByMembership;
+  }
 }
 
 function requireText(value: string | undefined, label: string) {
@@ -184,9 +210,14 @@ function requirePassword(value: string | undefined) {
   return password;
 }
 
-function toMembershipDto(membership: UserOrganization) {
+function toMembershipDto(
+  membership: UserOrganization,
+  groups: OrganizationGroup[] = [],
+) {
   return {
     displayName: membership.displayName,
+    groupIds: groups.map((group) => group.id),
+    groups: groups.map(toGroupBriefDto),
     id: membership.id,
     joinedAt: membership.joinedAt,
     organizationId: membership.organizationId,
@@ -195,5 +226,15 @@ function toMembershipDto(membership: UserOrganization) {
     status: membership.status,
     user: membership.user,
     userId: membership.userId,
+  };
+}
+
+function toGroupBriefDto(group: OrganizationGroup) {
+  return {
+    color: group.color,
+    displayName: group.displayName,
+    id: group.id,
+    name: group.name,
+    organizationId: group.organizationId,
   };
 }

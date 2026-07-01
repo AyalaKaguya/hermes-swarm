@@ -122,8 +122,18 @@ export type RolePermission = {
 
 export type MembershipStatus = "active" | "disabled" | "invited";
 
+export type OrganizationGroupBrief = {
+  color: string | null;
+  displayName: string;
+  id: string;
+  name: string;
+  organizationId: string;
+};
+
 export type OrganizationMembership = {
   displayName: string | null;
+  groupIds?: string[];
+  groups?: OrganizationGroupBrief[];
   id: string;
   joinedAt: string | null;
   organization?: Organization;
@@ -166,6 +176,38 @@ export type RolePayload = {
   description?: string | null;
   displayName?: string;
   name?: string;
+};
+
+export type OrganizationGroup = OrganizationGroupBrief & {
+  createdAt: string;
+  createdByUserId: string | null;
+  description: string | null;
+  memberCount: number;
+  updatedAt: string;
+};
+
+export type OrganizationGroupPayload = {
+  color?: string | null;
+  description?: string | null;
+  displayName?: string;
+  name?: string;
+};
+
+export type OrganizationGroupMember = {
+  group: OrganizationGroupBrief | null;
+  groupId: string;
+  id: string;
+  membership: OrganizationMembership | null;
+  membershipId: string;
+  organizationId: string;
+  user: User;
+  userId: string;
+};
+
+export type OrganizationFeatureAccess = {
+  featureKey: string;
+  groupIds: string[];
+  groups: OrganizationGroupBrief[];
 };
 
 export type InviteStatus = "invited" | "accepted" | "expired" | "revoked";
@@ -416,24 +458,6 @@ export function onboard(payload: OnboardingPayload) {
   });
 }
 
-export function getInvites(token: string) {
-  return fetchAdmin<Invite[]>("/invites", { token });
-}
-
-export function resendInvite(token: string, inviteId: string) {
-  return fetchAdmin<Invite>(`/invites/${inviteId}/resend`, {
-    method: "POST",
-    token,
-  });
-}
-
-export function deleteInvite(token: string, inviteId: string) {
-  return fetchAdmin<void>(`/invites/${inviteId}`, {
-    method: "DELETE",
-    token,
-  });
-}
-
 export function getOrganizationInvites(token: string, organizationId: string) {
   return fetchAdmin<Invite[]>(`/organizations/${organizationId}/invites`, {
     token,
@@ -471,18 +495,6 @@ export function deleteOrganizationInvite(
     `/organizations/${organizationId}/invites/${inviteId}`,
     { method: "DELETE", token },
   );
-}
-
-export function replaceRolePermissions(
-  token: string,
-  roleId: string,
-  permissions: Array<{ enabled: boolean; permission: string }>,
-) {
-  return fetchAdmin<RolePermission[]>(`/roles/${roleId}/permissions`, {
-    body: { permissions },
-    method: "PUT",
-    token,
-  });
 }
 
 export function fetchMe(token: string) {
@@ -541,20 +553,9 @@ export type EmailTemplateDto = {
   subject: string | null;
 };
 
-export type CreateInviteResult = {
-  items: Invite[];
-  total: number;
-  ignored: number;
-};
-
 type SmtpScopeOptions = {
   organizationId?: string;
-  scope?: "organization" | "platform";
 };
-
-function smtpScopeSearch(options?: SmtpScopeOptions) {
-  return options?.scope === "platform" ? "?scope=platform" : "";
-}
 
 export function getSmtpConfig(token: string, options?: SmtpScopeOptions) {
   if (!options?.organizationId) {
@@ -625,13 +626,6 @@ export function deleteManagedUser(token: string, userId: string) {
     method: "DELETE",
     token,
   });
-}
-
-export function createInvites(token: string, payload: {
-  emailIds: string[];
-  roleId?: string;
-}) {
-  return fetchAdmin<CreateInviteResult>("/invites", { body: payload, method: "POST", token });
 }
 
 export function listEmailTemplates(token: string, organizationId: string) {
@@ -752,10 +746,6 @@ export function createOrganization(token: string, payload: OrganizationPayload) 
   });
 }
 
-export function listOrganizationUsers(token: string, organizationId: string) {
-  return fetchAdmin<User[]>(`/organizations/${organizationId}/users`, { token });
-}
-
 export function listOrganizationMembers(token: string, organizationId: string) {
   return fetchAdmin<OrganizationMembership[]>(
     `/organizations/${organizationId}/members`,
@@ -797,40 +787,100 @@ export function deleteOrganizationMember(
   );
 }
 
-export function createOrganizationUser(
+export function listOrganizationGroups(token: string, organizationId: string) {
+  return fetchAdmin<OrganizationGroup[]>(
+    `/organizations/${organizationId}/groups`,
+    { token },
+  );
+}
+
+export function createOrganizationGroup(
   token: string,
   organizationId: string,
-  payload: {
-    displayName?: string;
-    email?: string;
-    password?: string;
-    roleId?: string | null;
-    status?: UserStatus;
-  },
+  payload: OrganizationGroupPayload,
 ) {
-  return fetchAdmin<User>(`/organizations/${organizationId}/users`, {
-    body: payload,
-    method: "POST",
+  return fetchAdmin<OrganizationGroup>(
+    `/organizations/${organizationId}/groups`,
+    { body: payload, method: "POST", token },
+  );
+}
+
+export function getOrganizationGroup(
+  token: string,
+  organizationId: string,
+  groupId: string,
+) {
+  return fetchAdmin<OrganizationGroup>(
+    `/organizations/${organizationId}/groups/${groupId}`,
+    { token },
+  );
+}
+
+export function updateOrganizationGroup(
+  token: string,
+  organizationId: string,
+  groupId: string,
+  payload: OrganizationGroupPayload,
+) {
+  return fetchAdmin<OrganizationGroup>(
+    `/organizations/${organizationId}/groups/${groupId}`,
+    { body: payload, method: "PATCH", token },
+  );
+}
+
+export function deleteOrganizationGroup(
+  token: string,
+  organizationId: string,
+  groupId: string,
+) {
+  return fetchAdmin<void>(`/organizations/${organizationId}/groups/${groupId}`, {
+    method: "DELETE",
     token,
   });
 }
 
-export function updateOrganizationUser(
+export function listOrganizationGroupMembers(
   token: string,
   organizationId: string,
-  userId: string,
-  payload: {
-    displayName?: string;
-    email?: string;
-    roleId?: string | null;
-    status?: UserStatus;
-  },
+  groupId: string,
 ) {
-  return fetchAdmin<User>(`/organizations/${organizationId}/users/${userId}`, {
-    body: payload,
-    method: "PATCH",
-    token,
-  });
+  return fetchAdmin<OrganizationGroupMember[]>(
+    `/organizations/${organizationId}/groups/${groupId}/members`,
+    { token },
+  );
+}
+
+export function replaceOrganizationGroupMembers(
+  token: string,
+  organizationId: string,
+  groupId: string,
+  membershipIds: string[],
+) {
+  return fetchAdmin<OrganizationGroupMember[]>(
+    `/organizations/${organizationId}/groups/${groupId}/members`,
+    { body: { membershipIds }, method: "PUT", token },
+  );
+}
+
+export function listOrganizationFeatureAccess(
+  token: string,
+  organizationId: string,
+) {
+  return fetchAdmin<OrganizationFeatureAccess[]>(
+    `/organizations/${organizationId}/feature-access`,
+    { token },
+  );
+}
+
+export function replaceOrganizationFeatureAccess(
+  token: string,
+  organizationId: string,
+  payload: { featureKey: string; groupIds: string[] },
+) {
+  return fetchAdmin<OrganizationFeatureAccess>(
+    `/organizations/${organizationId}/feature-access`,
+    { body: payload, method: "PUT", token },
+  );
 }
 
 export function listOrganizationRoles(token: string, organizationId: string) {
