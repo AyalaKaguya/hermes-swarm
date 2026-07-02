@@ -5,7 +5,7 @@ export type AccessMode = "all" | "any";
 export type PageAccessSection = "organization" | "personal" | "platform";
 
 export type PageAccessDefinition = {
-  defaultRoles: SystemRoleName[];
+  defaultRoles: string[];
   description: string;
   href: string;
   icon: string;
@@ -18,10 +18,3 @@ export type PageAccessDefinition = {
   section: PageAccessSection;
   sectionLabel: string;
 };
-
-export type SystemRoleName =
-  | "admin"
-  | "member"
-  | "owner"
-  | "platform-admin"
-  | "viewer";
