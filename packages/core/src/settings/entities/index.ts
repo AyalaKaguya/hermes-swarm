@@ -1,3 +1,4 @@
+export { OrganizationSetting } from "./organization-setting.entity.js";
 export {
   PlatformSetting,
   PlatformSetting as SystemSetting,

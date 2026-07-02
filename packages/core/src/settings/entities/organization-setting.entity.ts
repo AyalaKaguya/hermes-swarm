@@ -1,9 +1,9 @@
 import { Column, Entity, Index } from "typeorm";
-import { OrganizationBaseEntity } from "./organization-base.entity.js";
+import { OrganizationBaseEntity } from "../../identity/entities/organization-base.entity.js";
 import type {
   SettingValueOption,
   SettingValueType,
-} from "../../settings/definitions.js";
+} from "../definitions.js";
 
 @Entity({ name: "organization_settings" })
 @Index(["organizationId", "name"], { unique: true })
