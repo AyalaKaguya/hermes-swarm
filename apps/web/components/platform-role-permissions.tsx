@@ -59,16 +59,16 @@ export function PlatformRolePermissions({
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !canViewRoles) {
+    if (!session?.accessToken || !canViewRoles) {
       setLoading(false);
       return;
     }
 
-    setToken(session.token);
+    setToken(session.accessToken);
     try {
       const [roleItems, nextCatalog] = await Promise.all([
-        listPlatformRoles(session.token),
-        listPermissionCatalog(session.token, "platform"),
+        listPlatformRoles(session.accessToken),
+        listPermissionCatalog(session.accessToken, "platform"),
       ]);
       setCatalog(nextCatalog);
       setRoles(roleItems);

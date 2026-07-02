@@ -75,16 +75,16 @@ export default function RolesPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setLoading(false);
       return;
     }
-    setToken(session.token);
+    setToken(session.accessToken);
     try {
       const [roleItems, organizationCatalog, ownCatalog] = await Promise.all([
-        listOrganizationRoles(session.token, organizationId),
-        listPermissionCatalog(session.token, "organization"),
-        listPermissionCatalog(session.token, "own"),
+        listOrganizationRoles(session.accessToken, organizationId),
+        listPermissionCatalog(session.accessToken, "organization"),
+        listPermissionCatalog(session.accessToken, "own"),
       ]);
       setRoles(roleItems);
       setCatalog(mergeCatalogs(organizationCatalog, ownCatalog));

@@ -1,7 +1,9 @@
 import type { CurrentUser, PrincipalSession, Snapshot } from "./admin-api";
 
 export type UserSession = {
-  token: string;
+  accessToken: string;
+  expiresAt: string;
+  sessionId: string;
 };
 
 export type ResolvedSession = CurrentUser | PrincipalSession;
@@ -20,10 +22,14 @@ export function getStoredSession(): UserSession | null {
 
   try {
     const value = JSON.parse(rawValue) as Partial<UserSession>;
-    if (!value.token) {
+    if (!value.accessToken || !value.expiresAt || !value.sessionId) {
       return null;
     }
-    return { token: value.token };
+    return {
+      accessToken: value.accessToken,
+      expiresAt: value.expiresAt,
+      sessionId: value.sessionId,
+    };
   } catch {
     return null;
   }

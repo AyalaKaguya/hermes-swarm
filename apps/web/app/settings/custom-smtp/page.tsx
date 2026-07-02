@@ -40,12 +40,12 @@ export default function CustomSmtpPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setLoading(false);
       return;
     }
     try {
-      const c = await getSmtpConfig(session.token, { organizationId });
+      const c = await getSmtpConfig(session.accessToken, { organizationId });
       setConfig(c);
       if (c) {
         setHost(c.host ?? "");
@@ -70,13 +70,13 @@ export default function CustomSmtpPage() {
     setError(null);
     setMsg("");
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setSaving(false);
       return;
     }
     try {
       await saveSmtpConfig(
-        session.token,
+        session.accessToken,
         {
           host: host.trim(),
           port: Number(port) || 587,
@@ -101,13 +101,13 @@ export default function CustomSmtpPage() {
     setError(null);
     setMsg("");
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setValidating(false);
       return;
     }
     try {
       await validateSmtpConfig(
-        session.token,
+        session.accessToken,
         {
           host: host.trim(),
           port: Number(port) || 587,

@@ -29,8 +29,12 @@ import {
   type PreferredLanguage,
   type ThemeMode,
 } from "@/lib/appearance";
-import { updateUserPreferredLanguage, type User } from "@/lib/admin-api";
-import { clearStoredSession, getStoredSession } from "@/lib/session";
+import {
+  logoutAuthSession,
+  updateUserPreferredLanguage,
+  type User,
+} from "@/lib/admin-api";
+import { getStoredSession } from "@/lib/session";
 
 export function UserMenu({
   onUserUpdated,
@@ -66,11 +70,11 @@ export function UserMenu({
     applyLanguagePreference(normalized);
 
     const session = getStoredSession();
-    if (!session?.token || !user || normalized === language) return;
+    if (!session?.accessToken || !user || normalized === language) return;
 
     setSavingLanguage(true);
     try {
-      await updateUserPreferredLanguage(session.token, user.id, normalized);
+      await updateUserPreferredLanguage(session.accessToken, user.id, normalized);
       await onUserUpdated?.();
     } catch (err) {
       window.dispatchEvent(
@@ -95,8 +99,8 @@ export function UserMenu({
     router.push("/settings/account");
   }
 
-  function logout() {
-    clearStoredSession();
+  async function logout() {
+    await logoutAuthSession(getStoredSession()?.accessToken);
     router.replace("/login");
   }
 

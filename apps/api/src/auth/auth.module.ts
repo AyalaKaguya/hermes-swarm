@@ -8,6 +8,7 @@ import {
   UserOrganization,
 } from "@hermes-swarm/core";
 import { AuthController } from "./auth.controller.js";
+import { AuthSessionService } from "./auth-session.service.js";
 import { AuthService } from "./auth.service.js";
 
 @Module({
@@ -21,7 +22,7 @@ import { AuthService } from "./auth.service.js";
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
-  exports: [AuthService],
+  providers: [AuthService, AuthSessionService],
+  exports: [AuthService, AuthSessionService],
 })
 export class AuthModule {}

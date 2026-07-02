@@ -6,18 +6,21 @@ const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12;
 
 export function createAuthSessionToken(
   payload: Omit<AuthSessionTokenPayload, "exp">,
+  options: { secret?: string; ttlSeconds?: number } = {},
 ) {
   const expiresAt =
-    Math.floor(Date.now() / 1000) + DEFAULT_SESSION_TTL_SECONDS;
+    Math.floor(Date.now() / 1000) +
+    (options.ttlSeconds ?? DEFAULT_SESSION_TTL_SECONDS);
   const encodedPayload = encodeBase64Url(
     JSON.stringify({ ...payload, exp: expiresAt } satisfies AuthSessionTokenPayload),
   );
-  const signature = sign(encodedPayload);
+  const signature = sign(encodedPayload, options.secret);
   return `${TOKEN_VERSION}.${encodedPayload}.${signature}`;
 }
 
 export function parseAuthSessionToken(
   token: string | undefined,
+  options: { secret?: string } = {},
 ): AuthSessionTokenPayload | null {
   if (!token) {
     return null;
@@ -28,7 +31,7 @@ export function parseAuthSessionToken(
     return null;
   }
 
-  const expectedSignature = sign(encodedPayload);
+  const expectedSignature = sign(encodedPayload, options.secret);
   if (!secureEqual(signature, expectedSignature)) {
     return null;
   }
@@ -39,6 +42,8 @@ export function parseAuthSessionToken(
     ) as Partial<AuthSessionTokenPayload>;
     if (
       !payload.userId ||
+      !payload.sessionId ||
+      !payload.jti ||
       !payload.exp ||
       payload.exp < Math.floor(Date.now() / 1000)
     ) {
@@ -46,6 +51,8 @@ export function parseAuthSessionToken(
     }
     return {
       exp: payload.exp,
+      jti: payload.jti,
+      sessionId: payload.sessionId,
       userId: payload.userId,
     };
   } catch {
@@ -53,8 +60,8 @@ export function parseAuthSessionToken(
   }
 }
 
-function sign(encodedPayload: string) {
-  return createHmac("sha256", getSessionSecret())
+function sign(encodedPayload: string, secret?: string) {
+  return createHmac("sha256", secret ?? getSessionSecret())
     .update(encodedPayload)
     .digest("base64url");
 }

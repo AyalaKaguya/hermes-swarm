@@ -14,6 +14,7 @@ import {
 } from "@hermes-swarm/core";
 import { In, Repository } from "typeorm";
 import { hashPassword } from "../common/security/password-hash.js";
+import { toUserDto } from "../users/user-dto.js";
 import type { MembershipPayload } from "./memberships.controller.js";
 
 @Injectable()
@@ -92,7 +93,17 @@ export class MembershipsService {
     }
     membership.updatedAt = new Date();
 
-    return toMembershipDto(await this.membershipRepository.save(membership));
+    await this.membershipRepository.update(
+      { id: membership.id, organizationId },
+      {
+        displayName: membership.displayName,
+        roleId: membership.roleId,
+        status: membership.status,
+      },
+    );
+    return toMembershipDto(
+      await this.getMembershipOrThrow(organizationId, membership.id),
+    );
   }
 
   async remove(organizationId: string, membershipId: string) {
@@ -224,7 +235,7 @@ function toMembershipDto(
     role: membership.role,
     roleId: membership.roleId,
     status: membership.status,
-    user: membership.user,
+    user: membership.user ? toUserDto(membership.user) : undefined,
     userId: membership.userId,
   };
 }

@@ -64,7 +64,11 @@ export function OnboardingPage() {
         organizationSlug,
       });
 
-      storeSession({ token: response.token });
+      storeSession({
+        accessToken: response.accessToken,
+        expiresAt: response.expiresAt,
+        sessionId: response.sessionId,
+      });
       router.replace("/home");
     } catch (saveError) {
       setError(getErrorMessage(saveError));

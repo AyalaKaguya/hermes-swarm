@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { PlatformMember, Role, User } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
+import { toUserDto } from "../users/user-dto.js";
 import type { PlatformMemberPayload } from "./platform-members.controller.js";
 
 @Injectable()
@@ -58,7 +59,15 @@ export class PlatformMembersService {
     if (payload.status !== undefined) {
       member.status = payload.status;
     }
-    return toPlatformMemberDto(await this.memberRepository.save(member));
+    await this.memberRepository.update(
+      { id: member.id },
+      {
+        displayName: member.displayName,
+        roleId: member.roleId,
+        status: member.status,
+      },
+    );
+    return toPlatformMemberDto(await this.getMemberOrThrow(member.id));
   }
 
   async remove(memberId: string) {
@@ -103,7 +112,7 @@ function toPlatformMemberDto(member: PlatformMember) {
     role: member.role,
     roleId: member.roleId,
     status: member.status,
-    user: member.user,
+    user: member.user ? toUserDto(member.user) : undefined,
     userId: member.userId,
   };
 }

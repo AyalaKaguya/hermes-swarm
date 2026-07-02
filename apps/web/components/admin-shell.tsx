@@ -14,6 +14,7 @@ import { AppShell } from "@/components/app-shell";
 import {
   fetchMe,
   isUnauthorizedApiError,
+  refreshAuthSession,
   type Snapshot,
 } from "@/lib/admin-api";
 import {
@@ -50,8 +51,19 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   const loadSnapshot = useCallback(
     async (options: { showLoading?: boolean } = {}) => {
-      const session = getStoredSession();
-      if (!session?.token) {
+      let session = getStoredSession();
+      if (!session?.accessToken) {
+        const refreshed = await refreshAuthSession().catch(() => null);
+        session = refreshed
+          ? {
+              accessToken: refreshed.accessToken,
+              expiresAt: refreshed.expiresAt,
+              sessionId: refreshed.sessionId,
+            }
+          : null;
+      }
+
+      if (!session?.accessToken) {
         setSnapshot(null);
         setResolvedSession(null);
         setLoadError(null);
@@ -66,7 +78,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         setLoading(true);
       }
       try {
-        const principal = await fetchMe(session.token);
+        const principal = await fetchMe(session.accessToken);
         const data = createShellSnapshot(principal);
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
@@ -103,12 +115,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   async function switchOrganization(organizationId: string) {
     const session = getStoredSession();
-    if (!session?.token || organizationId === snapshot?.organization?.id) {
+    if (!session?.accessToken || organizationId === snapshot?.organization?.id) {
       return;
     }
-    const principal = await fetchMe(session.token);
+    const principal = await fetchMe(session.accessToken);
     const result = createShellSnapshot(principal, organizationId);
-    storeSession({ token: session.token });
+    storeSession(session);
     setSnapshot(result);
     setResolvedSession(resolveSession(result));
     if (pathname.startsWith("/settings/organizations/")) {
