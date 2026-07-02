@@ -59,9 +59,6 @@ import {
 } from "@/components/settings-value-input";
 import { UserAvatar } from "@/components/user-avatar";
 import {
-  getRoleRank,
-} from "@hermes-swarm/core/identity/permissions";
-import {
   ORGANIZATION_CONTROL_SETTING_DEFINITIONS,
   ORGANIZATION_DEFAULT_FIELD_DEFINITIONS,
   resolveSettingValueOptions,
@@ -191,23 +188,10 @@ export default function OrganizationDetailPage() {
     snapshot && resolvedSession
       ? access.hasPermission("user.organization_member.update:organization")
       : false;
-  const canManagePlatformOrganizationUsers = canUpdateOrganizationMember;
-  const currentRoleName = snapshot?.currentUser.role?.name ?? null;
   const currentUserId = snapshot?.currentUser.user.id ?? null;
   const assignableRoles = useMemo(
-    () =>
-      roles.filter((role) =>
-        canAssignRole(
-          currentRoleName,
-          role,
-          Boolean(canManagePlatformOrganizationUsers),
-        ),
-      ),
-    [
-      canManagePlatformOrganizationUsers,
-      currentRoleName,
-      roles,
-    ],
+    () => (canUpdateOrganizationMember ? roles : []),
+    [canUpdateOrganizationMember, roles],
   );
 
   const load = useCallback(async () => {
@@ -416,11 +400,7 @@ export default function OrganizationDetailPage() {
 
   function canEditUser(user: User) {
     if (!canUpdateOrganizationMember || user.id === currentUserId) return false;
-    const membership = membershipForUser(user.id);
-    const role = roles.find((item) => item.id === membership?.roleId);
-    if (canManagePlatformOrganizationUsers) return true;
-    if (!role) return membership?.roleId === null;
-    return getRoleRank(role.name) < getRoleRank(currentRoleName);
+    return true;
   }
 
   if (loading) {
@@ -1387,15 +1367,6 @@ function parseOptionalNumber(value: string) {
   if (!normalized) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function canAssignRole(
-  currentRoleName: string | null,
-  role: Role,
-  canManagePlatformOrganizationUsers: boolean,
-) {
-  if (canManagePlatformOrganizationUsers) return true;
-  return getRoleRank(role.name) < getRoleRank(currentRoleName);
 }
 
 function isOrganizationTab(value: string | null): value is OrganizationTab {

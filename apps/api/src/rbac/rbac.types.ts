@@ -1,11 +1,6 @@
 import type { PermissionCatalogSource, PermissionScope } from "@hermes-swarm/core";
 
-export type PermissionDefaultRole =
-  | "admin"
-  | "member"
-  | "owner"
-  | "platform-admin"
-  | "viewer";
+export type PermissionDefaultRole = string;
 
 export type PermissionResourceMetadata = {
   entity: string;

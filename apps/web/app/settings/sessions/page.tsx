@@ -241,7 +241,7 @@ function SessionDeviceRow({
   const historical = Boolean(device.revokedAt || device.isExpired);
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="grid min-w-0 gap-1">
+      <div className="grid min-w-0 flex-1 gap-1">
         <div className="flex min-w-0 items-center gap-2">
           <span
             aria-label={status.label}
@@ -253,11 +253,11 @@ function SessionDeviceRow({
             {device.deviceLabel}
           </div>
         </div>
-        <div className="grid gap-0.5 text-xs text-muted-foreground sm:grid-cols-2">
-          <span>IP：{device.ipAddress ?? "未知"}</span>
-          <span>最近活跃：{formatDateTime(device.lastSeenAt)}</span>
-          <span>创建时间：{formatDateTime(device.createdAt)}</span>
-          <span>过期时间：{formatDateTime(device.expiresAt)}</span>
+        <div className="grid gap-x-10 gap-y-1 text-xs text-muted-foreground sm:grid-cols-[minmax(10rem,auto)_minmax(13rem,auto)] lg:max-w-xl">
+          <SessionMeta label="IP" value={device.ipAddress ?? "未知"} />
+          <SessionMeta label="最近活跃" value={formatDateTime(device.lastSeenAt)} />
+          <SessionMeta label="创建时间" value={formatDateTime(device.createdAt)} />
+          <SessionMeta label="过期时间" value={formatDateTime(device.expiresAt)} />
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -293,6 +293,15 @@ function SessionDeviceRow({
         )}
       </div>
     </div>
+  );
+}
+
+function SessionMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex min-w-0 gap-1 whitespace-nowrap">
+      <span className="shrink-0">{label}：</span>
+      <span className="min-w-0 truncate">{value}</span>
+    </span>
   );
 }
 

@@ -11,7 +11,6 @@ type AccessGateProps = {
   mode?: AccessMode;
   pageKey?: string;
   permissions?: string | string[];
-  roles?: string | string[];
 };
 
 export function AccessGate({
@@ -21,14 +20,12 @@ export function AccessGate({
   mode = "any",
   pageKey,
   permissions,
-  roles,
 }: AccessGateProps) {
   const access = usePermission();
   const allowed = Boolean(
     access.resolvedSession &&
       (!pageKey || access.hasPageAccess(pageKey)) &&
-      (!permissions || access.hasPermission(permissions, { mode })) &&
-      (!roles || access.hasRole(roles, { mode })),
+      (!permissions || access.hasPermission(permissions, { mode })),
   );
 
   if (allowed) return children;
