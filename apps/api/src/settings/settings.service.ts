@@ -1,7 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { createClient } from "redis";
 import { Repository } from "typeorm";
 import {
   FEATURE_SETTING_DEFINITIONS,
@@ -16,6 +14,7 @@ import {
   type SettingValueOption,
 } from "@hermes-swarm/core";
 import type { SaveSettingsPayload } from "../common/admin-api.types.js";
+import { RedisService } from "../common/redis/redis.service.js";
 import {
   normalizeSettingEntry,
   parseSettingsPayload,
@@ -24,15 +23,13 @@ import {
 @Injectable()
 export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
-  private redisClientPromise: Promise<ReturnType<typeof createClient> | null> | null =
-    null;
 
   constructor(
     @InjectRepository(PlatformSetting)
     private readonly platformSettingRepository: Repository<PlatformSetting>,
     @InjectRepository(OrganizationSetting)
     private readonly organizationSettingRepository: Repository<OrganizationSetting>,
-    private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
   ) {}
 
   onModuleInit() {
@@ -299,28 +296,8 @@ export class SettingsService implements OnModuleInit {
   }
 
   private async getRedisClient() {
-    if (!this.redisClientPromise) {
-      this.redisClientPromise = this.connectRedis();
-    }
-    const client = await this.redisClientPromise;
-    if (!client) {
-      this.redisClientPromise = null;
-    }
-    return client;
-  }
-
-  private async connectRedis() {
     try {
-      const client = createClient({
-        url: this.configService.getOrThrow<string>("redis.url"),
-      });
-      client.on("error", (error) => {
-        this.logger.warn(
-          `Redis settings cache connection error: ${String(error)}`,
-        );
-      });
-      await client.connect();
-      return client;
+      return await this.redisService.getClient();
     } catch (error) {
       this.logger.warn(`Redis settings cache unavailable: ${String(error)}`);
       return null;

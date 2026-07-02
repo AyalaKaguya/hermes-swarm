@@ -48,6 +48,26 @@ export const redisRuntimeConfig = registerAs("redis", () => {
   };
 });
 
+export const authRuntimeConfig = registerAs("auth", () => ({
+  accessTokenTtlSeconds: parseInteger(
+    process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS,
+    900,
+  ),
+  refreshCookieName: process.env.AUTH_REFRESH_COOKIE_NAME ?? "hermes_refresh",
+  refreshCookieSecure: parseBoolean(
+    process.env.AUTH_REFRESH_COOKIE_SECURE,
+    false,
+  ),
+  refreshTokenTtlSeconds: parseInteger(
+    process.env.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+    2_592_000,
+  ),
+  sessionSecret:
+    process.env.AUTH_SESSION_SECRET ??
+    process.env.JWT_SECRET ??
+    "hermes-swarm-local-auth-secret",
+}));
+
 export function getApiEnvFilePaths() {
   return [
     path.resolve(process.cwd(), ".env"),
@@ -82,6 +102,30 @@ export function validateRuntimeConfig(
     "TYPEORM_CACHE_DURATION_MS",
     config.TYPEORM_CACHE_DURATION_MS,
     30_000,
+  );
+  validatePositiveInteger(
+    "AUTH_ACCESS_TOKEN_TTL_SECONDS",
+    config.AUTH_ACCESS_TOKEN_TTL_SECONDS,
+    900,
+  );
+  validatePositiveInteger(
+    "AUTH_REFRESH_TOKEN_TTL_SECONDS",
+    config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+    2_592_000,
+  );
+  validateText(
+    "AUTH_REFRESH_COOKIE_NAME",
+    config.AUTH_REFRESH_COOKIE_NAME,
+    "hermes_refresh",
+  );
+  validateBoolean(
+    "AUTH_REFRESH_COOKIE_SECURE",
+    config.AUTH_REFRESH_COOKIE_SECURE,
+  );
+  validateText(
+    "AUTH_SESSION_SECRET",
+    config.AUTH_SESSION_SECRET ?? config.JWT_SECRET,
+    "hermes-swarm-local-auth-secret",
   );
   return config;
 }

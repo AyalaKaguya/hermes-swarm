@@ -70,12 +70,12 @@ export default function OrganizationsPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !canViewPlatformOrganizations) {
+    if (!session?.accessToken || !canViewPlatformOrganizations) {
       setLoading(false);
       return;
     }
     try {
-      setItems(await listOrganizations(session.token));
+      setItems(await listOrganizations(session.accessToken));
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -100,7 +100,7 @@ export default function OrganizationsPage() {
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const session = getStoredSession();
-    if (!session?.token || !canManage) return;
+    if (!session?.accessToken || !canManage) return;
 
     setCreating(true);
     setError(null);
@@ -111,7 +111,7 @@ export default function OrganizationsPage() {
         subdomain: createForm.subdomain.trim() || null,
         status: "active",
       };
-      const created = await createOrganization(session.token, payload);
+      const created = await createOrganization(session.accessToken, payload);
       setItems((current) => [...current, created]);
       setCreateForm({ name: "", slug: "", subdomain: "" });
       setCreateOpen(false);

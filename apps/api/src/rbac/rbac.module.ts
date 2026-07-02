@@ -8,6 +8,7 @@ import {
   RolePermission,
   UserOrganization,
 } from "@hermes-swarm/core";
+import { AuthModule } from "../auth/auth.module.js";
 import { RbacGuard } from "./rbac.guard.js";
 import { PermissionsController } from "./permissions.controller.js";
 import { RbacCatalogService } from "./rbac-catalog.service.js";
@@ -15,6 +16,7 @@ import { RbacService } from "./rbac.service.js";
 
 @Module({
   imports: [
+    AuthModule,
     DiscoveryModule,
     TypeOrmModule.forFeature([
       Permission,

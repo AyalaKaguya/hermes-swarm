@@ -50,15 +50,15 @@ export default function NotificationDestinationsPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setLoading(false);
       return;
     }
-    setToken(session.token);
+    setToken(session.accessToken);
     try {
       const [destinationTypes, destinations] = await Promise.all([
-        listNotificationDestinationTypes(session.token, organizationId),
-        listNotificationDestinations(session.token, organizationId),
+        listNotificationDestinationTypes(session.accessToken, organizationId),
+        listNotificationDestinations(session.accessToken, organizationId),
       ]);
       setTypes(destinationTypes);
       setItems(destinations);

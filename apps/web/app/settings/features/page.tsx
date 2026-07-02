@@ -43,13 +43,13 @@ export default function FeaturesPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setLoading(false);
       return;
     }
     try {
       const settingItems = await listOrganizationSettings(
-        session.token,
+        session.accessToken,
         organizationId,
       );
       setSettings(settingItems);
@@ -74,14 +74,14 @@ export default function FeaturesPage() {
 
   async function toggleFeature(key: string, enabled: boolean) {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) return;
+    if (!session?.accessToken || !organizationId) return;
     const payload = {
       settings: [{ name: key, value: enabled, valueType: "boolean" }],
     };
     setError(null);
     setMsg("");
     try {
-      await saveOrganizationSettings(session.token, organizationId, payload);
+      await saveOrganizationSettings(session.accessToken, organizationId, payload);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");

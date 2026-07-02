@@ -61,7 +61,11 @@ export function LoginPage() {
         return;
       }
 
-      storeSession({ token: response.token });
+      storeSession({
+        accessToken: response.accessToken,
+        expiresAt: response.expiresAt,
+        sessionId: response.sessionId,
+      });
       router.replace("/home");
     } catch (loginError) {
       setError(getErrorMessage(loginError));

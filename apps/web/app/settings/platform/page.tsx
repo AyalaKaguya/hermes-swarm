@@ -174,16 +174,16 @@ export default function PlatformPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !canViewPlatform) {
+    if (!session?.accessToken || !canViewPlatform) {
       setLoading(false);
       return;
     }
 
     try {
       const [settings, orgs] = await Promise.all([
-        listSystemSettings(session.token),
+        listSystemSettings(session.accessToken),
         canViewOrganizations
-          ? listOrganizations(session.token)
+          ? listOrganizations(session.accessToken)
           : Promise.resolve([]),
       ]);
       setForm(toPlatformForm(settings, null));
@@ -214,12 +214,12 @@ export default function PlatformPage() {
 
   async function savePlatform() {
     const session = getStoredSession();
-    if (!session?.token || !canManagePlatform) return;
+    if (!session?.accessToken || !canManagePlatform) return;
 
     setSavingPlatform(true);
     setError(null);
     try {
-      await saveSystemSettings(session.token, {
+      await saveSystemSettings(session.accessToken, {
         settings: [
           {
             name: PLATFORM_TITLE_SETTING_KEY,
@@ -263,12 +263,12 @@ export default function PlatformPage() {
 
   async function savePublicSmtp() {
     const session = getStoredSession();
-    if (!session?.token || !canManagePlatform) return;
+    if (!session?.accessToken || !canManagePlatform) return;
 
     setSavingSmtp(true);
     setError(null);
     try {
-      await saveSystemSettings(session.token, {
+      await saveSystemSettings(session.accessToken, {
         settings: [
           platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
         ],
@@ -286,12 +286,12 @@ export default function PlatformPage() {
     const session = getStoredSession();
     const { scope: _scope, ...payload } = setting;
     const settingName = payload.name.trim();
-    if (!session?.token || !canManagePlatform || !settingName) return;
+    if (!session?.accessToken || !canManagePlatform || !settingName) return;
 
     setSavingCustomSetting(true);
     setError(null);
     try {
-      await saveSystemSettings(session.token, {
+      await saveSystemSettings(session.accessToken, {
         settings: [{ ...payload, name: settingName }],
       });
       notifications.success(

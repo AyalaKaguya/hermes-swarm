@@ -68,13 +68,13 @@ export default function EmailTemplatesPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setLoading(false);
       return;
     }
-    setToken(session.token);
+    setToken(session.accessToken);
     try {
-      const data = await listEmailTemplates(session.token, organizationId);
+      const data = await listEmailTemplates(session.accessToken, organizationId);
       setTemplates(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");

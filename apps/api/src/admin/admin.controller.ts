@@ -1,4 +1,12 @@
-import { BadRequestException, Body, Controller, Get, Post } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
@@ -11,9 +19,6 @@ import {
 } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
 import { hashPassword } from "../common/security/password-hash.js";
-import {
-  createAuthSessionToken,
-} from "../auth/auth-session.js";
 import type {
   OnboardingPayload,
 } from "../common/admin-api.types.js";
@@ -54,7 +59,11 @@ export class AdminController {
   }
 
   @Post("onboarding")
-  async onboard(@Body() payload: OnboardingPayload) {
+  async onboard(
+    @Body() payload: OnboardingPayload,
+    @Req() request: any,
+    @Res({ passthrough: true }) response: any,
+  ) {
     const [organizationCount, userCount] = await Promise.all([
       this.organizationRepository.count(),
       this.userRepository.count(),
@@ -117,11 +126,7 @@ export class AdminController {
       }),
     );
 
-    const token = createAuthSessionToken({ userId: user.id });
-    return {
-      snapshot: await this.authService.me(`Bearer ${token}`),
-      token,
-    };
+    return this.authService.createLoginResponse(user, request, response);
   }
 
   private async createPlatformAdminRole() {

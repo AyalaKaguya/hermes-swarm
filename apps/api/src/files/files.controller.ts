@@ -15,7 +15,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseAuthSessionToken } from "../auth/auth-session.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 
 type UploadedImage = {
   buffer?: Buffer;
@@ -35,13 +35,15 @@ const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 
 @Controller("admin/files")
 export class FilesController {
+  constructor(private readonly authSessionService: AuthSessionService) {}
+
   @Post("upload")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_IMAGE_SIZE } }))
   async upload(
     @Headers("authorization") authorization: string | undefined,
     @UploadedFile() file?: UploadedImage,
   ) {
-    requireSessionUserId(authorization);
+    await requireSessionUserId(this.authSessionService, authorization);
 
     if (!file?.buffer) {
       throw new BadRequestException("请选择要上传的图片");
@@ -97,9 +99,15 @@ export class FilesController {
   }
 }
 
-function requireSessionUserId(authorization: string | undefined) {
+async function requireSessionUserId(
+  authSessionService: AuthSessionService,
+  authorization: string | undefined,
+) {
   const token = authorization?.replace(/^Bearer\s+/i, "").trim();
-  const session = parseAuthSessionToken(token);
-  if (!session) throw new UnauthorizedException("登录已失效，请重新登录");
-  return session.userId;
+  try {
+    const session = await authSessionService.validateAccessToken(token);
+    return session.userId;
+  } catch {
+    throw new UnauthorizedException("登录已失效，请重新登录");
+  }
 }

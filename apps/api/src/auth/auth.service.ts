@@ -10,10 +10,7 @@ import {
 } from "@hermes-swarm/core";
 import { In, Repository } from "typeorm";
 import type { LoginPayload } from "../common/admin-api.types.js";
-import {
-  createAuthSessionToken,
-  parseAuthSessionToken,
-} from "./auth-session.js";
+import { AuthSessionService } from "./auth-session.service.js";
 import { verifyPassword } from "../common/security/password-hash.js";
 import { toUserDto } from "../users/user-dto.js";
 
@@ -33,12 +30,13 @@ export class AuthService {
     private readonly platformMemberRepository: Repository<PlatformMember>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   /**
    * Authenticates an admin user and returns the session token plus principal.
    */
-  async login(payload: LoginPayload) {
+  async login(payload: LoginPayload, request: any, response: any) {
     const email = normalizeEmail(payload.email);
     const password = requireText(payload.password, "密码");
     const user = await this.userRepository.findOne({ where: { email } });
@@ -50,11 +48,93 @@ export class AuthService {
       throw new UnauthorizedException("用户名或密码不正确");
     }
 
-    const token = createAuthSessionToken({ userId: user.id });
+    return this.createLoginResponse(user, request, response);
+  }
+
+  async createLoginResponse(user: User, request: any, response: any) {
+    const session = await this.authSessionService.createSession(
+      user.id,
+      getRequestContext(request),
+    );
+    setRefreshCookie(
+      response,
+      this.authSessionService.getRefreshCookieName(),
+      session.refreshToken,
+      this.authSessionService.getRefreshCookieOptions(),
+    );
     return {
+      accessToken: session.accessToken,
+      expiresAt: session.expiresAt,
+      sessionId: session.sessionId,
       snapshot: await this.getPrincipalSnapshot(user),
-      token,
     };
+  }
+
+  async refresh(request: any, response: any) {
+    const session = await this.authSessionService.refreshSession(
+      getCookie(
+        request?.headers?.cookie,
+        this.authSessionService.getRefreshCookieName(),
+      ),
+      getRequestContext(request),
+    );
+    setRefreshCookie(
+      response,
+      this.authSessionService.getRefreshCookieName(),
+      session.refreshToken,
+      this.authSessionService.getRefreshCookieOptions(),
+    );
+    return {
+      accessToken: session.accessToken,
+      expiresAt: session.expiresAt,
+      sessionId: session.sessionId,
+    };
+  }
+
+  async logout(authorization: string | undefined, response: any) {
+    const session = await this.validateAuthorization(authorization);
+    await this.authSessionService.revokeSession(
+      session.sessionId,
+      session.userId,
+    );
+    clearRefreshCookie(
+      response,
+      this.authSessionService.getRefreshCookieName(),
+      this.authSessionService.getClearRefreshCookieOptions(),
+    );
+  }
+
+  async listSessions(authorization: string | undefined) {
+    const session = await this.validateAuthorization(authorization);
+    return this.authSessionService.listSessions(
+      session.userId,
+      session.sessionId,
+    );
+  }
+
+  async revokeSession(authorization: string | undefined, sessionId: string) {
+    const session = await this.validateAuthorization(authorization);
+    await this.authSessionService.revokeSession(sessionId, session.userId);
+  }
+
+  async deleteSessionRecord(
+    authorization: string | undefined,
+    sessionId: string,
+  ) {
+    const session = await this.validateAuthorization(authorization);
+    await this.authSessionService.deleteSessionRecord(
+      sessionId,
+      session.userId,
+      session.sessionId,
+    );
+  }
+
+  async revokeOtherSessions(authorization: string | undefined) {
+    const session = await this.validateAuthorization(authorization);
+    await this.authSessionService.revokeOtherSessions(
+      session.userId,
+      session.sessionId,
+    );
   }
 
   /**
@@ -78,10 +158,14 @@ export class AuthService {
     return this.getPrincipalSnapshot(user);
   }
 
+  async validateAuthorization(authorization: string | undefined) {
+    return this.authSessionService.validateAccessToken(
+      extractBearerToken(authorization),
+    );
+  }
+
   private async getUserFromAuthorization(authorization: string | undefined) {
-    const token = authorization?.replace(/^Bearer\s+/i, "").trim();
-    const session = parseAuthSessionToken(token);
-    if (!session) throw new UnauthorizedException("登录已失效");
+    const session = await this.validateAuthorization(authorization);
 
     const user = await this.userRepository.findOne({
       where: { id: session.userId },
@@ -204,6 +288,55 @@ function requireText(value: string | undefined, label: string) {
   const text = value?.trim();
   if (!text) throw new UnauthorizedException(`${label}不能为空`);
   return text;
+}
+
+function extractBearerToken(authorization: string | undefined) {
+  return authorization?.replace(/^Bearer\s+/i, "").trim();
+}
+
+function getRequestContext(request: any) {
+  return {
+    ipAddress: getRequestIp(request),
+    userAgent: getHeader(request, "user-agent"),
+  };
+}
+
+function getRequestIp(request: any) {
+  const forwardedFor = getHeader(request, "x-forwarded-for");
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() || null;
+  }
+  return request?.ip ?? request?.socket?.remoteAddress ?? null;
+}
+
+function getHeader(request: any, name: string) {
+  const value = request?.headers?.[name];
+  return Array.isArray(value) ? value[0] : value ?? null;
+}
+
+function getCookie(cookieHeader: string | undefined, name: string) {
+  if (!cookieHeader) return undefined;
+  const cookies = cookieHeader.split(";").map((item) => item.trim());
+  const prefix = `${name}=`;
+  const cookie = cookies.find((item) => item.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : undefined;
+}
+
+function setRefreshCookie(
+  response: any,
+  name: string,
+  value: string,
+  options: Record<string, unknown>,
+) {
+  response.cookie(name, value, options);
+}
+
+function clearRefreshCookie(
+  response: any,
+  name: string,
+  options: Record<string, unknown>,
+) {
+  response.clearCookie(name, options);
 }
 
 function toGroupBriefDto(group: OrganizationGroup) {

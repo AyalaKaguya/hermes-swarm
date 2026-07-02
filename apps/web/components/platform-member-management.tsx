@@ -84,17 +84,17 @@ export function PlatformMemberManagement({
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !canViewMembers) {
+    if (!session?.accessToken || !canViewMembers) {
       setLoading(false);
       return;
     }
 
-    setToken(session.token);
+    setToken(session.accessToken);
     setLoading(true);
     try {
       const [memberItems, roleItems] = await Promise.all([
-        listPlatformMembers(session.token),
-        canViewRoles ? listPlatformRoles(session.token) : Promise.resolve([]),
+        listPlatformMembers(session.accessToken),
+        canViewRoles ? listPlatformRoles(session.accessToken) : Promise.resolve([]),
       ]);
       setMembers(memberItems);
       setRoles(roleItems);

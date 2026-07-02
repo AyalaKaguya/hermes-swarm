@@ -10,7 +10,36 @@ import type {
  */
 export type AuthSessionTokenPayload = {
   exp: number;
+  jti: string;
+  sessionId: string;
   userId: string;
+};
+
+export type LoginResponseDto = {
+  accessToken: string;
+  expiresAt: string;
+  sessionId: string;
+  snapshot: unknown;
+};
+
+export type RefreshSessionResponseDto = {
+  accessToken: string;
+  expiresAt: string;
+  sessionId: string;
+};
+
+export type AuthSessionDeviceDto = {
+  browser: string;
+  createdAt: string;
+  deviceLabel: string;
+  expiresAt: string;
+  ipAddress: string | null;
+  isCurrent: boolean;
+  isExpired: boolean;
+  lastSeenAt: string;
+  os: string;
+  revokedAt: string | null;
+  sessionId: string;
 };
 
 /**

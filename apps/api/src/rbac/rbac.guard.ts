@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { parseAuthSessionToken } from "../auth/auth-session.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 import {
   PERMISSION_RESOURCE_METADATA,
   REQUIRE_PERMISSION_METADATA,
@@ -25,6 +25,7 @@ import type {
 export class RbacGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
+    private readonly authSessionService: AuthSessionService,
     private readonly catalogService: RbacCatalogService,
     private readonly rbacService: RbacService,
   ) {}
@@ -54,8 +55,10 @@ export class RbacGuard implements CanActivate {
       params?: Record<string, string | undefined>;
     }>();
     const token = this.extractBearerToken(request.headers?.authorization);
-    const session = parseAuthSessionToken(token);
-    if (!session) {
+    let session: Awaited<ReturnType<AuthSessionService["validateAccessToken"]>>;
+    try {
+      session = await this.authSessionService.validateAccessToken(token);
+    } catch {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 

@@ -87,14 +87,14 @@ export default function GroupsPage() {
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(null);
   const [groupForm, setGroupForm] = useState<GroupForm>(emptyGroupForm());
 
-  const token = getStoredSession()?.token ?? "";
+  const token = getStoredSession()?.accessToken ?? "";
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
   const memberDirty = !sameSet(selectedMemberIds, persistedMemberIds);
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setLoading(false);
       return;
     }
@@ -102,8 +102,8 @@ export default function GroupsPage() {
     setError(null);
     try {
       const [groupItems, memberItems] = await Promise.all([
-        listOrganizationGroups(session.token, organizationId),
-        listOrganizationMembers(session.token, organizationId),
+        listOrganizationGroups(session.accessToken, organizationId),
+        listOrganizationMembers(session.accessToken, organizationId),
       ]);
       setGroups(groupItems);
       setMemberships(memberItems);
@@ -121,7 +121,7 @@ export default function GroupsPage() {
 
   const loadGroupMembers = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId || !selectedGroup) {
+    if (!session?.accessToken || !organizationId || !selectedGroup) {
       setSelectedMemberIds(new Set());
       setPersistedMemberIds(new Set());
       return;
@@ -130,7 +130,7 @@ export default function GroupsPage() {
     setError(null);
     try {
       const items = await listOrganizationGroupMembers(
-        session.token,
+        session.accessToken,
         organizationId,
         selectedGroup.id,
       );

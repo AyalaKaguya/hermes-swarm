@@ -212,23 +212,23 @@ export default function OrganizationDetailPage() {
 
   const load = useCallback(async () => {
     const session = getStoredSession();
-    if (!session?.token || !organizationId) {
+    if (!session?.accessToken || !organizationId) {
       setLoading(false);
       return;
     }
 
-    setToken(session.token);
+    setToken(session.accessToken);
     setError(null);
     try {
       const [data, settings, userItems, roleItems] =
         await Promise.all([
-          getOrganization(session.token, organizationId),
+          getOrganization(session.accessToken, organizationId),
           listOrganizationSettingsForOrganization(
-            session.token,
+            session.accessToken,
             organizationId,
           ),
-          listOrganizationMembers(session.token, organizationId),
-          listOrganizationRoles(session.token, organizationId),
+          listOrganizationMembers(session.accessToken, organizationId),
+          listOrganizationRoles(session.accessToken, organizationId),
         ]);
       setOrganization(data);
       setForm(toOrganizationForm(data));

@@ -75,13 +75,13 @@ export default function AccountPage() {
       setProfile(toProfileForm(shellUser));
     }
 
-    if (!session?.token) {
+    if (!session?.accessToken) {
       setLoading(false);
       return;
     }
 
     try {
-      const me = await fetchMe(session.token);
+      const me = await fetchMe(session.accessToken);
       setUser(me.user);
       setProfile(toProfileForm(me.user));
       setError(null);
@@ -120,13 +120,13 @@ export default function AccountPage() {
 
   async function saveProfile() {
     const session = getStoredSession();
-    if (!session?.token || !user) return;
+    if (!session?.accessToken || !user) return;
 
     setSavingProfile(true);
     setError(null);
 
     try {
-      const updated = await updateUser(session.token, user.id, {
+      const updated = await updateUser(session.accessToken, user.id, {
         displayName: profile.displayName,
         email: profile.email,
         firstName: profile.firstName || null,
@@ -145,12 +145,12 @@ export default function AccountPage() {
 
   async function uploadAvatar(file: File) {
     const session = getStoredSession();
-    if (!session?.token || !user) return;
+    if (!session?.accessToken || !user) return;
 
     setUploadingAvatar(true);
     setError(null);
     try {
-      const uploaded = await uploadAdminFile(session.token, file);
+      const uploaded = await uploadAdminFile(session.accessToken, file);
       const imageUrl =
         uploaded.url ??
         uploaded.destinations.find(
@@ -159,7 +159,9 @@ export default function AccountPage() {
       if (!imageUrl) {
         throw new Error("上传成功但未返回图片地址");
       }
-      const updated = await updateUser(session.token, user.id, { imageUrl });
+      const updated = await updateUser(session.accessToken, user.id, {
+        imageUrl,
+      });
       setUser(updated);
       notifications.success("头像已上传");
       await refreshSnapshot();
@@ -178,7 +180,7 @@ export default function AccountPage() {
 
   async function savePassword() {
     const session = getStoredSession();
-    if (!session?.token || !user) return;
+    if (!session?.accessToken || !user) return;
 
     const validationError = validatePassword(password);
     if (validationError) {
@@ -190,7 +192,7 @@ export default function AccountPage() {
     setError(null);
 
     try {
-      await updateUserPassword(session.token, user.id, {
+      await updateUserPassword(session.accessToken, user.id, {
         currentPassword: password.currentPassword,
         password: password.password,
       });
@@ -435,6 +437,7 @@ export default function AccountPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
       </Tabs>
     </div>
   );
