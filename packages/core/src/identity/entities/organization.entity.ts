@@ -8,7 +8,7 @@ import {
 } from "typeorm";
 import type { Role } from "./role.entity.js";
 import type { RolePermission } from "./role-permission.entity.js";
-import type { OrganizationSetting } from "./organization-setting.entity.js";
+import type { OrganizationSetting } from "../../settings/entities/organization-setting.entity.js";
 import type { User } from "./user.entity.js";
 import type { UserOrganization } from "./user-organization.entity.js";
 import { BaseEntity } from "./base.entity.js";
