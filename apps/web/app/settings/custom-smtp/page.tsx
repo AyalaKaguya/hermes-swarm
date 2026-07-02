@@ -212,7 +212,7 @@ export default function CustomSmtpPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={save} disabled={saving || !host.trim()}>
-              {saving ? "保存中..." : "保存配置"}
+              保存
             </Button>
             <Button
               onClick={validate}

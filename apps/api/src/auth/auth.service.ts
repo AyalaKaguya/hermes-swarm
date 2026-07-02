@@ -12,6 +12,7 @@ import { In, Repository } from "typeorm";
 import type { LoginPayload } from "../common/admin-api.types.js";
 import { AuthSessionService } from "./auth-session.service.js";
 import { verifyPassword } from "../common/security/password-hash.js";
+import { SettingsService } from "../settings/settings.service.js";
 import { toUserDto } from "../users/user-dto.js";
 
 @Injectable()
@@ -31,6 +32,7 @@ export class AuthService {
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
     private readonly authSessionService: AuthSessionService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   /**
@@ -177,7 +179,7 @@ export class AuthService {
   }
 
   private async getPrincipalSnapshot(user: User) {
-    const [memberships, platformMembership] = await Promise.all([
+    const [memberships, platformMembership, systemSettings] = await Promise.all([
       this.membershipRepository.find({
         relations: { organization: true, role: true, user: true },
         where: { status: "active", userId: user.id },
@@ -186,6 +188,7 @@ export class AuthService {
         relations: { role: true },
         where: { status: "active", userId: user.id },
       }),
+      this.settingsService.listPlatformSettings(),
     ]);
 
     const roleIds = [
@@ -246,6 +249,7 @@ export class AuthService {
             status: platformMembership.status,
           }
         : null,
+      systemSettings,
       user: toUserDto(user),
     };
   }

@@ -299,7 +299,7 @@ function DestinationForm({
           </div>
         ))}
         <Button disabled={!name.trim() || !type || saving} onClick={save}>
-          {saving ? "保存中..." : "保存"}
+          保存
         </Button>
       </div>
     </DialogContent>

@@ -357,7 +357,7 @@ export default function AccountPage() {
                   onClick={saveProfile}
                   type="button"
                 >
-                  {savingProfile ? "保存中..." : "保存"}
+                  保存
                 </Button>
               </div>
             </CardContent>
@@ -431,7 +431,7 @@ export default function AccountPage() {
                   onClick={savePassword}
                   type="button"
                 >
-                  {savingPassword ? "保存中..." : "修改密码"}
+                  修改密码
                 </Button>
               </div>
             </CardContent>

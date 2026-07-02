@@ -23,6 +23,7 @@ import type {
   OnboardingPayload,
 } from "../common/admin-api.types.js";
 import { AuthService } from "../auth/auth.service.js";
+import { SettingsService } from "../settings/settings.service.js";
 
 @Controller("admin")
 export class AdminController {
@@ -42,19 +43,22 @@ export class AdminController {
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
     private readonly authService: AuthService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   @Get("bootstrap")
   async getPublicBootstrap() {
-    const [organizationCount, userCount, organizations] = await Promise.all([
+    const [organizationCount, userCount, organizations, systemSettings] = await Promise.all([
       this.organizationRepository.count(),
       this.userRepository.count(),
       this.organizationRepository.find({ order: { createdAt: "ASC" } }),
+      this.settingsService.listPlatformSettings(),
     ]);
 
     return {
       onboardingRequired: organizationCount === 0 || userCount === 0,
       organizations,
+      systemSettings,
     };
   }
 

@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authLogin, getPublicBootstrap } from "@/lib/admin-api";
+import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 import {
   clearStoredSession,
   storeSession,
@@ -26,6 +27,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("admin123456");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [platformName, setPlatformName] = useState<string | null>(null);
 
   useEffect(() => {
     clearStoredSession();
@@ -36,6 +38,7 @@ export function LoginPage() {
 
       try {
         const data = await getPublicBootstrap();
+        setPlatformName(resolvePlatformNameFromSettings(data.systemSettings));
         if (data.onboardingRequired) {
           router.replace("/onboarding");
           return;
@@ -72,6 +75,8 @@ export function LoginPage() {
     }
   }
 
+  const title = platformName || "Hermes Swarm";
+
   return (
     <main className="grid min-h-svh place-items-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm" size="sm">
@@ -81,7 +86,7 @@ export function LoginPage() {
               <AppIcon className="size-4" name="sparkles" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">Hermes Swarm</p>
+              <p className="truncate text-sm font-medium">{title}</p>
               <p className="text-xs">管理控制台</p>
             </div>
           </div>

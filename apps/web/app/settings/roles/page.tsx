@@ -362,7 +362,7 @@ export default function RolesPage() {
                       size="sm"
                       variant="outline"
                     >
-                      {saving === selectedRole.id ? "保存中..." : "保存"}
+                      保存
                     </Button>
                     <Button
                       disabled={savingRole}
@@ -500,7 +500,7 @@ export default function RolesPage() {
                 取消
               </Button>
               <Button disabled={savingRole || !roleForm.displayName.trim()}>
-                {savingRole ? "保存中..." : "保存"}
+                保存
               </Button>
             </DialogFooter>
           </form>

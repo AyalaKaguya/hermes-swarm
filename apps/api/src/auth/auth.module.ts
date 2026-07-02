@@ -10,9 +10,11 @@ import {
 import { AuthController } from "./auth.controller.js";
 import { AuthSessionService } from "./auth-session.service.js";
 import { AuthService } from "./auth.service.js";
+import { SettingsModule } from "../settings/settings.module.js";
 
 @Module({
   imports: [
+    SettingsModule,
     TypeOrmModule.forFeature([
       OrganizationGroupMember,
       PlatformMember,

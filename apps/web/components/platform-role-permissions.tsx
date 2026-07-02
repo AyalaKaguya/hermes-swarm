@@ -301,7 +301,7 @@ export function PlatformRolePermissions({
                   size="sm"
                   variant="outline"
                 >
-                  {saving === selectedRole.id ? "保存中..." : "保存"}
+                  保存
                 </Button>
               </div>
             </CardHeader>
@@ -417,7 +417,7 @@ export function PlatformRolePermissions({
                   !canCreateRole || savingRole || !form.displayName.trim()
                 }
               >
-                {savingRole ? "保存中..." : "保存"}
+                保存
               </Button>
             </DialogFooter>
           </form>

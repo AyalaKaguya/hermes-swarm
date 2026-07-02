@@ -104,6 +104,10 @@ export function AppShell({
     }
   }, []);
 
+  useEffect(() => {
+    document.title = `${shellTitle} Console`;
+  }, [shellTitle]);
+
   function updateMainSidebarOpen(open: boolean) {
     setMainSidebarOpen(open);
     writeStoredSidebarState(open);
