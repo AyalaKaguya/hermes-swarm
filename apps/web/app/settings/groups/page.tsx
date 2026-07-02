@@ -402,7 +402,7 @@ export default function GroupsPage() {
                       size="sm"
                       type="button"
                     >
-                      {saving ? "保存中..." : "保存成员"}
+                      保存
                     </Button>
                   </div>
                 </div>
@@ -566,7 +566,7 @@ export default function GroupsPage() {
                 取消
               </Button>
               <Button disabled={saving || !groupForm.displayName.trim()}>
-                {saving ? "保存中..." : "保存"}
+                保存
               </Button>
             </DialogFooter>
           </form>

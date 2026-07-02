@@ -471,7 +471,7 @@ function EditTemplateForm({
       </div>
       {msg && <div className="text-sm">{msg}</div>}
       <Button disabled={saving} onClick={submit}>
-        {saving ? "保存中..." : "保存"}
+        保存
       </Button>
     </div>
   );

@@ -24,6 +24,7 @@ import {
   storeSession,
   type ResolvedSession,
 } from "@/lib/session";
+import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 
 type AdminShellContextValue = {
   loading: boolean;
@@ -209,16 +210,9 @@ function resolvePlatformName(
   snapshot: Snapshot,
   preferredLanguage?: string | null,
 ) {
-  const settings = snapshot.systemSettings ?? [];
-  const languageKey = preferredLanguage
-    ? `platform.title.${preferredLanguage}`
-    : "";
-  return (
-    settings.find((setting) => setting.name === languageKey)?.value?.trim() ||
-    settings
-      .find((setting) => setting.name === "platform.title")
-      ?.value?.trim() ||
-    null
+  return resolvePlatformNameFromSettings(
+    snapshot.systemSettings,
+    preferredLanguage,
   );
 }
 
@@ -265,7 +259,7 @@ function createShellSnapshot(
       organizationId: organization?.id ?? null,
     },
     settings: [],
-    systemSettings: [],
+    systemSettings: principal.systemSettings ?? [],
     users: [],
   };
 }

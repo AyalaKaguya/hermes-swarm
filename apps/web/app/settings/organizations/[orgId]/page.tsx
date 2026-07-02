@@ -766,7 +766,7 @@ export default function OrganizationDetailPage() {
                     onClick={save}
                     type="button"
                   >
-                    {saving ? "保存中..." : "保存"}
+                    保存
                   </Button>
                 </div>
               </CardContent>
@@ -814,7 +814,7 @@ export default function OrganizationDetailPage() {
                     onClick={saveControls}
                     type="button"
                   >
-                    {savingControls ? "保存中..." : "保存"}
+                    保存
                   </Button>
                 </div>
               </CardContent>
@@ -1067,7 +1067,7 @@ export default function OrganizationDetailPage() {
           重置
         </Button>
         <Button disabled={!canManage || !dirty || saving} onClick={save}>
-          {saving ? "保存中..." : "保存"}
+          保存
         </Button>
       </div>
     </section>
@@ -1195,7 +1195,7 @@ function OrganizationUserForm({
         }
         onClick={submit}
       >
-        {saving ? "保存中..." : mode === "create" ? "创建成员" : "保存成员"}
+        {mode === "create" ? "创建成员" : "保存"}
       </Button>
     </div>
   );

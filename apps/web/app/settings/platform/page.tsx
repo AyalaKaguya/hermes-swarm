@@ -375,7 +375,7 @@ export default function PlatformPage() {
                   onClick={savePlatform}
                   type="button"
                 >
-                  {savingPlatform ? "保存中..." : "保存平台信息"}
+                  保存
                 </Button>
               </div>
             </CardContent>
@@ -522,7 +522,7 @@ export default function PlatformPage() {
                   onClick={savePlatform}
                   type="button"
                 >
-                  {savingPlatform ? "保存中..." : "保存默认控制项"}
+                  保存
                 </Button>
               </div>
             </CardContent>
@@ -583,7 +583,7 @@ export default function PlatformPage() {
                     onClick={savePlatform}
                     type="button"
                   >
-                    {savingPlatform ? "保存中..." : "保存组织创建"}
+                    保存
                   </Button>
                 </div>
               </CardContent>
@@ -686,7 +686,7 @@ export default function PlatformPage() {
                   onClick={savePlatform}
                   type="button"
                 >
-                  {savingPlatform ? "保存中..." : "保存消息服务"}
+                  保存
                 </Button>
               </div>
             </CardContent>
@@ -782,7 +782,7 @@ export default function PlatformPage() {
                   type="button"
                   variant="outline"
                 >
-                  {savingSmtp ? "保存中..." : "保存公共 SMTP"}
+                  保存
                 </Button>
               </div>
             </CardContent>

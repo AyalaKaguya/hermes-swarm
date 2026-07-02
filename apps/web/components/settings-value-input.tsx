@@ -587,7 +587,7 @@ export function CustomSettingForm({
 
       <div className="flex justify-end">
         <Button disabled={busy || !name.trim()} type="submit">
-          {busy ? "保存中..." : submitLabel}
+          {submitLabel}
         </Button>
       </div>
     </form>
@@ -915,7 +915,7 @@ export function SettingEditDialog({
 
           <div className="flex justify-end">
             <Button disabled={busy} type="submit">
-              {busy ? "保存中..." : "保存"}
+              保存
             </Button>
           </div>
         </form>

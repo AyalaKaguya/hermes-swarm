@@ -314,6 +314,7 @@ export type PrincipalSession = {
   permissions: string[];
   platformMembership: PlatformMember | null;
   role?: Role | null;
+  systemSettings?: SystemSettingDto[];
   user: User;
 };
 
@@ -341,6 +342,7 @@ export type Snapshot = {
 export type PublicBootstrap = {
   onboardingRequired: boolean;
   organizations: Organization[];
+  systemSettings?: SystemSettingDto[];
 };
 
 export type AuthLoginResponse = {
