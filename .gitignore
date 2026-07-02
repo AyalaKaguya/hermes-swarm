@@ -12,3 +12,5 @@ devenv/.env
 
 .claude/worktrees
 .claude/settings.local.json
+
+*.tsbuildinfo
