@@ -1,13 +1,13 @@
 import { Controller, Get, Headers, Query, UnauthorizedException } from "@nestjs/common";
 import type { PermissionScope } from "@hermes-swarm/core";
+import { AccessCatalogService } from "@hermes-swarm/nest-access";
 import { AuthSessionService } from "../auth/auth-session.service.js";
-import { RbacCatalogService } from "./rbac-catalog.service.js";
 
 @Controller("admin/permissions")
 export class PermissionsController {
   constructor(
     private readonly authSessionService: AuthSessionService,
-    private readonly catalogService: RbacCatalogService,
+    private readonly catalogService: AccessCatalogService,
   ) {}
 
   @Get("catalog")

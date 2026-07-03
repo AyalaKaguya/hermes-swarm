@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/main.js",
-    "dev": "tsc && node dist/main.js",
+    "dev": "pnpm nx run @hermes-swarm/nest-access:build && tsc && node dist/main.js",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -15,6 +15,7 @@
     "@casl/ability": "^7.0.0",
     "@hermes-swarm/access": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
+    "@hermes-swarm/nest-access": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.0",

@@ -10,6 +10,7 @@ type AccessGateProps = {
   fallback?: ReactNode;
   mode?: AccessMode;
   pageKey?: string;
+  permission?: string;
   permissions?: string | string[];
 };
 
@@ -19,13 +20,16 @@ export function AccessGate({
   fallback = null,
   mode = "any",
   pageKey,
+  permission,
   permissions,
 }: AccessGateProps) {
   const access = usePermission();
+  const requiredPermissions = permissions ?? permission;
   const allowed = Boolean(
     access.resolvedSession &&
       (!pageKey || access.hasPageAccess(pageKey)) &&
-      (!permissions || access.hasPermission(permissions, { mode })),
+      (!requiredPermissions ||
+        access.hasPermission(requiredPermissions, { mode })),
   );
 
   if (allowed) return children;

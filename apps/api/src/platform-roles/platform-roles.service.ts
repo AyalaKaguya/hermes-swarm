@@ -54,6 +54,7 @@ export class PlatformRolesService {
 
   async update(roleId: string, payload: Partial<PlatformRolePayload>) {
     const role = await this.getRoleOrThrow(roleId);
+    this.assertMutableRole(role);
     if (payload.displayName !== undefined) {
       role.displayName = requireText(payload.displayName, "角色名称");
       role.label = role.displayName;
@@ -77,6 +78,7 @@ export class PlatformRolesService {
     payload: ReplaceRolePermissionsPayload,
   ) {
     const role = await this.getRoleOrThrow(roleId);
+    this.assertMutableRole(role);
     const permissions = payload.permissions ?? [];
 
     await this.rolePermissionRepository.delete({ roleId: role.id });
@@ -101,7 +103,7 @@ export class PlatformRolesService {
 
   async remove(roleId: string) {
     const role = await this.getRoleOrThrow(roleId);
-    if (role.isSystem) throw new BadRequestException("系统角色不能删除");
+    this.assertDeletableRole(role);
     await this.roleRepository.delete({ id: role.id });
   }
 
@@ -112,6 +114,18 @@ export class PlatformRolesService {
     });
     if (!role) throw new NotFoundException("平台角色不存在");
     return role;
+  }
+
+  private assertMutableRole(role: Role) {
+    if (role.name === "platform-admin") {
+      throw new BadRequestException("Platform Admin 角色不能修改");
+    }
+  }
+
+  private assertDeletableRole(role: Role) {
+    if (role.isSystem || role.name === "platform-admin") {
+      throw new BadRequestException("系统角色不能删除");
+    }
   }
 
   private async assertUniqueRoleName(name: string, exceptRoleId?: string) {

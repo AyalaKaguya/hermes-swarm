@@ -1,40 +1,27 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD, DiscoveryModule } from "@nestjs/core";
-import { TypeOrmModule } from "@nestjs/typeorm";
 import {
-  Permission,
-  PlatformMember,
-  Role,
-  RolePermission,
-  UserOrganization,
-} from "@hermes-swarm/core";
+  ACCESS_AUTH_SESSION_SERVICE,
+  AccessGuard,
+  AccessNestModule,
+} from "@hermes-swarm/nest-access";
+import { APP_GUARD } from "@nestjs/core";
 import { AuthModule } from "../auth/auth.module.js";
-import { RbacGuard } from "./rbac.guard.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 import { PermissionsController } from "./permissions.controller.js";
-import { RbacCatalogService } from "./rbac-catalog.service.js";
-import { RbacService } from "./rbac.service.js";
 
 @Module({
-  imports: [
-    AuthModule,
-    DiscoveryModule,
-    TypeOrmModule.forFeature([
-      Permission,
-      PlatformMember,
-      Role,
-      RolePermission,
-      UserOrganization,
-    ]),
-  ],
+  imports: [AuthModule, AccessNestModule],
   providers: [
-    RbacCatalogService,
-    RbacService,
+    {
+      provide: ACCESS_AUTH_SESSION_SERVICE,
+      useExisting: AuthSessionService,
+    },
     {
       provide: APP_GUARD,
-      useClass: RbacGuard,
+      useClass: AccessGuard,
     },
   ],
   controllers: [PermissionsController],
-  exports: [RbacCatalogService, RbacService],
+  exports: [AccessNestModule],
 })
 export class RbacModule {}

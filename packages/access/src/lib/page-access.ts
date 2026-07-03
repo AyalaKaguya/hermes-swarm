@@ -3,6 +3,7 @@ import type {
   PermissionScope,
 } from "./types.js";
 import { matchRoutePattern } from "./route-pattern.js";
+import { getPageAccessPermissionId } from "./permission-key.js";
 
 export const PAGE_ACCESS_DEFINITIONS = [
   definePageAccess({
@@ -153,13 +154,6 @@ export const PAGE_ACCESS_DEFINITIONS = [
     sectionLabel: "平台",
   }),
 ] as const satisfies PageAccessDefinition[];
-
-export function getPageAccessPermissionId(
-  pageKey: string,
-  scope: PermissionScope,
-) {
-  return `page.${pageKey}.access:${scope}`;
-}
 
 export function getPageAccessDefinition(pageKey: string) {
   return (
