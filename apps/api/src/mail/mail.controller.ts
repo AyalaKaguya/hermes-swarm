@@ -3,7 +3,7 @@ import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import { MailService } from "./mail.service.js";
 
 @Controller("admin/organizations/:organizationId/mail")

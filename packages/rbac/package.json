@@ -1,5 +1,5 @@
 {
-  "name": "@hermes-swarm/nest-access",
+  "name": "@hermes-swarm/rbac",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@hermes-swarm/access": "workspace:*",
+    "@hermes-swarm/rbac-api": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",

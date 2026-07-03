@@ -1,5 +1,5 @@
 {
-  "name": "@hermes-swarm/access",
+  "name": "@hermes-swarm/rbac-api",
   "version": "0.0.0",
   "private": true,
   "type": "module",

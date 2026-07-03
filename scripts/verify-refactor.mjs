@@ -165,11 +165,14 @@ assert(corePackage.exports?.["./identity"], "core should export identity subpath
 assert(corePackage.exports?.["./identity/permissions"], "core should export identity permissions subpath");
 assert(!corePackage.exports?.["./tenancy"], "core should not export old tenancy subpath");
 
-const rbacService = read("apps/api/src/rbac/rbac.service.ts");
-assert(rbacService.includes("@casl/ability") || read("apps/api/src/rbac/rbac-ability.ts").includes("@casl/ability"), "RBAC should use CASL");
-assert(rbacService.includes("findOrganizationRoleId"), "RBAC should resolve organization membership roles");
-assert(rbacService.includes("findPlatformRoleId"), "RBAC should resolve platform member roles");
-assert(rbacService.includes("ensurePermissionCatalog"), "RBAC should initialize permission catalog");
+const rbacService = read("packages/rbac/src/lib/access-service.ts");
+const rbacCatalog = read("packages/rbac/src/lib/access-catalog.service.ts");
+const rbacModule = read("packages/rbac/src/lib/rbac.module.ts");
+assert(rbacService.includes("PlatformMember"), "RBAC should resolve platform member roles");
+assert(rbacService.includes("UserOrganization"), "RBAC should resolve organization membership roles");
+assert(rbacCatalog.includes("PAGE_ACCESS_DEFINITIONS"), "RBAC should sync shared page access definitions");
+assert(rbacCatalog.includes("syncCatalog"), "RBAC should initialize permission catalog");
+assert(rbacModule.includes("APP_GUARD"), "RBAC module should register the access guard");
 
 const controllers = listFiles("apps/api/src").filter((file) => file.endsWith("controller.ts"));
 for (const file of controllers) {
@@ -185,10 +188,12 @@ for (const file of controllers) {
   }
   const handlerCount = (content.match(/@(Get|Post|Patch|Put|Delete)\(/g) ?? []).length;
   const publicInviteHandlerCount = file.includes("invite.controller.ts") ? 2 : 0;
-  const permissionCount = (content.match(/@RequirePermission\(/g) ?? []).length;
+  const permissionCount = (
+    content.match(/@(PermissionOperation|AccessOperation)\(/g) ?? []
+  ).length;
   assert(
     permissionCount >= handlerCount - publicInviteHandlerCount,
-    `${file}: admin business handlers should have @RequirePermission decorators`,
+    `${file}: admin business handlers should have permission operation decorators`,
   );
 }
 

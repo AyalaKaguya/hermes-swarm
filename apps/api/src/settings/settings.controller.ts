@@ -3,7 +3,7 @@ import type { SaveSettingsPayload } from "../common/admin-api.types.js";
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import { SettingsService } from "./settings.service.js";
 
 @Controller("admin")

@@ -6,7 +6,7 @@ import {
   hasPageAccess as checkPageAccess,
   hasPermission as checkPermission,
 } from "@/lib/access-control";
-import type { AccessMode } from "@hermes-swarm/access";
+import type { AccessMode } from "@hermes-swarm/rbac-api";
 
 export function usePermission() {
   const { resolvedSession, snapshot } = useAdminShell();

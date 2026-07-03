@@ -4,7 +4,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import {
   getOperationPermissionId,
   PAGE_ACCESS_DEFINITIONS,
-} from "@hermes-swarm/access";
+} from "@hermes-swarm/rbac-api";
 import {
   Permission,
   Role,

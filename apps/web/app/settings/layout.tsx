@@ -17,7 +17,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import {
   findPageAccessDefinitionsByPath,
-} from "@hermes-swarm/access";
+} from "@hermes-swarm/rbac-api";
 import { usePermission } from "@/hooks/use-permission";
 import { cn } from "@/lib/utils";
 

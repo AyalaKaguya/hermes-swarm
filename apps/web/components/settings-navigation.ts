@@ -1,4 +1,4 @@
-import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/access";
+import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import type { AppShellNavSection } from "@/components/app-shell";
 import type { AppIconName } from "@/components/app-icon";
 
