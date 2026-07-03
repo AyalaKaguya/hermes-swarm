@@ -7,8 +7,16 @@
     "dev": "next dev --port 3100",
     "build": "next build",
     "start": "next start --port 3100",
+    "test": "node --import tsx --test \"lib/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next out"
+  },
+  "nx": {
+    "targets": {
+      "e2e": {
+        "command": "node apps/web/e2e/run-e2e.mjs"
+      }
+    }
   },
   "dependencies": {
     "@hermes-swarm/core": "workspace:*",

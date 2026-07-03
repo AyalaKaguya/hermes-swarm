@@ -38,6 +38,17 @@
       ],
       "cache": true
     },
+    "e2e": {
+      "dependsOn": [
+        "build",
+        "^build"
+      ],
+      "inputs": [
+        "production",
+        "^production"
+      ],
+      "cache": true
+    },
     "typecheck": {
       "dependsOn": [
         "^build"

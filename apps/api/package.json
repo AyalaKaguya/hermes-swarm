@@ -8,6 +8,9 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "pnpm nx run @hermes-swarm/rbac:build && tsc && node dist/main.js",
+    "openapi:generate": "tsx src/openapi.generate.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "e2e": "node e2e/run-api-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -19,14 +22,26 @@
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/swagger": "^11.2.0",
     "@nestjs/typeorm": "^11.0.0",
     "pg": "^8.13.0",
     "redis": "^5.12.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "swagger-ui-express": "^5.0.1",
     "typeorm": "^1.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@nestjs/testing": "^11.1.27",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2"
+  },
+  "nx": {
+    "targets": {
+      "e2e": {
+        "command": "node apps/api/e2e/run-api-e2e.mjs"
+      }
+    }
   }
 }

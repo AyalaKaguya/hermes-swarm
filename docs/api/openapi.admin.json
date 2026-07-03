@@ -1,0 +1,1110 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/admin/permissions/catalog": {
+      "get": {
+        "operationId": "PermissionsController_catalog",
+        "parameters": [
+          {
+            "name": "scope",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Permissions"
+        ]
+      }
+    },
+    "/api/admin/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/auth/sessions": {
+      "get": {
+        "operationId": "AuthController_sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      },
+      "delete": {
+        "operationId": "AuthController_revokeOtherSessions",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/auth/sessions/{sessionId}": {
+      "delete": {
+        "operationId": "AuthController_revokeSession",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/auth/sessions/{sessionId}/record": {
+      "delete": {
+        "operationId": "AuthController_deleteSessionRecord",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/auth/authenticated": {
+      "get": {
+        "operationId": "AuthController_authenticated",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/admin/platform/settings": {
+      "get": {
+        "operationId": "SettingsController_listPlatformSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_savePlatformSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/settings": {
+      "get": {
+        "operationId": "SettingsController_listOrganizationSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveOrganizationSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/admin/bootstrap": {
+      "get": {
+        "operationId": "AdminController_getPublicBootstrap",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/onboarding": {
+      "post": {
+        "operationId": "AdminController_onboard",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "operationId": "UsersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "post": {
+        "operationId": "UsersController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/admin/users/search": {
+      "get": {
+        "operationId": "UsersController_search",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/admin/users/platform/{userId}": {
+      "patch": {
+        "operationId": "UsersController_updateManaged",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "delete": {
+        "operationId": "UsersController_deleteManaged",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/admin/users/{userId}": {
+      "patch": {
+        "operationId": "UsersController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/admin/users/{userId}/password": {
+      "post": {
+        "operationId": "UsersController_updatePassword",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/admin/users/{userId}/preferred-language": {
+      "patch": {
+        "operationId": "UsersController_updatePreferredLanguage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/admin/organizations": {
+      "get": {
+        "operationId": "OrganizationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      },
+      "post": {
+        "operationId": "OrganizationsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}": {
+      "get": {
+        "operationId": "OrganizationsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      },
+      "patch": {
+        "operationId": "OrganizationsController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      },
+      "delete": {
+        "operationId": "OrganizationsController_delete",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/roles": {
+      "get": {
+        "operationId": "OrganizationsController_listRoles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      },
+      "post": {
+        "operationId": "OrganizationsController_createRole",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/roles/{roleId}": {
+      "patch": {
+        "operationId": "OrganizationsController_updateRole",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      },
+      "delete": {
+        "operationId": "OrganizationsController_deleteRole",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/roles/{roleId}/permissions": {
+      "put": {
+        "operationId": "OrganizationsController_replaceRolePermissions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/invites": {
+      "get": {
+        "operationId": "InviteController_listForOrganization",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invite"
+        ]
+      },
+      "post": {
+        "operationId": "InviteController_createBulkForOrganization",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invite"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/invites/{inviteId}/resend": {
+      "post": {
+        "operationId": "InviteController_resendForOrganization",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invite"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/invites/{inviteId}": {
+      "delete": {
+        "operationId": "InviteController_deleteForOrganization",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invite"
+        ]
+      }
+    },
+    "/api/admin/invites/validate": {
+      "post": {
+        "operationId": "InviteController_validate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invite"
+        ]
+      }
+    },
+    "/api/admin/invites/accept": {
+      "post": {
+        "operationId": "InviteController_accept",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invite"
+        ]
+      }
+    },
+    "/api/admin/files/upload": {
+      "post": {
+        "operationId": "FilesController_upload",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/admin/files/{filename}": {
+      "get": {
+        "operationId": "FilesController_read",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/groups": {
+      "get": {
+        "operationId": "GroupsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Groups"
+        ]
+      },
+      "post": {
+        "operationId": "GroupsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/groups/{groupId}": {
+      "get": {
+        "operationId": "GroupsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Groups"
+        ]
+      },
+      "patch": {
+        "operationId": "GroupsController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Groups"
+        ]
+      },
+      "delete": {
+        "operationId": "GroupsController_remove",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/groups/{groupId}/members": {
+      "get": {
+        "operationId": "GroupsController_listMembers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Groups"
+        ]
+      },
+      "put": {
+        "operationId": "GroupsController_replaceMembers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/mail/smtp": {
+      "get": {
+        "operationId": "MailController_getSmtp",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      },
+      "put": {
+        "operationId": "MailController_saveSmtp",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/mail/smtp/validate": {
+      "post": {
+        "operationId": "MailController_validateSmtp",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/mail/templates": {
+      "get": {
+        "operationId": "MailController_listTemplates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      },
+      "post": {
+        "operationId": "MailController_createTemplate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/mail/templates/{templateId}": {
+      "patch": {
+        "operationId": "MailController_updateTemplate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      },
+      "delete": {
+        "operationId": "MailController_deleteTemplate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/mail/logs": {
+      "get": {
+        "operationId": "MailController_listLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      },
+      "post": {
+        "operationId": "MailController_createLog",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/members": {
+      "get": {
+        "operationId": "MembershipsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Memberships"
+        ]
+      },
+      "post": {
+        "operationId": "MembershipsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Memberships"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/members/{membershipId}": {
+      "patch": {
+        "operationId": "MembershipsController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Memberships"
+        ]
+      },
+      "delete": {
+        "operationId": "MembershipsController_remove",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Memberships"
+        ]
+      }
+    },
+    "/api/admin/platform/members": {
+      "get": {
+        "operationId": "PlatformMembersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformMembers"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformMembersController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformMembers"
+        ]
+      }
+    },
+    "/api/admin/platform/members/{memberId}": {
+      "patch": {
+        "operationId": "PlatformMembersController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformMembers"
+        ]
+      },
+      "delete": {
+        "operationId": "PlatformMembersController_remove",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformMembers"
+        ]
+      }
+    },
+    "/api/admin/platform/roles": {
+      "get": {
+        "operationId": "PlatformRolesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformRoles"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformRolesController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformRoles"
+        ]
+      }
+    },
+    "/api/admin/platform/roles/{roleId}": {
+      "patch": {
+        "operationId": "PlatformRolesController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformRoles"
+        ]
+      },
+      "delete": {
+        "operationId": "PlatformRolesController_remove",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformRoles"
+        ]
+      }
+    },
+    "/api/admin/platform/roles/{roleId}/permissions": {
+      "put": {
+        "operationId": "PlatformRolesController_replacePermissions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformRoles"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/notification-destinations": {
+      "get": {
+        "operationId": "NotificationDestinationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NotificationDestinations"
+        ]
+      },
+      "post": {
+        "operationId": "NotificationDestinationsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NotificationDestinations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/notification-destinations/types": {
+      "get": {
+        "operationId": "NotificationDestinationsController_types",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NotificationDestinations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/notification-destinations/{destinationId}": {
+      "get": {
+        "operationId": "NotificationDestinationsController_getOne",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NotificationDestinations"
+        ]
+      },
+      "patch": {
+        "operationId": "NotificationDestinationsController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NotificationDestinations"
+        ]
+      },
+      "delete": {
+        "operationId": "NotificationDestinationsController_delete",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NotificationDestinations"
+        ]
+      }
+    },
+    "/api/admin/organizations/{organizationId}/notification-destinations/{destinationId}/groups": {
+      "get": {
+        "operationId": "NotificationDestinationsController_groups",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NotificationDestinations"
+        ]
+      }
+    },
+    "/api/admin/auth/request-password": {
+      "post": {
+        "operationId": "PasswordResetController_requestPassword",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PasswordReset"
+        ]
+      }
+    },
+    "/api/admin/auth/reset-password": {
+      "post": {
+        "operationId": "PasswordResetController_resetPassword",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PasswordReset"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Hermes Swarm Admin API",
+    "description": "Administration API for Hermes Swarm.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {}
+  }
+}

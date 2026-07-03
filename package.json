@@ -10,6 +10,7 @@
     "lint": "nx run-many --target=lint",
     "clean": "nx run-many --target=clean",
     "graph": "nx graph",
+    "openapi:generate": "pnpm --filter @hermes-swarm/api openapi:generate",
     "verify:refactor": "node scripts/verify-refactor.mjs"
   },
   "engines": {
