@@ -15,8 +15,8 @@ import {
 } from "@nestjs/common";
 import { parseAuthSessionToken } from "../auth/auth-session.js";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import {
   GroupsService,
@@ -25,7 +25,7 @@ import {
 } from "./groups.service.js";
 
 @Controller("admin/organizations/:organizationId")
-@PermissionResource({
+@AccessResource({
   entity: "group",
   entityLabel: "用户组",
   entityOrder: 50,
@@ -41,7 +41,7 @@ export class GroupsController {
   ) {}
 
   @Get("groups")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的用户组列表。",
     label: "查看用户组列表",
     operation: "list",
@@ -52,7 +52,7 @@ export class GroupsController {
   }
 
   @Post("groups")
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建当前组织的用户组。",
     label: "创建用户组",
     operation: "create",
@@ -71,7 +71,7 @@ export class GroupsController {
   }
 
   @Get("groups/:groupId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的用户组详情。",
     label: "查看用户组详情",
     operation: "view",
@@ -85,7 +85,7 @@ export class GroupsController {
   }
 
   @Patch("groups/:groupId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新当前组织的用户组信息。",
     label: "更新用户组",
     operation: "update_basic",
@@ -100,7 +100,7 @@ export class GroupsController {
   }
 
   @Delete("groups/:groupId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "删除当前组织的用户组。",
     isDangerous: true,
     label: "删除用户组",
@@ -116,7 +116,7 @@ export class GroupsController {
   }
 
   @Get("groups/:groupId/members")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看用户组成员。",
     label: "查看用户组成员",
     operation: "list_members",
@@ -130,7 +130,7 @@ export class GroupsController {
   }
 
   @Put("groups/:groupId/members")
-  @PermissionOperation({
+  @AccessOperation({
     description: "替换用户组成员。",
     label: "配置用户组成员",
     operation: "replace_members",

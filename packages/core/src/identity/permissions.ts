@@ -19,5 +19,3 @@ export function defaultPermissionsForRole(roleName: string) {
   void roleName;
   return [];
 }
-
-export const DEFAULT_PERMISSION_KEYS = [] as const;

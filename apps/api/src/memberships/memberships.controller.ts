@@ -9,13 +9,13 @@ import {
   Post,
 } from "@nestjs/common";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { MembershipsService } from "./memberships.service.js";
 
 @Controller("admin/organizations/:organizationId/members")
-@PermissionResource({
+@AccessResource({
   entity: "user",
   entityLabel: "用户",
   entityOrder: 10,
@@ -31,7 +31,7 @@ export class MembershipsController {
   ) {}
 
   @Get()
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的成员列表。",
     label: "查看成员列表",
     operation: "list",
@@ -42,7 +42,7 @@ export class MembershipsController {
   }
 
   @Post()
-  @PermissionOperation({
+  @AccessOperation({
     description: "向当前组织添加成员。",
     label: "添加成员",
     operation: "create",
@@ -56,7 +56,7 @@ export class MembershipsController {
   }
 
   @Patch(":membershipId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新组织成员的角色、状态或显示名称。",
     label: "更新成员",
     operation: "update",
@@ -75,7 +75,7 @@ export class MembershipsController {
   }
 
   @Delete(":membershipId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "从当前组织移除成员。",
     isDangerous: true,
     label: "移除成员",

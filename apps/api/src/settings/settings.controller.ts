@@ -1,13 +1,13 @@
 import { Body, Controller, Get, Inject, Param, Put } from "@nestjs/common";
 import type { SaveSettingsPayload } from "../common/admin-api.types.js";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { SettingsService } from "./settings.service.js";
 
 @Controller("admin")
-@PermissionResource({
+@AccessResource({
   entity: "setting",
   entityLabel: "配置",
   entityOrder: 40,
@@ -23,7 +23,7 @@ export class SettingsController {
   ) {}
 
   @Get("platform/settings")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看平台配置项。",
     label: "查看平台配置",
     operation: "list",
@@ -34,7 +34,7 @@ export class SettingsController {
   }
 
   @Put("platform/settings")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新平台配置项。",
     isDangerous: true,
     label: "更新平台配置",
@@ -46,7 +46,7 @@ export class SettingsController {
   }
 
   @Get("organizations/:organizationId/settings")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织配置项。",
     label: "查看组织配置",
     operation: "list",
@@ -64,7 +64,7 @@ export class SettingsController {
   }
 
   @Put("organizations/:organizationId/settings")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新当前组织配置项。",
     label: "更新组织配置",
     operation: "save",

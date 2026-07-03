@@ -20,13 +20,13 @@ import type {
   UpdateUserPayload,
 } from "../common/admin-api.types.js";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { UsersService } from "./users.service.js";
 
 @Controller("admin/users")
-@PermissionResource({
+@AccessResource({
   entity: "user",
   entityLabel: "用户",
   entityOrder: 10,
@@ -48,7 +48,7 @@ export class UsersController {
    * Lists organization users visible to the current admin.
    */
   @Get()
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看平台用户列表。",
     label: "查看用户列表",
     operation: "list",
@@ -62,7 +62,7 @@ export class UsersController {
    * Searches organization users by a normalized free-text query.
    */
   @Get("search")
-  @PermissionOperation({
+  @AccessOperation({
     description: "按邮箱、昵称或名称搜索平台用户。",
     label: "搜索用户",
     operation: "search",
@@ -79,7 +79,7 @@ export class UsersController {
    * Creates a user in the current organization.
    */
   @Post()
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建新的平台用户账号。",
     label: "创建用户",
     operation: "create",
@@ -96,7 +96,7 @@ export class UsersController {
    * Updates a global user through platform user management.
    */
   @Patch("platform/:userId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新平台用户的基础资料和状态。",
     label: "更新用户",
     operation: "update_basic",
@@ -114,7 +114,7 @@ export class UsersController {
    * Deletes a global user through platform user management.
    */
   @Delete("platform/:userId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "删除平台用户账号。",
     isDangerous: true,
     label: "删除用户",
@@ -133,7 +133,7 @@ export class UsersController {
    * Updates an existing user profile or administrative state.
    */
   @Patch(":userId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新自己的个人资料。",
     entity: "user",
     entityLabel: "用户",
@@ -156,7 +156,7 @@ export class UsersController {
    * Changes a user's password through admin or self-service flow.
    */
   @Post(":userId/password")
-  @PermissionOperation({
+  @AccessOperation({
     description: "修改自己的登录密码。",
     entity: "user",
     entityLabel: "用户",
@@ -179,7 +179,7 @@ export class UsersController {
    * Updates the preferred language of the selected user.
    */
   @Patch(":userId/preferred-language")
-  @PermissionOperation({
+  @AccessOperation({
     description: "修改自己的界面语言偏好。",
     entity: "user",
     entityLabel: "用户",

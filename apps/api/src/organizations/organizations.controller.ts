@@ -16,13 +16,13 @@ import type {
   UpdateOrganizationPayload,
 } from "../common/admin-api.types.js";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { OrganizationsService } from "./organizations.service.js";
 
 @Controller("admin")
-@PermissionResource({
+@AccessResource({
   entity: "organization",
   entityLabel: "组织",
   entityOrder: 20,
@@ -45,7 +45,7 @@ export class OrganizationsController {
    * Lists organizations managed through the admin backend.
    */
   @Get("organizations")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看平台内的组织列表。",
     entity: "organization",
     entityLabel: "组织",
@@ -64,7 +64,7 @@ export class OrganizationsController {
    * Returns a managed organization selected by id.
    */
   @Get("organizations/:organizationId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的基础资料。",
     label: "查看组织资料",
     operation: "view",
@@ -80,7 +80,7 @@ export class OrganizationsController {
    * Creates a managed organization and provisions its admin infrastructure.
    */
   @Post("organizations")
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建新的组织并初始化组织角色。",
     entity: "organization",
     entityLabel: "组织",
@@ -102,7 +102,7 @@ export class OrganizationsController {
    * Updates a managed organization selected by id.
    */
   @Patch("organizations/:organizationId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新当前组织的基础资料。",
     label: "更新组织资料",
     operation: "update_basic",
@@ -122,7 +122,7 @@ export class OrganizationsController {
    * Deletes a managed organization selected by id.
    */
   @Delete("organizations/:organizationId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "删除平台中的组织。",
     entity: "organization",
     entityLabel: "组织",
@@ -144,7 +144,7 @@ export class OrganizationsController {
    * Lists roles in a managed organization selected by id.
    */
   @Get("organizations/:organizationId/roles")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的角色列表。",
     entity: "role",
     entityLabel: "角色",
@@ -166,7 +166,7 @@ export class OrganizationsController {
    * Creates a role in a managed organization selected by id.
    */
   @Post("organizations/:organizationId/roles")
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建当前组织内的自定义角色。",
     entity: "role",
     entityLabel: "角色",
@@ -192,7 +192,7 @@ export class OrganizationsController {
    * Updates a role in a managed organization selected by id.
    */
   @Patch("organizations/:organizationId/roles/:roleId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新当前组织角色的名称、颜色和描述。",
     entity: "role",
     entityLabel: "角色",
@@ -220,7 +220,7 @@ export class OrganizationsController {
    * Replaces a role permission set with entity CRUD permissions.
    */
   @Put("organizations/:organizationId/roles/:roleId/permissions")
-  @PermissionOperation({
+  @AccessOperation({
     description: "替换当前组织角色拥有的权限。",
     entity: "role",
     entityLabel: "角色",
@@ -249,7 +249,7 @@ export class OrganizationsController {
    * Deletes a role in a managed organization selected by id.
    */
   @Delete("organizations/:organizationId/roles/:roleId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "删除当前组织内的自定义角色。",
     entity: "role",
     entityLabel: "角色",

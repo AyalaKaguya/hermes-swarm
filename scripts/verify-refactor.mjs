@@ -179,12 +179,17 @@ const apiControllers = listFiles("apps/api/src", [".ts"]).filter((file) =>
 );
 for (const file of apiControllers) {
   const content = read(file);
-  if (!content.includes("PermissionOperation") && !content.includes("AccessOperation")) {
+  assert(
+    !content.includes("PermissionOperation") &&
+      !content.includes("PermissionResource"),
+    `${file}: use AccessOperation/AccessResource instead of legacy permission decorator aliases`,
+  );
+  if (!content.includes("AccessOperation")) {
     continue;
   }
   assert(
     content.includes('from "@hermes-swarm/rbac"'),
-    `${file}: permission decorators should come from @hermes-swarm/rbac`,
+    `${file}: access decorators should come from @hermes-swarm/rbac`,
   );
 }
 

@@ -1,13 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from "@nestjs/common";
 import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { MailService } from "./mail.service.js";
 
 @Controller("admin/organizations/:organizationId/mail")
-@PermissionResource({
+@AccessResource({
   entity: "mail",
   entityLabel: "邮件",
   entityOrder: 60,
@@ -20,7 +20,7 @@ export class MailController {
   constructor(private readonly mailService: MailService) {}
 
   @Get("smtp")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的 SMTP 配置。",
     label: "查看 SMTP",
     operation: "view",
@@ -32,7 +32,7 @@ export class MailController {
   }
 
   @Put("smtp")
-  @PermissionOperation({
+  @AccessOperation({
     description: "保存当前组织的 SMTP 配置。",
     isDangerous: true,
     label: "保存 SMTP",
@@ -48,7 +48,7 @@ export class MailController {
   }
 
   @Post("smtp/validate")
-  @PermissionOperation({
+  @AccessOperation({
     description: "验证当前组织的 SMTP 配置。",
     label: "验证 SMTP",
     operation: "validate",
@@ -60,7 +60,7 @@ export class MailController {
   }
 
   @Get("templates")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的邮件模板列表。",
     label: "查看邮件模板",
     operation: "list",
@@ -75,7 +75,7 @@ export class MailController {
   }
 
   @Post("templates")
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建当前组织的邮件模板。",
     label: "创建邮件模板",
     operation: "create",
@@ -93,7 +93,7 @@ export class MailController {
   }
 
   @Patch("templates/:templateId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新当前组织的邮件模板。",
     label: "更新邮件模板",
     operation: "update",
@@ -116,7 +116,7 @@ export class MailController {
   }
 
   @Delete("templates/:templateId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "删除当前组织的邮件模板。",
     isDangerous: true,
     label: "删除邮件模板",
@@ -135,7 +135,7 @@ export class MailController {
   }
 
   @Get("logs")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的邮件日志。",
     label: "查看邮件日志",
     operation: "list_logs",
@@ -150,7 +150,7 @@ export class MailController {
   }
 
   @Post("logs")
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建当前组织的邮件日志。",
     label: "创建邮件日志",
     operation: "create_log",

@@ -10,13 +10,13 @@ import {
 } from "@nestjs/common";
 import type { ReplaceRolePermissionsPayload } from "../common/admin-api.types.js";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { PlatformRolesService } from "./platform-roles.service.js";
 
 @Controller("admin/platform/roles")
-@PermissionResource({
+@AccessResource({
   entity: "role",
   entityLabel: "角色",
   entityOrder: 30,
@@ -29,7 +29,7 @@ export class PlatformRolesController {
   constructor(private readonly service: PlatformRolesService) {}
 
   @Get()
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看平台角色列表。",
     label: "查看平台角色",
     operation: "list",
@@ -40,7 +40,7 @@ export class PlatformRolesController {
   }
 
   @Post()
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建平台自定义角色。",
     label: "创建平台角色",
     operation: "create",
@@ -51,7 +51,7 @@ export class PlatformRolesController {
   }
 
   @Patch(":roleId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新平台角色的名称、颜色和描述。",
     label: "更新平台角色",
     operation: "update_basic",
@@ -65,7 +65,7 @@ export class PlatformRolesController {
   }
 
   @Put(":roleId/permissions")
-  @PermissionOperation({
+  @AccessOperation({
     description: "替换平台角色拥有的权限。",
     isDangerous: true,
     label: "配置平台角色权限",
@@ -80,7 +80,7 @@ export class PlatformRolesController {
   }
 
   @Delete(":roleId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "删除平台自定义角色。",
     isDangerous: true,
     label: "删除平台角色",

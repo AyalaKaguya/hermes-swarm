@@ -9,18 +9,18 @@ import {
   Post,
 } from "@nestjs/common";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { PlatformMembersService } from "./platform-members.service.js";
 
 @Controller("admin/platform/members")
-@PermissionResource({
+@AccessResource({
   entity: "user",
   entityLabel: "用户",
   entityOrder: 10,
   purpose: "platform_member",
-  purposeLabel: "平台访问人员",
+  purposeLabel: "平台运营人员",
   purposeOrder: 20,
   scope: "platform",
 })
@@ -31,9 +31,9 @@ export class PlatformMembersController {
   ) {}
 
   @Get()
-  @PermissionOperation({
-    description: "查看平台访问人员列表。",
-    label: "查看平台访问人员",
+  @AccessOperation({
+    description: "查看平台运营人员列表。",
+    label: "查看平台运营人员",
     operation: "list",
     sortOrder: 10,
   })
@@ -42,9 +42,9 @@ export class PlatformMembersController {
   }
 
   @Post()
-  @PermissionOperation({
-    description: "添加平台访问人员。",
-    label: "添加平台访问人员",
+  @AccessOperation({
+    description: "添加平台运营人员。",
+    label: "添加平台运营人员",
     operation: "create",
     sortOrder: 20,
   })
@@ -53,9 +53,9 @@ export class PlatformMembersController {
   }
 
   @Patch(":memberId")
-  @PermissionOperation({
-    description: "更新平台访问人员的角色或状态。",
-    label: "更新平台访问人员",
+  @AccessOperation({
+    description: "更新平台运营人员的角色或状态。",
+    label: "更新平台运营人员",
     operation: "update",
     sortOrder: 30,
   })
@@ -67,10 +67,10 @@ export class PlatformMembersController {
   }
 
   @Delete(":memberId")
-  @PermissionOperation({
-    description: "移除平台访问人员。",
+  @AccessOperation({
+    description: "移除平台运营人员。",
     isDangerous: true,
-    label: "移除平台访问人员",
+    label: "移除平台运营人员",
     operation: "remove",
     sortOrder: 90,
   })

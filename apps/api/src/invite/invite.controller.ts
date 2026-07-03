@@ -17,13 +17,13 @@ import type {
 import { parseAuthSessionToken } from "../auth/auth-session.js";
 import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { InviteService } from "./invite.service.js";
 
 @Controller("admin")
-@PermissionResource({
+@AccessResource({
   entity: "invite",
   entityLabel: "邀请",
   entityOrder: 70,
@@ -36,7 +36,7 @@ export class InviteController {
   constructor(private readonly inviteService: InviteService) {}
 
   @Get("organizations/:organizationId/invites")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的邀请列表。",
     label: "查看邀请",
     operation: "list",
@@ -48,7 +48,7 @@ export class InviteController {
   }
 
   @Post("organizations/:organizationId/invites")
-  @PermissionOperation({
+  @AccessOperation({
     description: "批量创建当前组织的邀请。",
     label: "创建邀请",
     operation: "create_bulk",
@@ -68,7 +68,7 @@ export class InviteController {
   }
 
   @Post("organizations/:organizationId/invites/:inviteId/resend")
-  @PermissionOperation({
+  @AccessOperation({
     description: "重新发送当前组织的邀请。",
     label: "重发邀请",
     operation: "resend",
@@ -88,7 +88,7 @@ export class InviteController {
   }
 
   @Delete("organizations/:organizationId/invites/:inviteId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "撤销或删除当前组织的邀请。",
     isDangerous: true,
     label: "删除邀请",

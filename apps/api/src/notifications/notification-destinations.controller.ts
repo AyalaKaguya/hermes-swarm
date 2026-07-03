@@ -1,12 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
 import {
-  PermissionOperation,
-  PermissionResource,
+  AccessOperation,
+  AccessResource,
 } from "@hermes-swarm/rbac";
 import { NotificationDestinationsService } from "./notification-destinations.service.js";
 
 @Controller("admin/organizations/:organizationId/notification-destinations")
-@PermissionResource({
+@AccessResource({
   entity: "notification",
   entityLabel: "通知",
   entityOrder: 80,
@@ -19,7 +19,7 @@ export class NotificationDestinationsController {
   constructor(private readonly service: NotificationDestinationsService) {}
 
   @Get()
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的通知目的地列表。",
     label: "查看通知目的地",
     operation: "list",
@@ -30,7 +30,7 @@ export class NotificationDestinationsController {
   }
 
   @Get("types")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看可用的通知目的地类型。",
     label: "查看目的地类型",
     operation: "list_types",
@@ -41,7 +41,7 @@ export class NotificationDestinationsController {
   }
 
   @Get(":destinationId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看当前组织的通知目的地详情。",
     label: "查看目的地详情",
     operation: "view",
@@ -55,7 +55,7 @@ export class NotificationDestinationsController {
   }
 
   @Get(":destinationId/groups")
-  @PermissionOperation({
+  @AccessOperation({
     description: "查看通知目的地关联的用户组。",
     label: "查看目的地用户组",
     operation: "list_groups",
@@ -69,7 +69,7 @@ export class NotificationDestinationsController {
   }
 
   @Post()
-  @PermissionOperation({
+  @AccessOperation({
     description: "创建当前组织的通知目的地。",
     label: "创建通知目的地",
     operation: "create",
@@ -83,7 +83,7 @@ export class NotificationDestinationsController {
   }
 
   @Patch(":destinationId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "更新当前组织的通知目的地。",
     label: "更新通知目的地",
     operation: "update",
@@ -98,7 +98,7 @@ export class NotificationDestinationsController {
   }
 
   @Delete(":destinationId")
-  @PermissionOperation({
+  @AccessOperation({
     description: "删除当前组织的通知目的地。",
     isDangerous: true,
     label: "删除通知目的地",
