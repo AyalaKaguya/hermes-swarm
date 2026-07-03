@@ -131,9 +131,17 @@ export default function PlatformPage() {
     snapshot && resolvedSession
       ? access.hasPermission("role.platform_role.create:platform")
       : false;
+  const canUpdatePlatformRole =
+    snapshot && resolvedSession
+      ? access.hasPermission("role.platform_role.update_basic:platform")
+      : false;
   const canConfigurePlatformRolePermissions =
     snapshot && resolvedSession
       ? access.hasPermission("role.platform_role.replace_permissions:platform")
+      : false;
+  const canDeletePlatformRole =
+    snapshot && resolvedSession
+      ? access.hasPermission("role.platform_role.delete:platform")
       : false;
   const canViewPlatformMembers =
     snapshot && resolvedSession
@@ -804,7 +812,9 @@ export default function PlatformPage() {
         <TabsContent value="roles">
           <PlatformRolePermissions
             canCreateRole={canCreatePlatformRole}
+            canDeleteRole={canDeletePlatformRole}
             canManagePermissions={canConfigurePlatformRolePermissions}
+            canUpdateRole={canUpdatePlatformRole}
             canViewRoles={canViewPlatformRoles}
           />
         </TabsContent>

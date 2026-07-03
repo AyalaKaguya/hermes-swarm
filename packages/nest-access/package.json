@@ -1,0 +1,27 @@
+{
+  "name": "@hermes-swarm/nest-access",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hermes-swarm/access": "workspace:*",
+    "@hermes-swarm/core": "workspace:*",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/typeorm": "^11.0.0",
+    "typeorm": "^1.0.0"
+  }
+}
