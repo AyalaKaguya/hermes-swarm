@@ -14,7 +14,18 @@
   "scripts": {
     "build": "tsc",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
+  },
+  "nx": {
+    "targets": {
+      "coverage": {
+        "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
+        "options": {
+          "cwd": "packages/rbac-api"
+        }
+      }
+    }
   }
 }

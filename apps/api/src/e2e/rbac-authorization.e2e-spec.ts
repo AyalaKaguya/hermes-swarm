@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 import { Injectable, INestApplication, Module } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { TypeOrmModule } from "@nestjs/typeorm";
@@ -30,8 +30,15 @@ import {
 import { RbacModule } from "@hermes-swarm/rbac";
 import { createAuthSessionToken, parseAuthSessionToken } from "../auth/auth-session.js";
 import { RedisService } from "../common/redis/redis.service.js";
+import { GroupsController } from "../groups/groups.controller.js";
+import { GroupsService } from "../groups/groups.service.js";
+import { MembershipsController } from "../memberships/memberships.controller.js";
+import { MembershipsService } from "../memberships/memberships.service.js";
 import { OrganizationsController } from "../organizations/organizations.controller.js";
 import { OrganizationsService } from "../organizations/organizations.service.js";
+import { PlatformMembersController } from "../platform-members/platform-members.controller.js";
+import { PlatformMembersService } from "../platform-members/platform-members.service.js";
+import { SettingsController } from "../settings/settings.controller.js";
 import { SettingsService } from "../settings/settings.service.js";
 import { UsersController } from "../users/users.controller.js";
 import { UsersService } from "../users/users.service.js";
@@ -44,7 +51,11 @@ const e2eDatabaseUrl =
   "postgresql://hermes:hermes_dev_pwd@localhost:5432/hermes-e2e";
 
 const ids = {
+  acmeGroup: "00000000-0000-4000-8000-000000000402",
   acmeOrg: "00000000-0000-4000-8000-000000000202",
+  acmeRole: "00000000-0000-4000-8000-000000000304",
+  acmeUser: "00000000-0000-4000-8000-000000000104",
+  hermesGroup: "00000000-0000-4000-8000-000000000401",
   hermesOrg: "00000000-0000-4000-8000-000000000201",
   ordinaryRole: "00000000-0000-4000-8000-000000000303",
   ordinaryUser: "00000000-0000-4000-8000-000000000103",
@@ -82,7 +93,7 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
   let app: INestApplication;
   let dataSource: DataSource;
 
-  beforeEach(async () => {
+  before(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
@@ -124,15 +135,27 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
           RolePermission,
           User,
           UserOrganization,
+          OrganizationGroup,
+          OrganizationGroupMember,
         ]),
         RbacModule.register({
           authSessionService: E2EAuthSessionService,
           imports: [E2EAuthSessionModule],
         }),
       ],
-      controllers: [OrganizationsController, UsersController],
+      controllers: [
+        GroupsController,
+        MembershipsController,
+        OrganizationsController,
+        PlatformMembersController,
+        SettingsController,
+        UsersController,
+      ],
       providers: [
+        GroupsService,
+        MembershipsService,
         OrganizationsService,
+        PlatformMembersService,
         SettingsService,
         UsersService,
         {
@@ -149,10 +172,14 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
     app = moduleRef.createNestApplication();
     await app.init();
     dataSource = app.get(DataSource);
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(dataSource);
     await seedDatabase(dataSource);
   });
 
-  afterEach(async () => {
+  after(async () => {
     await app?.close();
   });
 
@@ -282,12 +309,222 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
       });
   });
 
+  it("enforces member management permissions and organization boundaries", async () => {
+    await request(app.getHttpServer())
+      .get(`/admin/organizations/${ids.hermesOrg}/members`)
+      .set(auth(tokenByPersona.orgScoped))
+      .expect(200)
+      .expect(({ body }) => {
+        assert.deepEqual(
+          body.map((item: { userId: string }) => item.userId).sort(),
+          [ids.ordinaryUser, ids.orgScopedUser].sort(),
+        );
+      });
+
+    await request(app.getHttpServer())
+      .get(`/admin/organizations/${ids.hermesOrg}/members`)
+      .set(auth(tokenByPersona.ordinary))
+      .expect(403)
+      .expect(({ body }) => {
+        assert.equal(body.permission.id, "user.organization_member.list:organization");
+      });
+
+    await request(app.getHttpServer())
+      .post(`/admin/organizations/${ids.hermesOrg}/members`)
+      .set(auth(tokenByPersona.orgScoped))
+      .send({
+        displayName: "New Org Member",
+        email: "new.member@hermes.local",
+        roleId: ids.ordinaryRole,
+      })
+      .expect(201)
+      .expect(({ body }) => {
+        assert.equal(body.organizationId, ids.hermesOrg);
+        assert.equal(body.roleId, ids.ordinaryRole);
+        assert.equal(body.userId.length > 0, true);
+      });
+
+    assert.equal(
+      await userRepository().count({ where: { email: "new.member@hermes.local" } }),
+      1,
+    );
+
+    await request(app.getHttpServer())
+      .post(`/admin/organizations/${ids.acmeOrg}/members`)
+      .set(auth(tokenByPersona.orgScoped))
+      .send({
+        email: "blocked.member@acme.local",
+        roleId: ids.acmeRole,
+      })
+      .expect(403);
+
+    assert.equal(
+      await userRepository().count({ where: { email: "blocked.member@acme.local" } }),
+      0,
+    );
+  });
+
+  it("keeps group membership edits inside the managed organization", async () => {
+    const hermesMemberships = await membershipRepository().find({
+      order: { userId: "ASC" },
+      where: { organizationId: ids.hermesOrg },
+    });
+    const acmeMembership = await membershipRepository().findOneByOrFail({
+      organizationId: ids.acmeOrg,
+      userId: ids.acmeUser,
+    });
+
+    await request(app.getHttpServer())
+      .get(`/admin/organizations/${ids.hermesOrg}/groups`)
+      .set(auth(tokenByPersona.orgScoped))
+      .expect(200)
+      .expect(({ body }) => {
+        assert.deepEqual(
+          body.map((item: { id: string }) => item.id),
+          [ids.hermesGroup],
+        );
+      });
+
+    await request(app.getHttpServer())
+      .put(`/admin/organizations/${ids.hermesOrg}/groups/${ids.hermesGroup}/members`)
+      .set(auth(tokenByPersona.orgScoped))
+      .send({ membershipIds: hermesMemberships.map((membership) => membership.id) })
+      .expect(200)
+      .expect(({ body }) => {
+        assert.equal(body.length, 2);
+      });
+
+    assert.equal(
+      await groupMemberRepository().count({ where: { groupId: ids.hermesGroup } }),
+      2,
+    );
+
+    await request(app.getHttpServer())
+      .put(`/admin/organizations/${ids.hermesOrg}/groups/${ids.hermesGroup}/members`)
+      .set(auth(tokenByPersona.orgScoped))
+      .send({ membershipIds: [acmeMembership.id] })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .get(`/admin/organizations/${ids.acmeOrg}/groups`)
+      .set(auth(tokenByPersona.orgScoped))
+      .expect(403);
+  });
+
+  it("protects organization and platform settings with scope-specific permissions", async () => {
+    await request(app.getHttpServer())
+      .put(`/admin/organizations/${ids.hermesOrg}/settings`)
+      .set(auth(tokenByPersona.orgScoped))
+      .send({
+        settings: [
+          {
+            name: "feature:invite:enabled",
+            value: false,
+            valueType: "boolean",
+          },
+        ],
+      })
+      .expect(200);
+
+    const orgSetting = await organizationSettingRepository().findOneByOrFail({
+      name: "feature:invite:enabled",
+      organizationId: ids.hermesOrg,
+    });
+    assert.equal(orgSetting.value, "false");
+
+    await request(app.getHttpServer())
+      .put(`/admin/organizations/${ids.acmeOrg}/settings`)
+      .set(auth(tokenByPersona.orgScoped))
+      .send({ "feature:invite:enabled": true })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put("/admin/platform/settings")
+      .set(auth(tokenByPersona.orgScoped))
+      .send({ "platform.allowOrganizationCreation": false })
+      .expect(403)
+      .expect(({ body }) => {
+        assert.equal(body.permission.id, "setting.platform_config.save:platform");
+      });
+
+    await request(app.getHttpServer())
+      .put("/admin/platform/settings")
+      .set(auth(tokenByPersona.platformAdmin))
+      .send({ "platform.allowOrganizationCreation": false })
+      .expect(200);
+
+    assert.equal(
+      (
+        await platformSettingRepository().findOneByOrFail({
+          name: "platform.allowOrganizationCreation",
+        })
+      ).value,
+      "false",
+    );
+  });
+
+  it("keeps platform-member administration platform-only and persists allowed changes", async () => {
+    await request(app.getHttpServer())
+      .get("/admin/platform/members")
+      .set(auth(tokenByPersona.orgScoped))
+      .expect(403)
+      .expect(({ body }) => {
+        assert.equal(body.permission.id, "user.platform_member.list:platform");
+      });
+
+    await request(app.getHttpServer())
+      .post("/admin/platform/members")
+      .set(auth(tokenByPersona.orgScoped))
+      .send({ roleId: ids.platformRole, userId: ids.ordinaryUser })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post("/admin/platform/members")
+      .set(auth(tokenByPersona.platformAdmin))
+      .send({
+        displayName: "Elevated Ordinary User",
+        roleId: ids.platformRole,
+        userId: ids.ordinaryUser,
+      })
+      .expect(201)
+      .expect(({ body }) => {
+        assert.equal(body.displayName, "Elevated Ordinary User");
+        assert.equal(body.roleId, ids.platformRole);
+        assert.equal(body.userId, ids.ordinaryUser);
+      });
+
+    assert.equal(
+      await platformMemberRepository().count({ where: { userId: ids.ordinaryUser } }),
+      1,
+    );
+  });
+
   function organizationCount() {
     return organizationRepository().count();
   }
 
   function organizationRepository() {
     return dataSource.getRepository(Organization);
+  }
+
+  function organizationSettingRepository() {
+    return dataSource.getRepository(OrganizationSetting);
+  }
+
+  function platformMemberRepository() {
+    return dataSource.getRepository(PlatformMember);
+  }
+
+  function platformSettingRepository() {
+    return dataSource.getRepository(PlatformSetting);
+  }
+
+  function membershipRepository() {
+    return dataSource.getRepository(UserOrganization);
+  }
+
+  function groupMemberRepository() {
+    return dataSource.getRepository(OrganizationGroupMember);
   }
 
   function userRepository() {
@@ -303,11 +540,13 @@ async function seedDatabase(dataSource: DataSource) {
   const platformMembers = dataSource.getRepository(PlatformMember);
   const rolePermissions = dataSource.getRepository(RolePermission);
   const platformSettings = dataSource.getRepository(PlatformSetting);
+  const groups = dataSource.getRepository(OrganizationGroup);
 
   await users.save([
     user(users, ids.platformUser, "admin@hermes.local", "Platform Admin"),
     user(users, ids.orgScopedUser, "member@hermes.local", "Org Scoped User"),
     user(users, ids.ordinaryUser, "ordinary@hermes.local", "Ordinary User"),
+    user(users, ids.acmeUser, "member@acme.local", "Acme Member"),
   ]);
 
   await organizations.save([
@@ -319,11 +558,18 @@ async function seedDatabase(dataSource: DataSource) {
     role(roles, ids.platformRole, "platform-admin", "Platform Admin", "platform", null),
     role(roles, ids.orgScopedRole, "member", "Member", "organization", ids.hermesOrg),
     role(roles, ids.ordinaryRole, "viewer", "Viewer", "organization", ids.hermesOrg),
+    role(roles, ids.acmeRole, "member", "Member", "organization", ids.acmeOrg),
   ]);
 
   await memberships.save([
     membership(memberships, ids.orgScopedUser, ids.hermesOrg, ids.orgScopedRole),
     membership(memberships, ids.ordinaryUser, ids.hermesOrg, ids.ordinaryRole),
+    membership(memberships, ids.acmeUser, ids.acmeOrg, ids.acmeRole),
+  ]);
+
+  await groups.save([
+    group(groups, ids.hermesGroup, ids.hermesOrg, "Operators", "operators"),
+    group(groups, ids.acmeGroup, ids.acmeOrg, "Acme Operators", "acme-operators"),
   ]);
 
   await platformMembers.save(
@@ -349,17 +595,40 @@ async function seedDatabase(dataSource: DataSource) {
       "organization.platform_organization.list:platform",
       "organization.platform_organization.create:platform",
       "organization.profile.view:organization",
+      "setting.platform_config.save:platform",
+      "user.platform_member.create:platform",
+      "user.platform_member.list:platform",
       "user.platform_user.search:platform",
       "user.self_profile.update_profile:own",
     ]),
     ...permissions(rolePermissions, ids.orgScopedRole, ids.hermesOrg, [
+      "group.organization_group.list:organization",
+      "group.organization_group.replace_members:organization",
       "organization.profile.view:organization",
+      "setting.organization_config.save:organization",
+      "user.organization_member.create:organization",
+      "user.organization_member.list:organization",
       "user.self_profile.update_profile:own",
     ]),
     ...permissions(rolePermissions, ids.ordinaryRole, ids.hermesOrg, [
       "user.self_profile.update_profile:own",
     ]),
   ]);
+}
+
+async function resetDatabase(dataSource: DataSource) {
+  const tables = dataSource.entityMetadatas
+    .map((metadata) => quoteTablePath(metadata.tablePath))
+    .join(", ");
+  if (!tables) return;
+  await dataSource.query(`TRUNCATE ${tables} RESTART IDENTITY CASCADE`);
+}
+
+function quoteTablePath(tablePath: string) {
+  return tablePath
+    .split(".")
+    .map((part) => `"${part.replaceAll('"', '""')}"`)
+    .join(".");
 }
 
 function user(
@@ -458,6 +727,24 @@ function membership(
     roleId,
     status: "active",
     userId,
+  });
+}
+
+function group(
+  repository: Repository<OrganizationGroup>,
+  id: string,
+  organizationId: string,
+  displayName: string,
+  name: string,
+) {
+  return repository.create({
+    color: null,
+    createdByUserId: ids.platformUser,
+    description: null,
+    displayName,
+    id,
+    name,
+    organizationId,
   });
 }
 

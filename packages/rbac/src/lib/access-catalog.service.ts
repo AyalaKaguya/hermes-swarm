@@ -52,12 +52,13 @@ export class AccessCatalogService implements OnModuleInit {
     private readonly rolePermissionRepository: Repository<RolePermission>,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit() {
     this.definitions = [
       ...this.scanDefinitions(),
       ...resolveNavigationDefinitions(),
     ].sort(compareDefinition);
-    void this.syncCatalog().catch((error) => {
+    if (process.env.RBAC_SYNC_CATALOG_ENABLED === "false") return;
+    await this.syncCatalog().catch((error) => {
       this.logger.error(`权限目录同步失败: ${String(error)}`);
     });
   }
@@ -435,4 +436,3 @@ function compareNullableOrder(
 function compareText(left: string, right: string) {
   return left.localeCompare(right, "zh-Hans");
 }
-

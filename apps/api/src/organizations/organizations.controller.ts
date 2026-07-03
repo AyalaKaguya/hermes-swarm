@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Headers,
+  Inject,
   Param,
   Patch,
   Post,
@@ -35,7 +36,10 @@ import { OrganizationsService } from "./organizations.service.js";
  * under the shared admin route namespace.
  */
 export class OrganizationsController {
-  constructor(private readonly organizationsService: OrganizationsService) {}
+  constructor(
+    @Inject(OrganizationsService)
+    private readonly organizationsService: OrganizationsService,
+  ) {}
 
   /**
    * Lists organizations managed through the admin backend.

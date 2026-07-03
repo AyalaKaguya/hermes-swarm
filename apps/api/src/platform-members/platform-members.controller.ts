@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -24,7 +25,10 @@ import { PlatformMembersService } from "./platform-members.service.js";
   scope: "platform",
 })
 export class PlatformMembersController {
-  constructor(private readonly service: PlatformMembersService) {}
+  constructor(
+    @Inject(PlatformMembersService)
+    private readonly service: PlatformMembersService,
+  ) {}
 
   @Get()
   @PermissionOperation({

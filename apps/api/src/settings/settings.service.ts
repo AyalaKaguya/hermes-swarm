@@ -32,8 +32,8 @@ export class SettingsService implements OnModuleInit {
     private readonly redisService: RedisService,
   ) {}
 
-  onModuleInit() {
-    void this.ensureDefaultPlatformSettings().catch((error) => {
+  async onModuleInit() {
+    await this.ensureDefaultPlatformSettings().catch((error) => {
       this.logger.error(`平台默认配置初始化失败: ${String(error)}`);
     });
   }

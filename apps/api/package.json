@@ -10,6 +10,7 @@
     "dev": "pnpm nx run @hermes-swarm/rbac:build && tsc && node dist/main.js",
     "openapi:generate": "tsx src/openapi.generate.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
     "e2e": "node e2e/run-api-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -39,6 +40,12 @@
   },
   "nx": {
     "targets": {
+      "coverage": {
+        "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
+        "options": {
+          "cwd": "apps/api"
+        }
+      },
       "e2e": {
         "command": "node apps/api/e2e/run-api-e2e.mjs"
       }

@@ -8,11 +8,18 @@
     "build": "next build",
     "start": "next start --port 3100",
     "test": "node --import tsx --test \"lib/**/*.test.ts\"",
+    "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"lib/**/*.ts\" \"lib/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next out"
   },
   "nx": {
     "targets": {
+      "coverage": {
+        "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"lib/**/*.ts\" \"lib/**/*.test.ts\"",
+        "options": {
+          "cwd": "apps/web"
+        }
+      },
       "e2e": {
         "command": "node apps/web/e2e/run-e2e.mjs"
       }

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -24,7 +25,10 @@ import { MembershipsService } from "./memberships.service.js";
   scope: "organization",
 })
 export class MembershipsController {
-  constructor(private readonly membershipsService: MembershipsService) {}
+  constructor(
+    @Inject(MembershipsService)
+    private readonly membershipsService: MembershipsService,
+  ) {}
 
   @Get()
   @PermissionOperation({

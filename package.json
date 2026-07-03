@@ -7,6 +7,8 @@
   "scripts": {
     "build": "nx run-many --target=build",
     "test": "nx run-many --target=test",
+    "coverage": "nx run-many --target=coverage",
+    "test:coverage": "nx run-many --target=coverage",
     "lint": "nx run-many --target=lint",
     "clean": "nx run-many --target=clean",
     "graph": "nx graph",

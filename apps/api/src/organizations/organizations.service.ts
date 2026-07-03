@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -37,6 +38,7 @@ export class OrganizationsService {
     private readonly rolePermissionRepository: Repository<RolePermission>,
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
+    @Inject(SettingsService)
     private readonly settingsService: SettingsService,
   ) {}
 

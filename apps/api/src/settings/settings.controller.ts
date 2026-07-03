@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Put } from "@nestjs/common";
 import type { SaveSettingsPayload } from "../common/admin-api.types.js";
 import {
   PermissionOperation,
@@ -17,7 +17,10 @@ import { SettingsService } from "./settings.service.js";
   scope: "platform",
 })
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService,
+  ) {}
 
   @Get("platform/settings")
   @PermissionOperation({

@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Patch,
   Post,
@@ -34,7 +35,10 @@ import {
   scope: "organization",
 })
 export class GroupsController {
-  constructor(private readonly groupsService: GroupsService) {}
+  constructor(
+    @Inject(GroupsService)
+    private readonly groupsService: GroupsService,
+  ) {}
 
   @Get("groups")
   @PermissionOperation({

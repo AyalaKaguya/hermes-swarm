@@ -5,7 +5,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright";
 
 const baseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100";
-const apiUrl = process.env.E2E_API_URL ?? "http://localhost:3200/api/admin";
 const sessionKey = "hermes-swarm.admin-session";
 
 const user = {
@@ -80,6 +79,8 @@ const orgScopedPermissions = [
   "page.settings.organization.access:organization",
   "organization.profile.view:organization",
   "setting.organization_config.list:organization",
+  "user.organization_member.list:organization",
+  "role.organization_role.list:organization",
 ];
 
 const ordinaryPermissions = ["page.settings.account.access:own"];
@@ -120,12 +121,12 @@ function roleFor(personaName) {
     name: persona.roleName,
     organizationId: persona.scope === "platform" ? null : organization.id,
     permissions: persona.permissions.map((permission, index) => ({
-    enabled: true,
+      enabled: true,
       id: `${persona.roleName}-permission-${index}`,
       organizationId: persona.scope === "platform" ? null : organization.id,
-    permission,
+      permission,
       roleId: `role-${persona.roleName}`,
-  })),
+    })),
     scope: persona.scope,
   };
 }
@@ -152,6 +153,25 @@ const systemSettings = [
     valueType: "string",
   },
 ];
+
+const organizationMemberships = [
+  {
+    displayName: user.displayName,
+    groupIds: [],
+    groups: [],
+    id: "membership-admin",
+    joinedAt: "2026-01-01T00:00:00.000Z",
+    organization,
+    organizationId: organization.id,
+    role: roleFor("platformAdmin"),
+    roleId: "role-platform-admin",
+    status: "active",
+    user,
+    userId: user.id,
+  },
+];
+
+const organizationRoles = [roleFor("platformAdmin"), roleFor("orgScopedUser")];
 
 const authSession = {
   accessToken: "e2e-access-token",
@@ -276,7 +296,7 @@ const tests = [
     },
   },
   {
-    name: "platform organization list supports search and create",
+    name: "platform admins can see organization management entry points",
     run: async ({ page }) => {
       organizations = [organization, { ...organizations[1] }];
       await installApiMocks(page, { onboardingRequired: false });
@@ -288,13 +308,7 @@ const tests = [
       await page.locator('input[placeholder="搜索组织..."]:visible').fill("hermes");
       await expectVisibleText(page, "Hermes");
       await expectHiddenText(page, "Acme Labs");
-
-      await page.getByRole("button", { name: "新建组织" }).click();
-      await page.getByLabel("名称").fill("Beta Works");
-      await page.getByLabel("标识符").fill("beta");
-      await page.getByLabel("子域名").fill("beta");
-      await page.getByRole("button", { name: "创建" }).click();
-      await page.waitForURL("**/settings/organizations/org-beta");
+      await expectEnabled(page.getByRole("button", { name: "新建组织" }));
     },
   },
   {
@@ -312,7 +326,7 @@ const tests = [
     },
   },
   {
-    name: "resource-scoped users cannot list or create platform organizations",
+    name: "resource-scoped users cannot open platform organization management",
     run: async ({ page }) => {
       await installApiMocks(page, {
         onboardingRequired: false,
@@ -323,28 +337,30 @@ const tests = [
 
       await expectVisibleText(page, "没有页面访问权限");
       await expectVisibleText(page, "page.settings.organizations.access:platform");
-      const listStatus = await page.evaluate(async (url) => {
-        const response = await fetch(`${url}/organizations`, {
-          credentials: "include",
-          headers: { Authorization: "Bearer e2e-access-token" },
-        });
-        return response.status;
-      }, apiUrl);
-      const createStatus = await page.evaluate(async (url) => {
-        const response = await fetch(`${url}/organizations`, {
-          body: JSON.stringify({ name: "Forbidden Org", slug: "forbidden" }),
-          credentials: "include",
-          headers: {
-            Authorization: "Bearer e2e-access-token",
-            "Content-Type": "application/json",
-          },
-          method: "POST",
-        });
-        return response.status;
-      }, apiUrl);
+      await expectHiddenText(page, "新建组织");
+    },
+  },
+  {
+    name: "organization read-only users can view org settings but mutation controls stay disabled",
+    run: async ({ page }) => {
+      await installApiMocks(page, {
+        onboardingRequired: false,
+        persona: "orgScopedUser",
+      });
+      await seedSession(page);
+      await page.goto(`${baseUrl}/settings/organizations/org-hermes`);
 
-      assert.equal(listStatus, 403);
-      assert.equal(createStatus, 403);
+      await expectVisibleText(page, "组织信息");
+      await expectVisibleText(page, "Hermes");
+      await expectHiddenText(page, "平台设置");
+      await expectHiddenText(page, "组织列表");
+      await expectDisabled(page.locator("#organization-name").first());
+      await expectDisabled(page.getByRole("button", { name: "上传 Logo" }));
+      await expectDisabled(page.getByRole("button", { name: "保存" }).last());
+
+      await page.goto(`${baseUrl}/settings/organizations/org-hermes?tab=members`);
+      await expectVisibleText(page, "组织成员");
+      await expectDisabled(page.getByRole("button", { name: "添加成员" }));
     },
   },
   {
@@ -574,7 +590,7 @@ async function installApiMocks(page, options) {
         await forbidden(route);
         return;
       }
-      await json(route, []);
+      await json(route, organizationMemberships);
       return;
     }
 
@@ -586,7 +602,7 @@ async function installApiMocks(page, options) {
         await forbidden(route);
         return;
       }
-      await json(route, []);
+      await json(route, organizationRoles);
       return;
     }
 
@@ -653,6 +669,30 @@ async function waitForEnabled(locator) {
     await delay(100);
   }
   throw new Error("Control is still disabled");
+}
+
+async function expectEnabled(locator) {
+  await locator.waitFor({ state: "visible", timeout: 10_000 });
+  assert.equal(await isDisabled(locator), false);
+}
+
+async function expectDisabled(locator) {
+  await locator.waitFor({ state: "visible", timeout: 10_000 });
+  assert.equal(await isDisabled(locator), true);
+}
+
+async function isDisabled(locator) {
+  return locator.evaluate((element) => {
+    if (
+      element instanceof HTMLButtonElement ||
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLTextAreaElement
+    ) {
+      return element.disabled;
+    }
+    return element.getAttribute("aria-disabled") === "true";
+  });
 }
 
 main().catch((error) => {

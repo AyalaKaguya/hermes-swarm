@@ -33,7 +33,14 @@
         "build"
       ],
       "inputs": [
-        "production",
+        "default",
+        "^production"
+      ],
+      "cache": true
+    },
+    "coverage": {
+      "inputs": [
+        "default",
         "^production"
       ],
       "cache": true
