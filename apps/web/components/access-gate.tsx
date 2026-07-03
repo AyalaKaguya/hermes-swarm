@@ -2,7 +2,7 @@
 
 import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { usePermission } from "@/hooks/use-permission";
-import type { AccessMode } from "@hermes-swarm/access";
+import type { AccessMode } from "@hermes-swarm/rbac-api";
 
 type AccessGateProps = {
   children: ReactNode;

@@ -16,7 +16,7 @@ import { parseAuthSessionToken } from "../auth/auth-session.js";
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import {
   GroupsService,
   type OrganizationGroupPayload,

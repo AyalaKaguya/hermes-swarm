@@ -12,7 +12,7 @@ import type { ReplaceRolePermissionsPayload } from "../common/admin-api.types.js
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import { PlatformRolesService } from "./platform-roles.service.js";
 
 @Controller("admin/platform/roles")

@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/commo
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import { NotificationDestinationsService } from "./notification-destinations.service.js";
 
 @Controller("admin/organizations/:organizationId/notification-destinations")

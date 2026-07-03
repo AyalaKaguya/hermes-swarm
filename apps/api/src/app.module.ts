@@ -12,7 +12,9 @@ import {
 } from "./common/config/runtime-config.js";
 import { HealthModule } from "./common/health/health.module.js";
 import { RedisModule } from "./common/redis/redis.module.js";
-import { RbacModule } from "./rbac/rbac.module.js";
+import { RbacModule } from "@hermes-swarm/rbac";
+import { AuthModule } from "./auth/auth.module.js";
+import { AuthSessionService } from "./auth/auth-session.service.js";
 
 @Module({
   imports: [
@@ -30,7 +32,10 @@ import { RbacModule } from "./rbac/rbac.module.js";
     RedisModule,
     DatabaseModule,
     HealthModule,
-    RbacModule,
+    RbacModule.register({
+      authSessionService: AuthSessionService,
+      imports: [AuthModule],
+    }),
     AdminModule,
   ],
 })

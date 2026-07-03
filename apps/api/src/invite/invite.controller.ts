@@ -19,7 +19,7 @@ import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import { InviteService } from "./invite.service.js";
 
 @Controller("admin")

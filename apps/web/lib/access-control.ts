@@ -1,7 +1,7 @@
 import {
   getPageAccessDefinition,
   type AccessMode,
-} from "@hermes-swarm/access";
+} from "@hermes-swarm/rbac-api";
 import type { ResolvedSession } from "./session";
 
 type AccessPrincipal = ResolvedSession;

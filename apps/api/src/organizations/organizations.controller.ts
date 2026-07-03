@@ -17,7 +17,7 @@ import type {
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import { OrganizationsService } from "./organizations.service.js";
 
 @Controller("admin")

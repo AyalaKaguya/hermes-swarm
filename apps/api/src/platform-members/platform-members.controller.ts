@@ -10,7 +10,7 @@ import {
 import {
   PermissionOperation,
   PermissionResource,
-} from "../rbac/require-permission.decorator.js";
+} from "@hermes-swarm/rbac";
 import { PlatformMembersService } from "./platform-members.service.js";
 
 @Controller("admin/platform/members")
