@@ -1,18 +1,47 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export function ConversationPanel<TMessage>({
+  autoScrollToLatest = true,
+  className,
   emptyLabel = "暂无消息",
   messages,
   renderMessage,
 }: {
+  autoScrollToLatest?: boolean;
+  className?: string;
   emptyLabel?: string;
   messages: TMessage[];
   renderMessage: (message: TMessage) => ReactNode;
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!autoScrollToLatest) return;
+    scrollToLatest(scrollRef.current);
+  }, [autoScrollToLatest, messages]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!autoScrollToLatest || !element) return;
+
+    const observer = new ResizeObserver(() => {
+      scrollToLatest(element);
+    });
+    observer.observe(element);
+    if (element.firstElementChild) {
+      observer.observe(element.firstElementChild);
+    }
+    return () => observer.disconnect();
+  }, [autoScrollToLatest, messages]);
+
   return (
-    <div className="max-h-[56svh] min-h-[24rem] overflow-auto bg-muted/20 p-4">
+    <div
+      className={cn("min-h-0 overflow-auto bg-muted/20 p-4", className)}
+      ref={scrollRef}
+    >
       {messages.length === 0 ? (
         <div className="grid h-full place-items-center text-sm text-muted-foreground">
           {emptyLabel}
@@ -22,4 +51,11 @@ export function ConversationPanel<TMessage>({
       )}
     </div>
   );
+}
+
+function scrollToLatest(element: HTMLDivElement | null) {
+  if (!element) return;
+  requestAnimationFrame(() => {
+    element.scrollTop = element.scrollHeight;
+  });
 }

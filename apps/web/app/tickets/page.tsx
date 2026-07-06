@@ -509,7 +509,7 @@ export default function TicketsPage() {
           if (!open) setSelectedTicketId(null);
         }}
       >
-        <DialogContent className="grid max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <DialogContent className="grid h-[min(52rem,calc(100svh-2rem))] w-[min(72rem,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-none">
           <DialogHeader className="border-b px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
               <div className="min-w-0">
@@ -535,8 +535,9 @@ export default function TicketsPage() {
               )}
             </div>
           </DialogHeader>
-          <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]">
+          <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">
             <ConversationPanel
+              className="h-full"
               messages={messages}
               renderMessage={(message) => (
                 <MessageBubble
@@ -548,7 +549,7 @@ export default function TicketsPage() {
               )}
             />
 
-            <div className="border-t bg-background p-4">
+            <div className="max-h-[14rem] overflow-auto border-t bg-background p-4">
               <PromptInput
                 accept="image/*"
                 maxFiles={6}
