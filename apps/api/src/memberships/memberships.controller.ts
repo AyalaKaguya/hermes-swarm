@@ -57,6 +57,7 @@ export class MembershipsController {
 
   @Patch(":membershipId")
   @AccessOperation({
+    defaultRoles: ["owner", "admin"],
     description: "更新组织成员的角色、状态或显示名称。",
     label: "更新成员",
     operation: "update",

@@ -13,13 +13,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import {
   fetchMe,
+  getUsableStoredSession,
   isUnauthorizedApiError,
-  refreshAuthSession,
   type Snapshot,
 } from "@/lib/admin-api";
 import {
   clearStoredSession,
-  getStoredSession,
   resolveSession,
   storeSession,
   type ResolvedSession,
@@ -52,17 +51,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   const loadSnapshot = useCallback(
     async (options: { showLoading?: boolean } = {}) => {
-      let session = getStoredSession();
-      if (!session?.accessToken) {
-        const refreshed = await refreshAuthSession().catch(() => null);
-        session = refreshed
-          ? {
-              accessToken: refreshed.accessToken,
-              expiresAt: refreshed.expiresAt,
-              sessionId: refreshed.sessionId,
-            }
-          : null;
-      }
+      const session = await getUsableStoredSession().catch(() => null);
 
       if (!session?.accessToken) {
         setSnapshot(null);
@@ -115,7 +104,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }, [isPublicRoute, loadSnapshot]);
 
   async function switchOrganization(organizationId: string) {
-    const session = getStoredSession();
+    const session = await getUsableStoredSession().catch(() => null);
     if (!session?.accessToken || organizationId === snapshot?.organization?.id) {
       return;
     }

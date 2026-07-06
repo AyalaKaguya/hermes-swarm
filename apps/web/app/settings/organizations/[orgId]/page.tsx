@@ -188,7 +188,6 @@ export default function OrganizationDetailPage() {
     snapshot && resolvedSession
       ? access.hasPermission("user.organization_member.update:organization")
       : false;
-  const currentUserId = snapshot?.currentUser.user.id ?? null;
   const assignableRoles = useMemo(
     () => (canUpdateOrganizationMember ? roles : []),
     [canUpdateOrganizationMember, roles],
@@ -399,8 +398,7 @@ export default function OrganizationDetailPage() {
   }
 
   function canEditUser(user: User) {
-    if (!canUpdateOrganizationMember || user.id === currentUserId) return false;
-    return true;
+    return canUpdateOrganizationMember && Boolean(membershipForUser(user.id));
   }
 
   if (loading) {

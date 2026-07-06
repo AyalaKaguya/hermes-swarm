@@ -5,7 +5,9 @@ import {
 } from "@hermes-swarm/core/settings/definitions";
 import {
   clearStoredSession,
+  getStoredSession,
   storeSession,
+  type UserSession,
 } from "@/lib/session";
 
 export type OrganizationStatus = "active" | "suspended";
@@ -400,9 +402,10 @@ export type FileUploadResponse = {
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3200/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 const ADMIN_API_BASE_URL = `${API_BASE_URL.replace(/\/$/, "")}/admin`;
 const REQUEST_TIMEOUT_MS = 12_000;
+const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
 let refreshPromise: Promise<AuthRefreshResponse> | null = null;
 
 export class AdminApiError extends Error {
@@ -428,17 +431,18 @@ export async function fetchAdmin<T>(
     token?: string | null;
   },
 ): Promise<T> {
-  const response = await sendAdminRequest(path, options);
+  const requestOptions = await resolveRequestOptions(path, options);
+  const response = await sendAdminRequest(path, requestOptions);
   if (
     response.status === 401 &&
-    options?.token &&
+    requestOptions?.token &&
     path !== "/auth/refresh" &&
     path !== "/auth/login"
   ) {
     const refreshed = await refreshStoredAccessSession().catch(() => null);
     if (refreshed) {
       const retryResponse = await sendAdminRequest(path, {
-        ...options,
+        ...requestOptions,
         token: refreshed.accessToken,
       });
       return parseAdminResponse<T>(retryResponse);
@@ -488,6 +492,25 @@ async function sendAdminRequest(
   return response;
 }
 
+async function resolveRequestOptions(
+  path: string,
+  options?: {
+    body?: unknown;
+    method?: string;
+    token?: string | null;
+  },
+) {
+  if (!options?.token || isAuthBootstrapPath(path)) return options;
+
+  const session = await getUsableStoredSession().catch(() => null);
+  if (!session?.accessToken) return options;
+
+  return {
+    ...options,
+    token: session.accessToken,
+  };
+}
+
 async function parseAdminResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await response.json().catch(() => undefined);
@@ -522,6 +545,46 @@ async function refreshStoredAccessSession() {
   return refreshPromise;
 }
 
+export async function getUsableStoredSession() {
+  const session = getStoredSession();
+  if (!session?.accessToken) {
+    return toUserSession(await refreshStoredAccessSession());
+  }
+
+  if (!isAccessTokenExpiring(session, ACCESS_TOKEN_REFRESH_SKEW_MS)) {
+    return session;
+  }
+
+  const refreshed = await refreshStoredAccessSession().catch(() => null);
+  if (refreshed) return toUserSession(refreshed);
+
+  return isAccessTokenExpiring(session) ? null : session;
+}
+
+function toUserSession(response: AuthRefreshResponse): UserSession {
+  return {
+    accessToken: response.accessToken,
+    expiresAt: response.expiresAt,
+    sessionId: response.sessionId,
+  };
+}
+
+function isAccessTokenExpiring(
+  session: Pick<UserSession, "expiresAt">,
+  skewMs = 0,
+) {
+  const expiresAt = Date.parse(session.expiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt <= Date.now() + skewMs;
+}
+
+function isAuthBootstrapPath(path: string) {
+  return (
+    path === "/auth/login" ||
+    path === "/auth/refresh" ||
+    path === "/onboarding"
+  );
+}
+
 function maskSecretSettingPayload(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(maskSecretSettingPayload);
@@ -554,12 +617,14 @@ function maskSecretSettingPayload(value: unknown): unknown {
 export async function uploadAdminFile(token: string, file: File) {
   const body = new FormData();
   body.append("file", file);
+  const session = await getUsableStoredSession().catch(() => null);
+  const accessToken = session?.accessToken ?? token;
 
   let response = await fetch(`${ADMIN_API_BASE_URL}/files/upload`, {
     body,
     credentials: "include",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${accessToken}`,
     },
     method: "POST",
   });
