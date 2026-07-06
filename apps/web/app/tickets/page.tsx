@@ -380,7 +380,7 @@ export default function TicketsPage() {
     !selectedTicket || selectedTicket.status === "archived" || submitting;
 
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex h-[calc(100svh-7rem)] w-full max-w-7xl flex-col gap-4 overflow-hidden md:h-[calc(100svh-4rem)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">工单</h1>
@@ -438,7 +438,7 @@ export default function TicketsPage() {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100svh-10rem)] flex-1 gap-4 xl:grid-cols-2">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-2">
         <TicketListPanel
           emptyLabel={loading ? "加载中..." : "暂无我提交的工单"}
           onOpen={openTicket}
