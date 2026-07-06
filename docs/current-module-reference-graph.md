@@ -1,6 +1,6 @@
 # 当前模块与引用图
 
-更新日期：2026-07-03
+更新日期：2026-07-06
 
 这份文档记录当前代码实现，不是重构计划。项目级依赖来自 `pnpm nx graph --print`，后端模块来自 `apps/api/src/**/*.module.ts` 与 controller 路由，前端入口来自 `apps/web/app/settings/**`、`apps/web/lib/admin-api.ts`、`apps/web/lib/session.ts` 和 `apps/web/hooks/use-permission.ts`。
 
@@ -11,14 +11,14 @@
 - `@hermes-swarm/core`：框架无关的业务实体、配置定义、设置类型。
 - `@hermes-swarm/rbac-api`：框架无关的权限 ID、页面访问目录、权限目录 DTO。
 - `@hermes-swarm/rbac`：Nest 侧 Access 装饰器、Guard、Catalog 同步、权限目录接口。
-- `@hermes-swarm/api`：NestJS admin API。
-- `@hermes-swarm/web`：Next.js admin UI。
+- `@hermes-swarm/api`：NestJS console API，当前管理/基础设施传输路径保持 `/api/admin/**`。
+- `@hermes-swarm/web`：Next.js console UI。
 
 ```mermaid
 flowchart LR
-  Web["@hermes-swarm/web<br/>Next.js admin UI"] --> Core["@hermes-swarm/core<br/>shared entities/settings"]
+  Web["@hermes-swarm/web<br/>Next.js console UI"] --> Core["@hermes-swarm/core<br/>shared entities/settings"]
   Web --> RbacApi["@hermes-swarm/rbac-api<br/>page access + permission ids"]
-  Api["@hermes-swarm/api<br/>NestJS admin API"] --> Core
+  Api["@hermes-swarm/api<br/>NestJS console API"] --> Core
   Api --> Rbac["@hermes-swarm/rbac<br/>Nest access runtime"]
   Api --> RbacApi
   Rbac --> Core
@@ -58,7 +58,7 @@ flowchart LR
 
 | Export | 用途 |
 | --- | --- |
-| page access definitions | 设置页、平台页、组织页的页面访问目录 |
+| page access definitions | 基础设施页面访问目录 |
 | permission key helpers | `entity.purpose.operation:scope` 与 `page.<key>.access:<scope>` 生成器 |
 | catalog DTO types | 权限树接口的共享 DTO 类型 |
 
@@ -83,21 +83,23 @@ flowchart TB
   App --> Redis["RedisModule<br/>shared RedisService"]
   App --> Health["HealthModule<br/>GET /api/health"]
   App --> Access["AccessNestModule / RbacModule<br/>APP_GUARD + catalog sync"]
-  App --> Admin["AdminModule<br/>/api/admin bootstrap + onboarding"]
+  App --> Infra["InfrastructureModule<br/>system bootstrap + infrastructure modules"]
+  App --> Domains["DomainsModule<br/>business module aggregate"]
 
-  Admin --> Auth["AuthModule<br/>login, refresh, logout, sessions, me"]
-  Admin --> Users["UsersModule<br/>global users + account"]
-  Admin --> Organizations["OrganizationsModule<br/>organization CRUD + org roles"]
-  Admin --> Memberships["MembershipsModule<br/>organization members"]
-  Admin --> Groups["GroupsModule<br/>organization groups as labels"]
-  Admin --> Settings["SettingsModule<br/>platform/org settings + ValueType"]
-  Admin --> Invite["InviteModule<br/>organization invites"]
-  Admin --> Mail["MailModule<br/>SMTP, templates, logs"]
-  Admin --> PlatformMembers["PlatformMembersModule<br/>platform operators"]
-  Admin --> PlatformRoles["PlatformRolesModule<br/>platform roles + permissions"]
-  Admin --> Notifications["NotificationsModule<br/>notification destinations"]
-  Admin --> PasswordReset["PasswordResetModule<br/>password reset"]
-  Admin --> Files["FilesModule<br/>admin file upload/download"]
+  Infra --> Auth["AuthModule<br/>login, refresh, logout, sessions, me"]
+  Infra --> Users["UsersModule<br/>global users + account"]
+  Infra --> Organizations["OrganizationsModule<br/>organization CRUD + org roles"]
+  Infra --> Memberships["MembershipsModule<br/>organization members"]
+  Infra --> Groups["GroupsModule<br/>organization groups as labels"]
+  Infra --> Settings["SettingsModule<br/>platform/org settings + ValueType"]
+  Infra --> Invite["InviteModule<br/>organization invites"]
+  Infra --> Mail["MailModule<br/>SMTP, templates, logs"]
+  Infra --> PlatformMembers["PlatformMembersModule<br/>platform operators"]
+  Infra --> PlatformRoles["PlatformRolesModule<br/>platform roles + permissions"]
+  Infra --> Notifications["NotificationsModule<br/>notification destinations"]
+  Infra --> PasswordReset["PasswordResetModule<br/>password reset"]
+  Infra --> Files["FilesModule<br/>infrastructure file upload/download"]
+  Domains -. "future imports" .-> Business["apps/api/src/domains/<domain>"]
 ```
 
 模块责任边界：
@@ -115,6 +117,14 @@ flowchart TB
 | `RbacModule` / `AccessNestModule` | 全局 Access guard、权限目录生成、页面访问权限同步 | `Permission`, `RolePermission` |
 | `MailModule` | 组织 SMTP、邮件模板、发送日志 | `CustomSmtp`, `EmailTemplate`, `EmailLog` |
 | `NotificationsModule` | 组织通知目标与目标类型 | `NotificationDestination` |
+
+后端目录边界：
+
+| Area | Path | Rule |
+| --- | --- | --- |
+| Runtime | `apps/api/src/app.module.ts`, `main.ts`, `common/**` | 启动、配置、数据库、Redis、OpenAPI、健康检查 |
+| Infrastructure | `apps/api/src/infrastructure/**` | 账号、组织、权限、设置、邮件、通知、会话等基础设施能力 |
+| Business domains | `apps/api/src/domains/**` | 未来业务模块接入；基础设施模块不能反向依赖业务域 |
 
 ## 4. 数据实体关系
 
@@ -242,7 +252,7 @@ ValueType：
 
 ## 8. API 与 OpenAPI
 
-Admin API 保持在 `/api/admin/**` 下，健康检查在 `/api/health`。
+当前基础设施 API 传输路径保持在 `/api/admin/**` 下，健康检查在 `/api/health`。`admin` 是现有 URL 兼容前缀，不再代表代码目录或模块边界。
 
 Swagger 接入：
 
@@ -259,10 +269,10 @@ Swagger 接入：
 ```mermaid
 flowchart TB
   AdminShell["components/admin-shell.tsx<br/>fetchMe + session snapshot"] --> PermissionHook["hooks/use-permission.ts"]
-  PermissionHook --> SettingsLayout["app/settings/layout.tsx<br/>page access guard + navigation"]
+  PermissionHook --> SettingsLayout["app/settings/layout.tsx<br/>infrastructure access guard + navigation"]
   SettingsLayout --> Pages["settings pages"]
   Pages --> AdminApi["lib/admin-api.ts<br/>refresh + retry"]
-  AdminApi -. "/api/admin/**" .-> Api["Nest admin API"]
+  AdminApi -. "/api/admin/**" .-> Api["Nest console API"]
   Pages --> AccessGate["components/access-gate.tsx"]
 ```
 
@@ -272,6 +282,7 @@ flowchart TB
 - 普通 UI 动作基于具体接口权限，例如 `setting.platform_config.update_basic:platform`。
 - 除 `platform-admin` 种子角色外，前端不依赖固定角色名判断能力。
 - 用户组只作为组织内用户分类，不参与权限控制。
+- 业务页面接入 `apps/web/app/(domains)`；`/settings/**` 只承载基础设施配置。
 
 ## 10. 快速验证命令
 

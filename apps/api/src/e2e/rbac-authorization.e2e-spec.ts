@@ -28,20 +28,20 @@ import {
   UserOrganization,
 } from "@hermes-swarm/core";
 import { RbacModule } from "@hermes-swarm/rbac";
-import { createAuthSessionToken, parseAuthSessionToken } from "../auth/auth-session.js";
+import { createAuthSessionToken, parseAuthSessionToken } from "../infrastructure/auth/auth-session.js";
 import { RedisService } from "../common/redis/redis.service.js";
-import { GroupsController } from "../groups/groups.controller.js";
-import { GroupsService } from "../groups/groups.service.js";
-import { MembershipsController } from "../memberships/memberships.controller.js";
-import { MembershipsService } from "../memberships/memberships.service.js";
-import { OrganizationsController } from "../organizations/organizations.controller.js";
-import { OrganizationsService } from "../organizations/organizations.service.js";
-import { PlatformMembersController } from "../platform-members/platform-members.controller.js";
-import { PlatformMembersService } from "../platform-members/platform-members.service.js";
-import { SettingsController } from "../settings/settings.controller.js";
-import { SettingsService } from "../settings/settings.service.js";
-import { UsersController } from "../users/users.controller.js";
-import { UsersService } from "../users/users.service.js";
+import { GroupsController } from "../infrastructure/groups/groups.controller.js";
+import { GroupsService } from "../infrastructure/groups/groups.service.js";
+import { MembershipsController } from "../infrastructure/memberships/memberships.controller.js";
+import { MembershipsService } from "../infrastructure/memberships/memberships.service.js";
+import { OrganizationsController } from "../infrastructure/organizations/organizations.controller.js";
+import { OrganizationsService } from "../infrastructure/organizations/organizations.service.js";
+import { PlatformMembersController } from "../infrastructure/platform-members/platform-members.controller.js";
+import { PlatformMembersService } from "../infrastructure/platform-members/platform-members.service.js";
+import { SettingsController } from "../infrastructure/settings/settings.controller.js";
+import { SettingsService } from "../infrastructure/settings/settings.service.js";
+import { UsersController } from "../infrastructure/users/users.controller.js";
+import { UsersService } from "../infrastructure/users/users.service.js";
 
 type Persona = "ordinary" | "orgScoped" | "platformAdmin";
 

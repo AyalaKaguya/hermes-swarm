@@ -75,6 +75,75 @@ assert(exists("packages/rbac/package.json"), "Nest RBAC package should exist");
 assert(!exists("packages/access"), "old packages/access directory should be removed");
 assert(!exists("packages/nest-access"), "old packages/nest-access directory should be removed");
 assert(!exists("apps/api/src/rbac"), "old apps/api/src/rbac directory should be removed");
+assert(!exists("apps/api/src/admin"), "infrastructure aggregate should not live in apps/api/src/admin");
+assert(
+  exists("apps/api/src/infrastructure/infrastructure.module.ts"),
+  "API infrastructure aggregate module should exist",
+);
+assert(
+  exists("apps/api/src/domains/domains.module.ts"),
+  "API business domain aggregate module should exist",
+);
+assert(
+  exists("apps/web/components/infrastructure-navigation.ts"),
+  "web infrastructure navigation should exist",
+);
+assert(
+  exists("apps/web/app/(domains)/README.md"),
+  "web business domain route group should exist",
+);
+
+const infrastructureRootDirs = [
+  "auth",
+  "feature-access",
+  "files",
+  "groups",
+  "invite",
+  "mail",
+  "memberships",
+  "notifications",
+  "organizations",
+  "password-reset",
+  "platform-members",
+  "platform-roles",
+  "settings",
+  "users",
+];
+const allowedApiRootDirs = new Set([
+  "common",
+  "domains",
+  "e2e",
+  "infrastructure",
+]);
+for (const entry of fs.readdirSync(absolute("apps/api/src"), {
+  withFileTypes: true,
+})) {
+  if (!entry.isDirectory()) continue;
+  assert(
+    allowedApiRootDirs.has(entry.name),
+    `apps/api/src/${entry.name} should be placed under infrastructure or domains instead of the API root`,
+  );
+}
+for (const dir of infrastructureRootDirs) {
+  assert(
+    !exists(`apps/api/src/${dir}`),
+    `infrastructure module ${dir} should live under apps/api/src/infrastructure/${dir}`,
+  );
+  assert(
+    exists(`apps/api/src/infrastructure/${dir}`),
+    `infrastructure module apps/api/src/infrastructure/${dir} should exist`,
+  );
+}
+assertNoPattern(
+  listFiles("apps/api/src/infrastructure"),
+  /from\s+["'][.\/]+domains\//,
+  "infrastructure modules must not import business domain modules",
+);
+assertNoPattern(
+  listFiles("apps/api/src/domains"),
+  /from\s+["'][.\/]+infrastructure\//,
+  "business domain modules should depend on explicit public infrastructure services, not deep infrastructure internals",
+);
 
 const rbacApiPackage = readJson("packages/rbac-api/package.json");
 assert(rbacApiPackage.name === "@hermes-swarm/rbac-api", "rbac-api package should use the requested name");
@@ -161,6 +230,26 @@ assertIncludes(
   "RbacModule.register",
   "API app module should register the RBAC package module",
 );
+assertIncludes(
+  "apps/api/src/app.module.ts",
+  "./infrastructure/infrastructure.module.js",
+  "API app module should import infrastructure aggregate explicitly",
+);
+assertIncludes(
+  "apps/api/src/app.module.ts",
+  "./domains/domains.module.js",
+  "API app module should import the business domain aggregate explicitly",
+);
+assertNoPattern(
+  ["apps/api/src/app.module.ts"],
+  /AdminModule|\.\/admin\//,
+  "API app module should not use an admin aggregate module",
+);
+assertIncludes(
+  "apps/web/components/settings-navigation.ts",
+  "./infrastructure-navigation",
+  "settings navigation should only be a compatibility export over infrastructure navigation",
+);
 
 const webFiles = [
   ...listFiles("apps/web/app", [".tsx", ".ts"]),
@@ -194,11 +283,11 @@ for (const file of apiControllers) {
 }
 
 if (failures.length) {
-  console.error("RBAC refactor verification failed:");
+  console.error("Architecture refactor verification failed:");
   for (const failure of failures) {
     console.error(`- ${failure}`);
   }
   process.exit(1);
 }
 
-console.log("RBAC refactor verification passed.");
+console.log("Architecture refactor verification passed.");

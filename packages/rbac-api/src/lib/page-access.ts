@@ -129,11 +129,11 @@ export const PAGE_ACCESS_DEFINITIONS = [
   }),
   definePageAccess({
     defaultRoles: ["platform-admin"],
-    description: "允许访问平台设置页面。",
+    description: "允许访问平台基础设施配置页面。",
     href: "/settings/platform",
     icon: "server",
     key: "settings.platform",
-    label: "平台设置",
+    label: "平台基础设施",
     order: 10,
     routePatterns: ["/settings/platform"],
     scope: "platform",
@@ -142,7 +142,7 @@ export const PAGE_ACCESS_DEFINITIONS = [
   }),
   definePageAccess({
     defaultRoles: ["platform-admin"],
-    description: "允许访问平台组织列表与组织管理入口。",
+    description: "允许访问平台组织列表与组织基础设施管理入口。",
     href: "/settings/organizations",
     icon: "building",
     key: "settings.organizations",

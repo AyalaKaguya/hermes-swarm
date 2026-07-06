@@ -216,7 +216,7 @@
     },
     "/api/admin/bootstrap": {
       "get": {
-        "operationId": "AdminController_getPublicBootstrap",
+        "operationId": "InfrastructureBootstrapController_getPublicBootstrap",
         "parameters": [],
         "responses": {
           "200": {
@@ -224,13 +224,13 @@
           }
         },
         "tags": [
-          "Admin"
+          "InfrastructureBootstrap"
         ]
       }
     },
     "/api/admin/onboarding": {
       "post": {
-        "operationId": "AdminController_onboard",
+        "operationId": "InfrastructureBootstrapController_onboard",
         "parameters": [],
         "responses": {
           "201": {
@@ -238,7 +238,7 @@
           }
         },
         "tags": [
-          "Admin"
+          "InfrastructureBootstrap"
         ]
       }
     },

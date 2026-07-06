@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { AdminModule } from "./admin/admin.module.js";
 import { DatabaseModule } from "./common/database/database.module.js";
+import { DomainsModule } from "./domains/domains.module.js";
 import {
   appRuntimeConfig,
   authRuntimeConfig,
@@ -11,10 +11,11 @@ import {
   validateRuntimeConfig,
 } from "./common/config/runtime-config.js";
 import { HealthModule } from "./common/health/health.module.js";
+import { InfrastructureModule } from "./infrastructure/infrastructure.module.js";
 import { RedisModule } from "./common/redis/redis.module.js";
 import { RbacModule } from "@hermes-swarm/rbac";
-import { AuthModule } from "./auth/auth.module.js";
-import { AuthSessionService } from "./auth/auth-session.service.js";
+import { AuthModule } from "./infrastructure/auth/auth.module.js";
+import { AuthSessionService } from "./infrastructure/auth/auth-session.service.js";
 
 @Module({
   imports: [
@@ -36,7 +37,8 @@ import { AuthSessionService } from "./auth/auth-session.service.js";
       authSessionService: AuthSessionService,
       imports: [AuthModule],
     }),
-    AdminModule,
+    InfrastructureModule,
+    DomainsModule,
   ],
 })
 export class AppModule {}
