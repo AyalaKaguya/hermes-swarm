@@ -1,0 +1,136 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { getRealtimeUrl } from "@/lib/admin-api";
+import { getStoredSession } from "@/lib/session";
+
+type SourceConversationMessage = {
+  id: string;
+  sourceId?: string;
+  sourceType?: string;
+};
+
+type ConversationRealtimeMessage<TMessage> = {
+  payload?: {
+    message?: TMessage;
+  };
+  type?: string;
+};
+
+type ConversationRealtimeSource<TSourcePayload> = {
+  payload?: {
+    source?: {
+      sourceId?: string;
+      sourceType?: string;
+    };
+    sourcePayload?: TSourcePayload;
+  };
+  type?: string;
+};
+
+export function useSourceConversation<
+  TMessage extends SourceConversationMessage,
+  TSourcePayload = unknown,
+>(input: {
+  enabled: boolean;
+  loadMessages: (token: string, sourceId: string) => Promise<TMessage[]>;
+  markRead?: (token: string, sourceId: string) => Promise<unknown>;
+  onError?: (message: string) => void;
+  onSourceUpdated?: (payload: TSourcePayload) => void;
+  sourceId: string | null;
+  sourceType: string;
+}) {
+  const [messages, setMessages] = useState<TMessage[]>([]);
+
+  const appendMessage = useCallback((message: TMessage) => {
+    setMessages((current) =>
+      current.some((item) => item.id === message.id)
+        ? current
+        : [...current, message],
+    );
+  }, []);
+
+  useEffect(() => {
+    const session = getStoredSession();
+    if (!input.enabled || !session?.accessToken || !input.sourceId) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+    input
+      .loadMessages(session.accessToken, input.sourceId)
+      .then((items) => {
+        if (!cancelled) setMessages(items);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          input.onError?.(
+            error instanceof Error ? error.message : "消息加载失败",
+          );
+        }
+      });
+    void input.markRead?.(session.accessToken, input.sourceId);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    input.enabled,
+    input.loadMessages,
+    input.markRead,
+    input.onError,
+    input.sourceId,
+  ]);
+
+  useEffect(() => {
+    const session = getStoredSession();
+    if (!input.enabled || !session?.accessToken) return;
+
+    const socket = new WebSocket(getRealtimeUrl(session.accessToken));
+    socket.addEventListener("message", (event) => {
+      try {
+        const data = JSON.parse(event.data as string) as
+          | ConversationRealtimeMessage<TMessage>
+          | ConversationRealtimeSource<TSourcePayload>;
+
+        if (data.type === "conversation.source.updated") {
+          const sourceEvent = data as ConversationRealtimeSource<TSourcePayload>;
+          if (sourceEvent.payload?.source?.sourceType !== input.sourceType) return;
+          if (sourceEvent.payload.sourcePayload !== undefined) {
+            input.onSourceUpdated?.(sourceEvent.payload.sourcePayload);
+          }
+          return;
+        }
+
+        if (data.type !== "conversation.message.created") return;
+        const message = (data as ConversationRealtimeMessage<TMessage>).payload
+          ?.message;
+        if (!message || message.sourceType !== input.sourceType) return;
+        if (message.sourceId !== input.sourceId) return;
+
+        appendMessage(message);
+        if (input.sourceId) {
+          void input.markRead?.(session.accessToken, input.sourceId);
+        }
+      } catch {
+        // Regular HTTP refresh remains authoritative.
+      }
+    });
+
+    return () => socket.close();
+  }, [
+    appendMessage,
+    input.enabled,
+    input.markRead,
+    input.onSourceUpdated,
+    input.sourceId,
+    input.sourceType,
+  ]);
+
+  return {
+    appendMessage,
+    messages,
+    setMessages,
+  };
+}

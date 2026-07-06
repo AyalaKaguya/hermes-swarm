@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
   FEATURE_SETTING_DEFINITIONS,
+  getFeatureSettingDefaultValue,
   maskSettingValue,
   mergeEffectiveOrganizationSettings,
   OrganizationSetting,
@@ -200,7 +201,7 @@ export class SettingsService implements OnModuleInit {
     const definitions = [
       ...Object.values(PLATFORM_SETTING_DEFINITIONS),
       ...FEATURE_SETTING_DEFINITIONS.map((definition) => ({
-        defaultValue: "false",
+        defaultValue: getFeatureSettingDefaultValue(definition),
         key: definition.key,
         scope: definition.scope === "system" ? "platform" : "organization",
         valueOptions:

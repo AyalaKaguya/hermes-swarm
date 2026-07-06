@@ -15,6 +15,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   FEATURE_SETTING_DEFINITIONS,
+  getFeatureSettingDefaultValue,
 } from "@hermes-swarm/core/settings/definitions";
 import {
   listOrganizationSettings,
@@ -64,8 +65,8 @@ export default function FeaturesPage() {
     void load();
   }, [load]);
 
-  function getSettingValue(key: string): string {
-    return settings.find((setting) => setting.name === key)?.value ?? "";
+  function getSettingValue(key: string, fallback = ""): string {
+    return settings.find((setting) => setting.name === key)?.value ?? fallback;
   }
 
   function getSettingId(key: string): string | undefined {
@@ -141,7 +142,10 @@ export default function FeaturesPage() {
 
         <div className="grid gap-2">
           {organizationFeatures.map((feature) => {
-            const currentValue = getSettingValue(feature.key);
+            const currentValue = getSettingValue(
+              feature.key,
+              getFeatureSettingDefaultValue(feature, ""),
+            );
             const isEnabled = currentValue === "true";
             const id = getSettingId(feature.key);
 

@@ -2,7 +2,12 @@ export type PermissionScope = "organization" | "own" | "platform";
 
 export type AccessMode = "all" | "any";
 
-export type PageAccessSection = "organization" | "personal" | "platform";
+export type PageAccessSection =
+  | "business"
+  | "infrastructure"
+  | "organization"
+  | "personal"
+  | "platform";
 
 export type PageAccessDefinition = {
   defaultRoles: string[];

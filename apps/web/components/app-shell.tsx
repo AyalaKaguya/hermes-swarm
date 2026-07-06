@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppIcon, type AppIconName } from "@/components/app-icon";
 import { NotificationCenter } from "@/components/notification-center";
-import { UserMenu } from "@/components/user-menu";
+import { UserMenu, type UserMenuTicketAccess } from "@/components/user-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +58,7 @@ export function AppShell({
   children,
   contentClassName,
   currentOrganizationId,
+  footerNavItems,
   navSections,
   onNavigate,
   onOrganizationSwitch,
@@ -65,6 +66,7 @@ export function AppShell({
   organizationName,
   organizations,
   platformName,
+  ticketAccess,
   user,
 }: {
   actions?: ReactNode;
@@ -72,6 +74,7 @@ export function AppShell({
   children: ReactNode;
   contentClassName?: string;
   currentOrganizationId?: string | null;
+  footerNavItems?: AppShellNavItem[];
   navSections?: AppShellNavSection[];
   onNavigate?: (item: AppShellNavItem) => void;
   onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
@@ -79,12 +82,14 @@ export function AppShell({
   organizationName?: string | null;
   organizations?: Organization[];
   platformName?: string | null;
+  ticketAccess?: UserMenuTicketAccess | null;
   user?: User | null;
 }) {
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const [mainSidebarOpen, setMainSidebarOpen] = useState(false);
   const sections = navSections ?? [];
+  const footerItems = footerNavItems ?? [];
   const shellTitle = platformName?.trim() || "Hermes Swarm";
 
   useEffect(() => {
@@ -199,6 +204,14 @@ export function AppShell({
         <SidebarFooter>
           <SidebarMenu className="group-data-[collapsible=icon]:items-center">
             <NotificationCenter />
+            {footerItems.map((item) => (
+              <NavItem
+                active={isActiveNavItem(item.href, pathname, hash)}
+                item={item}
+                key={item.key}
+                onNavigate={onNavigate}
+              />
+            ))}
             <ShellMenuItem
               active={pathname.startsWith("/settings")}
               href="/settings/account"
@@ -208,6 +221,7 @@ export function AppShell({
             <UserMenu
               onUserUpdated={onUserUpdated}
               organizationName={organizationName}
+              ticketAccess={ticketAccess}
               user={user}
             />
           </SidebarMenu>

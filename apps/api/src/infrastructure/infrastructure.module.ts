@@ -10,6 +10,7 @@ import {
   UserOrganization,
 } from "@hermes-swarm/core";
 import { AuthModule } from "./auth/auth.module.js";
+import { ConversationsModule } from "./conversations/conversations.module.js";
 import { FeatureAccessModule } from "./feature-access/feature-access.module.js";
 import { FilesModule } from "./files/files.module.js";
 import { GroupsModule } from "./groups/groups.module.js";
@@ -21,7 +22,9 @@ import { OrganizationsModule } from "./organizations/organizations.module.js";
 import { PasswordResetModule } from "./password-reset/password-reset.module.js";
 import { PlatformMembersModule } from "./platform-members/platform-members.module.js";
 import { PlatformRolesModule } from "./platform-roles/platform-roles.module.js";
+import { RealtimeModule } from "./realtime/realtime.module.js";
 import { SettingsModule } from "./settings/settings.module.js";
+import { TicketsModule } from "./tickets/tickets.module.js";
 import { UsersModule } from "./users/users.module.js";
 import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
 
@@ -37,6 +40,7 @@ import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.co
       UserOrganization,
     ]),
     AuthModule,
+    ConversationsModule,
     FeatureAccessModule,
     UsersModule,
     OrganizationsModule,
@@ -48,7 +52,9 @@ import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.co
     MembershipsModule,
     PlatformMembersModule,
     PlatformRolesModule,
+    RealtimeModule,
     NotificationsModule,
+    TicketsModule,
     PasswordResetModule,
   ],
   controllers: [InfrastructureBootstrapController],

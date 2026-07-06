@@ -85,6 +85,78 @@ export type NotificationDestination = {
 
 export type NotificationDestinationGroup = Record<string, unknown>;
 
+export type UserNotificationStatus = "read" | "unread";
+export type UserNotificationKind = "error" | "info" | "success" | "warning";
+
+export type UserNotification = {
+  actorUserId: string | null;
+  body: string | null;
+  createdAt: string;
+  dismissedAt: string | null;
+  id: string;
+  kind: UserNotificationKind;
+  organizationId: string | null;
+  payload: Record<string, unknown> | null;
+  readAt: string | null;
+  sourceId: string | null;
+  sourceType: string | null;
+  status: UserNotificationStatus;
+  title: string;
+  updatedAt: string;
+};
+
+export type TicketStatus = "archived" | "closed" | "open";
+export type TicketScope = "organization" | "platform";
+
+export type Ticket = {
+  archivedAt: string | null;
+  assigneeUserId: string | null;
+  conversationId: string | null;
+  createdAt: string;
+  handlerClosedAt: string | null;
+  id: string;
+  lastMessageAt: string | null;
+  organizationId: string | null;
+  participantUserIds: string[];
+  requesterClosedAt: string | null;
+  requesterUserId: string;
+  scope: TicketScope;
+  status: TicketStatus;
+  subject: string;
+  updatedAt: string;
+};
+
+export type TicketMessageAttachment = {
+  mimeType?: string;
+  name: string;
+  size?: number;
+  type: "image";
+  url: string;
+};
+
+export type TicketMessage = {
+  attachments: TicketMessageAttachment[];
+  author: {
+    avatarUrl?: string | null;
+    displayName: string;
+    email: string;
+    id: string;
+    imageUrl?: string | null;
+    username?: string | null;
+  } | null;
+  authorUserId: string | null;
+  body: string;
+  conversationId: string;
+  createdAt: string;
+  id: string;
+  kind: "message" | "system";
+  metadata: Record<string, unknown> | null;
+  sourceId: string;
+  sourceType: string;
+  ticketId: string;
+  updatedAt: string;
+};
+
 export type User = {
   id: string;
   displayName: string;
@@ -421,6 +493,17 @@ export class AdminApiError extends Error {
 
 export function isUnauthorizedApiError(error: unknown) {
   return error instanceof AdminApiError && error.status === 401;
+}
+
+export function getRealtimeUrl(accessToken: string) {
+  const baseUrl =
+    API_BASE_URL.startsWith("http")
+      ? API_BASE_URL
+      : `${window.location.origin}${API_BASE_URL.startsWith("/") ? "" : "/"}${API_BASE_URL}`;
+  const url = new URL(`${baseUrl.replace(/\/$/, "")}/realtime`);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("access_token", accessToken);
+  return url.toString();
 }
 
 export async function fetchAdmin<T>(
@@ -1329,4 +1412,146 @@ export function listNotificationDestinationGroups(token: string, organizationId:
     `/organizations/${organizationId}/notification-destinations/${destinationId}/groups`,
     { token },
   );
+}
+
+export function listUserNotifications(
+  token: string,
+  options: { status?: UserNotificationStatus; take?: number } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.status) params.set("status", options.status);
+  if (options.take) params.set("take", String(options.take));
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return fetchAdmin<UserNotification[]>(`/notifications${suffix}`, { token });
+}
+
+export function getUnreadNotificationCount(token: string) {
+  return fetchAdmin<{ count: number }>("/notifications/unread-count", { token });
+}
+
+export function markNotificationRead(token: string, notificationId: string) {
+  return fetchAdmin<UserNotification>(`/notifications/${notificationId}/read`, {
+    method: "PATCH",
+    token,
+  });
+}
+
+export function markAllNotificationsRead(token: string) {
+  return fetchAdmin<{ ok: boolean }>("/notifications/read", {
+    method: "PATCH",
+    token,
+  });
+}
+
+export function dismissReadNotifications(token: string) {
+  return fetchAdmin<{ ok: boolean }>("/notifications/read", {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function dismissNotification(token: string, notificationId: string) {
+  return fetchAdmin<void>(`/notifications/${notificationId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function sendUserNotification(
+  token: string,
+  payload: {
+    body?: string | null;
+    kind?: UserNotificationKind;
+    organizationId?: string | null;
+    payload?: Record<string, unknown> | null;
+    recipientUserIds: string[];
+    title: string;
+  },
+) {
+  return fetchAdmin<UserNotification[]>("/notifications", {
+    body: payload,
+    method: "POST",
+    token,
+  });
+}
+
+export function listOrganizationTickets(
+  token: string,
+  organizationId: string,
+  status?: TicketStatus,
+) {
+  const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
+  return fetchAdmin<Ticket[]>(
+    `/organizations/${organizationId}/tickets${suffix}`,
+    { token },
+  );
+}
+
+export function createOrganizationTicket(
+  token: string,
+  organizationId: string,
+  payload: {
+    attachments?: TicketMessageAttachment[] | null;
+    body: string;
+    subject: string;
+  },
+) {
+  return fetchAdmin<Ticket & { firstMessage: TicketMessage }>(
+    `/organizations/${organizationId}/tickets`,
+    { body: payload, method: "POST", token },
+  );
+}
+
+export function listPlatformTickets(token: string, status?: TicketStatus) {
+  const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
+  return fetchAdmin<Ticket[]>(`/tickets/platform${suffix}`, { token });
+}
+
+export function createPlatformTicket(
+  token: string,
+  payload: {
+    attachments?: TicketMessageAttachment[] | null;
+    body: string;
+    subject: string;
+  },
+) {
+  return fetchAdmin<Ticket & { firstMessage: TicketMessage }>(
+    "/tickets/platform",
+    { body: payload, method: "POST", token },
+  );
+}
+
+export function getTicket(token: string, ticketId: string) {
+  return fetchAdmin<Ticket>(`/tickets/${ticketId}`, { token });
+}
+
+export function listTicketMessages(token: string, ticketId: string) {
+  return fetchAdmin<TicketMessage[]>(`/tickets/${ticketId}/messages`, { token });
+}
+
+export function sendTicketMessage(
+  token: string,
+  ticketId: string,
+  payload: { attachments?: TicketMessageAttachment[] | null; body: string },
+) {
+  return fetchAdmin<TicketMessage>(`/tickets/${ticketId}/messages`, {
+    body: payload,
+    method: "POST",
+    token,
+  });
+}
+
+export function closeTicket(token: string, ticketId: string) {
+  return fetchAdmin<Ticket>(`/tickets/${ticketId}/close`, {
+    method: "PATCH",
+    token,
+  });
+}
+
+export function markTicketRead(token: string, ticketId: string) {
+  return fetchAdmin<{ ok: boolean }>(`/tickets/${ticketId}/read`, {
+    method: "PATCH",
+    token,
+  });
 }

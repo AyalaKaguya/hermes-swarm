@@ -11,6 +11,8 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
+import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import {
   fetchMe,
   getUsableStoredSession,
@@ -23,6 +25,7 @@ import {
   storeSession,
   type ResolvedSession,
 } from "@/lib/session";
+import { hasPageAccess } from "@/lib/access-control";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 
 type AdminShellContextValue = {
@@ -166,6 +169,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     snapshot,
     resolvedSession.user.preferredLanguage,
   );
+  const navSections = buildMainNavSections(resolvedSession);
+  const ticketAccess = buildTicketAccess(resolvedSession, snapshot);
 
   return (
     <AppShell
@@ -178,6 +183,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
       }
       organizations={snapshot.organizations}
       platformName={platformName}
+      navSections={navSections}
+      ticketAccess={ticketAccess}
       user={resolvedSession.user}
     >
       <AdminShellContext.Provider value={contextValue}>
@@ -280,4 +287,83 @@ function hasPlatformManagementPermission(permissions: string[] | undefined) {
   return Boolean(
     permissions?.some((permission) => permission.endsWith(":platform")),
   );
+}
+
+function buildMainNavSections(resolvedSession: ResolvedSession) {
+  const sections = new Map<
+    string,
+    {
+      items: Array<{
+        href: string;
+        icon?: any;
+        key: string;
+        label: string;
+      }>;
+      key: string;
+      label: string;
+      order: number;
+    }
+  >();
+
+  for (const page of PAGE_ACCESS_DEFINITIONS) {
+    if (page.section !== "business") continue;
+    if (!hasPageAccess(resolvedSession, page.key)) continue;
+    const section = sections.get(page.section) ?? {
+      items: [],
+      key: page.section,
+      label: page.sectionLabel ?? "业务",
+      order: 1000,
+    };
+    if (section.items.some((item) => item.href === page.href)) continue;
+    section.items.push({
+      href: page.href,
+      icon: page.icon,
+      key: page.key,
+      label: page.label,
+    });
+    section.order = Math.min(section.order, page.order ?? 1000);
+    sections.set(page.section, section);
+  }
+
+  return [...sections.values()]
+    .sort((left, right) => left.order - right.order || left.label.localeCompare(right.label))
+    .map((section) => ({
+      items: section.items.sort((left, right) => left.label.localeCompare(right.label)),
+      key: section.key,
+      label: section.label,
+    }));
+}
+
+function buildTicketAccess(
+  resolvedSession: ResolvedSession,
+  snapshot: Snapshot,
+) {
+  if (!getPlatformBooleanSetting(snapshot, PLATFORM_SETTING_KEYS.ticketingVisible, true)) {
+    return { visible: false };
+  }
+
+  const canOpenTickets =
+    hasPageAccess(resolvedSession, "tickets") ||
+    hasPageAccess(resolvedSession, "tickets.platform") ||
+    resolvedSession.permissions.includes(
+      "ticket.platform_conversation.list_platform:platform",
+    ) ||
+    Boolean(
+      snapshot.memberships?.some(
+        (membership) => membership.role?.name === "owner",
+      ),
+    );
+
+  return { visible: canOpenTickets };
+}
+
+function getPlatformBooleanSetting(
+  snapshot: Snapshot,
+  name: string,
+  fallback: boolean,
+) {
+  const value = snapshot.systemSettings?.find((setting) => setting.name === name)?.value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
 }

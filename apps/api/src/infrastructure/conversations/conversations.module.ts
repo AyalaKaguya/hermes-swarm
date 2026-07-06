@@ -1,0 +1,29 @@
+import { Module } from "@nestjs/common";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import {
+  Conversation,
+  ConversationMessage,
+  ConversationParticipant,
+  User,
+  UserOrganization,
+} from "@hermes-swarm/core";
+import { NotificationsModule } from "../notifications/notifications.module.js";
+import { RealtimeModule } from "../realtime/realtime.module.js";
+import { ConversationCapabilityService } from "./conversations.service.js";
+
+@Module({
+  imports: [
+    NotificationsModule,
+    RealtimeModule,
+    TypeOrmModule.forFeature([
+      Conversation,
+      ConversationMessage,
+      ConversationParticipant,
+      User,
+      UserOrganization,
+    ]),
+  ],
+  providers: [ConversationCapabilityService],
+  exports: [ConversationCapabilityService],
+})
+export class ConversationsModule {}

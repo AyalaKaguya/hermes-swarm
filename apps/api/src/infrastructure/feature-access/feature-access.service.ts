@@ -1,5 +1,8 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { FEATURE_SETTING_DEFINITIONS } from "@hermes-swarm/core/settings/definitions";
+import {
+  FEATURE_SETTING_DEFINITIONS,
+  getFeatureSettingDefaultValue,
+} from "@hermes-swarm/core/settings/definitions";
 import { SettingsService } from "../settings/settings.service.js";
 
 @Injectable()
@@ -7,11 +10,11 @@ export class FeatureAccessService {
   constructor(private readonly settingsService: SettingsService) {}
 
   async isFeatureEnabled(organizationId: string, featureKey: string) {
-    const normalizedFeatureKey = requireOrganizationFeatureKey(featureKey);
+    const definition = requireOrganizationFeatureDefinition(featureKey);
     const value = await this.settingsService.getOrganizationValue(
       organizationId,
-      normalizedFeatureKey,
-      "false",
+      definition.key,
+      getFeatureSettingDefaultValue(definition),
     );
     return value === "true";
   }
@@ -23,11 +26,14 @@ const ORGANIZATION_FEATURE_KEYS: Set<string> = new Set(
   ).map((definition) => definition.key),
 );
 
-function requireOrganizationFeatureKey(value: string | undefined) {
+function requireOrganizationFeatureDefinition(value: string | undefined) {
   const featureKey = value?.trim();
   if (!featureKey) throw new BadRequestException("功能标识不能为空");
-  if (!ORGANIZATION_FEATURE_KEYS.has(featureKey)) {
+  const definition = FEATURE_SETTING_DEFINITIONS.find(
+    (item) => item.key === featureKey && item.scope === "organization",
+  );
+  if (!definition || !ORGANIZATION_FEATURE_KEYS.has(featureKey)) {
     throw new BadRequestException("功能标识不属于组织功能");
   }
-  return featureKey;
+  return definition;
 }

@@ -87,6 +87,8 @@ type PlatformForm = {
   smtpPort: string;
   smtpSecure: boolean;
   smtpUsername: string;
+  ticketingPlatformSubmissionEnabled: boolean;
+  ticketingVisible: boolean;
 };
 
 type PlatformTab =
@@ -257,6 +259,11 @@ export default function PlatformPage() {
             form.messageServiceProvider.trim() || null,
           ),
           platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
+          platformSettingEntry("ticketingVisible", form.ticketingVisible),
+          platformSettingEntry(
+            "ticketingPlatformSubmissionEnabled",
+            form.ticketingPlatformSubmissionEnabled,
+          ),
         ],
       });
       notifications.success("平台设置已保存");
@@ -657,48 +664,78 @@ export default function PlatformPage() {
         </TabsContent>
 
         <TabsContent value="messaging">
-          <Card>
-            <CardHeader>
-              <CardTitle>消息服务</CardTitle>
-              <CardDescription>平台级公共消息服务开关和提供方</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,24rem)_minmax(0,20rem)]">
-                <Field
-                  htmlFor="platform-message-provider"
-                  label="消息服务提供方"
-                >
-                  <Input
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>消息服务</CardTitle>
+                <CardDescription>平台级公共消息服务开关和提供方</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    htmlFor="platform-message-provider"
+                    label="消息服务提供方"
+                  >
+                    <Input
+                      disabled={!canManagePlatform}
+                      id="platform-message-provider"
+                      onChange={(event) =>
+                        updateField("messageServiceProvider", event.target.value)
+                      }
+                      placeholder="internal"
+                      value={form.messageServiceProvider}
+                    />
+                  </Field>
+                  <ToggleField
+                    checked={form.messageServiceEnabled}
                     disabled={!canManagePlatform}
-                    id="platform-message-provider"
-                    onChange={(event) =>
-                      updateField("messageServiceProvider", event.target.value)
+                    id="platform-message-enabled"
+                    label="启用公共消息服务"
+                    onCheckedChange={(checked) =>
+                      updateField("messageServiceEnabled", checked)
                     }
-                    placeholder="internal"
-                    value={form.messageServiceProvider}
                   />
-                </Field>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>工单服务</CardTitle>
+                <CardDescription>控制用户入口和平台工单提交能力</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
                 <ToggleField
-                  checked={form.messageServiceEnabled}
+                  checked={form.ticketingVisible}
                   disabled={!canManagePlatform}
-                  id="platform-message-enabled"
-                  label="启用公共消息服务"
+                  id="platform-ticketing-visible"
+                  label="显示工单入口"
                   onCheckedChange={(checked) =>
-                    updateField("messageServiceEnabled", checked)
+                    updateField("ticketingVisible", checked)
                   }
                 />
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  disabled={!canManagePlatform || savingPlatform}
-                  onClick={savePlatform}
-                  type="button"
-                >
-                  保存
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                <ToggleField
+                  checked={form.ticketingPlatformSubmissionEnabled}
+                  disabled={!canManagePlatform || !form.ticketingVisible}
+                  id="platform-ticketing-platform-submission"
+                  label="允许提交平台工单"
+                  onCheckedChange={(checked) =>
+                    updateField("ticketingPlatformSubmissionEnabled", checked)
+                  }
+                />
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end xl:col-span-2">
+              <Button
+                disabled={!canManagePlatform || savingPlatform}
+                onClick={savePlatform}
+                type="button"
+              >
+                保存
+              </Button>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="smtp">
@@ -1011,6 +1048,8 @@ function emptyPlatformForm(): PlatformForm {
     smtpPort: "587",
     smtpSecure: false,
     smtpUsername: "",
+    ticketingPlatformSubmissionEnabled: true,
+    ticketingVisible: true,
   };
 }
 
@@ -1049,6 +1088,11 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
     smtpPort: smtp?.port ? String(smtp.port) : "587",
     smtpSecure: Boolean(smtp?.secure),
     smtpUsername: smtp?.username ?? "",
+    ticketingPlatformSubmissionEnabled: parseBoolean(
+      getDefined("ticketingPlatformSubmissionEnabled"),
+      true,
+    ),
+    ticketingVisible: parseBoolean(getDefined("ticketingVisible"), true),
   } satisfies PlatformForm;
 }
 

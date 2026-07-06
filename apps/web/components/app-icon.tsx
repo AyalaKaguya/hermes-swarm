@@ -6,6 +6,7 @@ import {
   Bell,
   Bot,
   Building2,
+  Check,
   ChevronDown,
   Database,
   ImageUp,
@@ -28,6 +29,7 @@ import {
   RefreshCw,
   Repeat2,
   Search,
+  Send,
   Server,
   Settings,
   Shield,
@@ -49,6 +51,7 @@ export type AppIconName =
   | "bot"
   | "building"
   | "chart"
+  | "check"
   | "chevron-down"
   | "database"
   | "file"
@@ -70,6 +73,7 @@ export type AppIconName =
   | "plug"
   | "refresh"
   | "search"
+  | "send"
   | "settings"
   | "sparkles"
   | "sun"
@@ -89,6 +93,7 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   bot: Bot,
   building: Building2,
   chart: BarChart3,
+  check: Check,
   "chevron-down": ChevronDown,
   database: Database,
   file: FileText,
@@ -110,6 +115,7 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   plug: Plug,
   refresh: RefreshCw,
   search: Search,
+  send: Send,
   settings: Settings,
   sparkles: Sparkles,
   sun: Sun,

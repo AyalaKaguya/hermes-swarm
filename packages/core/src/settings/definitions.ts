@@ -69,6 +69,7 @@ export type OrganizationControlSettingDefinition = {
 };
 
 export type FeatureSettingDefinition = {
+  defaultValue?: string;
   description: string;
   key: string;
   label: string;
@@ -91,6 +92,9 @@ export const PLATFORM_SETTING_KEYS = {
   messageServiceProvider: "platform.messageServiceProvider",
   passwordMinLength: "auth.passwordPolicy.minLength",
   publicSmtpEnabled: "platform.publicSmtpEnabled",
+  ticketingPlatformSubmissionEnabled:
+    "platform.ticketing.platformSubmissionEnabled",
+  ticketingVisible: "platform.ticketing.visible",
 } as const;
 
 export const CURRENCY_OPTIONS = [
@@ -266,9 +270,29 @@ export const PLATFORM_SETTING_DEFINITIONS = {
     scope: "platform",
     valueType: "boolean",
   },
+  ticketingPlatformSubmissionEnabled: {
+    defaultValue: "true",
+    key: PLATFORM_SETTING_KEYS.ticketingPlatformSubmissionEnabled,
+    scope: "platform",
+    valueType: "boolean",
+  },
+  ticketingVisible: {
+    defaultValue: "true",
+    key: PLATFORM_SETTING_KEYS.ticketingVisible,
+    scope: "platform",
+    valueType: "boolean",
+  },
 } as const satisfies Record<string, PlatformSettingDefinition>;
 
 export const FEATURE_SETTING_DEFINITIONS = [
+  {
+    defaultValue: "true",
+    key: "feature:ticketing:enabled",
+    label: "工单功能",
+    description: "允许当前组织成员提交组织工单",
+    scope: "organization",
+    valueType: "boolean",
+  },
   {
     key: "feature:email:enabled",
     label: "邮件功能",
@@ -399,6 +423,13 @@ export function getSettingDefinitionByKey(
   if (platformDefinition) return platformDefinition;
 
   return FEATURE_SETTING_DEFINITIONS.find((definition) => definition.key === key);
+}
+
+export function getFeatureSettingDefaultValue(
+  definition: FeatureSettingDefinition,
+  fallback = "false",
+) {
+  return definition.defaultValue ?? fallback;
 }
 
 export function inferSettingValueTypeFromKey(

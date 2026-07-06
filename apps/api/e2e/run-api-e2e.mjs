@@ -42,7 +42,13 @@ console.log(`Running API e2e tests against ${redactDatabaseUrl(e2eDatabaseUrl)}`
 
 const result = spawnSync(
   process.execPath,
-  ["--import", "tsx", "--test", "src/**/*.e2e-spec.ts"],
+  [
+    "--import",
+    "tsx",
+    "--test",
+    "--test-concurrency=1",
+    "src/**/*.e2e-spec.ts",
+  ],
   {
     cwd: apiRoot,
     env: {

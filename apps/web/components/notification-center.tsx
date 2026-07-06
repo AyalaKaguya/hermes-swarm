@@ -12,10 +12,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import {
+  dismissNotification,
+  dismissReadNotifications,
+  getRealtimeUrl,
+  listUserNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type UserNotification,
+} from "@/lib/admin-api";
+import { getStoredSession } from "@/lib/session";
 
 type NotificationItem = {
+  body?: string | null;
   id: string;
+  kind?: string;
   message: string;
+  status?: "read" | "unread";
   time: string;
 };
 
@@ -23,6 +36,10 @@ export function NotificationCenter() {
   const [items, setItems] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
+    const session = getStoredSession();
+    let socket: WebSocket | null = null;
+    let closed = false;
+
     function push(message: string) {
       setItems((current) => [
         {
@@ -32,6 +49,49 @@ export function NotificationCenter() {
         },
         ...current.slice(0, 99),
       ]);
+    }
+
+    function pushNotification(notification: UserNotification) {
+      setItems((current) => {
+        const next = [
+          {
+            body: notification.body,
+            id: notification.id,
+            kind: notification.kind,
+            message: notification.title,
+            status: notification.status,
+            time: formatNotificationTime(notification.createdAt),
+          },
+          ...current.filter((item) => item.id !== notification.id),
+        ];
+        return next.slice(0, 100);
+      });
+    }
+
+    if (session?.accessToken) {
+      listUserNotifications(session.accessToken, { take: 50 })
+        .then((notifications) => {
+          if (!closed) setItems(notifications.map(toNotificationItem));
+        })
+        .catch(() => undefined);
+
+      socket = new WebSocket(getRealtimeUrl(session.accessToken));
+      socket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as {
+            payload?: unknown;
+            type?: string;
+          };
+          if (
+            message.type === "notification.created" &&
+            isUserNotification(message.payload)
+          ) {
+            pushNotification(message.payload);
+          }
+        } catch {
+          // Ignore malformed realtime messages; the HTTP notification list is authoritative.
+        }
+      });
     }
 
     function onError(event: ErrorEvent) {
@@ -56,6 +116,8 @@ export function NotificationCenter() {
     window.addEventListener("unhandledrejection", onUnhandledRejection);
     window.addEventListener("hermes:notification", onCustom);
     return () => {
+      closed = true;
+      socket?.close();
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       window.removeEventListener("hermes:notification", onCustom);
@@ -63,9 +125,13 @@ export function NotificationCenter() {
   }, []);
 
   const countLabel = useMemo(
-    () => (items.length > 99 ? "99+" : String(items.length)),
-    [items.length],
+    () => {
+      const unread = items.filter((item) => item.status !== "read").length;
+      return unread > 99 ? "99+" : String(unread);
+    },
+    [items],
   );
+  const unreadCount = items.filter((item) => item.status !== "read").length;
 
   return (
     <SidebarMenuItem>
@@ -74,7 +140,7 @@ export function NotificationCenter() {
           <SidebarMenuButton isActive={false} tooltip="通知" type="button">
             <span className="relative">
               <AppIcon className="size-4 shrink-0" name="bell" />
-              {items.length > 0 && (
+              {unreadCount > 0 && (
                 <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive" />
               )}
             </span>
@@ -86,20 +152,44 @@ export function NotificationCenter() {
             <DropdownMenuLabel className="p-0">
               通知{items.length > 0 ? ` (${countLabel})` : ""}
             </DropdownMenuLabel>
-            <Button
-              aria-label="清空全部通知"
-              disabled={items.length === 0}
-              onClick={(event) => {
-                event.stopPropagation();
-                setItems([]);
-              }}
-              size="icon-xs"
-              title="清空全部通知"
-              type="button"
-              variant="ghost"
-            >
-              <AppIcon className="size-3.5" name="list-x" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                aria-label="全部已读"
+                disabled={items.length === 0}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const token = getStoredSession()?.accessToken;
+                  if (token) void markAllNotificationsRead(token);
+                  setItems((current) =>
+                    current.map((item) => ({ ...item, status: "read" })),
+                  );
+                }}
+                size="icon-xs"
+                title="全部已读"
+                type="button"
+                variant="ghost"
+              >
+                <AppIcon className="size-3.5" name="check" />
+              </Button>
+              <Button
+                aria-label="清理已读"
+                disabled={!items.some((item) => item.status === "read")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const token = getStoredSession()?.accessToken;
+                  if (token) void dismissReadNotifications(token);
+                  setItems((current) =>
+                    current.filter((item) => item.status !== "read"),
+                  );
+                }}
+                size="icon-xs"
+                title="清理已读"
+                type="button"
+                variant="ghost"
+              >
+                <AppIcon className="size-3.5" name="list-x" />
+              </Button>
+            </div>
           </div>
           <DropdownMenuSeparator />
           {items.length === 0 ? (
@@ -110,19 +200,45 @@ export function NotificationCenter() {
                 <DropdownMenuItem
                   className="items-start gap-2 py-2"
                   key={item.id}
-                  onSelect={(event) => event.preventDefault()}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    const token = getStoredSession()?.accessToken;
+                    if (token && item.status === "unread") {
+                      void markNotificationRead(token, item.id);
+                    }
+                    setItems((current) =>
+                      current.map((currentItem) =>
+                        currentItem.id === item.id
+                          ? { ...currentItem, status: "read" }
+                          : currentItem,
+                      ),
+                    );
+                  }}
                 >
-                  <span className="mt-1 size-1.5 shrink-0 rounded-full bg-destructive" />
+                  <span
+                    className={
+                      item.status === "read"
+                        ? "mt-1 size-1.5 shrink-0 rounded-full bg-muted-foreground/40"
+                        : "mt-1 size-1.5 shrink-0 rounded-full bg-destructive"
+                    }
+                  />
                   <span className="grid min-w-0 flex-1 gap-1">
                     <span className="break-words text-sm leading-snug">
                       {item.message}
                     </span>
+                    {item.body && (
+                      <span className="line-clamp-2 break-words text-xs">
+                        {item.body}
+                      </span>
+                    )}
                     <span className="text-xs">{item.time}</span>
                   </span>
                   <Button
                     aria-label="移除通知"
                     onClick={(event) => {
                       event.stopPropagation();
+                      const token = getStoredSession()?.accessToken;
+                      if (token) void dismissNotification(token, item.id);
                       setItems((current) =>
                         current.filter((_, i) => i !== index),
                       );
@@ -141,5 +257,31 @@ export function NotificationCenter() {
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>
+  );
+}
+
+function toNotificationItem(notification: UserNotification): NotificationItem {
+  return {
+    body: notification.body,
+    id: notification.id,
+    kind: notification.kind,
+    message: notification.title,
+    status: notification.status,
+    time: formatNotificationTime(notification.createdAt),
+  };
+}
+
+function formatNotificationTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
+}
+
+function isUserNotification(value: unknown): value is UserNotification {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof (value as UserNotification).id === "string" &&
+      typeof (value as UserNotification).title === "string",
   );
 }

@@ -36,11 +36,17 @@ import {
 } from "@/lib/admin-api";
 import { getStoredSession } from "@/lib/session";
 
+export type UserMenuTicketAccess = {
+  visible: boolean;
+};
+
 export function UserMenu({
+  ticketAccess,
   onUserUpdated,
   organizationName,
   user,
 }: {
+  ticketAccess?: UserMenuTicketAccess | null;
   onUserUpdated?: () => Promise<void>;
   organizationName?: string | null;
   user?: User | null;
@@ -97,6 +103,10 @@ export function UserMenu({
 
   function openProfile() {
     router.push("/settings/account");
+  }
+
+  function openTickets() {
+    router.push("/tickets");
   }
 
   async function logout() {
@@ -208,6 +218,18 @@ export function UserMenu({
               <span>用户配置</span>
             </span>
           </DropdownMenuItem>
+
+          {ticketAccess?.visible && (
+            <DropdownMenuItem
+              className="h-9 justify-between"
+              onClick={openTickets}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <AppIcon className="size-4" name="file" />
+                <span>工单</span>
+              </span>
+            </DropdownMenuItem>
+          )}
 
           <DropdownMenuSeparator />
 
