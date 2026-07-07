@@ -22,9 +22,12 @@ import {
   saveOrganizationSettings,
   type OrganizationSetting,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { usePermission } from "@/hooks/use-permission";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { getStoredSession } from "@/lib/session";
 
 export default function FeaturesPage() {
   const { resolvedSession, snapshot } = useAdminShell();
@@ -45,14 +48,14 @@ export default function FeaturesPage() {
   const organizationId = snapshot?.organization?.id ?? null;
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId) {
       setLoading(false);
       return;
     }
     try {
       const settingItems = await listOrganizationSettings(
-        session.accessToken,
+        token,
         organizationId,
       );
       setSettings(settingItems);
@@ -76,15 +79,15 @@ export default function FeaturesPage() {
   }
 
   async function toggleFeature(key: string, enabled: boolean) {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) return;
+    if (!organizationId) return;
     const payload = {
       settings: [{ name: key, value: enabled, valueType: "boolean" }],
     };
     setError(null);
     setMsg("");
     try {
-      await saveOrganizationSettings(session.accessToken, organizationId, payload);
+      const token = await requireAuthenticatedAdminToken();
+      await saveOrganizationSettings(token, organizationId, payload);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("保存失败"));

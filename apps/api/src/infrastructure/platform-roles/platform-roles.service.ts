@@ -117,8 +117,8 @@ export class PlatformRolesService {
   }
 
   private assertMutableRole(role: Role) {
-    if (role.name === "platform-admin") {
-      throw new BadRequestException("Platform Admin 角色不能修改");
+    if (role.isSystem || role.name === "platform-admin") {
+      throw new BadRequestException("系统平台角色不能修改");
     }
   }
 

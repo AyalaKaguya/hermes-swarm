@@ -12,7 +12,7 @@ export default function OrganizationControlsPage() {
 
   useEffect(() => {
     if (snapshot?.organization?.id) {
-      router.replace(`/settings/organizations/${snapshot.organization.id}`);
+      router.replace("/settings/organization?tab=controls");
     }
   }, [router, snapshot?.organization?.id]);
 

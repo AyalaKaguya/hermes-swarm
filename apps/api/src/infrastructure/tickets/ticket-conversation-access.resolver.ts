@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
+  FEATURE_SETTING_KEYS,
   PlatformMember,
   RolePermission,
   Ticket,
@@ -12,7 +13,10 @@ import type {
   ConversationSource,
 } from "../conversations/conversation-access-resolver.js";
 import { ConversationCapabilityService } from "../conversations/conversations.service.js";
+import { SettingsService } from "../settings/settings.service.js";
 
+const ORGANIZATION_TICKET_HANDLING_FEATURE_KEY =
+  FEATURE_SETTING_KEYS.ticketingHandling;
 const ORGANIZATION_TICKET_HANDLE_PERMISSION =
   "ticket.conversation.handle:organization";
 const PLATFORM_TICKET_HANDLE_PERMISSION =
@@ -31,6 +35,8 @@ export class TicketConversationAccessResolver implements ConversationAccessResol
     private readonly rolePermissionRepository: Repository<RolePermission>,
     @Inject(ConversationCapabilityService)
     private readonly conversationsService: ConversationCapabilityService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService,
   ) {}
 
   async canRead(userId: string, source: ConversationSource) {
@@ -72,6 +78,9 @@ export class TicketConversationAccessResolver implements ConversationAccessResol
   }
 
   private async canHandleOrganizationTickets(userId: string, organizationId: string) {
+    if (!(await this.isOrganizationTicketHandlingEnabled(organizationId))) {
+      return false;
+    }
     const membership = await this.membershipRepository.findOne({
       where: { organizationId, status: "active", userId },
     });
@@ -81,6 +90,15 @@ export class TicketConversationAccessResolver implements ConversationAccessResol
           ORGANIZATION_TICKET_HANDLE_PERMISSION,
         )
       : false;
+  }
+
+  private async isOrganizationTicketHandlingEnabled(organizationId: string) {
+    const value = await this.settingsService.getOrganizationValue(
+      organizationId,
+      ORGANIZATION_TICKET_HANDLING_FEATURE_KEY,
+      "true",
+    );
+    return value !== "false";
   }
 
   private async canHandlePlatformTickets(userId: string) {

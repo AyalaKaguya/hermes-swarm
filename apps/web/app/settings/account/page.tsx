@@ -32,7 +32,10 @@ import {
   uploadAdminFile,
   type User,
 } from "@/lib/admin-api";
-import { getStoredSession } from "@/lib/session";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
 type ProfileForm = {
@@ -71,19 +74,19 @@ export default function AccountPage() {
   const shellUser = snapshot?.user ?? null;
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
+    const token = await getAuthenticatedAdminToken();
     if (shellUser) {
       setUser(shellUser);
       setProfile(toProfileForm(shellUser));
     }
 
-    if (!session?.accessToken) {
+    if (!token) {
       setLoading(false);
       return;
     }
 
     try {
-      const me = await fetchMe(session.accessToken);
+      const me = await fetchMe(token);
       setUser(me.user);
       setProfile(toProfileForm(me.user));
       setError(null);
@@ -121,14 +124,14 @@ export default function AccountPage() {
   }
 
   async function saveProfile() {
-    const session = getStoredSession();
-    if (!session?.accessToken || !user) return;
+    if (!user) return;
 
     setSavingProfile(true);
     setError(null);
 
     try {
-      const updated = await updateUser(session.accessToken, user.id, {
+      const token = await requireAuthenticatedAdminToken();
+      const updated = await updateUser(token, user.id, {
         displayName: profile.displayName,
         email: profile.email,
         firstName: profile.firstName || null,
@@ -146,13 +149,13 @@ export default function AccountPage() {
   }
 
   async function uploadAvatar(file: File) {
-    const session = getStoredSession();
-    if (!session?.accessToken || !user) return;
+    if (!user) return;
 
     setUploadingAvatar(true);
     setError(null);
     try {
-      const uploaded = await uploadAdminFile(session.accessToken, file);
+      const token = await requireAuthenticatedAdminToken();
+      const uploaded = await uploadAdminFile(token, file);
       const imageUrl =
         uploaded.url ??
         uploaded.destinations.find(
@@ -161,7 +164,7 @@ export default function AccountPage() {
       if (!imageUrl) {
         throw new Error(tr("上传成功但未返回图片地址"));
       }
-      const updated = await updateUser(session.accessToken, user.id, {
+      const updated = await updateUser(token, user.id, {
         imageUrl,
       });
       setUser(updated);
@@ -181,8 +184,7 @@ export default function AccountPage() {
   }
 
   async function savePassword() {
-    const session = getStoredSession();
-    if (!session?.accessToken || !user) return;
+    if (!user) return;
 
     const validationError = validatePassword(password, tr);
     if (validationError) {
@@ -194,7 +196,8 @@ export default function AccountPage() {
     setError(null);
 
     try {
-      await updateUserPassword(session.accessToken, user.id, {
+      const token = await requireAuthenticatedAdminToken();
+      await updateUserPassword(token, user.id, {
         currentPassword: password.currentPassword,
         password: password.password,
       });

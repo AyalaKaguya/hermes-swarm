@@ -14,7 +14,7 @@ import type {
   AcceptInvitePayload,
   CreateBulkInvitesPayload,
 } from "../../common/admin-api.types.js";
-import { parseAuthSessionToken } from "../auth/auth-session.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import {
   AccessOperation,
@@ -33,7 +33,10 @@ import { InviteService } from "./invite.service.js";
   scope: "organization",
 })
 export class InviteController {
-  constructor(private readonly inviteService: InviteService) {}
+  constructor(
+    private readonly inviteService: InviteService,
+    private readonly authSessionService: AuthSessionService,
+  ) {}
 
   @Get("organizations/:organizationId/invites")
   @AccessOperation({
@@ -62,7 +65,7 @@ export class InviteController {
   ) {
     return this.inviteService.createBulkForOrganization(
       organizationId,
-      requireSessionUserId(authorization),
+      await requireSessionUserId(this.authSessionService, authorization),
       payload,
     );
   }
@@ -82,7 +85,7 @@ export class InviteController {
   ) {
     return this.inviteService.resendForOrganization(
       organizationId,
-      requireSessionUserId(authorization),
+      await requireSessionUserId(this.authSessionService, authorization),
       inviteId,
     );
   }
@@ -124,9 +127,15 @@ export class InviteController {
   }
 }
 
-function requireSessionUserId(authorization: string | undefined) {
+async function requireSessionUserId(
+  authSessionService: AuthSessionService,
+  authorization: string | undefined,
+) {
   const token = authorization?.replace(/^Bearer\s+/i, "").trim();
-  const session = parseAuthSessionToken(token);
-  if (!session) throw new UnauthorizedException("登录已失效，请重新登录");
-  return session.userId;
+  try {
+    const session = await authSessionService.validateAccessToken(token);
+    return session.userId;
+  } catch {
+    throw new UnauthorizedException("登录已失效，请重新登录");
+  }
 }

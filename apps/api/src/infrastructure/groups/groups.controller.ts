@@ -13,11 +13,11 @@ import {
   Put,
   UnauthorizedException,
 } from "@nestjs/common";
-import { parseAuthSessionToken } from "../auth/auth-session.js";
 import {
   AccessOperation,
   AccessResource,
 } from "@hermes-swarm/rbac";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 import {
   GroupsService,
   type OrganizationGroupPayload,
@@ -38,6 +38,8 @@ export class GroupsController {
   constructor(
     @Inject(GroupsService)
     private readonly groupsService: GroupsService,
+    @Inject(AuthSessionService)
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   @Get("groups")
@@ -58,14 +60,14 @@ export class GroupsController {
     operation: "create",
     sortOrder: 20,
   })
-  create(
+  async create(
     @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
     @Body() payload: OrganizationGroupPayload,
   ) {
     return this.groupsService.create(
       organizationId,
-      requireSessionUserId(authorization),
+      await requireSessionUserId(this.authSessionService, authorization),
       payload,
     );
   }
@@ -150,9 +152,15 @@ export class GroupsController {
 
 }
 
-function requireSessionUserId(authorization: string | undefined) {
+async function requireSessionUserId(
+  authSessionService: AuthSessionService,
+  authorization: string | undefined,
+) {
   const token = authorization?.replace(/^Bearer\s+/i, "").trim();
-  const session = parseAuthSessionToken(token);
-  if (!session) throw new UnauthorizedException("登录已失效，请重新登录");
-  return session.userId;
+  try {
+    const session = await authSessionService.validateAccessToken(token);
+    return session.userId;
+  } catch {
+    throw new UnauthorizedException("登录已失效，请重新登录");
+  }
 }

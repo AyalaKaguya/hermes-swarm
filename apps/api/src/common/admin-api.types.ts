@@ -1,4 +1,5 @@
 import type {
+  IntegrationTokenScope,
   OrganizationStatus,
   SettingValueOption,
   SettingValueType,
@@ -40,6 +41,14 @@ export type AuthSessionDeviceDto = {
   os: string;
   revokedAt: string | null;
   sessionId: string;
+};
+
+export type CreateIntegrationTokenPayload = {
+  expiresAt?: string;
+  note?: string | null;
+  organizationId?: string | null;
+  permissions?: string[];
+  scope?: IntegrationTokenScope;
 };
 
 /**

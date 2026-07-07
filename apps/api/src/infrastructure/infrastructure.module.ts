@@ -14,6 +14,7 @@ import { ConversationsModule } from "./conversations/conversations.module.js";
 import { FeatureAccessModule } from "./feature-access/feature-access.module.js";
 import { FilesModule } from "./files/files.module.js";
 import { GroupsModule } from "./groups/groups.module.js";
+import { IntegrationsModule } from "./integrations/integrations.module.js";
 import { InviteModule } from "./invite/invite.module.js";
 import { MailModule } from "./mail/mail.module.js";
 import { MembershipsModule } from "./memberships/memberships.module.js";
@@ -48,6 +49,7 @@ import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.co
     InviteModule,
     FilesModule,
     GroupsModule,
+    IntegrationsModule,
     MailModule,
     MembershipsModule,
     PlatformMembersModule,

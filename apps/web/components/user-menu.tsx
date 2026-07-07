@@ -34,7 +34,7 @@ import {
   updateUserPreferredLanguage,
   type User,
 } from "@/lib/admin-api";
-import { getStoredSession } from "@/lib/session";
+import { getAuthenticatedAdminToken } from "@/lib/authenticated-admin";
 
 export type UserMenuTicketAccess = {
   visible: boolean;
@@ -73,12 +73,12 @@ export function UserMenu({
     const normalized = normalizeLanguagePreference(nextLanguage);
     setLanguage(normalized);
 
-    const session = getStoredSession();
-    if (!session?.accessToken || !user || normalized === language) return;
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !user || normalized === language) return;
 
     setSavingLanguage(true);
     try {
-      await updateUserPreferredLanguage(session.accessToken, user.id, normalized);
+      await updateUserPreferredLanguage(token, user.id, normalized);
       await onUserUpdated?.();
     } catch (err) {
       notifications.error(
@@ -105,7 +105,7 @@ export function UserMenu({
   }
 
   async function logout() {
-    await logoutAuthSession(getStoredSession()?.accessToken);
+    await logoutAuthSession(await getAuthenticatedAdminToken());
     router.replace("/login");
   }
 

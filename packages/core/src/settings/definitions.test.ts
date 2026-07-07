@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CURRENCY_OPTIONS,
+  FEATURE_SETTING_KEYS,
   FEATURE_SETTING_DEFINITIONS,
   PLATFORM_SETTING_KEYS,
   SECRET_SETTING_MASK,
@@ -57,5 +58,16 @@ describe("setting definitions", () => {
     const feature = FEATURE_SETTING_DEFINITIONS[0];
 
     assert.equal(getSettingDefinitionByKey(feature.key), feature);
+  });
+
+  it("includes organization ticket submission and handling feature definitions", () => {
+    const organizationFeatureKeys = FEATURE_SETTING_DEFINITIONS.filter(
+      (definition) => definition.scope === "organization",
+    ).map((definition) => definition.key);
+
+    assert.ok(organizationFeatureKeys.includes(FEATURE_SETTING_KEYS.ticketing));
+    assert.ok(
+      organizationFeatureKeys.includes(FEATURE_SETTING_KEYS.ticketingHandling),
+    );
   });
 });

@@ -446,6 +446,45 @@ export type AuthSessionDevice = {
   sessionId: string;
 };
 
+export type IntegrationTokenScope = "organization" | "own" | "platform";
+
+export type IntegrationTokenPermissionOption = {
+  description: string | null;
+  isDangerous: boolean;
+  label: string;
+  permission: string;
+};
+
+export type IntegrationTokenScopeCapability = {
+  organizationId: string | null;
+  organizationName: string | null;
+  permissions: IntegrationTokenPermissionOption[];
+  scope: IntegrationTokenScope;
+};
+
+export type IntegrationTokenCapabilities = {
+  scopes: IntegrationTokenScopeCapability[];
+};
+
+export type IntegrationToken = {
+  createdAt: string;
+  expiresAt: string;
+  id: string;
+  isExpired: boolean;
+  lastUsedAt: string | null;
+  note: string | null;
+  organizationId: string | null;
+  permissions: string[];
+  revokedAt: string | null;
+  scope: IntegrationTokenScope;
+  tokenPrefix: string;
+  updatedAt: string;
+};
+
+export type CreatedIntegrationToken = IntegrationToken & {
+  token: string;
+};
+
 export type OnboardingPayload = {
   adminEmail: string;
   adminName: string;
@@ -799,6 +838,48 @@ export function revokeOtherAuthSessions(token: string) {
     method: "DELETE",
     token,
   });
+}
+
+export function getIntegrationTokenCapabilities(token: string, userId: string) {
+  return fetchAdmin<IntegrationTokenCapabilities>(
+    `/users/${userId}/integration-tokens/capabilities`,
+    { token },
+  );
+}
+
+export function listIntegrationTokens(token: string, userId: string) {
+  return fetchAdmin<IntegrationToken[]>(
+    `/users/${userId}/integration-tokens`,
+    { token },
+  );
+}
+
+export function createIntegrationToken(
+  token: string,
+  userId: string,
+  payload: {
+    expiresAt?: string;
+    note?: string | null;
+    organizationId?: string | null;
+    permissions: string[];
+    scope: IntegrationTokenScope;
+  },
+) {
+  return fetchAdmin<CreatedIntegrationToken>(
+    `/users/${userId}/integration-tokens`,
+    { body: payload, method: "POST", token },
+  );
+}
+
+export function revokeIntegrationToken(
+  token: string,
+  userId: string,
+  integrationTokenId: string,
+) {
+  return fetchAdmin<void>(
+    `/users/${userId}/integration-tokens/${integrationTokenId}`,
+    { method: "DELETE", token },
+  );
 }
 
 export function getOrganizationInvites(token: string, organizationId: string) {

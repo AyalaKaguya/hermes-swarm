@@ -60,17 +60,25 @@ describe("page access definitions", () => {
 
   it("finds the first page definition for a route", () => {
     assert.equal(
-      findPageAccessDefinitionByPath("/settings/organizations/org-123")?.key,
+      findPageAccessDefinitionByPath("/settings/organization")?.key,
       "settings.organization",
+    );
+    assert.equal(
+      findPageAccessDefinitionByPath("/settings/organizations")?.key,
+      "settings.organizations",
+    );
+    assert.equal(
+      findPageAccessDefinitionByPath("/settings/organizations/org-123")?.key,
+      "settings.organizations",
     );
   });
 
-  it("returns every matching page definition for overlapping route patterns", () => {
+  it("keeps platform organization detail routes single-owned", () => {
     assert.deepEqual(
       findPageAccessDefinitionsByPath("/settings/organizations/org-123").map(
         (definition) => definition.key,
       ),
-      ["settings.organization", "settings.organizations"],
+      ["settings.organizations"],
     );
   });
 });

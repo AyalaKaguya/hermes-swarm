@@ -60,6 +60,19 @@ export const PAGE_ACCESS_DEFINITIONS = [
   }),
   definePageAccess({
     defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "允许访问当前账号的集成 Token 管理页面。",
+    href: "/settings/integrations",
+    icon: "plug",
+    key: "settings.integrations",
+    label: "集成",
+    order: 30,
+    routePatterns: ["/settings/integrations"],
+    scope: "own",
+    section: "personal",
+    sectionLabel: "个人",
+  }),
+  definePageAccess({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
     description: "允许访问当前组织的基础资料页面。",
     href: "/settings/organization",
     icon: "building",
@@ -69,7 +82,6 @@ export const PAGE_ACCESS_DEFINITIONS = [
     routePatterns: [
       "/settings/organization",
       "/settings/organization-controls",
-      "/settings/organizations/:organizationId",
     ],
     scope: "organization",
     section: "organization",

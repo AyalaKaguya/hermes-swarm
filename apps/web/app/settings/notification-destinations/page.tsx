@@ -32,8 +32,11 @@ import {
   type NotificationDestination,
   type NotificationDestinationType,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { getStoredSession } from "@/lib/session";
 
 export default function NotificationDestinationsPage() {
   const tr = useTextTranslation();
@@ -41,7 +44,6 @@ export default function NotificationDestinationsPage() {
   const organizationId = snapshot?.organization?.id ?? null;
   const [items, setItems] = useState<NotificationDestination[]>([]);
   const [types, setTypes] = useState<NotificationDestinationType[]>([]);
-  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -51,16 +53,15 @@ export default function NotificationDestinationsPage() {
   );
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId) {
       setLoading(false);
       return;
     }
-    setToken(session.accessToken);
     try {
       const [destinationTypes, destinations] = await Promise.all([
-        listNotificationDestinationTypes(session.accessToken, organizationId),
-        listNotificationDestinations(session.accessToken, organizationId),
+        listNotificationDestinationTypes(token, organizationId),
+        listNotificationDestinations(token, organizationId),
       ]);
       setTypes(destinationTypes);
       setItems(destinations);
@@ -108,7 +109,6 @@ export default function NotificationDestinationsPage() {
               setOpen(false);
               await load();
             }}
-            token={token}
             types={types}
           />
         </Dialog>
@@ -155,7 +155,6 @@ export default function NotificationDestinationsPage() {
                         setEditing(null);
                         await load();
                       }}
-                      token={token}
                       types={types}
                     />
                   </Dialog>
@@ -184,7 +183,11 @@ export default function NotificationDestinationsPage() {
         onConfirm={async () => {
           if (!deleting) return;
           if (!organizationId) return;
-          await deleteNotificationDestination(token, organizationId, deleting.id);
+          await deleteNotificationDestination(
+            await requireAuthenticatedAdminToken(),
+            organizationId,
+            deleting.id,
+          );
           setDeleting(null);
           await load();
         }}
@@ -200,13 +203,11 @@ function DestinationForm({
   item,
   organizationId,
   onSaved,
-  token,
   types,
 }: {
   item?: NotificationDestination;
   organizationId: string | null;
   onSaved: () => Promise<void>;
-  token: string;
   types: NotificationDestinationType[];
 }) {
   const tr = useTextTranslation();
@@ -243,6 +244,7 @@ function DestinationForm({
       );
       const payload = { name: name.trim(), options: compactOptions, type };
       if (!organizationId) return;
+      const token = await requireAuthenticatedAdminToken();
       if (item) {
         await updateNotificationDestination(token, organizationId, item.id, payload);
       } else {

@@ -38,9 +38,12 @@ import {
   type Organization,
   type OrganizationPayload,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
-import { getStoredSession } from "@/lib/session";
 
 export default function OrganizationsPage() {
   const tr = useTextTranslation();
@@ -71,13 +74,13 @@ export default function OrganizationsPage() {
   const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !canViewPlatformOrganizations) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !canViewPlatformOrganizations) {
       setLoading(false);
       return;
     }
     try {
-      setItems(await listOrganizations(session.accessToken));
+      setItems(await listOrganizations(token));
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
@@ -101,19 +104,19 @@ export default function OrganizationsPage() {
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const session = getStoredSession();
-    if (!session?.accessToken || !canManage) return;
+    if (!canManage) return;
 
     setCreating(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       const payload: OrganizationPayload = {
         name: createForm.name,
         slug: createForm.slug.trim() || undefined,
         subdomain: createForm.subdomain.trim() || null,
         status: "active",
       };
-      const created = await createOrganization(session.accessToken, payload);
+      const created = await createOrganization(token, payload);
       setItems((current) => [...current, created]);
       setCreateForm({ name: "", slug: "", subdomain: "" });
       setCreateOpen(false);

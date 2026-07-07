@@ -78,6 +78,15 @@ export type FeatureSettingDefinition = {
   valueType: "boolean";
 };
 
+export const FEATURE_SETTING_KEYS = {
+  email: "feature:email:enabled",
+  invite: "feature:invite:enabled",
+  organizationManagement: "feature:org-management:enabled",
+  passwordReset: "feature:password-reset:enabled",
+  ticketing: "feature:ticketing:enabled",
+  ticketingHandling: "feature:ticketing:handling:enabled",
+} as const;
+
 export const PLATFORM_TITLE_SETTING_KEY = "platform.title";
 
 export const PLATFORM_SETTING_KEYS = {
@@ -287,35 +296,43 @@ export const PLATFORM_SETTING_DEFINITIONS = {
 export const FEATURE_SETTING_DEFINITIONS = [
   {
     defaultValue: "true",
-    key: "feature:ticketing:enabled",
-    label: "工单功能",
+    key: FEATURE_SETTING_KEYS.ticketing,
+    label: "组织工单提交",
     description: "允许当前组织成员提交组织工单",
     scope: "organization",
     valueType: "boolean",
   },
   {
-    key: "feature:email:enabled",
+    defaultValue: "true",
+    key: FEATURE_SETTING_KEYS.ticketingHandling,
+    label: "组织工单处理",
+    description: "允许有处理权限的成员接收、回复并关闭组织工单",
+    scope: "organization",
+    valueType: "boolean",
+  },
+  {
+    key: FEATURE_SETTING_KEYS.email,
     label: "邮件功能",
     description: "启用或禁用组织邮件发送能力",
     scope: "organization",
     valueType: "boolean",
   },
   {
-    key: "feature:invite:enabled",
+    key: FEATURE_SETTING_KEYS.invite,
     label: "邀请功能",
     description: "允许通过邮件邀请新用户加入组织",
     scope: "organization",
     valueType: "boolean",
   },
   {
-    key: "feature:password-reset:enabled",
+    key: FEATURE_SETTING_KEYS.passwordReset,
     label: "密码重置",
     description: "允许用户通过邮件重置密码",
     scope: "organization",
     valueType: "boolean",
   },
   {
-    key: "feature:org-management:enabled",
+    key: FEATURE_SETTING_KEYS.organizationManagement,
     label: "组织管理",
     description: "启用组织级别的管理功能",
     scope: "system",

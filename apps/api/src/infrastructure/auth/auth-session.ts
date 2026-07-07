@@ -3,6 +3,7 @@ import type { AuthSessionTokenPayload } from "../../common/admin-api.types.js";
 
 const TOKEN_VERSION = "v1";
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12;
+export const INTEGRATION_SESSION_PREFIX = "integration:";
 
 export function createAuthSessionToken(
   payload: Omit<AuthSessionTokenPayload, "exp">,

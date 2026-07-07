@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
+  FEATURE_SETTING_KEYS,
   PlatformMember,
   PLATFORM_SETTING_KEYS,
   RolePermission,
@@ -31,7 +32,9 @@ import { TicketConversationAccessResolver } from "./ticket-conversation-access.r
 
 const TICKET_SOURCE_TYPE = "ticket";
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-const ORGANIZATION_TICKETING_FEATURE_KEY = "feature:ticketing:enabled";
+const ORGANIZATION_TICKETING_FEATURE_KEY = FEATURE_SETTING_KEYS.ticketing;
+const ORGANIZATION_TICKET_HANDLING_FEATURE_KEY =
+  FEATURE_SETTING_KEYS.ticketingHandling;
 const ORGANIZATION_TICKET_HANDLE_PERMISSION =
   "ticket.conversation.handle:organization";
 const PLATFORM_TICKET_HANDLE_PERMISSION =
@@ -509,6 +512,9 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async canHandleOrganizationTickets(userId: string, organizationId: string) {
+    if (!(await this.isOrganizationTicketHandlingEnabled(organizationId))) {
+      return false;
+    }
     const membership = await this.membershipRepository.findOne({
       where: { organizationId, status: "active", userId },
     });
@@ -518,6 +524,15 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
           ORGANIZATION_TICKET_HANDLE_PERMISSION,
         )
       : false;
+  }
+
+  private async isOrganizationTicketHandlingEnabled(organizationId: string) {
+    const value = await this.settingsService.getOrganizationValue(
+      organizationId,
+      ORGANIZATION_TICKET_HANDLING_FEATURE_KEY,
+      "true",
+    );
+    return value !== "false";
   }
 
   private async isOrganizationOwner(userId: string, organizationId: string) {

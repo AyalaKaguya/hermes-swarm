@@ -1,5 +1,9 @@
 export { BaseEntity } from "./base.entity.js";
 export { EmailVerification } from "./email-verification.entity.js";
+export {
+  IntegrationToken,
+  type IntegrationTokenScope,
+} from "./integration-token.entity.js";
 export { Invite, type InviteStatus } from "./invite.entity.js";
 export {
   Organization,

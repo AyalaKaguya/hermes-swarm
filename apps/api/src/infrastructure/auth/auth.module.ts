@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  IntegrationToken,
   OrganizationGroupMember,
   PlatformMember,
   RolePermission,
@@ -17,6 +18,7 @@ import { SettingsModule } from "../settings/settings.module.js";
     SettingsModule,
     TypeOrmModule.forFeature([
       OrganizationGroupMember,
+      IntegrationToken,
       PlatformMember,
       RolePermission,
       User,

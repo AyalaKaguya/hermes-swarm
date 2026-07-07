@@ -3,6 +3,7 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { ILike, Repository } from "typeorm";
@@ -14,7 +15,7 @@ import type {
   UpdateUserPasswordPayload,
   UpdateUserPayload,
 } from "../../common/admin-api.types.js";
-import { parseAuthSessionToken } from "../auth/auth-session.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 import {
   hashPassword,
   verifyPassword,
@@ -29,13 +30,14 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   /**
    * Lists users in the active organization after checking user view permission.
    */
   async list(authorization: string | undefined) {
-    this.requireSessionUserId(authorization);
+    await this.requireSessionUserId(authorization);
     const users = await this.userRepository.find({
       order: { createdAt: "DESC" },
     });
@@ -46,7 +48,7 @@ export class UsersService {
    * Searches organization users by profile, email, username, or mobile fields.
    */
   async search(authorization: string | undefined, query: SearchUsersQuery) {
-    this.requireSessionUserId(authorization);
+    await this.requireSessionUserId(authorization);
     const search = normalizeOptionalText(query.search);
     if (!search) return this.list(authorization);
 
@@ -72,7 +74,7 @@ export class UsersService {
     authorization: string | undefined,
     payload: CreateUserPayload,
   ) {
-    this.requireSessionUserId(authorization);
+    await this.requireSessionUserId(authorization);
     const email = normalizeEmail(payload.email);
     await this.assertUniqueEmail(email);
 
@@ -108,7 +110,7 @@ export class UsersService {
     userId: string,
     payload: UpdateUserPayload,
   ) {
-    const currentUserId = this.requireSessionUserId(authorization);
+    const currentUserId = await this.requireSessionUserId(authorization);
     if (currentUserId !== userId) {
       throw new ForbiddenException("只能更新自己的账号信息");
     }
@@ -124,7 +126,7 @@ export class UsersService {
     userId: string,
     payload: UpdateUserPayload,
   ) {
-    this.requireSessionUserId(authorization);
+    await this.requireSessionUserId(authorization);
     const user = await this.getUserOrThrow(userId);
     return this.applyUserPatch(user, payload);
   }
@@ -133,7 +135,7 @@ export class UsersService {
    * Deletes a global user from platform administration.
    */
   async deleteManaged(authorization: string | undefined, userId: string) {
-    this.requireSessionUserId(authorization);
+    await this.requireSessionUserId(authorization);
     const user = await this.getUserOrThrow(userId);
     await this.userRepository.softDelete({ id: user.id });
   }
@@ -146,7 +148,7 @@ export class UsersService {
     userId: string,
     payload: UpdateUserPasswordPayload,
   ) {
-    const currentUserId = this.requireSessionUserId(authorization);
+    const currentUserId = await this.requireSessionUserId(authorization);
     if (currentUserId !== userId) {
       throw new ForbiddenException("只能更新自己的密码");
     }
@@ -171,7 +173,7 @@ export class UsersService {
     userId: string,
     payload: UpdatePreferredLanguagePayload,
   ) {
-    const currentUserId = this.requireSessionUserId(authorization);
+    const currentUserId = await this.requireSessionUserId(authorization);
     if (currentUserId !== userId) {
       throw new ForbiddenException("只能更新自己的语言偏好");
     }
@@ -221,11 +223,14 @@ export class UsersService {
     return toUserDto(await this.userRepository.save(user));
   }
 
-  private requireSessionUserId(authorization: string | undefined) {
+  private async requireSessionUserId(authorization: string | undefined) {
     const token = authorization?.replace(/^Bearer\s+/i, "").trim();
-    const session = parseAuthSessionToken(token);
-    if (!session) throw new BadRequestException("登录已失效，请重新登录");
-    return session.userId;
+    try {
+      const session = await this.authSessionService.validateAccessToken(token);
+      return session.userId;
+    } catch {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
   }
 
   private async getUserOrThrow(userId: string) {

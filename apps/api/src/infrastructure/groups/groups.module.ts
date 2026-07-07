@@ -6,11 +6,13 @@ import {
   OrganizationGroupMember,
   UserOrganization,
 } from "@hermes-swarm/core";
+import { AuthModule } from "../auth/auth.module.js";
 import { GroupsController } from "./groups.controller.js";
 import { GroupsService } from "./groups.service.js";
 
 @Module({
   imports: [
+    AuthModule,
     TypeOrmModule.forFeature([
       Organization,
       OrganizationGroup,

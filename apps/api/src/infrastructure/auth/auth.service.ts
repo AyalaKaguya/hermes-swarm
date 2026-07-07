@@ -94,7 +94,7 @@ export class AuthService {
   }
 
   async logout(authorization: string | undefined, response: any) {
-    const session = await this.validateAuthorization(authorization);
+    const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.revokeSession(
       session.sessionId,
       session.userId,
@@ -107,7 +107,7 @@ export class AuthService {
   }
 
   async listSessions(authorization: string | undefined) {
-    const session = await this.validateAuthorization(authorization);
+    const session = await this.validateInteractiveAuthorization(authorization);
     return this.authSessionService.listSessions(
       session.userId,
       session.sessionId,
@@ -115,7 +115,7 @@ export class AuthService {
   }
 
   async revokeSession(authorization: string | undefined, sessionId: string) {
-    const session = await this.validateAuthorization(authorization);
+    const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.revokeSession(sessionId, session.userId);
   }
 
@@ -123,7 +123,7 @@ export class AuthService {
     authorization: string | undefined,
     sessionId: string,
   ) {
-    const session = await this.validateAuthorization(authorization);
+    const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.deleteSessionRecord(
       sessionId,
       session.userId,
@@ -132,7 +132,7 @@ export class AuthService {
   }
 
   async revokeOtherSessions(authorization: string | undefined) {
-    const session = await this.validateAuthorization(authorization);
+    const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.revokeOtherSessions(
       session.userId,
       session.sessionId,
@@ -164,6 +164,14 @@ export class AuthService {
     return this.authSessionService.validateAccessToken(
       extractBearerToken(authorization),
     );
+  }
+
+  async validateInteractiveAuthorization(authorization: string | undefined) {
+    const session = await this.validateAuthorization(authorization);
+    if (session.tokenKind === "integration") {
+      throw new UnauthorizedException("集成 Token 不能管理登录会话");
+    }
+    return session;
   }
 
   private async getUserFromAuthorization(authorization: string | undefined) {

@@ -7,9 +7,9 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { PermissionTree } from "@/components/permission-tree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,8 +36,12 @@ import {
   type RolePermission,
   type RolePayload,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { getStoredSession } from "@/lib/session";
+import { usePermission } from "@/hooks/use-permission";
 import { cn } from "@/lib/utils";
 
 type RoleDialogState =
@@ -58,19 +62,19 @@ type RoleForm = {
 };
 
 export default function RolesPage() {
-  const t = useTranslations();
   const tr = useTextTranslation();
   const { snapshot } = useAdminShell();
+  const access = usePermission();
   const organizationId = snapshot?.organization?.id ?? null;
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<RolePermission[]>([]);
   const [catalog, setCatalog] = useState<PermissionCatalog | null>(null);
-  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState(false);
+  const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
   const [roleDialog, setRoleDialog] = useState<RoleDialogState | null>(null);
   const [roleForm, setRoleForm] = useState<RoleForm>(emptyRoleForm());
   const [localPerms, setLocalPerms] = useState<
@@ -78,17 +82,16 @@ export default function RolesPage() {
   >({});
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId) {
       setLoading(false);
       return;
     }
-    setToken(session.accessToken);
     try {
       const [roleItems, organizationCatalog, ownCatalog] = await Promise.all([
-        listOrganizationRoles(session.accessToken, organizationId),
-        listPermissionCatalog(session.accessToken, "organization"),
-        listPermissionCatalog(session.accessToken, "own"),
+        listOrganizationRoles(token, organizationId),
+        listPermissionCatalog(token, "organization"),
+        listPermissionCatalog(token, "own"),
       ]);
       setRoles(roleItems);
       setCatalog(mergeCatalogs(organizationCatalog, ownCatalog));
@@ -113,6 +116,18 @@ export default function RolesPage() {
 
   const selectedRole =
     roles.find((role) => role.id === selectedRoleId) ?? roles[0] ?? null;
+  const canCreateRole = access.hasPermission(
+    "role.organization_role.create:organization",
+  );
+  const canUpdateRole = access.hasPermission(
+    "role.organization_role.update_basic:organization",
+  );
+  const canReplaceRolePermissions = access.hasPermission(
+    "role.organization_role.replace_permissions:organization",
+  );
+  const canDeleteRole = access.hasPermission(
+    "role.organization_role.delete:organization",
+  );
 
   function persistedPermission(roleId: string, key: string) {
     return permissions.some(
@@ -145,6 +160,9 @@ export default function RolesPage() {
   }
 
   function togglePerm(roleId: string, key: string, enabledValue?: boolean) {
+    const role = roles.find((item) => item.id === roleId);
+    if (!canReplaceRolePermissions || role?.isSystem) return;
+
     setLocalPerms((prev) => {
       const next = { ...prev };
       const roleChanges = { ...(next[roleId] ?? {}) };
@@ -165,9 +183,11 @@ export default function RolesPage() {
   }
 
   async function savePermissions(roleId: string) {
-    if (!organizationId) return;
+    const role = roles.find((item) => item.id === roleId);
+    if (!organizationId || !canReplaceRolePermissions || role?.isSystem) return;
     setSaving(roleId);
     try {
+      const token = await requireAuthenticatedAdminToken();
       await replaceOrganizationRolePermissions(
         token,
         organizationId,
@@ -200,14 +220,20 @@ export default function RolesPage() {
   async function submitRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!organizationId || !roleDialog) return;
+    if (roleDialog.mode === "create" && !canCreateRole) return;
+    if (roleDialog.mode === "edit" && !canUpdateRole) return;
     setSavingRole(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       const payload: RolePayload = {
         color: nullableText(roleForm.color),
         description: nullableText(roleForm.description),
         displayName: roleForm.displayName.trim(),
-        name: roleForm.name.trim() || undefined,
+        name:
+          roleDialog.mode === "edit" && roleDialog.role.isSystem
+            ? undefined
+            : roleForm.name.trim() || undefined,
       };
 
       const saved =
@@ -230,20 +256,17 @@ export default function RolesPage() {
     }
   }
 
-  async function removeRole(role: Role) {
-    if (!organizationId || role.isSystem) return;
-    const confirmed = window.confirm(
-      t("dialogs.deleteRoleConfirm", {
-        name: role.displayName ?? role.label,
-      }),
-    );
-    if (!confirmed) return;
+  async function removeRole() {
+    const role = roleToDelete;
+    if (!organizationId || !role || role.isSystem || !canDeleteRole) return;
 
     setSavingRole(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       await deleteOrganizationRole(token, organizationId, role.id);
       setSelectedRoleId(null);
+      setRoleToDelete(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("删除失败"));
@@ -260,7 +283,7 @@ export default function RolesPage() {
     );
   }
 
-  if (error) {
+  if (error && roles.length === 0) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
@@ -275,6 +298,7 @@ export default function RolesPage() {
       <div className="flex min-w-0 items-center justify-between gap-3">
         <h1 className="truncate text-lg font-semibold">{tr("角色与权限")}</h1>
         <Button
+          disabled={!canCreateRole || savingRole}
           onClick={() => openRoleDialog({ mode: "create" })}
           size="sm"
           type="button"
@@ -283,6 +307,12 @@ export default function RolesPage() {
           {tr("新建角色")}
         </Button>
       </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-3 xl:grid-cols-[minmax(220px,280px)_1fr]">
         <Card className="min-w-0 self-start overflow-hidden shadow-none">
@@ -363,6 +393,8 @@ export default function RolesPage() {
                   <div className="flex flex-wrap items-center justify-end gap-2 md:ml-auto">
                     <Button
                       disabled={
+                        !canReplaceRolePermissions ||
+                        selectedRole.isSystem ||
                         saving === selectedRole.id ||
                         !hasLocalChanges(selectedRole.id)
                       }
@@ -373,7 +405,7 @@ export default function RolesPage() {
                       {tr("保存")}
                     </Button>
                     <Button
-                      disabled={savingRole}
+                      disabled={!canUpdateRole || savingRole}
                       onClick={() =>
                         openRoleDialog({ mode: "edit", role: selectedRole })
                       }
@@ -384,8 +416,10 @@ export default function RolesPage() {
                       {tr("编辑")}
                     </Button>
                     <Button
-                      disabled={savingRole || selectedRole.isSystem}
-                      onClick={() => void removeRole(selectedRole)}
+                      disabled={
+                        !canDeleteRole || savingRole || selectedRole.isSystem
+                      }
+                      onClick={() => setRoleToDelete(selectedRole)}
                       size="sm"
                       type="button"
                       variant="ghost"
@@ -398,7 +432,11 @@ export default function RolesPage() {
               <CardContent className="p-0">
                 <PermissionTree
                   catalog={catalog}
-                  disabled={saving === selectedRole.id}
+                  disabled={
+                    !canReplaceRolePermissions ||
+                    selectedRole.isSystem ||
+                    saving === selectedRole.id
+                  }
                   isChecked={(permission) =>
                     isChecked(selectedRole.id, permission)
                   }
@@ -432,6 +470,7 @@ export default function RolesPage() {
             <div className="grid gap-2">
               <Label htmlFor="role-display-name">{tr("显示名称")}</Label>
               <Input
+                disabled={savingRole}
                 id="role-display-name"
                 onChange={(event) =>
                   setRoleForm((current) => ({
@@ -446,6 +485,10 @@ export default function RolesPage() {
             <div className="grid gap-2">
               <Label htmlFor="role-name">{tr("标识")}</Label>
               <Input
+                disabled={
+                  savingRole ||
+                  (roleDialog?.mode === "edit" && roleDialog.role.isSystem)
+                }
                 id="role-name"
                 onChange={(event) =>
                   setRoleForm((current) => ({
@@ -462,6 +505,7 @@ export default function RolesPage() {
               <div className="flex items-center gap-2">
                 <Input
                   className="h-9 w-14 p-1"
+                  disabled={savingRole}
                   id="role-color"
                   onChange={(event) =>
                     setRoleForm((current) => ({
@@ -473,6 +517,7 @@ export default function RolesPage() {
                   value={roleForm.color || "#64748b"}
                 />
                 <Input
+                  disabled={savingRole}
                   onChange={(event) =>
                     setRoleForm((current) => ({
                       ...current,
@@ -487,6 +532,7 @@ export default function RolesPage() {
             <div className="grid gap-2">
               <Label htmlFor="role-description">{tr("描述")}</Label>
               <Textarea
+                disabled={savingRole}
                 id="role-description"
                 onChange={(event) =>
                   setRoleForm((current) => ({
@@ -507,13 +553,32 @@ export default function RolesPage() {
               >
                 {tr("取消")}
               </Button>
-              <Button disabled={savingRole || !roleForm.displayName.trim()}>
+              <Button
+                disabled={
+                  savingRole ||
+                  !roleForm.displayName.trim() ||
+                  (roleDialog?.mode === "create" && !canCreateRole) ||
+                  (roleDialog?.mode === "edit" && !canUpdateRole)
+                }
+              >
                 {tr("保存")}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        confirmLabel="删除"
+        description="此操作会删除该角色，已分配此角色的成员可能受到影响。"
+        onConfirm={() => void removeRole()}
+        onOpenChange={(open) => {
+          if (!open && !savingRole) setRoleToDelete(null);
+        }}
+        open={Boolean(roleToDelete)}
+        pending={savingRole}
+        title="删除角色？"
+      />
     </div>
   );
 }

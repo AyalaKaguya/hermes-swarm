@@ -174,7 +174,7 @@ export class InfrastructureBootstrapController {
       where:
         role.scope === "organization"
           ? [{ scope: "organization" }, { scope: "own" }]
-          : { scope: role.scope as Permission["scope"] },
+          : undefined,
     });
     const permissions = records.filter((permission) =>
       permission.defaultRoles?.includes(role.name),

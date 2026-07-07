@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useLocale } from "next-intl";
 import { useNotifications } from "@/components/app-notifications";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Button } from "@/components/ui/button";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
@@ -24,26 +25,41 @@ import {
   revokeOtherAuthSessions,
   type AuthSessionDevice,
 } from "@/lib/admin-api";
-import { getStoredSession } from "@/lib/session";
+import {
+  getAuthenticatedAdminToken,
+  withAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
+
+type PendingSessionAction =
+  | {
+      device: AuthSessionDevice;
+      type: "delete" | "revoke";
+    }
+  | {
+      type: "revoke-others";
+    };
 
 export default function SessionsPage() {
   const notifications = useNotifications();
   const tr = useTextTranslation();
+  const locale = useLocale();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] =
+    useState<PendingSessionAction | null>(null);
   const [sessions, setSessions] = useState<AuthSessionDevice[]>([]);
 
   const loadSessions = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      setSessions(await listAuthSessions(session.accessToken));
+      setSessions(await listAuthSessions(token));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("登录设备加载失败"));
@@ -57,14 +73,14 @@ export default function SessionsPage() {
   }, [loadSessions]);
 
   async function revokeSession(sessionId: string) {
-    const session = getStoredSession();
-    if (!session?.accessToken) return;
-
     setBusySessionId(sessionId);
     setError(null);
     try {
-      await revokeAuthSession(session.accessToken, sessionId);
+      await withAuthenticatedAdminToken((token) =>
+        revokeAuthSession(token, sessionId),
+      );
       notifications.success(tr("设备已登出"));
+      setPendingAction(null);
       await loadSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("登出失败"));
@@ -74,14 +90,14 @@ export default function SessionsPage() {
   }
 
   async function revokeOtherSessions() {
-    const session = getStoredSession();
-    if (!session?.accessToken) return;
-
     setBusySessionId("others");
     setError(null);
     try {
-      await revokeOtherAuthSessions(session.accessToken);
+      await withAuthenticatedAdminToken((token) =>
+        revokeOtherAuthSessions(token),
+      );
       notifications.success(tr("其他设备已登出"));
+      setPendingAction(null);
       await loadSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("登出失败"));
@@ -91,14 +107,14 @@ export default function SessionsPage() {
   }
 
   async function deleteSessionRecord(sessionId: string) {
-    const session = getStoredSession();
-    if (!session?.accessToken) return;
-
     setBusySessionId(sessionId);
     setError(null);
     try {
-      await deleteAuthSessionRecord(session.accessToken, sessionId);
+      await withAuthenticatedAdminToken((token) =>
+        deleteAuthSessionRecord(token, sessionId),
+      );
       notifications.success(tr("设备记录已删除"));
+      setPendingAction(null);
       await loadSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("删除失败"));
@@ -112,6 +128,20 @@ export default function SessionsPage() {
   );
   const inactiveSessions = sessions.filter(
     (item) => Boolean(item.revokedAt) || item.isExpired,
+  );
+  const canRevokeOtherSessions = sessions.some(
+    (item) => !item.isCurrent && !item.revokedAt && !item.isExpired,
+  );
+  const revokeOtherDisabledReason =
+    loading || busySessionId === "others"
+      ? tr("正在处理")
+      : canRevokeOtherSessions
+        ? undefined
+        : tr("没有其他可登出的设备");
+  const dialogContent = getPendingActionDialogContent(
+    pendingAction,
+    locale,
+    tr,
   );
 
   return (
@@ -134,14 +164,10 @@ export default function SessionsPage() {
             </CardDescription>
           </div>
           <Button
-            disabled={
-              loading ||
-              busySessionId === "others" ||
-              sessions.every(
-                (item) => item.isCurrent || item.revokedAt || item.isExpired,
-              )
-            }
-            onClick={revokeOtherSessions}
+            aria-label={tr("登出其他设备")}
+            disabled={Boolean(revokeOtherDisabledReason)}
+            onClick={() => setPendingAction({ type: "revoke-others" })}
+            title={revokeOtherDisabledReason}
             type="button"
             variant="outline"
           >
@@ -168,8 +194,12 @@ export default function SessionsPage() {
                   <SessionDeviceRow
                     device={item}
                     key={item.sessionId}
-                    onDeleteRecord={() => deleteSessionRecord(item.sessionId)}
-                    onRevoke={() => revokeSession(item.sessionId)}
+                    onDeleteRecord={() =>
+                      setPendingAction({ device: item, type: "delete" })
+                    }
+                    onRevoke={() =>
+                      setPendingAction({ device: item, type: "revoke" })
+                    }
                     working={busySessionId === item.sessionId}
                   />
                 )}
@@ -187,8 +217,12 @@ export default function SessionsPage() {
                   <SessionDeviceRow
                     device={item}
                     key={item.sessionId}
-                    onDeleteRecord={() => deleteSessionRecord(item.sessionId)}
-                    onRevoke={() => revokeSession(item.sessionId)}
+                    onDeleteRecord={() =>
+                      setPendingAction({ device: item, type: "delete" })
+                    }
+                    onRevoke={() =>
+                      setPendingAction({ device: item, type: "revoke" })
+                    }
                     working={busySessionId === item.sessionId}
                   />
                 )}
@@ -197,6 +231,31 @@ export default function SessionsPage() {
           )}
         </CardContent>
       </Card>
+
+      {dialogContent && (
+        <ConfirmActionDialog
+          confirmLabel={dialogContent.confirmLabel}
+          description={dialogContent.description}
+          onConfirm={() => {
+            if (!pendingAction || busySessionId) return;
+            if (pendingAction.type === "revoke-others") {
+              void revokeOtherSessions();
+              return;
+            }
+            if (pendingAction.type === "delete") {
+              void deleteSessionRecord(pendingAction.device.sessionId);
+              return;
+            }
+            void revokeSession(pendingAction.device.sessionId);
+          }}
+          onOpenChange={(open) => {
+            if (!open && !busySessionId) setPendingAction(null);
+          }}
+          open={Boolean(pendingAction)}
+          pending={Boolean(busySessionId)}
+          title={dialogContent.title}
+        />
+      )}
     </div>
   );
 }
@@ -249,6 +308,8 @@ function SessionDeviceRow({
   const status = getSessionStatus(device);
   const statusLabel = tr(status.label);
   const historical = Boolean(device.revokedAt || device.isExpired);
+  const deviceName = device.deviceLabel || tr("未知设备");
+  const workingLabel = working ? tr("正在处理此设备") : undefined;
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="grid min-w-0 flex-1 gap-1">
@@ -290,9 +351,11 @@ function SessionDeviceRow({
               {statusLabel}
             </span>
             <Button
+              aria-label={`${tr("删除")} ${deviceName}`}
               disabled={working}
               onClick={onDeleteRecord}
               size="sm"
+              title={workingLabel ?? `${tr("删除")} ${deviceName}`}
               type="button"
               variant="outline"
             >
@@ -301,18 +364,68 @@ function SessionDeviceRow({
           </>
         ) : (
           <Button
+            aria-label={`${tr("登出")} ${deviceName}`}
             disabled={working}
             onClick={onRevoke}
             size="sm"
+            title={workingLabel ?? `${tr("登出")} ${deviceName}`}
             type="button"
-          variant="outline"
-        >
-          {tr("登出")}
-        </Button>
+            variant="outline"
+          >
+            {tr("登出")}
+          </Button>
         )}
       </div>
     </div>
   );
+}
+
+function getPendingActionDialogContent(
+  action: PendingSessionAction | null,
+  locale: string,
+  tr: (value: string | null | undefined) => string,
+) {
+  if (!action) return null;
+
+  if (action.type === "revoke-others") {
+    return {
+      confirmLabel: "登出",
+      description: "此操作会使除当前设备以外的所有活跃设备退出当前账号。",
+      title: "登出其他设备？",
+    };
+  }
+
+  if (action.type === "delete") {
+    const device = formatSessionDeviceSummary(action.device, locale, tr);
+    return {
+      confirmLabel: "删除",
+      description: `${tr("设备")}：${device}。${tr(
+        "此操作只会删除历史登录记录，不会影响当前账号。",
+      )}`,
+      title: "删除此设备记录？",
+    };
+  }
+
+  const device = formatSessionDeviceSummary(action.device, locale, tr);
+  return {
+    confirmLabel: "登出",
+    description: `${tr("设备")}：${device}。${tr(
+      "此操作会使该设备立即退出当前账号。",
+    )}`,
+    title: "登出此设备？",
+  };
+}
+
+function formatSessionDeviceSummary(
+  device: AuthSessionDevice,
+  locale: string,
+  tr: (value: string | null | undefined) => string,
+) {
+  return [
+    device.deviceLabel || tr("未知设备"),
+    device.ipAddress || tr("未知 IP"),
+    `${tr("最近活跃")} ${formatDateTime(device.lastSeenAt, locale)}`,
+  ].join(" / ");
 }
 
 function SessionMeta({ label, value }: { label: string; value: string }) {

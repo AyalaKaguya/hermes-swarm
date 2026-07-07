@@ -12,6 +12,7 @@ import { useSearchParams } from "next/navigation";
 import { useAdminShell } from "@/components/admin-shell";
 import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { PlatformMemberManagement } from "@/components/platform-member-management";
 import { PlatformRolePermissions } from "@/components/platform-role-permissions";
 import { Badge } from "@/components/ui/badge";
@@ -65,9 +66,12 @@ import {
   type SmtpConfig,
   type SystemSettingDto,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
-import { getStoredSession } from "@/lib/session";
 
 type PlatformForm = {
   allowOrganizationCreation: boolean;
@@ -115,6 +119,8 @@ export default function PlatformPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [form, setForm] = useState<PlatformForm>(emptyPlatformForm());
   const [systemSettings, setSystemSettings] = useState<SystemSettingDto[]>([]);
+  const [customSystemSettingToDelete, setCustomSystemSettingToDelete] =
+    useState<CustomSettingSubmit | null>(null);
   const [savingCustomSetting, setSavingCustomSetting] = useState(false);
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
@@ -185,18 +191,22 @@ export default function PlatformPage() {
   }, [systemSettings]);
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !canViewPlatform) {
+    if (!canViewPlatform) {
       setLoading(false);
       return;
     }
 
+    const token = await getAuthenticatedAdminToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     try {
       const [settings, orgs] = await Promise.all([
-        listSystemSettings(session.accessToken),
-        canViewOrganizations
-          ? listOrganizations(session.accessToken)
-          : Promise.resolve([]),
+        listSystemSettings(token),
+        canViewOrganizations ? listOrganizations(token) : Promise.resolve([]),
       ]);
       setForm(toPlatformForm(settings, null));
       setSystemSettings(settings);
@@ -225,13 +235,13 @@ export default function PlatformPage() {
   }
 
   async function savePlatform() {
-    const session = getStoredSession();
-    if (!session?.accessToken || !canManagePlatform) return;
+    if (!canManagePlatform) return;
 
     setSavingPlatform(true);
     setError(null);
     try {
-      await saveSystemSettings(session.accessToken, {
+      const token = await requireAuthenticatedAdminToken();
+      await saveSystemSettings(token, {
         settings: [
           {
             name: PLATFORM_TITLE_SETTING_KEY,
@@ -279,13 +289,13 @@ export default function PlatformPage() {
   }
 
   async function savePublicSmtp() {
-    const session = getStoredSession();
-    if (!session?.accessToken || !canManagePlatform) return;
+    if (!canManagePlatform) return;
 
     setSavingSmtp(true);
     setError(null);
     try {
-      await saveSystemSettings(session.accessToken, {
+      const token = await requireAuthenticatedAdminToken();
+      await saveSystemSettings(token, {
         settings: [
           platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
         ],
@@ -300,15 +310,15 @@ export default function PlatformPage() {
   }
 
   async function saveCustomSystemSetting(setting: CustomSettingSubmit) {
-    const session = getStoredSession();
     const { scope: _scope, ...payload } = setting;
     const settingName = payload.name.trim();
-    if (!session?.accessToken || !canManagePlatform || !settingName) return;
+    if (!canManagePlatform || !settingName) return;
 
     setSavingCustomSetting(true);
     setError(null);
     try {
-      await saveSystemSettings(session.accessToken, {
+      const token = await requireAuthenticatedAdminToken();
+      await saveSystemSettings(token, {
         settings: [{ ...payload, name: settingName }],
       });
       notifications.success(
@@ -910,10 +920,10 @@ export default function PlatformPage() {
 
                     return (
                       <div
-                        className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,36rem)_auto] sm:items-center"
+                        className="grid gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(16rem,1fr)_minmax(8rem,24rem)_auto] sm:items-center"
                         key={setting.id}
                       >
-                        <div className="min-w-0 truncate font-mono text-xs">
+                        <div className="min-w-0 break-all font-mono text-xs">
                           {setting.name}
                         </div>
                         <div className="min-w-0 sm:justify-self-end">
@@ -921,7 +931,7 @@ export default function PlatformPage() {
                             className="justify-end"
                             disabled={!canManagePlatform || savingCustomSetting}
                             id={`platform-custom-${setting.id}`}
-                            inputClassName="h-8 w-full font-mono text-xs sm:min-w-72"
+                            inputClassName="h-8 w-full font-mono text-xs"
                             onCommit={(nextValue) => {
                               if (
                                 settingValueType === "secret" ||
@@ -952,9 +962,10 @@ export default function PlatformPage() {
                             valueType={settingValueType}
                           />
                           <Button
+                            aria-label={`${tr("删除平台设置")} ${setting.name}`}
                             disabled={!canManagePlatform || savingCustomSetting}
                             onClick={() =>
-                              void saveCustomSystemSetting({
+                              setCustomSystemSettingToDelete({
                                 name: setting.name,
                                 value: null,
                                 valueOptions: settingValueOptionsPayload,
@@ -962,6 +973,11 @@ export default function PlatformPage() {
                               })
                             }
                             size="icon"
+                            title={
+                              !canManagePlatform
+                                ? tr("当前账号无权修改平台设置")
+                                : `${tr("删除平台设置")} ${setting.name}`
+                            }
                             type="button"
                             variant="ghost"
                           >
@@ -977,6 +993,28 @@ export default function PlatformPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      <ConfirmActionDialog
+        confirmLabel="删除"
+        description={
+          customSystemSettingToDelete
+            ? `${tr("将删除平台自定义设置")} ${
+                customSystemSettingToDelete.name
+              }`
+            : ""
+        }
+        onConfirm={() => {
+          if (customSystemSettingToDelete) {
+            void saveCustomSystemSetting(customSystemSettingToDelete);
+          }
+          setCustomSystemSettingToDelete(null);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setCustomSystemSettingToDelete(null);
+        }}
+        open={Boolean(customSystemSettingToDelete)}
+        pending={savingCustomSetting}
+        title="删除平台设置"
+      />
     </section>
   );
 }

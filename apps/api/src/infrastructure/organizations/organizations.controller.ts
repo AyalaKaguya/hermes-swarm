@@ -65,7 +65,8 @@ export class OrganizationsController {
    */
   @Get("organizations/:organizationId")
   @AccessOperation({
-    description: "查看当前组织的基础资料。",
+    defaultRoles: ["owner", "admin", "member", "viewer", "platform-admin"],
+    description: "查看组织的基础资料。",
     label: "查看组织资料",
     operation: "view",
     sortOrder: 10,
@@ -103,16 +104,19 @@ export class OrganizationsController {
    */
   @Patch("organizations/:organizationId")
   @AccessOperation({
-    description: "更新当前组织的基础资料。",
+    defaultRoles: ["owner", "admin", "platform-admin"],
+    description: "更新组织的基础资料。",
     label: "更新组织资料",
     operation: "update_basic",
     sortOrder: 20,
   })
   update(
+    @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
     @Body() payload: UpdateOrganizationPayload,
   ) {
     return this.organizationsService.update(
+      authorization,
       organizationId,
       payload,
     );

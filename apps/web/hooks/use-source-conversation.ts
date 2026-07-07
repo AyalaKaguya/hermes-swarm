@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getRealtimeUrl } from "@/lib/admin-api";
-import { getStoredSession } from "@/lib/session";
+import { getAuthenticatedAdminToken } from "@/lib/authenticated-admin";
 
 type SourceConversationMessage = {
   id: string;
@@ -51,26 +51,36 @@ export function useSourceConversation<
   }, []);
 
   useEffect(() => {
-    const session = getStoredSession();
-    if (!input.enabled || !session?.accessToken || !input.sourceId) {
+    if (!input.enabled || !input.sourceId) {
       setMessages([]);
       return;
     }
 
     let cancelled = false;
-    input
-      .loadMessages(session.accessToken, input.sourceId)
-      .then((items) => {
-        if (!cancelled) setMessages(items);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          input.onError?.(
-            error instanceof Error ? error.message : "消息加载失败",
-          );
-        }
-      });
-    void input.markRead?.(session.accessToken, input.sourceId);
+
+    async function loadMessages() {
+      const token = await getAuthenticatedAdminToken();
+      if (!token || cancelled || !input.sourceId) {
+        if (!cancelled) setMessages([]);
+        return;
+      }
+
+      input
+        .loadMessages(token, input.sourceId)
+        .then((items) => {
+          if (!cancelled) setMessages(items);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            input.onError?.(
+              error instanceof Error ? error.message : "消息加载失败",
+            );
+          }
+        });
+      void input.markRead?.(token, input.sourceId);
+    }
+
+    void loadMessages();
 
     return () => {
       cancelled = true;
@@ -84,41 +94,56 @@ export function useSourceConversation<
   ]);
 
   useEffect(() => {
-    const session = getStoredSession();
-    if (!input.enabled || !session?.accessToken) return;
+    if (!input.enabled) return;
 
-    const socket = new WebSocket(getRealtimeUrl(session.accessToken));
-    socket.addEventListener("message", (event) => {
-      try {
-        const data = JSON.parse(event.data as string) as
-          | ConversationRealtimeMessage<TMessage>
-          | ConversationRealtimeSource<TSourcePayload>;
+    let cancelled = false;
+    let socket: WebSocket | null = null;
 
-        if (data.type === "conversation.source.updated") {
-          const sourceEvent = data as ConversationRealtimeSource<TSourcePayload>;
-          if (sourceEvent.payload?.source?.sourceType !== input.sourceType) return;
-          if (sourceEvent.payload.sourcePayload !== undefined) {
-            input.onSourceUpdated?.(sourceEvent.payload.sourcePayload);
+    async function connectRealtime() {
+      const token = await getAuthenticatedAdminToken();
+      if (!token || cancelled) return;
+
+      socket = new WebSocket(getRealtimeUrl(token));
+      socket.addEventListener("message", (event) => {
+        try {
+          const data = JSON.parse(event.data as string) as
+            | ConversationRealtimeMessage<TMessage>
+            | ConversationRealtimeSource<TSourcePayload>;
+
+          if (data.type === "conversation.source.updated") {
+            const sourceEvent =
+              data as ConversationRealtimeSource<TSourcePayload>;
+            if (sourceEvent.payload?.source?.sourceType !== input.sourceType) {
+              return;
+            }
+            if (sourceEvent.payload.sourcePayload !== undefined) {
+              input.onSourceUpdated?.(sourceEvent.payload.sourcePayload);
+            }
+            return;
           }
-          return;
+
+          if (data.type !== "conversation.message.created") return;
+          const message = (data as ConversationRealtimeMessage<TMessage>)
+            .payload?.message;
+          if (!message || message.sourceType !== input.sourceType) return;
+          if (message.sourceId !== input.sourceId) return;
+
+          appendMessage(message);
+          if (input.sourceId) {
+            void input.markRead?.(token, input.sourceId);
+          }
+        } catch {
+          // Regular HTTP refresh remains authoritative.
         }
+      });
+    }
 
-        if (data.type !== "conversation.message.created") return;
-        const message = (data as ConversationRealtimeMessage<TMessage>).payload
-          ?.message;
-        if (!message || message.sourceType !== input.sourceType) return;
-        if (message.sourceId !== input.sourceId) return;
+    void connectRealtime();
 
-        appendMessage(message);
-        if (input.sourceId) {
-          void input.markRead?.(session.accessToken, input.sourceId);
-        }
-      } catch {
-        // Regular HTTP refresh remains authoritative.
-      }
-    });
-
-    return () => socket.close();
+    return () => {
+      cancelled = true;
+      socket?.close();
+    };
   }, [
     appendMessage,
     input.enabled,

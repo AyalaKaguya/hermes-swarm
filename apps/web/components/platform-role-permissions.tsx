@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { PermissionTree } from "@/components/permission-tree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,8 +34,11 @@ import {
   type RolePermission,
   type RolePayload,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 type RoleDialogState =
@@ -61,7 +64,6 @@ export function PlatformRolePermissions({
   canUpdateRole?: boolean;
   canViewRoles?: boolean;
 }) {
-  const t = useTranslations();
   const tr = useTextTranslation();
   const [catalog, setCatalog] = useState<PermissionCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,26 +72,31 @@ export function PlatformRolePermissions({
     Record<string, Record<string, boolean>>
   >({});
   const [permissions, setPermissions] = useState<RolePermission[]>([]);
+  const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
   const [roleDialog, setRoleDialog] = useState<RoleDialogState | null>(null);
   const [roleForm, setRoleForm] = useState(emptyRoleForm());
   const [roles, setRoles] = useState<Role[]>([]);
   const [savingRole, setSavingRole] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
-  const [token, setToken] = useState("");
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !canViewRoles) {
+    if (!canViewRoles) {
       setLoading(false);
       return;
     }
 
-    setToken(session.accessToken);
+    const token = await getAuthenticatedAdminToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     try {
       const [roleItems, nextCatalog] = await Promise.all([
-        listPlatformRoles(session.accessToken),
-        listPermissionCatalog(session.accessToken, "platform"),
+        listPlatformRoles(token),
+        listPermissionCatalog(token, "platform"),
       ]);
       setCatalog(nextCatalog);
       setRoles(roleItems);
@@ -146,6 +153,9 @@ export function PlatformRolePermissions({
   }
 
   function togglePerm(roleId: string, key: string, enabledValue?: boolean) {
+    const role = roles.find((item) => item.id === roleId);
+    if (!canManagePermissions || (role && isProtectedPlatformRole(role))) return;
+
     setLocalPerms((prev) => {
       const next = { ...prev };
       const roleChanges = { ...(next[roleId] ?? {}) };
@@ -171,6 +181,7 @@ export function PlatformRolePermissions({
     setSaving(roleId);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       await replacePlatformRolePermissions(
         token,
         roleId,
@@ -201,7 +212,7 @@ export function PlatformRolePermissions({
 
   async function submitRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!roleDialog || !token || !roleForm.displayName.trim()) return;
+    if (!roleDialog || !roleForm.displayName.trim()) return;
     if (roleDialog.mode === "create" && !canCreateRole) return;
     if (
       roleDialog.mode === "edit" &&
@@ -213,6 +224,7 @@ export function PlatformRolePermissions({
     setSavingRole(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       const payload: RolePayload = {
         color: nullableText(roleForm.color),
         description: nullableText(roleForm.description),
@@ -234,20 +246,17 @@ export function PlatformRolePermissions({
     }
   }
 
-  async function removeRole(role: Role) {
-    if (!canDeleteRole || !token || isProtectedPlatformRole(role)) return;
-    const confirmed = window.confirm(
-      t("dialogs.deleteRoleConfirm", {
-        name: role.displayName ?? role.label,
-      }),
-    );
-    if (!confirmed) return;
+  async function removeRole() {
+    const role = roleToDelete;
+    if (!role || !canDeleteRole || isProtectedPlatformRole(role)) return;
 
     setSavingRole(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       await deletePlatformRole(token, role.id);
       setSelectedRoleId(null);
+      setRoleToDelete(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("删除失败"));
@@ -400,7 +409,7 @@ export function PlatformRolePermissions({
                       savingRole ||
                       isProtectedPlatformRole(selectedRole)
                     }
-                    onClick={() => void removeRole(selectedRole)}
+                    onClick={() => setRoleToDelete(selectedRole)}
                     size="sm"
                     type="button"
                     variant="ghost"
@@ -547,6 +556,18 @@ export function PlatformRolePermissions({
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        confirmLabel="删除"
+        description="此操作会删除该平台角色，已分配此角色的平台用户可能受到影响。"
+        onConfirm={() => void removeRole()}
+        onOpenChange={(open) => {
+          if (!open && !savingRole) setRoleToDelete(null);
+        }}
+        open={Boolean(roleToDelete)}
+        pending={savingRole}
+        title="删除平台角色？"
+      />
     </div>
   );
 }

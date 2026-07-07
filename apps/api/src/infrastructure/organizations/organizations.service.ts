@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -9,6 +10,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
   Permission,
+  PlatformMember,
   Role,
   RolePermission,
   UserOrganization,
@@ -21,9 +23,14 @@ import type {
   ReplaceRolePermissionsPayload,
   UpdateOrganizationPayload,
 } from "../../common/admin-api.types.js";
-import { parseAuthSessionToken } from "../auth/auth-session.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import type { OrganizationRolePayload } from "./organizations.controller.js";
+
+const PLATFORM_ORGANIZATION_CONTROL_PERMISSIONS = [
+  "organization.platform_organization.create:platform",
+  "organization.platform_organization.delete:platform",
+];
 
 @Injectable()
 export class OrganizationsService {
@@ -36,8 +43,12 @@ export class OrganizationsService {
     private readonly roleRepository: Repository<Role>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
+    @InjectRepository(PlatformMember)
+    private readonly platformMemberRepository: Repository<PlatformMember>,
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
+    @Inject(AuthSessionService)
+    private readonly authSessionService: AuthSessionService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService,
   ) {}
@@ -57,7 +68,7 @@ export class OrganizationsService {
     authorization: string | undefined,
     payload: CreateOrganizationPayload,
   ) {
-    const userId = requireSessionUserId(authorization);
+    const userId = await this.requireSessionUserId(authorization);
     const creationEnabled = await this.settingsService.getPlatformValue(
       PLATFORM_SETTING_KEYS.allowOrganizationCreation,
       "true",
@@ -113,10 +124,17 @@ export class OrganizationsService {
   }
 
   async update(
+    authorization: string | undefined,
     organizationId: string,
     payload: UpdateOrganizationPayload,
   ) {
     const organization = await this.getOrganizationOrThrow(organizationId);
+    const updatesPlatformControls =
+      payload.isDefault !== undefined || payload.status !== undefined;
+
+    if (updatesPlatformControls) {
+      await this.assertCanUpdatePlatformOrganizationControls(authorization);
+    }
 
     if (payload.name !== undefined) {
       organization.name = requireText(payload.name, "组织名称");
@@ -247,6 +265,9 @@ export class OrganizationsService {
     }
     if (payload.name !== undefined) {
       const name = normalizeSlug(payload.name, "role");
+      if (role.isSystem && name !== role.name) {
+        throw new BadRequestException("系统角色标识不能修改");
+      }
       if (name !== role.name) {
         await this.assertUniqueRoleName(organizationId, name, role.id);
       }
@@ -267,6 +288,9 @@ export class OrganizationsService {
     payload: ReplaceRolePermissionsPayload,
   ) {
     const role = await this.getOrganizationRoleOrThrow(organizationId, roleId);
+    if (role.isSystem) {
+      throw new BadRequestException("系统角色权限不能替换");
+    }
     const permissions = payload.permissions ?? [];
 
     await this.rolePermissionRepository.delete({ roleId: role.id });
@@ -422,13 +446,40 @@ export class OrganizationsService {
     if (!permission) throw new BadRequestException("权限目录不存在");
     return { key, permission };
   }
-}
 
-function requireSessionUserId(authorization: string | undefined) {
-  const token = authorization?.replace(/^Bearer\s+/i, "").trim();
-  const session = parseAuthSessionToken(token);
-  if (!session) throw new UnauthorizedException("登录已失效，请重新登录");
-  return session.userId;
+  private async assertCanUpdatePlatformOrganizationControls(
+    authorization: string | undefined,
+  ) {
+    const userId = await this.requireSessionUserId(authorization);
+    const platformMembership = await this.platformMemberRepository.findOne({
+      where: { status: "active", userId },
+    });
+    if (!platformMembership?.roleId) {
+      throw new ForbiddenException("缺少平台组织管理权限");
+    }
+    const roleId = platformMembership.roleId;
+
+    const permission = await this.rolePermissionRepository.findOne({
+      where: PLATFORM_ORGANIZATION_CONTROL_PERMISSIONS.map((permission) => ({
+        enabled: true,
+        permission,
+        roleId,
+      })),
+    });
+    if (!permission) {
+      throw new ForbiddenException("缺少平台组织管理权限");
+    }
+  }
+
+  private async requireSessionUserId(authorization: string | undefined) {
+    const token = authorization?.replace(/^Bearer\s+/i, "").trim();
+    try {
+      const session = await this.authSessionService.validateAccessToken(token);
+      return session.userId;
+    } catch {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+  }
 }
 
 function requireText(value: string | undefined | null, label: string) {

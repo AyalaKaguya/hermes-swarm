@@ -5,8 +5,12 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { InjectRepository } from "@nestjs/typeorm";
+import { IntegrationToken } from "@hermes-swarm/core";
+import { Repository } from "typeorm";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
+  INTEGRATION_SESSION_PREFIX,
   createAuthSessionToken,
   parseAuthSessionToken,
 } from "./auth-session.js";
@@ -32,9 +36,16 @@ export type AuthSessionRecord = {
 };
 
 export type ValidatedAuthSession = {
+  integrationToken?: {
+    id: string;
+    organizationId: string | null;
+    permissions: string[];
+    scope: IntegrationToken["scope"];
+  } | null;
   jti: string;
   record: AuthSessionRecord;
   sessionId: string;
+  tokenKind: "integration" | "session";
   userId: string;
 };
 
@@ -48,6 +59,8 @@ export type IssuedAuthSession = {
 @Injectable()
 export class AuthSessionService {
   constructor(
+    @InjectRepository(IntegrationToken)
+    private readonly integrationTokenRepository: Repository<IntegrationToken>,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {}
@@ -147,11 +160,16 @@ export class AuthSessionService {
   }
 
   async validateAccessToken(token: string | undefined) {
+    const accessToken = token ?? "";
     const payload = parseAuthSessionToken(token, {
       secret: this.sessionSecret,
     });
     if (!payload) {
       throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+
+    if (payload.sessionId.startsWith(INTEGRATION_SESSION_PREFIX)) {
+      return this.validateIntegrationToken(accessToken, payload);
     }
 
     const record = await this.getSessionRecord(payload.sessionId);
@@ -171,6 +189,7 @@ export class AuthSessionService {
       jti: payload.jti,
       record,
       sessionId: payload.sessionId,
+      tokenKind: "session",
       userId: payload.userId,
     } satisfies ValidatedAuthSession;
   }
@@ -298,6 +317,60 @@ export class AuthSessionService {
       },
     );
     return { accessToken, expiresAt };
+  }
+
+  private async validateIntegrationToken(
+    token: string,
+    payload: NonNullable<ReturnType<typeof parseAuthSessionToken>>,
+  ) {
+    const tokenId = payload.sessionId.slice(INTEGRATION_SESSION_PREFIX.length);
+    const record = tokenId
+      ? await this.integrationTokenRepository.findOne({
+          where: {
+            id: tokenId,
+            ownerUserId: payload.userId,
+            tokenHash: hashToken(token),
+          },
+        })
+      : null;
+
+    if (
+      !record ||
+      record.revokedAt ||
+      record.expiresAt.getTime() <= Date.now()
+    ) {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+
+    record.lastUsedAt = new Date();
+    await this.integrationTokenRepository.save(record);
+
+    return {
+      integrationToken: {
+        id: record.id,
+        organizationId: record.organizationId,
+        permissions: record.permissions ?? [],
+        scope: record.scope,
+      },
+      jti: payload.jti,
+      record: {
+        browser: "Integration Token",
+        createdAt: record.createdAt.toISOString(),
+        deviceLabel: record.note || "Integration Token",
+        expiresAt: record.expiresAt.toISOString(),
+        ipAddress: null,
+        lastSeenAt: (record.lastUsedAt ?? record.updatedAt).toISOString(),
+        os: "API",
+        refreshTokenHash: "",
+        revokedAt: null,
+        sessionId: payload.sessionId,
+        userAgent: null,
+        userId: record.ownerUserId,
+      },
+      sessionId: payload.sessionId,
+      tokenKind: "integration",
+      userId: record.ownerUserId,
+    } satisfies ValidatedAuthSession;
   }
 
   private async getSessionRecord(sessionId: string) {

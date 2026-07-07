@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
@@ -27,11 +27,16 @@ export function LoginPage() {
   const router = useRouter();
   const t = useTranslations();
   const { setLanguage } = useI18n();
+  const requestFailedMessageRef = useRef(t("auth.requestFailed"));
   const [email, setEmail] = useState("admin@hermes.local");
   const [password, setPassword] = useState("admin123456");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [platformName, setPlatformName] = useState<string | null>(null);
+
+  useEffect(() => {
+    requestFailedMessageRef.current = t("auth.requestFailed");
+  }, [t]);
 
   useEffect(() => {
     clearStoredSession();
@@ -48,14 +53,14 @@ export function LoginPage() {
           return;
         }
       } catch (loadError) {
-        setError(getErrorMessage(loadError, t("auth.requestFailed")));
+        setError(getErrorMessage(loadError, requestFailedMessageRef.current));
       } finally {
         setLoading(false);
       }
     }
 
     void load();
-  }, [router, t]);
+  }, [router]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

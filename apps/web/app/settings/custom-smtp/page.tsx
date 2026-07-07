@@ -19,8 +19,11 @@ import {
   validateSmtpConfig,
   type SmtpConfig,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { getStoredSession } from "@/lib/session";
 
 export default function CustomSmtpPage() {
   const tr = useTextTranslation();
@@ -41,13 +44,13 @@ export default function CustomSmtpPage() {
   const [fromAddress, setFromAddress] = useState("");
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId) {
       setLoading(false);
       return;
     }
     try {
-      const c = await getSmtpConfig(session.accessToken, { organizationId });
+      const c = await getSmtpConfig(token, { organizationId });
       setConfig(c);
       if (c) {
         setHost(c.host ?? "");
@@ -71,14 +74,14 @@ export default function CustomSmtpPage() {
     setSaving(true);
     setError(null);
     setMsg("");
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    if (!organizationId) {
       setSaving(false);
       return;
     }
     try {
+      const token = await requireAuthenticatedAdminToken();
       await saveSmtpConfig(
-        session.accessToken,
+        token,
         {
           host: host.trim(),
           port: Number(port) || 587,
@@ -102,14 +105,14 @@ export default function CustomSmtpPage() {
     setValidating(true);
     setError(null);
     setMsg("");
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    if (!organizationId) {
       setValidating(false);
       return;
     }
     try {
+      const token = await requireAuthenticatedAdminToken();
       await validateSmtpConfig(
-        session.accessToken,
+        token,
         {
           host: host.trim(),
           port: Number(port) || 587,

@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,8 +47,11 @@ import {
   type Role,
   type User,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 type PlatformMemberManagementProps = {
@@ -80,23 +84,29 @@ export function PlatformMemberManagement({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<PlatformMember[]>([]);
+  const [memberToRemove, setMemberToRemove] = useState<PlatformMember | null>(
+    null,
+  );
   const [roles, setRoles] = useState<Role[]>([]);
   const [savingMemberId, setSavingMemberId] = useState<string | null>(null);
-  const [token, setToken] = useState("");
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !canViewMembers) {
+    if (!canViewMembers) {
       setLoading(false);
       return;
     }
 
-    setToken(session.accessToken);
+    const token = await getAuthenticatedAdminToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const [memberItems, roleItems] = await Promise.all([
-        listPlatformMembers(session.accessToken),
-        canViewRoles ? listPlatformRoles(session.accessToken) : Promise.resolve([]),
+        listPlatformMembers(token),
+        canViewRoles ? listPlatformRoles(token) : Promise.resolve([]),
       ]);
       setMembers(memberItems);
       setRoles(roleItems);
@@ -132,13 +142,14 @@ export function PlatformMemberManagement({
   );
 
   async function saveMember(member: PlatformMember) {
-    if (!token || !canUpdateMember) return;
+    if (!canUpdateMember) return;
     const draft = drafts[member.id];
     if (!draft) return;
 
     setSavingMemberId(member.id);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       await updatePlatformMember(token, member.id, {
         roleId: draft.roleId === "none" ? null : draft.roleId,
         status: draft.status,
@@ -153,10 +164,11 @@ export function PlatformMemberManagement({
   }
 
   async function removeMember(member: PlatformMember) {
-    if (!token || !canRemoveMember) return;
+    if (!canRemoveMember) return;
     setSavingMemberId(member.id);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       await deletePlatformMember(token, member.id);
       await load();
       await onChanged?.();
@@ -297,9 +309,19 @@ export function PlatformMemberManagement({
                       {tr("保存")}
                     </Button>
                     <Button
+                      aria-label={`${tr("移除平台用户")} ${
+                        member.displayName || member.user.displayName
+                      }`}
                       disabled={!canRemoveMember || busy}
-                      onClick={() => removeMember(member)}
+                      onClick={() => setMemberToRemove(member)}
                       size="icon"
+                      title={
+                        !canRemoveMember
+                          ? tr("当前账号无权移除平台用户")
+                          : `${tr("移除平台用户")} ${
+                              member.displayName || member.user.displayName
+                            }`
+                      }
                       type="button"
                       variant="ghost"
                     >
@@ -321,7 +343,26 @@ export function PlatformMemberManagement({
         onOpenChange={setCreateOpen}
         open={createOpen}
         roles={roles}
-        token={token}
+      />
+      <ConfirmActionDialog
+        confirmLabel="移除"
+        description={
+          memberToRemove
+            ? `${tr("将移除平台用户")} ${
+                memberToRemove.displayName || memberToRemove.user.displayName
+              } (${memberToRemove.user.email})`
+            : ""
+        }
+        onConfirm={() => {
+          if (memberToRemove) void removeMember(memberToRemove);
+          setMemberToRemove(null);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setMemberToRemove(null);
+        }}
+        open={Boolean(memberToRemove)}
+        pending={Boolean(memberToRemove && savingMemberId === memberToRemove.id)}
+        title="移除平台用户"
       />
     </Card>
   );
@@ -333,14 +374,12 @@ function AddPlatformMemberDialog({
   onOpenChange,
   open,
   roles,
-  token,
 }: {
   memberUserIds: Set<string>;
   onChanged: () => Promise<void>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   roles: Role[];
-  token: string;
 }) {
   const tr = useTextTranslation();
   const [query, setQuery] = useState("");
@@ -358,7 +397,7 @@ function AddPlatformMemberDialog({
   }, [open, roles]);
 
   useEffect(() => {
-    if (!open || !token) return;
+    if (!open) return;
     const normalized = query.trim();
     if (normalized.length < 2) {
       setResults([]);
@@ -368,7 +407,8 @@ function AddPlatformMemberDialog({
 
     setSearching(true);
     const timer = window.setTimeout(() => {
-      searchUsers(token, normalized)
+      getAuthenticatedAdminToken()
+        .then((token) => (token ? searchUsers(token, normalized) : []))
         .then((items) => {
           setResults(items);
           setError(null);
@@ -380,15 +420,16 @@ function AddPlatformMemberDialog({
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [open, query, token, tr]);
+  }, [open, query, tr]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !selectedUser || !roleId) return;
+    if (!selectedUser || !roleId) return;
 
     setSaving(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       await createPlatformMember(token, {
         roleId,
         status,

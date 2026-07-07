@@ -38,8 +38,11 @@ import {
   updateEmailTemplate,
   type EmailTemplateDto,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { getStoredSession } from "@/lib/session";
 
 type LanguageFilter = "all" | "zh-CN" | "en" | "zh-Hans" | "zh-Hant";
 
@@ -57,7 +60,6 @@ export default function EmailTemplatesPage() {
   const { snapshot } = useAdminShell();
   const organizationId = snapshot?.organization?.id ?? null;
   const [templates, setTemplates] = useState<EmailTemplateDto[]>([]);
-  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [languageFilter, setLanguageFilter] = useState<LanguageFilter>("all");
@@ -71,14 +73,13 @@ export default function EmailTemplatesPage() {
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId) {
       setLoading(false);
       return;
     }
-    setToken(session.accessToken);
     try {
-      const data = await listEmailTemplates(session.accessToken, organizationId);
+      const data = await listEmailTemplates(token, organizationId);
       setTemplates(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
@@ -94,7 +95,11 @@ export default function EmailTemplatesPage() {
   async function remove(templateId: string) {
     try {
       if (!organizationId) return;
-      await deleteEmailTemplate(token, organizationId, templateId);
+      await deleteEmailTemplate(
+        await requireAuthenticatedAdminToken(),
+        organizationId,
+        templateId,
+      );
       setMsg(tr("已删除"));
       setDeleteTemplate(null);
       await load();
@@ -145,7 +150,6 @@ export default function EmailTemplatesPage() {
             </DialogHeader>
             <CreateTemplateForm
               organizationId={organizationId}
-              token={token}
               onDone={() => {
                 setCreateOpen(false);
                 void load();
@@ -256,7 +260,6 @@ export default function EmailTemplatesPage() {
             <EditTemplateForm
               organizationId={organizationId}
               template={editTemplate}
-              token={token}
               onDone={() => {
                 setEditTemplate(null);
                 void load();
@@ -286,11 +289,9 @@ export default function EmailTemplatesPage() {
 
 function CreateTemplateForm({
   organizationId,
-  token,
   onDone,
 }: {
   organizationId: string | null;
-  token: string;
   onDone: () => void;
 }) {
   const tr = useTextTranslation();
@@ -307,6 +308,7 @@ function CreateTemplateForm({
     setSaving(true);
     setMsg("");
     try {
+      const token = await requireAuthenticatedAdminToken();
       await createEmailTemplate(
         token,
         organizationId,
@@ -391,12 +393,10 @@ function CreateTemplateForm({
 function EditTemplateForm({
   organizationId,
   template,
-  token,
   onDone,
 }: {
   organizationId: string | null;
   template: EmailTemplateDto;
-  token: string;
   onDone: () => void;
 }) {
   const tr = useTextTranslation();
@@ -413,6 +413,7 @@ function EditTemplateForm({
     setMsg("");
     try {
       if (!organizationId) return;
+      const token = await requireAuthenticatedAdminToken();
       await updateEmailTemplate(
         token,
         organizationId,

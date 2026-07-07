@@ -22,6 +22,7 @@ import type {
   AccessOperationMetadata,
   AccessResourceMetadata,
   AccessScopeMetadata,
+  ResolvedAccessDefinition,
 } from "./access.types.js";
 import { ACCESS_AUTH_SESSION_SERVICE } from "./tokens.js";
 
@@ -74,7 +75,7 @@ export class AccessGuard implements CanActivate {
       definition,
       scopeContext,
     );
-    if (!allowed) {
+    if (!allowed || !integrationTokenAllows(session, definition, scopeContext)) {
       throw createAccessDeniedException(
         definition,
         Boolean(this.catalogService.getDefinition(definition.id)),
@@ -122,4 +123,22 @@ export class AccessGuard implements CanActivate {
     if (!header) return undefined;
     return header.replace(/^Bearer\s+/i, "").trim();
   }
+}
+
+function integrationTokenAllows(
+  session: Awaited<ReturnType<AccessAuthSessionService["validateAccessToken"]>>,
+  definition: ResolvedAccessDefinition,
+  scopeContext: { organizationId?: string | null; targetUserId?: string | null },
+) {
+  const token = session.integrationToken;
+  if (!token) return true;
+  if (token.scope !== definition.scope) return false;
+  if (!token.permissions.includes(definition.id)) return false;
+  if (
+    token.scope === "organization" &&
+    token.organizationId !== (scopeContext.organizationId ?? null)
+  ) {
+    return false;
+  }
+  return true;
 }

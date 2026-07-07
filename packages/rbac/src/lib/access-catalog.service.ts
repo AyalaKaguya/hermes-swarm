@@ -251,7 +251,7 @@ export class AccessCatalogService implements OnModuleInit {
     for (const role of roles) {
       const rolePermissions = permissions.filter((permission) => {
         if (!permission.defaultRoles?.includes(role.name)) return false;
-        if (role.scope === "platform") return permission.scope === "platform";
+        if (role.scope === "platform") return true;
         return permission.scope === "organization" || permission.scope === "own";
       });
 

@@ -62,7 +62,14 @@ export type AccessScopeMetadata = {
 };
 
 export type AccessAuthSession = {
+  integrationToken?: {
+    id: string;
+    organizationId: string | null;
+    permissions: string[];
+    scope: PermissionScope;
+  } | null;
   sessionId?: string;
+  tokenKind?: "integration" | "session";
   userId: string;
 };
 
@@ -80,4 +87,3 @@ export type PermissionOperationMetadata = AccessOperationMetadata;
 export type PermissionRequirement = AccessRequirement;
 export type PermissionDefaultRole = AccessDefaultRole;
 export type ResolvedPermissionDefinition = ResolvedAccessDefinition;
-

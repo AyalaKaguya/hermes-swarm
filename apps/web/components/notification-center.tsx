@@ -22,7 +22,7 @@ import {
   markNotificationRead,
   type UserNotification,
 } from "@/lib/admin-api";
-import { getStoredSession } from "@/lib/session";
+import { getAuthenticatedAdminToken } from "@/lib/authenticated-admin";
 
 type NotificationItem = {
   body?: string | null;
@@ -39,7 +39,6 @@ export function NotificationCenter() {
   const [items, setItems] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
-    const session = getStoredSession();
     let socket: WebSocket | null = null;
     let closed = false;
 
@@ -71,14 +70,18 @@ export function NotificationCenter() {
       });
     }
 
-    if (session?.accessToken) {
-      listUserNotifications(session.accessToken, { take: 50 })
+    async function connectNotifications() {
+      const token = await getAuthenticatedAdminToken();
+      if (!token || closed) return;
+
+      listUserNotifications(token, { take: 50 })
         .then((notifications) => {
           if (!closed) setItems(notifications.map(toNotificationItem));
         })
         .catch(() => undefined);
 
-      socket = new WebSocket(getRealtimeUrl(session.accessToken));
+      if (closed) return;
+      socket = new WebSocket(getRealtimeUrl(token));
       socket.addEventListener("message", (event) => {
         try {
           const message = JSON.parse(event.data as string) as {
@@ -96,6 +99,8 @@ export function NotificationCenter() {
         }
       });
     }
+
+    void connectNotifications();
 
     function onError(event: ErrorEvent) {
       push(event.message || t("notifications.runtimeError"));
@@ -167,8 +172,9 @@ export function NotificationCenter() {
                 disabled={items.length === 0}
                 onClick={(event) => {
                   event.stopPropagation();
-                  const token = getStoredSession()?.accessToken;
-                  if (token) void markAllNotificationsRead(token);
+                  void getAuthenticatedAdminToken().then((token) => {
+                    if (token) void markAllNotificationsRead(token);
+                  });
                   setItems((current) =>
                     current.map((item) => ({ ...item, status: "read" })),
                   );
@@ -185,8 +191,9 @@ export function NotificationCenter() {
                 disabled={!items.some((item) => item.status === "read")}
                 onClick={(event) => {
                   event.stopPropagation();
-                  const token = getStoredSession()?.accessToken;
-                  if (token) void dismissReadNotifications(token);
+                  void getAuthenticatedAdminToken().then((token) => {
+                    if (token) void dismissReadNotifications(token);
+                  });
                   setItems((current) =>
                     current.filter((item) => item.status !== "read"),
                   );
@@ -213,9 +220,10 @@ export function NotificationCenter() {
                   key={item.id}
                   onSelect={(event) => {
                     event.preventDefault();
-                    const token = getStoredSession()?.accessToken;
-                    if (token && item.status === "unread") {
-                      void markNotificationRead(token, item.id);
+                    if (item.status === "unread") {
+                      void getAuthenticatedAdminToken().then((token) => {
+                        if (token) void markNotificationRead(token, item.id);
+                      });
                     }
                     setItems((current) =>
                       current.map((currentItem) =>
@@ -250,8 +258,9 @@ export function NotificationCenter() {
                     aria-label={t("notifications.dismiss")}
                     onClick={(event) => {
                       event.stopPropagation();
-                      const token = getStoredSession()?.accessToken;
-                      if (token) void dismissNotification(token, item.id);
+                      void getAuthenticatedAdminToken().then((token) => {
+                        if (token) void dismissNotification(token, item.id);
+                      });
                       setItems((current) =>
                         current.filter((_, i) => i !== index),
                       );

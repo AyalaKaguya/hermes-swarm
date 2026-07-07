@@ -7,9 +7,9 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,9 +36,12 @@ import {
   type OrganizationGroupPayload,
   type OrganizationMembership,
 } from "@/lib/admin-api";
+import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
-import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 type GroupDialogState =
@@ -59,7 +62,6 @@ type GroupForm = {
 };
 
 export default function GroupsPage() {
-  const t = useTranslations();
   const tr = useTextTranslation();
   const { resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
@@ -88,17 +90,19 @@ export default function GroupsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [groupToDelete, setGroupToDelete] = useState<OrganizationGroup | null>(
+    null,
+  );
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(null);
   const [groupForm, setGroupForm] = useState<GroupForm>(emptyGroupForm());
 
-  const token = getStoredSession()?.accessToken ?? "";
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
   const memberDirty = !sameSet(selectedMemberIds, persistedMemberIds);
 
   const load = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId) {
       setLoading(false);
       return;
     }
@@ -106,8 +110,8 @@ export default function GroupsPage() {
     setError(null);
     try {
       const [groupItems, memberItems] = await Promise.all([
-        listOrganizationGroups(session.accessToken, organizationId),
-        listOrganizationMembers(session.accessToken, organizationId),
+        listOrganizationGroups(token, organizationId),
+        listOrganizationMembers(token, organizationId),
       ]);
       setGroups(groupItems);
       setMemberships(memberItems);
@@ -124,8 +128,8 @@ export default function GroupsPage() {
   }, [organizationId, tr]);
 
   const loadGroupMembers = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId || !selectedGroup) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId || !selectedGroup) {
       setSelectedMemberIds(new Set());
       setPersistedMemberIds(new Set());
       return;
@@ -134,7 +138,7 @@ export default function GroupsPage() {
     setError(null);
     try {
       const items = await listOrganizationGroupMembers(
-        session.accessToken,
+        token,
         organizationId,
         selectedGroup.id,
       );
@@ -174,11 +178,12 @@ export default function GroupsPage() {
 
   async function submitGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!groupDialog || !organizationId || !token) return;
+    if (!groupDialog || !organizationId) return;
     setSaving(true);
     setError(null);
     setMessage("");
     try {
+      const token = await requireAuthenticatedAdminToken();
       const payload: OrganizationGroupPayload = {
         color: nullableText(groupForm.color),
         description: nullableText(groupForm.description),
@@ -205,18 +210,17 @@ export default function GroupsPage() {
     }
   }
 
-  async function removeGroup(group: OrganizationGroup) {
-    if (!organizationId || !token || !canManage) return;
-    const confirmed = window.confirm(
-      t("dialogs.deleteGroupConfirm", { name: group.displayName }),
-    );
-    if (!confirmed) return;
+  async function removeGroup() {
+    const group = groupToDelete;
+    if (!organizationId || !canManage || !group) return;
     setSaving(true);
     setError(null);
     setMessage("");
     try {
+      const token = await requireAuthenticatedAdminToken();
       await deleteOrganizationGroup(token, organizationId, group.id);
       setSelectedGroupId(null);
+      setGroupToDelete(null);
       setMessage(tr("已删除用户组"));
       await load();
     } catch (err) {
@@ -240,11 +244,12 @@ export default function GroupsPage() {
   }
 
   async function saveMembers() {
-    if (!organizationId || !token || !selectedGroup) return;
+    if (!organizationId || !selectedGroup) return;
     setSaving(true);
     setError(null);
     setMessage("");
     try {
+      const token = await requireAuthenticatedAdminToken();
       await replaceOrganizationGroupMembers(
         token,
         organizationId,
@@ -397,7 +402,7 @@ export default function GroupsPage() {
                     </Button>
                     <Button
                       disabled={!canManage || saving}
-                      onClick={() => void removeGroup(selectedGroup)}
+                      onClick={() => setGroupToDelete(selectedGroup)}
                       size="sm"
                       type="button"
                       variant="ghost"
@@ -582,6 +587,18 @@ export default function GroupsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        confirmLabel="删除"
+        description="此操作会删除该用户组，并移除该用户组中的成员关联。"
+        onConfirm={() => void removeGroup()}
+        onOpenChange={(open) => {
+          if (!open && !saving) setGroupToDelete(null);
+        }}
+        open={Boolean(groupToDelete)}
+        pending={saving}
+        title="删除用户组？"
+      />
     </div>
   );
 }

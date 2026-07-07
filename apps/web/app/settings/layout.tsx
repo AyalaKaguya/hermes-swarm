@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import {
-  findPageAccessDefinitionsByPath,
+  findPageAccessDefinitionByPath,
+  type PageAccessDefinition,
 } from "@hermes-swarm/rbac-api";
 import { usePermission } from "@/hooks/use-permission";
 import { useTextTranslation } from "@/hooks/use-text-translation";
@@ -42,15 +43,14 @@ export default function SettingsLayout({
   const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] =
     useState(false);
   const activeOrganizationId = snapshot?.organization?.id ?? "none";
-  const currentPages = findPageAccessDefinitionsByPath(pathname);
   const routeOrganizationId = getRouteOrganizationId(pathname);
+  const currentPage = findPageAccessDefinitionByPath(pathname);
+  const currentPages = currentPage ? [currentPage] : [];
   const canAccessCurrentPage =
-    currentPages.length > 0 &&
-    currentPages.some((page) =>
-      access.hasPageAccess(page.key, {
-        organizationId: routeOrganizationId ?? snapshot?.organization?.id,
-      }),
-    );
+    Boolean(currentPage) &&
+    access.hasPageAccess(currentPage.key, {
+      organizationId: routeOrganizationId ?? snapshot?.organization?.id,
+    });
 
   const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
     ...section,
@@ -62,18 +62,7 @@ export default function SettingsLayout({
           organizationId: snapshot.organization?.id,
         });
       })
-      .map((item) =>
-        item.pageKey === "settings.organization" && snapshot?.organization?.id
-          ? {
-              ...item,
-              href: getCurrentOrganizationHref(
-                item.href,
-                snapshot.organization.id,
-              ),
-              label: tr(item.label),
-            }
-          : { ...item, label: tr(item.label) },
-      ),
+      .map((item) => ({ ...item, label: tr(item.label) })),
   })).filter((section) => section.items.length > 0);
   const visibleItems = navSections.flatMap((section) => section.items);
 
@@ -272,15 +261,10 @@ function getRouteOrganizationId(pathname: string) {
   return match?.[1] ?? null;
 }
 
-function getCurrentOrganizationHref(href: string, organizationId: string) {
-  const [, query] = href.split("?");
-  return `/settings/organizations/${organizationId}${query ? `?${query}` : ""}`;
-}
-
 function SettingsAccessDenied({
   pages,
 }: {
-  pages: ReturnType<typeof findPageAccessDefinitionsByPath>;
+  pages: PageAccessDefinition[];
 }) {
   const page = pages[0] ?? null;
   const t = useTranslations();

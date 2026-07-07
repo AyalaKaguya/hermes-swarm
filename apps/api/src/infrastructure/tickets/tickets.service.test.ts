@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ForbiddenException } from "@nestjs/common";
+import { FEATURE_SETTING_KEYS } from "@hermes-swarm/core";
 import { TicketsService } from "./tickets.service.js";
 
 const ORG_HANDLE_PERMISSION = "ticket.conversation.handle:organization";
+const ORG_HANDLING_FEATURE = FEATURE_SETTING_KEYS.ticketingHandling;
 const PLATFORM_HANDLE_PERMISSION =
   "ticket.platform_conversation.list_platform:platform";
 
@@ -175,6 +177,64 @@ describe("TicketsService", () => {
       } as any,
       {} as any,
       settingsServiceMock as any,
+    );
+
+    await assert.rejects(
+      () => service.getTicket("Bearer token", "ticket-1"),
+      ForbiddenException,
+    );
+  });
+
+  it("disables organization-wide ticket receiving when the handling feature is off", async () => {
+    const service = new TicketsService(
+      {
+        find: async () => [],
+        findOne: async () => ({
+          id: "ticket-1",
+          organizationId: "org-1",
+          participantUserIds: [],
+          requesterUserId: "requester",
+          scope: "organization",
+          status: "open",
+        }),
+      } as any,
+      { find: async () => [] } as any,
+      {
+        findOne: async ({ where }: any) =>
+          where.userId === "handler" && where.organizationId === "org-1"
+            ? {
+                organizationId: "org-1",
+                roleId: "handler-role",
+                status: "active",
+                userId: "handler",
+              }
+            : null,
+      } as any,
+      {} as any,
+      {
+        findOne: async ({ where }: any) =>
+          where.roleId === "handler-role" &&
+          where.permission === ORG_HANDLE_PERMISSION &&
+          where.enabled
+            ? { id: "rp-1" }
+            : null,
+      } as any,
+      {
+        validateAccessToken: async () => ({
+          sessionId: "s1",
+          userId: "handler",
+        }),
+      } as any,
+      {
+        importMessagesIfEmpty: async () => ({ imported: 0 }),
+        isParticipant: async () => false,
+      } as any,
+      {} as any,
+      {
+        getOrganizationValue: async (_organizationId: string, name: string) =>
+          name === ORG_HANDLING_FEATURE ? "false" : "true",
+        getPlatformValue: async () => "true",
+      } as any,
     );
 
     await assert.rejects(

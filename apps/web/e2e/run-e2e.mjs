@@ -348,7 +348,7 @@ const tests = [
         persona: "orgScopedUser",
       });
       await seedSession(page);
-      await page.goto(`${baseUrl}/settings/organizations/org-hermes`);
+      await page.goto(`${baseUrl}/settings/organization`);
 
       await expectVisibleText(page, "组织信息");
       await expectVisibleText(page, "Hermes");
@@ -358,7 +358,7 @@ const tests = [
       await expectDisabled(page.getByRole("button", { name: "上传 Logo" }));
       await expectDisabled(page.getByRole("button", { name: "保存" }).last());
 
-      await page.goto(`${baseUrl}/settings/organizations/org-hermes?tab=members`);
+      await page.goto(`${baseUrl}/settings/organization?tab=members`);
       await expectVisibleText(page, "组织成员");
       await expectDisabled(page.getByRole("button", { name: "添加成员" }));
     },
@@ -371,7 +371,7 @@ const tests = [
         persona: "ordinaryUser",
       });
       await seedSession(page);
-      await page.goto(`${baseUrl}/settings/organizations/org-hermes`);
+      await page.goto(`${baseUrl}/settings/organization`);
 
       await expectVisibleText(page, "没有页面访问权限");
       await expectVisibleText(page, "page.settings.organization.access:organization");

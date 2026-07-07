@@ -51,8 +51,12 @@ import {
   type TicketMessage,
   type TicketMessageAttachment,
 } from "@/lib/admin-api";
-import { getStoredSession } from "@/lib/session";
 import {
+  getAuthenticatedAdminToken,
+  requireAuthenticatedAdminToken,
+} from "@/lib/authenticated-admin";
+import {
+  FEATURE_SETTING_KEYS,
   PLATFORM_SETTING_KEYS,
 } from "@hermes-swarm/core/settings/definitions";
 
@@ -63,7 +67,9 @@ type CreateDraft = {
   subject: string;
 };
 
-const ORGANIZATION_TICKETING_FEATURE_KEY = "feature:ticketing:enabled";
+const ORGANIZATION_TICKETING_FEATURE_KEY = FEATURE_SETTING_KEYS.ticketing;
+const ORGANIZATION_TICKET_HANDLING_FEATURE_KEY =
+  FEATURE_SETTING_KEYS.ticketingHandling;
 const ORGANIZATION_TICKET_HANDLE_PERMISSION =
   "ticket.conversation.handle:organization";
 const PLATFORM_TICKET_HANDLE_PERMISSION =
@@ -91,7 +97,7 @@ export default function TicketsPage() {
     PLATFORM_SETTING_KEYS.ticketingPlatformSubmissionEnabled,
     true,
   );
-  const canHandleOrganizationTickets = access.hasPermission(
+  const hasOrganizationTicketHandlePermission = access.hasPermission(
     ORGANIZATION_TICKET_HANDLE_PERMISSION,
   );
   const canHandlePlatformTickets = access.hasPermission(
@@ -117,6 +123,8 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [organizationTicketingEnabled, setOrganizationTicketingEnabled] =
     useState(true);
+  const [organizationTicketHandlingEnabled, setOrganizationTicketHandlingEnabled] =
+    useState(true);
   const [previewAttachment, setPreviewAttachment] =
     useState<TicketMessageAttachment | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -141,6 +149,8 @@ export default function TicketsPage() {
     canViewOrganizationTickets &&
     Boolean(organizationId) &&
     (organizationTicketingEnabled || Boolean(isCurrentOrganizationOwner));
+  const canHandleOrganizationTickets =
+    hasOrganizationTicketHandlePermission && organizationTicketHandlingEnabled;
   const showConversationError = useCallback((message: string) => {
     setError(message);
   }, []);
@@ -171,30 +181,36 @@ export default function TicketsPage() {
     }
   }, [canViewOrganizationTickets, canViewPlatformTickets, view]);
 
-  const loadOrganizationFeature = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !organizationId) {
+  const loadOrganizationFeatures = useCallback(async () => {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !organizationId) {
       setOrganizationTicketingEnabled(true);
+      setOrganizationTicketHandlingEnabled(true);
       return;
     }
 
     try {
       const settings = await listOrganizationSettings(
-        session.accessToken,
+        token,
         organizationId,
       );
       const setting = settings.find(
         (item) => item.name === ORGANIZATION_TICKETING_FEATURE_KEY,
       );
+      const handlingSetting = settings.find(
+        (item) => item.name === ORGANIZATION_TICKET_HANDLING_FEATURE_KEY,
+      );
       setOrganizationTicketingEnabled(setting?.value !== "false");
+      setOrganizationTicketHandlingEnabled(handlingSetting?.value !== "false");
     } catch {
       setOrganizationTicketingEnabled(true);
+      setOrganizationTicketHandlingEnabled(true);
     }
   }, [organizationId]);
 
   const loadTickets = useCallback(async () => {
-    const session = getStoredSession();
-    if (!session?.accessToken || !ticketingVisible) {
+    const token = await getAuthenticatedAdminToken();
+    if (!token || !ticketingVisible) {
       setLoading(false);
       return;
     }
@@ -208,8 +224,8 @@ export default function TicketsPage() {
     try {
       const nextTickets =
         view === "platform"
-          ? await listPlatformTickets(session.accessToken)
-          : await listOrganizationTickets(session.accessToken, organizationId as string);
+          ? await listPlatformTickets(token)
+          : await listOrganizationTickets(token, organizationId as string);
       setTickets(nextTickets);
       setError(null);
     } catch (err) {
@@ -220,8 +236,8 @@ export default function TicketsPage() {
   }, [organizationId, ticketingVisible, tr, view]);
 
   useEffect(() => {
-    void loadOrganizationFeature();
-  }, [loadOrganizationFeature]);
+    void loadOrganizationFeatures();
+  }, [loadOrganizationFeatures]);
 
   useEffect(() => {
     setSelectedTicketId(null);
@@ -247,8 +263,7 @@ export default function TicketsPage() {
   }
 
   async function createTicket() {
-    const session = getStoredSession();
-    if (!session?.accessToken || !draft.subject.trim() || !draft.body.trim()) {
+    if (!draft.subject.trim() || !draft.body.trim()) {
       return;
     }
     if (view === "organization" && !canCreateOrganizationTicket) return;
@@ -257,6 +272,7 @@ export default function TicketsPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       const payload = {
         attachments: draft.attachments,
         body: draft.body,
@@ -264,9 +280,9 @@ export default function TicketsPage() {
       };
       const ticket =
         view === "platform"
-          ? await createPlatformTicket(session.accessToken, payload)
+          ? await createPlatformTicket(token, payload)
           : await createOrganizationTicket(
-              session.accessToken,
+              token,
               organizationId as string,
               payload,
             );
@@ -283,15 +299,15 @@ export default function TicketsPage() {
   }
 
   async function sendMessage(input: PromptInputMessage) {
-    const session = getStoredSession();
-    if (!session?.accessToken || !selectedTicketId || !input.text.trim()) return;
+    if (!selectedTicketId || !input.text.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
+      const token = await requireAuthenticatedAdminToken();
       const attachments = await Promise.all(
-        input.files.map((item) => uploadPromptAttachment(session.accessToken, item)),
+        input.files.map((item) => uploadPromptAttachment(token, item)),
       );
-      const message = await sendTicketMessage(session.accessToken, selectedTicketId, {
+      const message = await sendTicketMessage(token, selectedTicketId, {
         attachments,
         body: input.text,
       });
@@ -325,8 +341,6 @@ export default function TicketsPage() {
   }
 
   async function uploadAttachment(file: File, target: "create" | "message") {
-    const session = getStoredSession();
-    if (!session?.accessToken) return;
     if (!file.type.startsWith("image/")) {
       setError(tr("仅支持图片附件"));
       return;
@@ -334,7 +348,8 @@ export default function TicketsPage() {
     setUploading(target);
     setError(null);
     try {
-      const result = await uploadAdminFile(session.accessToken, file);
+      const token = await requireAuthenticatedAdminToken();
+      const result = await uploadAdminFile(token, file);
       if (!result.url) throw new Error(tr("图片上传失败"));
       const attachment: TicketMessageAttachment = {
         mimeType: result.mimeType,
@@ -357,12 +372,12 @@ export default function TicketsPage() {
   }
 
   async function closeSelectedTicket() {
-    const session = getStoredSession();
-    if (!session?.accessToken || !selectedTicket) return false;
+    if (!selectedTicket) return false;
     setSubmitting(true);
     setError(null);
     try {
-      const nextTicket = await closeTicket(session.accessToken, selectedTicket.id);
+      const token = await requireAuthenticatedAdminToken();
+      const nextTicket = await closeTicket(token, selectedTicket.id);
       mergeTicket(nextTicket);
       notifications.success(tr("工单已关闭"));
       return true;
@@ -454,6 +469,14 @@ export default function TicketsPage() {
           {tr("当前组织已关闭工单提交，普通成员只能查看已有工单。")}
         </div>
       )}
+
+      {view === "organization" &&
+        !organizationTicketHandlingEnabled &&
+        hasOrganizationTicketHandlePermission && (
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            {tr("当前组织已关闭工单处理，有处理权限的成员只能查看自己参与的工单。")}
+          </div>
+        )}
 
       {view === "platform" && !platformSubmissionEnabled && !canCreatePlatformTicket && (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">

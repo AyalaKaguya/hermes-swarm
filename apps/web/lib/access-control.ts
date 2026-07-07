@@ -2,6 +2,7 @@ import {
   getPageAccessDefinition,
   type AccessMode,
 } from "@hermes-swarm/rbac-api";
+import type { RolePermission } from "./admin-api";
 import type { ResolvedSession } from "./session";
 
 type AccessPrincipal = ResolvedSession;
@@ -23,9 +24,48 @@ export function hasPermission(
 export function hasPageAccess(
   principal: AccessPrincipal | null | undefined,
   pageKey: string,
-  _routeContext: { organizationId?: string | null } = {},
+  routeContext: { organizationId?: string | null } = {},
 ) {
   const definition = getPageAccessDefinition(pageKey);
   if (!definition) return false;
-  return hasPermission(principal, definition.permission);
+  if (!principal) return false;
+
+  if (definition.scope === "platform") {
+    return roleHasPermission(
+      principal.platformMembership?.role?.permissions,
+      definition.permission,
+    );
+  }
+
+  if (definition.scope === "own") {
+    return hasPermission(principal, definition.permission);
+  }
+
+  const organizationId =
+    routeContext.organizationId ?? principal.organization?.id ?? null;
+  const membership = organizationId
+    ? principal.memberships?.find(
+        (item) =>
+          item.organizationId === organizationId && item.status === "active",
+      )
+    : null;
+
+  return (
+    roleHasPermission(membership?.role?.permissions, definition.permission) ||
+    roleHasPermission(
+      principal.platformMembership?.role?.permissions,
+      definition.permission,
+    )
+  );
+}
+
+function roleHasPermission(
+  permissions: RolePermission[] | undefined,
+  permission: string,
+) {
+  return Boolean(
+    permissions?.some(
+      (item) => item.enabled !== false && item.permission === permission,
+    ),
+  );
 }
