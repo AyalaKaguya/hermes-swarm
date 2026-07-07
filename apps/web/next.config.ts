@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -15,7 +18,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  allowedDevOrigins: ['100.110.219.64'],
+  allowedDevOrigins: ["100.110.219.64"],
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

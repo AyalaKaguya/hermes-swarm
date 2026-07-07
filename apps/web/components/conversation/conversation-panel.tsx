@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { cn } from "@/lib/utils";
 
 export function ConversationPanel<TMessage>({
@@ -16,6 +17,7 @@ export function ConversationPanel<TMessage>({
   messages: TMessage[];
   renderMessage: (message: TMessage) => ReactNode;
 }) {
+  const tr = useTextTranslation();
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
@@ -44,7 +46,7 @@ export function ConversationPanel<TMessage>({
     >
       {messages.length === 0 ? (
         <div className="grid h-full place-items-center text-sm text-muted-foreground">
-          {emptyLabel}
+          {tr(emptyLabel)}
         </div>
       ) : (
         <div className="grid gap-3">{messages.map(renderMessage)}</div>

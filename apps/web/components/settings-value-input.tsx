@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { cn } from "@/lib/utils";
 import {
   SECRET_SETTING_MASK,
@@ -71,9 +72,8 @@ const VALUE_TYPE_OPTIONS: Array<{
   { label: "密钥", value: "secret" },
 ];
 
-const DEFAULT_ENUM_OPTIONS: SettingValueOption[] = [
-  { label: "选项 1", value: "option_1" },
-];
+const DEFAULT_ENUM_OPTION_VALUE = "option_1";
+const identityTranslator = (value: string) => value;
 
 export function SettingValueInput({
   className,
@@ -87,6 +87,7 @@ export function SettingValueInput({
   valueOptions,
   valueType,
 }: SettingValueInputProps) {
+  const tr = useTextTranslation();
   const [draft, setDraft] = useState(
     valueType === "secret" ? "" : formatDraftValue(value, valueType),
   );
@@ -114,7 +115,7 @@ export function SettingValueInput({
   }
 
   async function commitDraft() {
-    const result = normalizeDraftValue(draft, valueType, valueOptions);
+    const result = normalizeDraftValue(draft, valueType, valueOptions, tr);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -161,7 +162,7 @@ export function SettingValueInput({
           value={draft || undefined}
         >
           <SelectTrigger className={cn("w-full", inputClassName)} id={id}>
-            <SelectValue placeholder={placeholder ?? "选择选项"} />
+            <SelectValue placeholder={tr(placeholder ?? "选择选项")} />
           </SelectTrigger>
           <SelectContent>
             {(valueOptions ?? []).map((option) => (
@@ -172,7 +173,9 @@ export function SettingValueInput({
           </SelectContent>
         </Select>
         {!valueOptions?.length && (
-          <div className="text-xs text-destructive">枚举设置缺少选项</div>
+          <div className="text-xs text-destructive">
+            {tr("枚举设置缺少选项")}
+          </div>
         )}
         {error && <div className="text-xs text-destructive">{error}</div>}
       </div>
@@ -199,7 +202,12 @@ export function SettingValueInput({
           onBlur={async () => {
             const secretDraft = secretDraftRef.current;
             if (!secretDraft) return;
-            const result = normalizeDraftValue(secretDraft, valueType);
+            const result = normalizeDraftValue(
+              secretDraft,
+              valueType,
+              undefined,
+              tr,
+            );
             if (!result.ok) {
               setError(result.error);
               return;
@@ -242,7 +250,7 @@ export function SettingValueInput({
             setSecretDraft(`${secretDraftRef.current}${text}`);
           }}
           placeholder={
-            value ? SECRET_SETTING_MASK : (placeholder ?? "输入密钥")
+            value ? SECRET_SETTING_MASK : tr(placeholder ?? "输入密钥")
           }
           type="text"
           value={maskedDraft}
@@ -262,7 +270,7 @@ export function SettingValueInput({
           id={id}
           onBlur={() => void commitDraft()}
           onChange={(event) => updateDraft(event.currentTarget.value)}
-          placeholder={placeholder ?? '{"enabled": true}'}
+          placeholder={placeholder ? tr(placeholder) : '{"enabled": true}'}
           value={draft}
         />
         {error && <div className="text-xs text-destructive">{error}</div>}
@@ -281,7 +289,7 @@ export function SettingValueInput({
         onBlur={() => void commitDraft()}
         onChange={(event) => updateDraft(event.currentTarget.value)}
         onKeyDown={commitOnEnter}
-        placeholder={placeholder}
+        placeholder={placeholder ? tr(placeholder) : undefined}
         type={valueType === "number" ? "number" : "text"}
         value={draft}
       />
@@ -314,6 +322,7 @@ export function CustomSettingForm({
   showScope?: boolean;
   submitLabel?: string;
 }) {
+  const tr = useTextTranslation();
   const [error, setError] = useState<string | null>(null);
   const [localSaving, setLocalSaving] = useState(false);
   const [name, setName] = useState("");
@@ -323,7 +332,7 @@ export function CustomSettingForm({
   const [value, setValue] = useState<SettingPayloadValue>("");
   const formSecretValueRef = useRef("");
   const [valueOptions, setValueOptions] =
-    useState<SettingValueOption[]>(DEFAULT_ENUM_OPTIONS);
+    useState<SettingValueOption[]>(() => makeDefaultEnumOptions(tr));
   const [valueType, setValueType] = useState<SettingValueType>("string");
 
   const busy = Boolean(disabled || saving || localSaving);
@@ -336,13 +345,13 @@ export function CustomSettingForm({
     event.preventDefault();
     const settingName = name.trim();
     if (!settingName) {
-      setError("设置名称不能为空");
+      setError(tr("设置名称不能为空"));
       return;
     }
 
     const optionsResult =
       valueType === "enum"
-        ? normalizeCustomOptions(valueOptions)
+        ? normalizeCustomOptions(valueOptions, tr)
         : { ok: true as const, value: null };
     if (!optionsResult.ok) {
       setError(optionsResult.error);
@@ -355,6 +364,7 @@ export function CustomSettingForm({
         : formatDraftValue(value, valueType),
       valueType,
       optionsResult.value,
+      tr,
     );
     if (!valueResult.ok) {
       setError(valueResult.error);
@@ -375,11 +385,11 @@ export function CustomSettingForm({
       setScope(scopeOptions[0]?.value ?? "organization");
       setValue("");
       formSecretValueRef.current = "";
-      setValueOptions(DEFAULT_ENUM_OPTIONS);
+      setValueOptions(makeDefaultEnumOptions(tr));
       setValueType("string");
       onSubmitted?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setLocalSaving(false);
     }
@@ -393,10 +403,11 @@ export function CustomSettingForm({
     } else if (nextType === "json") {
       setValue("{}");
     } else if (nextType === "enum") {
+      const defaultOptions = makeDefaultEnumOptions(tr);
       setValueOptions((current) =>
-        current.length > 0 ? current : DEFAULT_ENUM_OPTIONS,
+        current.length > 0 ? current : defaultOptions,
       );
-      setValue(valueOptions[0]?.value ?? DEFAULT_ENUM_OPTIONS[0].value);
+      setValue(valueOptions[0]?.value ?? DEFAULT_ENUM_OPTION_VALUE);
     } else if (nextType === "secret") {
       setValue("");
       formSecretValueRef.current = "";
@@ -425,7 +436,7 @@ export function CustomSettingForm({
     const nextValue = makeNextOptionValue(valueOptions);
     setValueOptions((current) => [
       ...current,
-      { label: `选项 ${current.length + 1}`, value: nextValue },
+      { label: `${tr("选项")} ${current.length + 1}`, value: nextValue },
     ]);
     if (valueType === "enum" && !value) {
       setValue(nextValue);
@@ -453,7 +464,7 @@ export function CustomSettingForm({
         )}
       >
         <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-name`}>名称</Label>
+          <Label htmlFor={`${idPrefix}-name`}>{tr("名称")}</Label>
           <Input
             disabled={busy}
             id={`${idPrefix}-name`}
@@ -464,7 +475,7 @@ export function CustomSettingForm({
         </div>
         {showScope && (
           <div className="grid gap-1.5">
-            <Label htmlFor={`${idPrefix}-scope`}>范围</Label>
+            <Label htmlFor={`${idPrefix}-scope`}>{tr("范围")}</Label>
             <Select
               disabled={busy || scopeOptions.length < 2}
               onValueChange={(nextValue) =>
@@ -478,7 +489,7 @@ export function CustomSettingForm({
               <SelectContent>
                 {scopeOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                    {tr(option.label)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -486,7 +497,7 @@ export function CustomSettingForm({
           </div>
         )}
         <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-type`}>类型</Label>
+          <Label htmlFor={`${idPrefix}-type`}>{tr("类型")}</Label>
           <Select
             disabled={busy}
             onValueChange={(nextValue) =>
@@ -500,7 +511,7 @@ export function CustomSettingForm({
             <SelectContent>
               {VALUE_TYPE_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  {option.label}
+                  {tr(option.label)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -511,7 +522,7 @@ export function CustomSettingForm({
       {valueType === "enum" && (
         <div className="grid gap-2 rounded-md border bg-muted/20 p-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-medium">枚举选项</div>
+            <div className="text-sm font-medium">{tr("枚举选项")}</div>
             <Button
               disabled={busy}
               onClick={addOption}
@@ -520,7 +531,7 @@ export function CustomSettingForm({
               variant="outline"
             >
               <AppIcon className="size-3.5" name="plus" />
-              添加选项
+              {tr("添加选项")}
             </Button>
           </div>
           <div className="grid gap-2">
@@ -534,7 +545,7 @@ export function CustomSettingForm({
                   onChange={(event) =>
                     updateOption(index, "label", event.currentTarget.value)
                   }
-                  placeholder="显示名称"
+                  placeholder={tr("显示名称")}
                   value={option.label}
                 />
                 <Input
@@ -561,7 +572,7 @@ export function CustomSettingForm({
       )}
 
       <div className="grid gap-1.5">
-        <Label htmlFor={`${idPrefix}-value`}>值</Label>
+        <Label htmlFor={`${idPrefix}-value`}>{tr("值")}</Label>
         <SettingValueInput
           disabled={busy}
           id={`${idPrefix}-value`}
@@ -587,7 +598,7 @@ export function CustomSettingForm({
 
       <div className="flex justify-end">
         <Button disabled={busy || !name.trim()} type="submit">
-          {submitLabel}
+          {tr(submitLabel)}
         </Button>
       </div>
     </form>
@@ -617,6 +628,7 @@ export function CustomSettingDialog({
   title?: string;
   triggerLabel?: string;
 }) {
+  const tr = useTextTranslation();
   const [open, setOpen] = useState(false);
 
   return (
@@ -624,13 +636,13 @@ export function CustomSettingDialog({
       <DialogTrigger asChild>
         <Button disabled={disabled || saving} size="sm" type="button">
           <AppIcon className="size-3.5" name="plus" />
-          {triggerLabel}
+          {tr(triggerLabel)}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogTitle>{tr(title)}</DialogTitle>
+          <DialogDescription>{tr(description)}</DialogDescription>
         </DialogHeader>
         <CustomSettingForm
           disabled={disabled}
@@ -666,11 +678,12 @@ export function SettingEditDialog({
   valueOptions?: readonly SettingValueOption[] | null;
   valueType: SettingValueType;
 }) {
+  const tr = useTextTranslation();
   const [draftValue, setDraftValue] = useState<SettingPayloadValue>(() =>
     valueType === "secret" ? "" : (value ?? ""),
   );
   const [draftValueOptions, setDraftValueOptions] = useState<SettingValueOption[]>(
-    () => cloneSettingOptions(valueOptions) ?? DEFAULT_ENUM_OPTIONS,
+    () => cloneSettingOptions(valueOptions) ?? makeDefaultEnumOptions(tr),
   );
   const [draftValueType, setDraftValueType] =
     useState<SettingValueType>(valueType);
@@ -688,17 +701,17 @@ export function SettingEditDialog({
     setDraftValueType(valueType);
     setDraftValue(valueType === "secret" ? "" : (value ?? ""));
     setDraftValueOptions(
-      cloneSettingOptions(valueOptions) ?? DEFAULT_ENUM_OPTIONS,
+      cloneSettingOptions(valueOptions) ?? makeDefaultEnumOptions(tr),
     );
     editSecretValueRef.current = "";
     setError(null);
-  }, [open, value, valueOptions, valueType]);
+  }, [open, tr, value, valueOptions, valueType]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const optionsResult =
       draftValueType === "enum"
-        ? normalizeCustomOptions(draftValueOptions)
+        ? normalizeCustomOptions(draftValueOptions, tr)
         : { ok: true as const, value: null };
     if (!optionsResult.ok) {
       setError(optionsResult.error);
@@ -717,6 +730,7 @@ export function SettingEditDialog({
             : formatDraftValue(draftValue, draftValueType),
           draftValueType,
           optionsResult.value,
+          tr,
         );
     if (!valueResult.ok) {
       setError(valueResult.error);
@@ -734,7 +748,7 @@ export function SettingEditDialog({
       });
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setLocalSaving(false);
     }
@@ -751,9 +765,9 @@ export function SettingEditDialog({
       const nextOptions =
         draftValueOptions.length > 0
           ? draftValueOptions
-          : cloneSettingOptions(valueOptions) ?? DEFAULT_ENUM_OPTIONS;
+          : cloneSettingOptions(valueOptions) ?? makeDefaultEnumOptions(tr);
       setDraftValueOptions(nextOptions);
-      setDraftValue(nextOptions[0]?.value ?? DEFAULT_ENUM_OPTIONS[0].value);
+      setDraftValue(nextOptions[0]?.value ?? DEFAULT_ENUM_OPTION_VALUE);
     } else {
       setDraftValue("");
       editSecretValueRef.current = "";
@@ -780,7 +794,7 @@ export function SettingEditDialog({
     const nextValue = makeNextOptionValue(draftValueOptions);
     setDraftValueOptions((current) => [
       ...current,
-      { label: `选项 ${current.length + 1}`, value: nextValue },
+      { label: `${tr("选项")} ${current.length + 1}`, value: nextValue },
     ]);
     if (draftValueType === "enum" && !draftValue) {
       setDraftValue(nextValue);
@@ -808,14 +822,14 @@ export function SettingEditDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>编辑设置</DialogTitle>
+          <DialogTitle>{tr("编辑设置")}</DialogTitle>
           <DialogDescription className="break-all font-mono">
             {name}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-3" onSubmit={submit}>
           <div className="grid gap-1.5">
-            <Label htmlFor={`${idPrefix}-edit-type`}>类型</Label>
+            <Label htmlFor={`${idPrefix}-edit-type`}>{tr("类型")}</Label>
             <Select
               disabled={busy}
               onValueChange={(nextValue) =>
@@ -829,7 +843,7 @@ export function SettingEditDialog({
               <SelectContent>
                 {VALUE_TYPE_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                    {tr(option.label)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -839,7 +853,7 @@ export function SettingEditDialog({
           {draftValueType === "enum" && (
             <div className="grid gap-2 rounded-md border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium">枚举选项</div>
+                <div className="text-sm font-medium">{tr("枚举选项")}</div>
                 <Button
                   disabled={busy}
                   onClick={addOption}
@@ -848,7 +862,7 @@ export function SettingEditDialog({
                   variant="outline"
                 >
                   <AppIcon className="size-3.5" name="plus" />
-                  添加选项
+                  {tr("添加选项")}
                 </Button>
               </div>
               <div className="grid gap-2">
@@ -862,7 +876,7 @@ export function SettingEditDialog({
                       onChange={(event) =>
                         updateOption(index, "label", event.currentTarget.value)
                       }
-                      placeholder="显示名称"
+                      placeholder={tr("显示名称")}
                       value={option.label}
                     />
                     <Input
@@ -889,7 +903,7 @@ export function SettingEditDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label htmlFor={`${idPrefix}-edit-value`}>值</Label>
+            <Label htmlFor={`${idPrefix}-edit-value`}>{tr("值")}</Label>
             <SettingValueInput
               disabled={busy}
               id={`${idPrefix}-edit-value`}
@@ -915,7 +929,7 @@ export function SettingEditDialog({
 
           <div className="flex justify-end">
             <Button disabled={busy} type="submit">
-              保存
+              {tr("保存")}
             </Button>
           </div>
         </form>
@@ -942,20 +956,21 @@ function normalizeDraftValue(
   draft: string,
   valueType: SettingValueType,
   valueOptions?: readonly SettingValueOption[] | null,
+  tr: (value: string) => string = identityTranslator,
 ):
   | { ok: true; value: SettingPayloadValue }
   | { error: string; ok: false } {
   if (valueType === "boolean") {
     if (draft === "true") return { ok: true, value: true };
     if (draft === "false" || draft === "") return { ok: true, value: false };
-    return { error: "布尔设置值必须为 true 或 false", ok: false };
+    return { error: tr("布尔设置值必须为 true 或 false"), ok: false };
   }
 
   if (valueType === "number") {
     const normalized = draft.trim();
     const parsed = Number(normalized);
     if (!normalized || !Number.isFinite(parsed)) {
-      return { error: "数字设置值无效", ok: false };
+      return { error: tr("数字设置值无效"), ok: false };
     }
     return { ok: true, value: String(parsed) };
   }
@@ -964,24 +979,24 @@ function normalizeDraftValue(
     try {
       return { ok: true, value: JSON.stringify(JSON.parse(draft)) };
     } catch {
-      return { error: "JSON 设置值格式无效", ok: false };
+      return { error: tr("JSON 设置值格式无效"), ok: false };
     }
   }
 
   if (valueType === "enum") {
     const normalized = draft.trim();
     if (!valueOptions?.length) {
-      return { error: "枚举设置必须提供选项", ok: false };
+      return { error: tr("枚举设置必须提供选项"), ok: false };
     }
     if (!valueOptions.some((option) => option.value === normalized)) {
-      return { error: "枚举设置值不在选项范围内", ok: false };
+      return { error: tr("枚举设置值不在选项范围内"), ok: false };
     }
     return { ok: true, value: normalized };
   }
 
   if (valueType === "secret") {
     if (!draft) {
-      return { error: "密钥设置值不能为空", ok: false };
+      return { error: tr("密钥设置值不能为空"), ok: false };
     }
     return { ok: true, value: draft };
   }
@@ -991,11 +1006,12 @@ function normalizeDraftValue(
 
 function normalizeCustomOptions(
   options: readonly SettingValueOption[],
+  tr: (value: string) => string = identityTranslator,
 ):
   | { ok: true; value: SettingValueOption[] }
   | { error: string; ok: false } {
   if (options.length === 0) {
-    return { error: "枚举设置至少需要一个选项", ok: false };
+    return { error: tr("枚举设置至少需要一个选项"), ok: false };
   }
 
   const seen = new Set<string>();
@@ -1003,10 +1019,10 @@ function normalizeCustomOptions(
   for (const option of options) {
     const value = option.value.trim();
     if (!value) {
-      return { error: "枚举选项值不能为空", ok: false };
+      return { error: tr("枚举选项值不能为空"), ok: false };
     }
     if (seen.has(value)) {
-      return { error: "枚举选项值不能重复", ok: false };
+      return { error: tr("枚举选项值不能重复"), ok: false };
     }
     seen.add(value);
     normalized.push({
@@ -1015,6 +1031,10 @@ function normalizeCustomOptions(
     });
   }
   return { ok: true, value: normalized };
+}
+
+function makeDefaultEnumOptions(tr: (value: string) => string) {
+  return [{ label: tr("选项 1"), value: DEFAULT_ENUM_OPTION_VALUE }];
 }
 
 function cloneSettingOptions(

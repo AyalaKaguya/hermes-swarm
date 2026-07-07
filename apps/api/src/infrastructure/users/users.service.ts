@@ -176,10 +176,9 @@ export class UsersService {
       throw new ForbiddenException("只能更新自己的语言偏好");
     }
     const user = await this.getUserOrThrow(userId);
-    user.preferredLanguage = requireText(
+    user.preferredLanguage = normalizePreferredLanguage(
       payload.preferredLanguage,
-      "首选语言",
-    ) as User["preferredLanguage"];
+    );
     user.updatedAt = new Date();
     return toUserDto(await this.userRepository.save(user));
   }
@@ -270,4 +269,20 @@ function requirePassword(value: string | undefined) {
   const password = requireText(value, "密码");
   if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
   return password;
+}
+
+function normalizePreferredLanguage(value: string | undefined | null) {
+  const language = requireText(value, "首选语言");
+  switch (language) {
+    case "en":
+      return "en";
+    case "zh":
+    case "zh-CN":
+    case "zh-Hans":
+      return "zh-Hans";
+    case "zh-Hant":
+      return "zh-Hant";
+    default:
+      throw new BadRequestException("不支持的语言");
+  }
 }

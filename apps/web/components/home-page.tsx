@@ -1,5 +1,9 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 export function HomePage() {
-  return <section aria-label="主页" className="min-h-svh" />;
+  const t = useTranslations();
+
+  return <section aria-label={t("shell.home")} className="min-h-svh" />;
 }

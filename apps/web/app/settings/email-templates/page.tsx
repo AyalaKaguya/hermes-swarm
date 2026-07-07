@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
@@ -37,6 +38,7 @@ import {
   updateEmailTemplate,
   type EmailTemplateDto,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { getStoredSession } from "@/lib/session";
 
 type LanguageFilter = "all" | "zh-CN" | "en" | "zh-Hans" | "zh-Hant";
@@ -50,6 +52,8 @@ const LANGUAGE_LABELS: Record<LanguageFilter, string> = {
 };
 
 export default function EmailTemplatesPage() {
+  const t = useTranslations();
+  const tr = useTextTranslation();
   const { snapshot } = useAdminShell();
   const organizationId = snapshot?.organization?.id ?? null;
   const [templates, setTemplates] = useState<EmailTemplateDto[]>([]);
@@ -77,11 +81,11 @@ export default function EmailTemplatesPage() {
       const data = await listEmailTemplates(session.accessToken, organizationId);
       setTemplates(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, tr]);
 
   useEffect(() => {
     void load();
@@ -91,11 +95,11 @@ export default function EmailTemplatesPage() {
     try {
       if (!organizationId) return;
       await deleteEmailTemplate(token, organizationId, templateId);
-      setMsg("已删除");
+      setMsg(tr("已删除"));
       setDeleteTemplate(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
+      setError(err instanceof Error ? err.message : tr("删除失败"));
     }
   }
 
@@ -109,7 +113,7 @@ export default function EmailTemplatesPage() {
   if (loading)
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   if (error)
@@ -125,19 +129,19 @@ export default function EmailTemplatesPage() {
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div>
-          <CardTitle>邮件模板</CardTitle>
-          <CardDescription>管理组织邮件模板</CardDescription>
+          <CardTitle>{tr("邮件模板")}</CardTitle>
+          <CardDescription>{tr("管理组织邮件模板")}</CardDescription>
         </div>
         <Dialog onOpenChange={setCreateOpen} open={createOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
               <AppIcon className="size-3.5" name="file" />
-              添加模板
+              {tr("添加模板")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>创建邮件模板</DialogTitle>
+              <DialogTitle>{tr("创建邮件模板")}</DialogTitle>
             </DialogHeader>
             <CreateTemplateForm
               organizationId={organizationId}
@@ -167,7 +171,7 @@ export default function EmailTemplatesPage() {
                   size="xs"
                   variant={languageFilter === lang ? "secondary" : "ghost"}
                 >
-                  {LANGUAGE_LABELS[lang] || lang}
+                  {tr(LANGUAGE_LABELS[lang] || lang)}
                 </Button>
               ),
             )}
@@ -176,7 +180,7 @@ export default function EmailTemplatesPage() {
 
         {filtered.length === 0 ? (
           <div className="py-8 text-center text-sm">
-            暂无邮件模板。点击"添加模板"创建第一个。
+            {tr("暂无邮件模板。点击“添加模板”创建第一个。")}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -206,7 +210,7 @@ export default function EmailTemplatesPage() {
                     </div>
                   )}
                   <div className="text-xs">
-                    {t.organizationId ? "组织模板" : "全局模板"}
+                    {t.organizationId ? tr("组织模板") : tr("全局模板")}
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-1">
@@ -218,7 +222,7 @@ export default function EmailTemplatesPage() {
                     size="xs"
                     variant="ghost"
                   >
-                    编辑
+                    {tr("编辑")}
                   </Button>
                   <Button
                     onClick={(e) => {
@@ -228,7 +232,7 @@ export default function EmailTemplatesPage() {
                     size="xs"
                     variant="destructive"
                   >
-                    删除
+                    {tr("删除")}
                   </Button>
                 </div>
               </div>
@@ -247,7 +251,7 @@ export default function EmailTemplatesPage() {
         >
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>编辑模板</DialogTitle>
+              <DialogTitle>{tr("编辑模板")}</DialogTitle>
             </DialogHeader>
             <EditTemplateForm
               organizationId={organizationId}
@@ -263,8 +267,10 @@ export default function EmailTemplatesPage() {
       )}
 
       <ConfirmActionDialog
-        confirmLabel="删除"
-        description={`删除模板「${deleteTemplate?.name ?? ""}」后，相关邮件将无法再使用该模板。`}
+        confirmLabel={tr("删除")}
+        description={t("dialogs.deleteEmailTemplateDescription", {
+          name: deleteTemplate?.name ?? "",
+        })}
         onConfirm={() => {
           if (deleteTemplate) void remove(deleteTemplate.id);
         }}
@@ -272,7 +278,7 @@ export default function EmailTemplatesPage() {
           if (!open) setDeleteTemplate(null);
         }}
         open={Boolean(deleteTemplate)}
-        title="删除邮件模板"
+        title={tr("删除邮件模板")}
       />
     </Card>
   );
@@ -287,6 +293,7 @@ function CreateTemplateForm({
   token: string;
   onDone: () => void;
 }) {
+  const tr = useTextTranslation();
   const [name, setName] = useState("");
   const [languageCode, setLanguageCode] = useState("zh-CN");
   const [subject, setSubject] = useState("");
@@ -313,7 +320,7 @@ function CreateTemplateForm({
       );
       onDone();
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "创建失败");
+      setMsg(err instanceof Error ? err.message : tr("创建失败"));
     } finally {
       setSaving(false);
     }
@@ -323,7 +330,7 @@ function CreateTemplateForm({
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label>模板名称</Label>
+          <Label>{tr("模板名称")}</Label>
           <Input
             onChange={(e) => setName(e.target.value)}
             placeholder="welcome-user"
@@ -331,40 +338,40 @@ function CreateTemplateForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label>语言</Label>
+          <Label>{tr("语言")}</Label>
           <Select onValueChange={setLanguageCode} value={languageCode}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="zh-CN">简体中文</SelectItem>
-              <SelectItem value="zh-Hans">简体中文</SelectItem>
-              <SelectItem value="zh-Hant">繁體中文</SelectItem>
+              <SelectItem value="zh-CN">{tr("简体中文")}</SelectItem>
+              <SelectItem value="zh-Hans">{tr("简体中文")}</SelectItem>
+              <SelectItem value="zh-Hant">{tr("繁體中文")}</SelectItem>
               <SelectItem value="en">English</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <div className="grid gap-2">
-        <Label>邮件主题</Label>
+        <Label>{tr("邮件主题")}</Label>
         <Input
           onChange={(e) => setSubject(e.target.value)}
-          placeholder="欢迎加入 {{orgName}}"
+          placeholder={tr("欢迎加入 {{orgName}}")}
           value={subject}
         />
       </div>
       <div className="grid gap-2">
-        <Label>HBS 模板内容</Label>
+        <Label>{tr("HBS 模板内容")}</Label>
         <Textarea
           className="font-mono text-xs"
           onChange={(e) => setHbs(e.target.value)}
-          placeholder="Handlebars 模板..."
+          placeholder={tr("Handlebars 模板...")}
           rows={6}
           value={hbs}
         />
       </div>
       <div className="grid gap-2">
-        <Label>MJML (可选)</Label>
+        <Label>{tr("MJML (可选)")}</Label>
         <Textarea
           className="font-mono text-xs"
           onChange={(e) => setMjml(e.target.value)}
@@ -375,7 +382,7 @@ function CreateTemplateForm({
       </div>
       {msg && <div className="text-sm">{msg}</div>}
       <Button disabled={saving || !name.trim() || !hbs.trim()} onClick={submit}>
-        {saving ? "创建中..." : "创建模板"}
+        {saving ? tr("创建中...") : tr("创建模板")}
       </Button>
     </div>
   );
@@ -392,6 +399,7 @@ function EditTemplateForm({
   token: string;
   onDone: () => void;
 }) {
+  const tr = useTextTranslation();
   const [name, setName] = useState(template.name);
   const [languageCode, setLanguageCode] = useState(template.languageCode);
   const [subject, setSubject] = useState(template.subject ?? "");
@@ -419,7 +427,7 @@ function EditTemplateForm({
       );
       onDone();
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "保存失败");
+      setMsg(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -429,30 +437,30 @@ function EditTemplateForm({
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label>模板名称</Label>
+          <Label>{tr("模板名称")}</Label>
           <Input onChange={(e) => setName(e.target.value)} value={name} />
         </div>
         <div className="grid gap-2">
-          <Label>语言</Label>
+          <Label>{tr("语言")}</Label>
           <Select onValueChange={setLanguageCode} value={languageCode}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="zh-CN">简体中文</SelectItem>
-              <SelectItem value="zh-Hans">简体中文</SelectItem>
-              <SelectItem value="zh-Hant">繁體中文</SelectItem>
+              <SelectItem value="zh-CN">{tr("简体中文")}</SelectItem>
+              <SelectItem value="zh-Hans">{tr("简体中文")}</SelectItem>
+              <SelectItem value="zh-Hant">{tr("繁體中文")}</SelectItem>
               <SelectItem value="en">English</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <div className="grid gap-2">
-        <Label>邮件主题</Label>
+        <Label>{tr("邮件主题")}</Label>
         <Input onChange={(e) => setSubject(e.target.value)} value={subject} />
       </div>
       <div className="grid gap-2">
-        <Label>HBS 模板内容</Label>
+        <Label>{tr("HBS 模板内容")}</Label>
         <Textarea
           className="font-mono text-xs"
           onChange={(e) => setHbs(e.target.value)}
@@ -461,7 +469,7 @@ function EditTemplateForm({
         />
       </div>
       <div className="grid gap-2">
-        <Label>MJML (可选)</Label>
+        <Label>{tr("MJML (可选)")}</Label>
         <Textarea
           className="font-mono text-xs"
           onChange={(e) => setMjml(e.target.value)}
@@ -471,7 +479,7 @@ function EditTemplateForm({
       </div>
       {msg && <div className="text-sm">{msg}</div>}
       <Button disabled={saving} onClick={submit}>
-        保存
+        {tr("保存")}
       </Button>
     </div>
   );

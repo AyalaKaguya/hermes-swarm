@@ -1,0 +1,82 @@
+{
+  "common": {
+    "add": "新增",
+    "cancel": "取消",
+    "close": "關閉",
+    "confirm": "確認",
+    "create": "建立",
+    "delete": "刪除",
+    "edit": "編輯",
+    "loading": "載入中...",
+    "processing": "處理中...",
+    "refresh": "重新整理",
+    "remove": "移除",
+    "retry": "重試",
+    "save": "儲存",
+    "saving": "儲存中...",
+    "search": "搜尋"
+  },
+  "language": {
+    "english": "English",
+    "saveFailed": "語言偏好儲存失敗",
+    "simplifiedChinese": "簡體中文",
+    "traditionalChinese": "繁體中文"
+  },
+  "theme": {
+    "dark": "深色",
+    "light": "淺色",
+    "system": "跟隨系統"
+  },
+  "user": {
+    "logout": "登出帳號",
+    "notSignedIn": "未登入",
+    "profile": "使用者設定"
+  },
+  "shell": {
+    "business": "業務",
+    "console": "管理控制台",
+    "current": "目前",
+    "currentOrganization": "目前組織",
+    "currentOrganizationTooltip": "目前組織：{name}",
+    "home": "首頁",
+    "loadSessionFailed": "無法載入目前登入狀態",
+    "loadingSessionFailed": "載入登入狀態失敗",
+    "noPageAccessDescription": "目前角色不能存取此頁面。",
+    "noPageAccessNamedDescription": "目前角色不能存取「{page}」。",
+    "noPageAccessTitle": "沒有頁面存取權限",
+    "noSwitchableOrganizations": "暫無可切換組織",
+    "settings": "設定",
+    "settingsDescription": "個人、組織與平台管理",
+    "settingsNavigation": "設定導覽",
+    "switchOrganization": "切換組織",
+    "documentTitle": "{name} 控制台"
+  },
+  "notifications": {
+    "allRead": "全部已讀",
+    "clearRead": "清理已讀",
+    "dismiss": "移除通知",
+    "empty": "暫無通知",
+    "runtimeError": "應用程式執行時錯誤",
+    "title": "通知",
+    "titleWithCount": "通知 ({count})",
+    "unhandledRejection": "非同步任務失敗"
+  },
+  "auth": {
+    "console": "管理控制台",
+    "email": "電子郵件",
+    "noAdminAccess": "目前使用者沒有管理端存取權限",
+    "password": "密碼",
+    "passwordPlaceholder": "至少 8 位",
+    "requestFailed": "請求失敗",
+    "signIn": "登入",
+    "subtitle": "使用管理員帳號進入工作台"
+  },
+  "dialogs": {
+    "deleteEmailTemplateDescription": "刪除範本「{name}」後，相關郵件將無法再使用該範本。",
+    "deleteGroupConfirm": "刪除使用者組「{name}」？",
+    "deleteRoleConfirm": "刪除角色「{name}」？"
+  },
+  "test": {
+    "fallbackOnly": "回退文字"
+  }
+}

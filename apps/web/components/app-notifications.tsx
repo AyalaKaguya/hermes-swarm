@@ -8,8 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
 import { Button } from "@/components/ui/button";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { cn } from "@/lib/utils";
 
 type NotificationVariant = "error" | "info" | "success";
@@ -35,6 +37,8 @@ const NotificationsContext =
   createContext<NotificationsContextValue | null>(null);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+  const t = useTranslations();
+  const tr = useTextTranslation();
   const [items, setItems] = useState<NotificationItem[]>([]);
 
   const remove = useCallback((id: number) => {
@@ -84,15 +88,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             key={item.id}
           >
             <div className="min-w-0 flex-1">
-              <div className="font-medium">{item.title}</div>
+              <div className="font-medium">{tr(item.title)}</div>
               {item.description && (
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {item.description}
+                  {tr(item.description)}
                 </div>
               )}
             </div>
             <Button
-              aria-label="关闭通知"
+              aria-label={t("common.close")}
               className="-mr-1 -mt-1 size-7"
               onClick={() => remove(item.id)}
               size="icon"

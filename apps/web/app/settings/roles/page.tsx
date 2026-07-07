@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { PermissionTree } from "@/components/permission-tree";
@@ -35,6 +36,7 @@ import {
   type RolePermission,
   type RolePayload,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +58,8 @@ type RoleForm = {
 };
 
 export default function RolesPage() {
+  const t = useTranslations();
+  const tr = useTextTranslation();
   const { snapshot } = useAdminShell();
   const organizationId = snapshot?.organization?.id ?? null;
   const [roles, setRoles] = useState<Role[]>([]);
@@ -95,11 +99,11 @@ export default function RolesPage() {
           : (roleItems[0]?.id ?? null),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, tr]);
 
   useEffect(() => {
     void load();
@@ -180,7 +184,7 @@ export default function RolesPage() {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSaving(null);
     }
@@ -220,7 +224,7 @@ export default function RolesPage() {
       setRoleDialog(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingRole(false);
     }
@@ -228,7 +232,11 @@ export default function RolesPage() {
 
   async function removeRole(role: Role) {
     if (!organizationId || role.isSystem) return;
-    const confirmed = window.confirm(`删除角色「${role.displayName ?? role.label}」？`);
+    const confirmed = window.confirm(
+      t("dialogs.deleteRoleConfirm", {
+        name: role.displayName ?? role.label,
+      }),
+    );
     if (!confirmed) return;
 
     setSavingRole(true);
@@ -238,7 +246,7 @@ export default function RolesPage() {
       setSelectedRoleId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
+      setError(err instanceof Error ? err.message : tr("删除失败"));
     } finally {
       setSavingRole(false);
     }
@@ -247,7 +255,7 @@ export default function RolesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   }
@@ -265,14 +273,14 @@ export default function RolesPage() {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
-        <h1 className="truncate text-lg font-semibold">角色与权限</h1>
+        <h1 className="truncate text-lg font-semibold">{tr("角色与权限")}</h1>
         <Button
           onClick={() => openRoleDialog({ mode: "create" })}
           size="sm"
           type="button"
         >
           <AppIcon className="size-3.5" name="plus" />
-          新建角色
+          {tr("新建角色")}
         </Button>
       </div>
 
@@ -281,7 +289,7 @@ export default function RolesPage() {
           <CardHeader className="border-b px-4 py-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <AppIcon className="size-4" name="shield" />
-              组织角色
+              {tr("组织角色")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-2">
@@ -344,11 +352,11 @@ export default function RolesPage() {
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                       <span className="truncate">{selectedRole.name}</span>
                       <Badge variant={selectedRole.isSystem ? "secondary" : "outline"}>
-                        {selectedRole.isSystem ? "系统" : "自定义"}
+                        {selectedRole.isSystem ? tr("系统") : tr("自定义")}
                       </Badge>
                       <span>
                         {enabledPermissionCount(selectedRole.id)} /{" "}
-                        {permissionKeys.length} 已启用
+                        {permissionKeys.length} {tr("已启用")}
                       </span>
                     </div>
                   </div>
@@ -362,7 +370,7 @@ export default function RolesPage() {
                       size="sm"
                       variant="outline"
                     >
-                      保存
+                      {tr("保存")}
                     </Button>
                     <Button
                       disabled={savingRole}
@@ -373,7 +381,7 @@ export default function RolesPage() {
                       type="button"
                       variant="outline"
                     >
-                      编辑
+                      {tr("编辑")}
                     </Button>
                     <Button
                       disabled={savingRole || selectedRole.isSystem}
@@ -382,7 +390,7 @@ export default function RolesPage() {
                       type="button"
                       variant="ghost"
                     >
-                      删除
+                      {tr("删除")}
                     </Button>
                   </div>
                 </div>
@@ -402,7 +410,7 @@ export default function RolesPage() {
             </>
           ) : (
             <CardContent className="flex min-h-48 items-center justify-center text-sm">
-              暂无可配置角色
+              {tr("暂无可配置角色")}
             </CardContent>
           )}
         </Card>
@@ -417,12 +425,12 @@ export default function RolesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {roleDialog?.mode === "edit" ? "编辑角色" : "新建角色"}
+              {roleDialog?.mode === "edit" ? tr("编辑角色") : tr("新建角色")}
             </DialogTitle>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitRole}>
             <div className="grid gap-2">
-              <Label htmlFor="role-display-name">显示名称</Label>
+              <Label htmlFor="role-display-name">{tr("显示名称")}</Label>
               <Input
                 id="role-display-name"
                 onChange={(event) =>
@@ -436,7 +444,7 @@ export default function RolesPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="role-name">标识</Label>
+              <Label htmlFor="role-name">{tr("标识")}</Label>
               <Input
                 id="role-name"
                 onChange={(event) =>
@@ -445,12 +453,12 @@ export default function RolesPage() {
                     name: event.target.value,
                   }))
                 }
-                placeholder="留空后根据显示名称生成"
+                placeholder={tr("留空后根据显示名称生成")}
                 value={roleForm.name}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="role-color">颜色</Label>
+              <Label htmlFor="role-color">{tr("颜色")}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   className="h-9 w-14 p-1"
@@ -477,7 +485,7 @@ export default function RolesPage() {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="role-description">描述</Label>
+              <Label htmlFor="role-description">{tr("描述")}</Label>
               <Textarea
                 id="role-description"
                 onChange={(event) =>
@@ -497,10 +505,10 @@ export default function RolesPage() {
                 type="button"
                 variant="outline"
               >
-                取消
+                {tr("取消")}
               </Button>
               <Button disabled={savingRole || !roleForm.displayName.trim()}>
-                保存
+                {tr("保存")}
               </Button>
             </DialogFooter>
           </form>

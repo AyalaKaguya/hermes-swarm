@@ -23,11 +23,13 @@ import {
   type OrganizationSetting,
 } from "@/lib/admin-api";
 import { usePermission } from "@/hooks/use-permission";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { getStoredSession } from "@/lib/session";
 
 export default function FeaturesPage() {
   const { resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
+  const tr = useTextTranslation();
   const [settings, setSettings] = useState<OrganizationSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +57,11 @@ export default function FeaturesPage() {
       );
       setSettings(settingItems);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, tr]);
 
   useEffect(() => {
     void load();
@@ -85,7 +87,7 @@ export default function FeaturesPage() {
       await saveOrganizationSettings(session.accessToken, organizationId, payload);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     }
   }
 
@@ -95,9 +97,9 @@ export default function FeaturesPage() {
     setMsg("");
     try {
       await load();
-      setMsg("刷新成功");
+      setMsg(tr("刷新成功"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "刷新失败");
+      setError(err instanceof Error ? err.message : tr("刷新失败"));
     } finally {
       setUpgrading(false);
     }
@@ -106,7 +108,7 @@ export default function FeaturesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   }
@@ -115,8 +117,8 @@ export default function FeaturesPage() {
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div>
-          <CardTitle>功能管理</CardTitle>
-          <CardDescription>管理当前组织的功能开关</CardDescription>
+          <CardTitle>{tr("功能管理")}</CardTitle>
+          <CardDescription>{tr("管理当前组织的功能开关")}</CardDescription>
         </div>
         <Button
           disabled={upgrading}
@@ -125,7 +127,7 @@ export default function FeaturesPage() {
           variant="outline"
         >
           <AppIcon className="size-3.5" name="refresh" />
-          {upgrading ? "刷新中..." : "刷新"}
+          {upgrading ? tr("刷新中...") : tr("刷新")}
         </Button>
       </CardHeader>
       <CardContent>
@@ -157,10 +159,10 @@ export default function FeaturesPage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">
-                      {feature.label}
+                      {tr(feature.label)}
                     </span>
                     <Badge className="text-xs" variant="outline">
-                      {feature.scope}
+                      {tr(feature.scope)}
                     </Badge>
                     {id && (
                       <span className="font-mono text-xs text-muted-foreground">
@@ -169,7 +171,7 @@ export default function FeaturesPage() {
                     )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {feature.description}
+                    {tr(feature.description)}
                   </p>
                 </div>
                 <div className="flex items-center justify-end">

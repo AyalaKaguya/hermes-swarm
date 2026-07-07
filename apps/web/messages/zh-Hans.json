@@ -1,0 +1,82 @@
+{
+  "common": {
+    "add": "添加",
+    "cancel": "取消",
+    "close": "关闭",
+    "confirm": "确认",
+    "create": "创建",
+    "delete": "删除",
+    "edit": "编辑",
+    "loading": "加载中...",
+    "processing": "处理中...",
+    "refresh": "刷新",
+    "remove": "移除",
+    "retry": "重试",
+    "save": "保存",
+    "saving": "保存中...",
+    "search": "搜索"
+  },
+  "language": {
+    "english": "English",
+    "saveFailed": "语言偏好保存失败",
+    "simplifiedChinese": "简体中文",
+    "traditionalChinese": "繁體中文"
+  },
+  "theme": {
+    "dark": "深色",
+    "light": "浅色",
+    "system": "跟随系统"
+  },
+  "user": {
+    "logout": "退出账号",
+    "notSignedIn": "未登录",
+    "profile": "用户配置"
+  },
+  "shell": {
+    "business": "业务",
+    "console": "管理控制台",
+    "current": "当前",
+    "currentOrganization": "当前组织",
+    "currentOrganizationTooltip": "当前组织：{name}",
+    "home": "主页",
+    "loadSessionFailed": "无法加载当前登录状态",
+    "loadingSessionFailed": "加载登录状态失败",
+    "noPageAccessDescription": "当前角色不能访问此页面。",
+    "noPageAccessNamedDescription": "当前角色不能访问“{page}”。",
+    "noPageAccessTitle": "没有页面访问权限",
+    "noSwitchableOrganizations": "暂无可切换组织",
+    "settings": "设置",
+    "settingsDescription": "个人、组织与平台管理",
+    "settingsNavigation": "配置导航",
+    "switchOrganization": "切换组织",
+    "documentTitle": "{name} 控制台"
+  },
+  "notifications": {
+    "allRead": "全部已读",
+    "clearRead": "清理已读",
+    "dismiss": "移除通知",
+    "empty": "暂无通知",
+    "runtimeError": "应用运行时错误",
+    "title": "通知",
+    "titleWithCount": "通知 ({count})",
+    "unhandledRejection": "异步任务失败"
+  },
+  "auth": {
+    "console": "管理控制台",
+    "email": "邮箱",
+    "noAdminAccess": "当前用户没有管理端访问权限",
+    "password": "密码",
+    "passwordPlaceholder": "至少 8 位",
+    "requestFailed": "请求失败",
+    "signIn": "登录",
+    "subtitle": "使用管理员账号进入工作台"
+  },
+  "dialogs": {
+    "deleteEmailTemplateDescription": "删除模板「{name}」后，相关邮件将无法再使用该模板。",
+    "deleteGroupConfirm": "删除用户组「{name}」？",
+    "deleteRoleConfirm": "删除角色「{name}」？"
+  },
+  "test": {
+    "fallbackOnly": "回退文本"
+  }
+}

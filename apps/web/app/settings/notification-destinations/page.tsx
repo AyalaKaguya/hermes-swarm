@@ -32,9 +32,11 @@ import {
   type NotificationDestination,
   type NotificationDestinationType,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { getStoredSession } from "@/lib/session";
 
 export default function NotificationDestinationsPage() {
+  const tr = useTextTranslation();
   const { snapshot } = useAdminShell();
   const organizationId = snapshot?.organization?.id ?? null;
   const [items, setItems] = useState<NotificationDestination[]>([]);
@@ -63,11 +65,11 @@ export default function NotificationDestinationsPage() {
       setTypes(destinationTypes);
       setItems(destinations);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, tr]);
 
   useEffect(() => {
     void load();
@@ -81,7 +83,7 @@ export default function NotificationDestinationsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   }
@@ -90,14 +92,14 @@ export default function NotificationDestinationsPage() {
     <section className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">通知</h1>
-          <p className="text-sm">配置组织通知目的地</p>
+          <h1 className="text-lg font-semibold">{tr("通知")}</h1>
+          <p className="text-sm">{tr("配置组织通知目的地")}</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
               <AppIcon className="size-4" name="bell" />
-              新建通知目的地
+              {tr("新建通知目的地")}
             </Button>
           </DialogTrigger>
           <DestinationForm
@@ -134,7 +136,7 @@ export default function NotificationDestinationsPage() {
               </CardHeader>
               <CardContent className="grid gap-3 text-sm">
                 <div className="rounded-md border bg-muted/20 px-3 py-2 font-mono text-xs">
-                  {Object.keys(item.options ?? {}).length} 个配置项
+                  {Object.keys(item.options ?? {}).length} {tr("个配置项")}
                 </div>
                 <div className="flex justify-end gap-2">
                   <Dialog
@@ -143,7 +145,7 @@ export default function NotificationDestinationsPage() {
                   >
                     <DialogTrigger asChild>
                       <Button size="sm" variant="outline">
-                        编辑
+                        {tr("编辑")}
                       </Button>
                     </DialogTrigger>
                     <DestinationForm
@@ -162,7 +164,7 @@ export default function NotificationDestinationsPage() {
                     size="sm"
                     variant="outline"
                   >
-                    删除
+                    {tr("删除")}
                   </Button>
                 </div>
               </CardContent>
@@ -172,13 +174,13 @@ export default function NotificationDestinationsPage() {
         {items.length === 0 && (
           <Card className="md:col-span-2 xl:col-span-3">
             <CardContent className="py-10 text-center text-sm">
-              暂无通知目的地
+              {tr("暂无通知目的地")}
             </CardContent>
           </Card>
         )}
       </div>
       <ConfirmActionDialog
-        description={deleting ? `删除通知目的地 ${deleting.name}` : ""}
+        description={deleting ? `${tr("删除通知目的地")} ${deleting.name}` : ""}
         onConfirm={async () => {
           if (!deleting) return;
           if (!organizationId) return;
@@ -188,7 +190,7 @@ export default function NotificationDestinationsPage() {
         }}
         onOpenChange={(next) => !next && setDeleting(null)}
         open={Boolean(deleting)}
-        title="删除通知目的地"
+        title={tr("删除通知目的地")}
       />
     </section>
   );
@@ -207,6 +209,7 @@ function DestinationForm({
   token: string;
   types: NotificationDestinationType[];
 }) {
+  const tr = useTextTranslation();
   const [type, setType] = useState(item?.type ?? types[0]?.type ?? "");
   const [name, setName] = useState(item?.name ?? "");
   const [options, setOptions] = useState<Record<string, string>>(
@@ -254,14 +257,16 @@ function DestinationForm({
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>{item ? "编辑通知目的地" : "新建通知目的地"}</DialogTitle>
+        <DialogTitle>
+          {item ? tr("编辑通知目的地") : tr("新建通知目的地")}
+        </DialogTitle>
       </DialogHeader>
       <div className="grid gap-4">
         <div className="grid gap-2">
-          <Label>类型</Label>
+          <Label>{tr("类型")}</Label>
           <Select disabled={Boolean(item)} onValueChange={setType} value={type}>
             <SelectTrigger>
-              <SelectValue placeholder="选择通知类型" />
+              <SelectValue placeholder={tr("选择通知类型")} />
             </SelectTrigger>
             <SelectContent>
               {types.map((entry) => (
@@ -273,7 +278,7 @@ function DestinationForm({
           </Select>
         </div>
         <div className="grid gap-2">
-          <Label>名称</Label>
+          <Label>{tr("名称")}</Label>
           <Input
             onChange={(event) => setName(event.target.value)}
             value={name}
@@ -299,7 +304,7 @@ function DestinationForm({
           </div>
         ))}
         <Button disabled={!name.trim() || !type || saving} onClick={save}>
-          保存
+          {tr("保存")}
         </Button>
       </div>
     </DialogContent>

@@ -1,6 +1,8 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 
 export function ConfirmActionDialog({
-  confirmLabel = "确认",
+  confirmLabel,
   description,
   onConfirm,
   onOpenChange,
@@ -25,13 +27,17 @@ export function ConfirmActionDialog({
   pending?: boolean;
   title: string;
 }) {
+  const t = useTranslations();
+  const tr = useTextTranslation();
+  const resolvedConfirmLabel = confirmLabel ? tr(confirmLabel) : t("common.confirm");
+
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>{tr(title)}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm">{description}</p>
+        <p className="text-sm">{tr(description)}</p>
         <div className="flex justify-end gap-2">
           <Button
             disabled={pending}
@@ -39,7 +45,7 @@ export function ConfirmActionDialog({
             type="button"
             variant="outline"
           >
-            取消
+            {t("common.cancel")}
           </Button>
           <Button
             disabled={pending}
@@ -47,7 +53,7 @@ export function ConfirmActionDialog({
             type="button"
             variant="destructive"
           >
-            {pending ? "处理中..." : confirmLabel}
+            {pending ? t("common.processing") : resolvedConfirmLabel}
           </Button>
         </div>
       </DialogContent>

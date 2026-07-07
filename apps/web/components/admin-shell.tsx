@@ -6,10 +6,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { AppShell } from "@/components/app-shell";
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
@@ -42,6 +44,10 @@ const PUBLIC_PATHS = ["/login", "/onboarding"];
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useTranslations();
+  const loadingSessionFailedMessageRef = useRef(
+    t("shell.loadingSessionFailed"),
+  );
   const isPublicRoute = PUBLIC_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
@@ -51,6 +57,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(!isPublicRoute);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [redirectingToLogin, setRedirectingToLogin] = useState(false);
+
+  useEffect(() => {
+    loadingSessionFailedMessageRef.current = t("shell.loadingSessionFailed");
+  }, [t]);
 
   const loadSnapshot = useCallback(
     async (options: { showLoading?: boolean } = {}) => {
@@ -87,7 +97,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
           router.replace("/login");
           return;
         }
-        setLoadError(error instanceof Error ? error.message : "加载登录状态失败");
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : loadingSessionFailedMessageRef.current,
+        );
         setRedirectingToLogin(false);
       } finally {
         setLoading(false);
@@ -139,14 +153,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
     return (
       <div className="flex h-screen items-center justify-center p-4">
         <div className="grid max-w-sm gap-3 text-center">
-          <div className="text-sm font-medium">无法加载当前登录状态</div>
+          <div className="text-sm font-medium">{t("shell.loadSessionFailed")}</div>
           <div className="text-xs text-muted-foreground">{loadError}</div>
           <button
             className="mx-auto h-8 rounded-md border px-3 text-sm transition-colors hover:bg-muted"
             onClick={() => loadSnapshot({ showLoading: true })}
             type="button"
           >
-            重试
+            {t("common.retry")}
           </button>
         </div>
       </div>
@@ -156,7 +170,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (loading || redirectingToLogin) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <span className="text-sm">加载中...</span>
+        <span className="text-sm">{t("common.loading")}</span>
       </div>
     );
   }

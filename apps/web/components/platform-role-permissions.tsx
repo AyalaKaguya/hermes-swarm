@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
 import { PermissionTree } from "@/components/permission-tree";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,7 @@ import {
   type RolePermission,
   type RolePayload,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +61,8 @@ export function PlatformRolePermissions({
   canUpdateRole?: boolean;
   canViewRoles?: boolean;
 }) {
+  const t = useTranslations();
+  const tr = useTextTranslation();
   const [catalog, setCatalog] = useState<PermissionCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,11 +101,11 @@ export function PlatformRolePermissions({
       );
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [canViewRoles]);
+  }, [canViewRoles, tr]);
 
   useEffect(() => {
     void load();
@@ -182,7 +186,7 @@ export function PlatformRolePermissions({
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSaving(null);
     }
@@ -224,7 +228,7 @@ export function PlatformRolePermissions({
       await load();
       setSelectedRoleId(saved.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingRole(false);
     }
@@ -232,7 +236,11 @@ export function PlatformRolePermissions({
 
   async function removeRole(role: Role) {
     if (!canDeleteRole || !token || isProtectedPlatformRole(role)) return;
-    const confirmed = window.confirm(`删除角色「${role.displayName ?? role.label}」？`);
+    const confirmed = window.confirm(
+      t("dialogs.deleteRoleConfirm", {
+        name: role.displayName ?? role.label,
+      }),
+    );
     if (!confirmed) return;
 
     setSavingRole(true);
@@ -242,20 +250,20 @@ export function PlatformRolePermissions({
       setSelectedRoleId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
+      setError(err instanceof Error ? err.message : tr("删除失败"));
     } finally {
       setSavingRole(false);
     }
   }
 
   if (loading) {
-    return <div className="py-10 text-center text-sm">加载中...</div>;
+    return <div className="py-10 text-center text-sm">{tr("加载中...")}</div>;
   }
 
   if (!canViewRoles) {
     return (
       <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
-        当前账号无权查看平台角色。
+        {tr("当前账号无权查看平台角色。")}
       </div>
     );
   }
@@ -275,7 +283,7 @@ export function PlatformRolePermissions({
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <AppIcon className="size-4" name="shield" />
-              平台角色
+              {tr("平台角色")}
             </CardTitle>
             <Button
               disabled={!canCreateRole || savingRole}
@@ -284,7 +292,7 @@ export function PlatformRolePermissions({
               type="button"
             >
               <AppIcon className="size-3.5" name="plus" />
-              新建
+              {tr("新建")}
             </Button>
           </div>
         </CardHeader>
@@ -348,11 +356,11 @@ export function PlatformRolePermissions({
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                       <span className="truncate">{selectedRole.name}</span>
                       <Badge variant={selectedRole.isSystem ? "secondary" : "outline"}>
-                        {selectedRole.isSystem ? "系统" : "自定义"}
+                        {selectedRole.isSystem ? tr("系统") : tr("自定义")}
                       </Badge>
                       <span>
                         {enabledPermissionCount(selectedRole.id)} /{" "}
-                        {permissionKeys.length} 已启用
+                        {permissionKeys.length} {tr("已启用")}
                       </span>
                     </div>
                   </div>
@@ -369,7 +377,7 @@ export function PlatformRolePermissions({
                     size="sm"
                     variant="outline"
                   >
-                    保存
+                    {tr("保存")}
                   </Button>
                   <Button
                     disabled={
@@ -384,7 +392,7 @@ export function PlatformRolePermissions({
                     type="button"
                     variant="outline"
                   >
-                    编辑
+                    {tr("编辑")}
                   </Button>
                   <Button
                     disabled={
@@ -397,7 +405,7 @@ export function PlatformRolePermissions({
                     type="button"
                     variant="ghost"
                   >
-                    删除
+                    {tr("删除")}
                   </Button>
                 </div>
               </div>
@@ -419,7 +427,7 @@ export function PlatformRolePermissions({
           </>
         ) : (
           <CardContent className="flex min-h-48 items-center justify-center text-sm">
-            暂无平台角色
+            {tr("暂无平台角色")}
           </CardContent>
         )}
       </Card>
@@ -433,12 +441,14 @@ export function PlatformRolePermissions({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {roleDialog?.mode === "edit" ? "编辑平台角色" : "新建平台角色"}
+              {roleDialog?.mode === "edit"
+                ? tr("编辑平台角色")
+                : tr("新建平台角色")}
             </DialogTitle>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitRole}>
             <div className="grid gap-2">
-              <Label htmlFor="platform-role-display-name">显示名称</Label>
+              <Label htmlFor="platform-role-display-name">{tr("显示名称")}</Label>
               <Input
                 disabled={savingRole}
                 id="platform-role-display-name"
@@ -453,7 +463,7 @@ export function PlatformRolePermissions({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="platform-role-name">标识</Label>
+              <Label htmlFor="platform-role-name">{tr("标识")}</Label>
               <Input
                 disabled={savingRole}
                 id="platform-role-name"
@@ -463,12 +473,12 @@ export function PlatformRolePermissions({
                     name: event.target.value,
                   }))
                 }
-                placeholder="留空后根据显示名称生成"
+                placeholder={tr("留空后根据显示名称生成")}
                 value={roleForm.name}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="platform-role-color">颜色</Label>
+              <Label htmlFor="platform-role-color">{tr("颜色")}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   className="h-9 w-14 p-1"
@@ -497,7 +507,7 @@ export function PlatformRolePermissions({
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="platform-role-description">描述</Label>
+              <Label htmlFor="platform-role-description">{tr("描述")}</Label>
               <Textarea
                 disabled={savingRole}
                 id="platform-role-description"
@@ -518,7 +528,7 @@ export function PlatformRolePermissions({
                 type="button"
                 variant="outline"
               >
-                取消
+                {tr("取消")}
               </Button>
               <Button
                 disabled={
@@ -531,7 +541,7 @@ export function PlatformRolePermissions({
                   !roleForm.displayName.trim()
                 }
               >
-                保存
+                {tr("保存")}
               </Button>
             </DialogFooter>
           </form>

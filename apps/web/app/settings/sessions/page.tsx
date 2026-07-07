@@ -6,8 +6,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useLocale } from "next-intl";
 import { useNotifications } from "@/components/app-notifications";
 import { Button } from "@/components/ui/button";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
   Card,
   CardContent,
@@ -26,6 +28,7 @@ import { getStoredSession } from "@/lib/session";
 
 export default function SessionsPage() {
   const notifications = useNotifications();
+  const tr = useTextTranslation();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
@@ -43,11 +46,11 @@ export default function SessionsPage() {
       setSessions(await listAuthSessions(session.accessToken));
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录设备加载失败");
+      setError(err instanceof Error ? err.message : tr("登录设备加载失败"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tr]);
 
   useEffect(() => {
     void loadSessions();
@@ -61,10 +64,10 @@ export default function SessionsPage() {
     setError(null);
     try {
       await revokeAuthSession(session.accessToken, sessionId);
-      notifications.success("设备已登出");
+      notifications.success(tr("设备已登出"));
       await loadSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登出失败");
+      setError(err instanceof Error ? err.message : tr("登出失败"));
     } finally {
       setBusySessionId(null);
     }
@@ -78,10 +81,10 @@ export default function SessionsPage() {
     setError(null);
     try {
       await revokeOtherAuthSessions(session.accessToken);
-      notifications.success("其他设备已登出");
+      notifications.success(tr("其他设备已登出"));
       await loadSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登出失败");
+      setError(err instanceof Error ? err.message : tr("登出失败"));
     } finally {
       setBusySessionId(null);
     }
@@ -95,10 +98,10 @@ export default function SessionsPage() {
     setError(null);
     try {
       await deleteAuthSessionRecord(session.accessToken, sessionId);
-      notifications.success("设备记录已删除");
+      notifications.success(tr("设备记录已删除"));
       await loadSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
+      setError(err instanceof Error ? err.message : tr("删除失败"));
     } finally {
       setBusySessionId(null);
     }
@@ -125,8 +128,10 @@ export default function SessionsPage() {
       <Card>
         <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid gap-1">
-            <CardTitle>登录设备</CardTitle>
-            <CardDescription>查看当前账号已经登录的浏览器终端</CardDescription>
+            <CardTitle>{tr("登录设备")}</CardTitle>
+            <CardDescription>
+              {tr("查看当前账号已经登录的浏览器终端")}
+            </CardDescription>
           </div>
           <Button
             disabled={
@@ -140,24 +145,24 @@ export default function SessionsPage() {
             type="button"
             variant="outline"
           >
-            登出其他设备
+            {tr("登出其他设备")}
           </Button>
         </CardHeader>
         <CardContent className="grid gap-5">
           {loading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              加载中...
+              {tr("加载中...")}
             </div>
           ) : sessions.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              暂无登录设备
+              {tr("暂无登录设备")}
             </div>
           ) : (
             <>
               <SessionSection
-                emptyText="暂无活跃设备"
+                emptyText={tr("暂无活跃设备")}
                 items={activeSessions}
-                title="活跃设备"
+                title={tr("活跃设备")}
               >
                 {(item) => (
                   <SessionDeviceRow
@@ -171,10 +176,12 @@ export default function SessionsPage() {
               </SessionSection>
 
               <SessionSection
-                description="这些记录已经不能继续访问账号，查看后可直接删除。"
-                emptyText="暂无过期或已登出的设备"
+                description={tr(
+                  "这些记录已经不能继续访问账号，查看后可直接删除。",
+                )}
+                emptyText={tr("暂无过期或已登出的设备")}
                 items={inactiveSessions}
-                title="过期和已登出设备"
+                title={tr("过期和已登出设备")}
               >
                 {(item) => (
                   <SessionDeviceRow
@@ -237,38 +244,50 @@ function SessionDeviceRow({
   onRevoke: () => void;
   working: boolean;
 }) {
+  const tr = useTextTranslation();
+  const locale = useLocale();
   const status = getSessionStatus(device);
+  const statusLabel = tr(status.label);
   const historical = Boolean(device.revokedAt || device.isExpired);
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="grid min-w-0 flex-1 gap-1">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            aria-label={status.label}
+            aria-label={statusLabel}
             className={status.className}
             role="status"
-            title={status.label}
+            title={statusLabel}
           />
           <div className="truncate text-sm font-medium">
             {device.deviceLabel}
           </div>
         </div>
         <div className="grid gap-x-10 gap-y-1 text-xs text-muted-foreground sm:grid-cols-[minmax(10rem,auto)_minmax(13rem,auto)] lg:max-w-xl">
-          <SessionMeta label="IP" value={device.ipAddress ?? "未知"} />
-          <SessionMeta label="最近活跃" value={formatDateTime(device.lastSeenAt)} />
-          <SessionMeta label="创建时间" value={formatDateTime(device.createdAt)} />
-          <SessionMeta label="过期时间" value={formatDateTime(device.expiresAt)} />
+          <SessionMeta label="IP" value={device.ipAddress ?? tr("未知")} />
+          <SessionMeta
+            label={tr("最近活跃")}
+            value={formatDateTime(device.lastSeenAt, locale)}
+          />
+          <SessionMeta
+            label={tr("创建时间")}
+            value={formatDateTime(device.createdAt, locale)}
+          />
+          <SessionMeta
+            label={tr("过期时间")}
+            value={formatDateTime(device.expiresAt, locale)}
+          />
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap justify-end gap-2">
         {device.isCurrent ? (
           <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground">
-            当前设备
+            {tr("当前设备")}
           </span>
         ) : historical ? (
           <>
             <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground">
-              {status.label}
+              {statusLabel}
             </span>
             <Button
               disabled={working}
@@ -277,7 +296,7 @@ function SessionDeviceRow({
               type="button"
               variant="outline"
             >
-              删除
+              {tr("删除")}
             </Button>
           </>
         ) : (
@@ -286,10 +305,10 @@ function SessionDeviceRow({
             onClick={onRevoke}
             size="sm"
             type="button"
-            variant="outline"
-          >
-            登出
-          </Button>
+          variant="outline"
+        >
+          {tr("登出")}
+        </Button>
         )}
       </div>
     </div>
@@ -326,10 +345,10 @@ function getSessionStatus(device: AuthSessionDevice) {
   };
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(value: string, locale: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "未知";
-  return new Intl.DateTimeFormat("zh-Hans", {
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);

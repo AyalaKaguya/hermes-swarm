@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,7 @@ import {
   type OrganizationGroupPayload,
   type OrganizationMembership,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
 import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -57,6 +59,8 @@ type GroupForm = {
 };
 
 export default function GroupsPage() {
+  const t = useTranslations();
+  const tr = useTextTranslation();
   const { resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
   const organizationId = snapshot?.organization?.id ?? null;
@@ -113,11 +117,11 @@ export default function GroupsPage() {
           : (groupItems[0]?.id ?? null),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, tr]);
 
   const loadGroupMembers = useCallback(async () => {
     const session = getStoredSession();
@@ -138,11 +142,11 @@ export default function GroupsPage() {
       setSelectedMemberIds(next);
       setPersistedMemberIds(new Set(next));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载成员失败");
+      setError(err instanceof Error ? err.message : tr("加载成员失败"));
     } finally {
       setLoadingMembers(false);
     }
-  }, [organizationId, selectedGroup]);
+  }, [organizationId, selectedGroup, tr]);
 
   useEffect(() => {
     void load();
@@ -192,10 +196,10 @@ export default function GroupsPage() {
             );
       setSelectedGroupId(saved.id);
       setGroupDialog(null);
-      setMessage("保存成功");
+      setMessage(tr("保存成功"));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -203,7 +207,9 @@ export default function GroupsPage() {
 
   async function removeGroup(group: OrganizationGroup) {
     if (!organizationId || !token || !canManage) return;
-    const confirmed = window.confirm(`删除用户组「${group.displayName}」？`);
+    const confirmed = window.confirm(
+      t("dialogs.deleteGroupConfirm", { name: group.displayName }),
+    );
     if (!confirmed) return;
     setSaving(true);
     setError(null);
@@ -211,10 +217,10 @@ export default function GroupsPage() {
     try {
       await deleteOrganizationGroup(token, organizationId, group.id);
       setSelectedGroupId(null);
-      setMessage("已删除用户组");
+      setMessage(tr("已删除用户组"));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
+      setError(err instanceof Error ? err.message : tr("删除失败"));
     } finally {
       setSaving(false);
     }
@@ -246,11 +252,11 @@ export default function GroupsPage() {
         [...selectedMemberIds],
       );
       setPersistedMemberIds(new Set(selectedMemberIds));
-      setMessage("成员已更新");
+      setMessage(tr("成员已更新"));
       await load();
       await loadGroupMembers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存成员失败");
+      setError(err instanceof Error ? err.message : tr("保存成员失败"));
     } finally {
       setSaving(false);
     }
@@ -259,7 +265,7 @@ export default function GroupsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   }
@@ -268,9 +274,9 @@ export default function GroupsPage() {
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold">用户组</h1>
+          <h1 className="truncate text-lg font-semibold">{tr("用户组")}</h1>
           <p className="text-sm text-muted-foreground">
-            管理组织内成员分组，便于协作和细分管理。
+            {tr("管理组织内成员分组，便于协作和细分管理。")}
           </p>
         </div>
         <Button
@@ -280,7 +286,7 @@ export default function GroupsPage() {
           type="button"
         >
           <AppIcon className="size-3.5" name="plus" />
-          新建用户组
+          {tr("新建用户组")}
         </Button>
       </div>
 
@@ -300,15 +306,15 @@ export default function GroupsPage() {
           <CardHeader className="border-b px-4 py-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <AppIcon className="size-4" name="users" />
-              组织用户组
+              {tr("组织用户组")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-2">
             {groups.length === 0 ? (
               <div className="grid gap-2 px-2 py-8 text-center">
-                <div className="text-sm font-medium">暂无用户组</div>
+                <div className="text-sm font-medium">{tr("暂无用户组")}</div>
                 <div className="text-xs text-muted-foreground">
-                  创建用户组后，可以按团队或职责维护成员集合。
+                  {tr("创建用户组后，可以按团队或职责维护成员集合。")}
                 </div>
               </div>
             ) : (
@@ -372,7 +378,9 @@ export default function GroupsPage() {
                     </CardTitle>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span>{selectedGroup.name}</span>
-                      <span>{selectedMemberCount} 人已选择</span>
+                      <span>
+                        {selectedMemberCount} {tr("人已选择")}
+                      </span>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -385,7 +393,7 @@ export default function GroupsPage() {
                       type="button"
                       variant="outline"
                     >
-                      编辑
+                      {tr("编辑")}
                     </Button>
                     <Button
                       disabled={!canManage || saving}
@@ -394,7 +402,7 @@ export default function GroupsPage() {
                       type="button"
                       variant="ghost"
                     >
-                      删除
+                      {tr("删除")}
                     </Button>
                     <Button
                       disabled={!canManage || saving || !memberDirty}
@@ -402,7 +410,7 @@ export default function GroupsPage() {
                       size="sm"
                       type="button"
                     >
-                      保存
+                      {tr("保存")}
                     </Button>
                   </div>
                 </div>
@@ -415,11 +423,11 @@ export default function GroupsPage() {
               <CardContent className="p-0">
                 {loadingMembers ? (
                   <div className="flex items-center justify-center py-16 text-sm">
-                    成员加载中...
+                    {tr("成员加载中...")}
                   </div>
                 ) : sortedMemberships.length === 0 ? (
                   <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-                    当前组织暂无成员
+                    {tr("当前组织暂无成员")}
                   </div>
                 ) : (
                   <div className="divide-y">
@@ -468,7 +476,7 @@ export default function GroupsPage() {
             </>
           ) : (
             <CardContent className="flex min-h-64 items-center justify-center text-sm text-muted-foreground">
-              选择或创建一个用户组
+              {tr("选择或创建一个用户组")}
             </CardContent>
           )}
         </Card>
@@ -483,12 +491,14 @@ export default function GroupsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {groupDialog?.mode === "edit" ? "编辑用户组" : "新建用户组"}
+              {groupDialog?.mode === "edit"
+                ? tr("编辑用户组")
+                : tr("新建用户组")}
             </DialogTitle>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitGroup}>
             <div className="grid gap-2">
-              <Label htmlFor="group-display-name">名称</Label>
+              <Label htmlFor="group-display-name">{tr("名称")}</Label>
               <Input
                 id="group-display-name"
                 onChange={(event) =>
@@ -502,7 +512,7 @@ export default function GroupsPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="group-name">标识</Label>
+              <Label htmlFor="group-name">{tr("标识")}</Label>
               <Input
                 id="group-name"
                 onChange={(event) =>
@@ -511,12 +521,12 @@ export default function GroupsPage() {
                     name: event.target.value,
                   }))
                 }
-                placeholder="留空后根据名称生成"
+                placeholder={tr("留空后根据名称生成")}
                 value={groupForm.name}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="group-color">颜色</Label>
+              <Label htmlFor="group-color">{tr("颜色")}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   className="h-9 w-14 p-1"
@@ -543,7 +553,7 @@ export default function GroupsPage() {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="group-description">描述</Label>
+              <Label htmlFor="group-description">{tr("描述")}</Label>
               <Textarea
                 id="group-description"
                 onChange={(event) =>
@@ -563,10 +573,10 @@ export default function GroupsPage() {
                 type="button"
                 variant="outline"
               >
-                取消
+                {tr("取消")}
               </Button>
               <Button disabled={saving || !groupForm.displayName.trim()}>
-                保存
+                {tr("保存")}
               </Button>
             </DialogFooter>
           </form>

@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,6 +25,8 @@ import {
 
 export function LoginPage() {
   const router = useRouter();
+  const t = useTranslations();
+  const { setLanguage } = useI18n();
   const [email, setEmail] = useState("admin@hermes.local");
   const [password, setPassword] = useState("admin123456");
   const [loading, setLoading] = useState(true);
@@ -44,14 +48,14 @@ export function LoginPage() {
           return;
         }
       } catch (loadError) {
-        setError(getErrorMessage(loadError));
+        setError(getErrorMessage(loadError, t("auth.requestFailed")));
       } finally {
         setLoading(false);
       }
     }
 
     void load();
-  }, [router]);
+  }, [router, t]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,7 +64,7 @@ export function LoginPage() {
     try {
       const response = await authLogin({ email, password });
       if (response.snapshot.permissions.length === 0) {
-        setError("当前用户没有管理端访问权限");
+        setError(t("auth.noAdminAccess"));
         return;
       }
 
@@ -69,9 +73,10 @@ export function LoginPage() {
         expiresAt: response.expiresAt,
         sessionId: response.sessionId,
       });
+      setLanguage(response.snapshot.user.preferredLanguage);
       router.replace("/home");
     } catch (loginError) {
-      setError(getErrorMessage(loginError));
+      setError(getErrorMessage(loginError, t("auth.requestFailed")));
     }
   }
 
@@ -87,19 +92,19 @@ export function LoginPage() {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{title}</p>
-              <p className="text-xs">管理控制台</p>
+              <p className="text-xs">{t("auth.console")}</p>
             </div>
           </div>
           <div className="grid gap-1">
-            <CardTitle>登录</CardTitle>
-            <CardDescription>使用管理员账号进入工作台</CardDescription>
+            <CardTitle>{t("auth.signIn")}</CardTitle>
+            <CardDescription>{t("auth.subtitle")}</CardDescription>
           </div>
         </CardHeader>
 
         <CardContent>
           <form className="grid gap-3" onSubmit={submit}>
             <div className="grid gap-1.5">
-              <Label htmlFor="login-email">邮箱</Label>
+              <Label htmlFor="login-email">{t("auth.email")}</Label>
               <Input
                 autoComplete="email"
                 id="login-email"
@@ -111,12 +116,12 @@ export function LoginPage() {
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="login-password">密码</Label>
+              <Label htmlFor="login-password">{t("auth.password")}</Label>
               <Input
                 autoComplete="current-password"
                 id="login-password"
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="至少 8 位"
+                placeholder={t("auth.passwordPlaceholder")}
                 type="password"
                 value={password}
               />
@@ -136,7 +141,7 @@ export function LoginPage() {
               disabled={loading || !email || !password}
               type="submit"
             >
-              登录
+              {t("auth.signIn")}
             </Button>
           </form>
         </CardContent>
@@ -145,6 +150,6 @@ export function LoginPage() {
   );
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "请求失败";
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }

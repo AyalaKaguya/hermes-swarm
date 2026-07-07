@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocale } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { ConversationPanel } from "@/components/conversation/conversation-panel";
@@ -25,12 +26,14 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
 import { useSourceConversation } from "@/hooks/use-source-conversation";
 import {
@@ -61,10 +64,14 @@ type CreateDraft = {
 };
 
 const ORGANIZATION_TICKETING_FEATURE_KEY = "feature:ticketing:enabled";
+const ORGANIZATION_TICKET_HANDLE_PERMISSION =
+  "ticket.conversation.handle:organization";
 const PLATFORM_TICKET_HANDLE_PERMISSION =
   "ticket.platform_conversation.list_platform:platform";
 
 export default function TicketsPage() {
+  const locale = useLocale();
+  const tr = useTextTranslation();
   const { snapshot } = useAdminShell();
   const access = usePermission();
   const notifications = useNotifications();
@@ -84,6 +91,9 @@ export default function TicketsPage() {
     PLATFORM_SETTING_KEYS.ticketingPlatformSubmissionEnabled,
     true,
   );
+  const canHandleOrganizationTickets = access.hasPermission(
+    ORGANIZATION_TICKET_HANDLE_PERMISSION,
+  );
   const canHandlePlatformTickets = access.hasPermission(
     PLATFORM_TICKET_HANDLE_PERMISSION,
   );
@@ -101,6 +111,7 @@ export default function TicketsPage() {
       canHandlePlatformTickets);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [draft, setDraft] = useState<CreateDraft>(emptyDraft());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -202,11 +213,11 @@ export default function TicketsPage() {
       setTickets(nextTickets);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "工单加载失败");
+      setError(err instanceof Error ? err.message : tr("工单加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId, ticketingVisible, view]);
+  }, [organizationId, ticketingVisible, tr, view]);
 
   useEffect(() => {
     void loadOrganizationFeature();
@@ -261,11 +272,11 @@ export default function TicketsPage() {
             );
       setDraft(emptyDraft());
       setCreateDialogOpen(false);
-      notifications.success("工单已创建");
+      notifications.success(tr("工单已创建"));
       await loadTickets();
       setSelectedTicketId(ticket.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败");
+      setError(err instanceof Error ? err.message : tr("创建失败"));
     } finally {
       setSubmitting(false);
     }
@@ -287,7 +298,7 @@ export default function TicketsPage() {
       appendMessage(message);
       await loadTickets();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "发送失败");
+      setError(err instanceof Error ? err.message : tr("发送失败"));
       throw err;
     } finally {
       setSubmitting(false);
@@ -298,12 +309,12 @@ export default function TicketsPage() {
     token: string,
     filePart: PromptInputMessage["files"][number],
   ) {
-    const file = await filePartToFile(filePart);
+    const file = await filePartToFile(filePart, tr);
     if (!file.type.startsWith("image/")) {
-      throw new Error("仅支持图片附件");
+      throw new Error(tr("仅支持图片附件"));
     }
     const result = await uploadAdminFile(token, file);
-    if (!result.url) throw new Error("图片上传失败");
+    if (!result.url) throw new Error(tr("图片上传失败"));
     return {
       mimeType: result.mimeType,
       name: result.originalName ?? result.name ?? file.name,
@@ -317,14 +328,14 @@ export default function TicketsPage() {
     const session = getStoredSession();
     if (!session?.accessToken) return;
     if (!file.type.startsWith("image/")) {
-      setError("仅支持图片附件");
+      setError(tr("仅支持图片附件"));
       return;
     }
     setUploading(target);
     setError(null);
     try {
       const result = await uploadAdminFile(session.accessToken, file);
-      if (!result.url) throw new Error("图片上传失败");
+      if (!result.url) throw new Error(tr("图片上传失败"));
       const attachment: TicketMessageAttachment = {
         mimeType: result.mimeType,
         name: result.originalName ?? result.name ?? file.name,
@@ -339,7 +350,7 @@ export default function TicketsPage() {
         }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "图片上传失败");
+      setError(err instanceof Error ? err.message : tr("图片上传失败"));
     } finally {
       setUploading(null);
     }
@@ -347,15 +358,17 @@ export default function TicketsPage() {
 
   async function closeSelectedTicket() {
     const session = getStoredSession();
-    if (!session?.accessToken || !selectedTicket) return;
+    if (!session?.accessToken || !selectedTicket) return false;
     setSubmitting(true);
     setError(null);
     try {
       const nextTicket = await closeTicket(session.accessToken, selectedTicket.id);
       mergeTicket(nextTicket);
-      notifications.success("工单已关闭");
+      notifications.success(tr("工单已关闭"));
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "关闭失败");
+      setError(err instanceof Error ? err.message : tr("关闭失败"));
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -365,9 +378,9 @@ export default function TicketsPage() {
     return (
       <div className="mx-auto grid min-h-[50vh] max-w-md place-items-center px-4 text-center">
         <div className="grid gap-2">
-          <div className="text-sm font-medium">没有访问工单的权限</div>
+          <div className="text-sm font-medium">{tr("没有访问工单的权限")}</div>
           <div className="text-xs text-muted-foreground">
-            当前角色没有工单页面访问权限，或平台已关闭工单入口。
+            {tr("当前角色没有工单页面访问权限，或平台已关闭工单入口。")}
           </div>
         </div>
       </div>
@@ -376,6 +389,16 @@ export default function TicketsPage() {
 
   const canCreateInCurrentView =
     view === "platform" ? canCreatePlatformTicket : canCreateOrganizationTicket;
+  const canHandleTicketsInCurrentView =
+    view === "platform" ? canHandlePlatformTickets : canHandleOrganizationTickets;
+  const showSecondaryTicketPanel =
+    canHandleTicketsInCurrentView || receivedTickets.length > 0;
+  const secondaryTicketPanelTitle = canHandleTicketsInCurrentView
+    ? tr("待处理工单")
+    : tr("相关工单");
+  const secondaryTicketEmptyLabel = canHandleTicketsInCurrentView
+    ? tr("暂无待处理工单")
+    : tr("暂无相关工单");
   const messageInputDisabled =
     !selectedTicket || selectedTicket.status === "archived" || submitting;
 
@@ -383,9 +406,9 @@ export default function TicketsPage() {
     <div className="mx-auto flex h-[calc(100svh-7rem)] w-full max-w-7xl flex-col gap-4 overflow-hidden md:h-[calc(100svh-4rem)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">工单</h1>
+          <h1 className="text-xl font-semibold">{tr("工单")}</h1>
           <p className="text-sm text-muted-foreground">
-            查看提交记录和待处理会话，打开工单后继续交流。
+            {tr("查看提交记录和待处理会话，打开工单后继续交流。")}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -394,19 +417,19 @@ export default function TicketsPage() {
               onValueChange={(value) => setView(value as TicketView)}
               value={view}
             >
-              <TabsList aria-label="工单作用域">
+              <TabsList aria-label={tr("工单作用域")}>
                 {canViewOrganizationTickets && (
-                  <TabsTrigger value="organization">组织</TabsTrigger>
+                  <TabsTrigger value="organization">{tr("组织")}</TabsTrigger>
                 )}
                 {canViewPlatformTickets && (
-                  <TabsTrigger value="platform">平台</TabsTrigger>
+                  <TabsTrigger value="platform">{tr("平台")}</TabsTrigger>
                 )}
               </TabsList>
             </Tabs>
           )}
           <Button disabled={loading} onClick={() => void loadTickets()} size="sm" variant="outline">
             <AppIcon className="size-3.5" name="refresh" />
-            刷新
+            {tr("刷新")}
           </Button>
           <Button
             disabled={!canCreateInCurrentView}
@@ -415,7 +438,7 @@ export default function TicketsPage() {
             type="button"
           >
             <AppIcon className="size-3.5" name="plus" />
-            新建
+            {tr("新建")}
           </Button>
         </div>
       </div>
@@ -428,39 +451,45 @@ export default function TicketsPage() {
 
       {view === "organization" && !organizationTicketingEnabled && !isCurrentOrganizationOwner && (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          当前组织已关闭工单提交，普通成员只能查看已有工单。
+          {tr("当前组织已关闭工单提交，普通成员只能查看已有工单。")}
         </div>
       )}
 
       {view === "platform" && !platformSubmissionEnabled && !canCreatePlatformTicket && (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          平台工单提交已关闭。
+          {tr("平台工单提交已关闭。")}
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-2">
+      <div
+        className={`grid min-h-0 flex-1 gap-4 overflow-hidden ${
+          showSecondaryTicketPanel ? "xl:grid-cols-2" : ""
+        }`}
+      >
         <TicketListPanel
-          emptyLabel={loading ? "加载中..." : "暂无我提交的工单"}
+          emptyLabel={loading ? tr("加载中...") : tr("暂无我提交的工单")}
           onOpen={openTicket}
           tickets={submittedTickets}
-          title="我提交的工单"
+          title={tr("我提交的工单")}
         />
-        <TicketListPanel
-          emptyLabel={loading ? "加载中..." : "暂无待处理工单"}
-          onOpen={openTicket}
-          tickets={receivedTickets}
-          title="待处理工单"
-        />
+        {showSecondaryTicketPanel && (
+          <TicketListPanel
+            emptyLabel={loading ? tr("加载中...") : secondaryTicketEmptyLabel}
+            onOpen={openTicket}
+            tickets={receivedTickets}
+            title={secondaryTicketPanelTitle}
+          />
+        )}
       </div>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              新建{view === "platform" ? "平台" : "组织"}工单
+              {view === "platform" ? tr("新建平台工单") : tr("新建组织工单")}
             </DialogTitle>
             <DialogDescription>
-              支持 Markdown、图片附件和 @邮箱 或 @用户名提及。
+              {tr("支持 Markdown、图片附件和 @邮箱 或 @用户名提及。")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -468,7 +497,7 @@ export default function TicketsPage() {
               onChange={(event) =>
                 setDraft((current) => ({ ...current, subject: event.target.value }))
               }
-              placeholder="标题"
+              placeholder={tr("标题")}
               value={draft.subject}
             />
             <Textarea
@@ -476,7 +505,7 @@ export default function TicketsPage() {
               onChange={(event) =>
                 setDraft((current) => ({ ...current, body: event.target.value }))
               }
-              placeholder="使用 Markdown 描述问题；输入 @邮箱 或 @用户名可提及成员"
+              placeholder={tr("使用 Markdown 描述问题；输入 @邮箱 或 @用户名可提及成员")}
               value={draft.body}
             />
             <AttachmentPicker
@@ -496,7 +525,7 @@ export default function TicketsPage() {
                 onClick={() => void createTicket()}
                 type="button"
               >
-                保存
+                {tr("保存")}
               </Button>
             </div>
           </div>
@@ -506,7 +535,10 @@ export default function TicketsPage() {
       <Dialog
         open={Boolean(selectedTicket)}
         onOpenChange={(open) => {
-          if (!open) setSelectedTicketId(null);
+          if (!open) {
+            setCloseConfirmOpen(false);
+            setSelectedTicketId(null);
+          }
         }}
       >
         <DialogContent className="grid h-[min(52rem,calc(100svh-2rem))] w-[min(72rem,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-none">
@@ -514,23 +546,24 @@ export default function TicketsPage() {
             <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
               <div className="min-w-0">
                 <DialogTitle className="truncate">
-                  {selectedTicket?.subject ?? "工单"}
+                  {selectedTicket?.subject ?? tr("工单")}
                 </DialogTitle>
                 <DialogDescription>
                   {selectedTicket
-                    ? `${view === "platform" ? "平台" : "组织"}工单 · ${statusLabel(selectedTicket.status)} · ${formatDate(selectedTicket.lastMessageAt ?? selectedTicket.createdAt)}`
-                    : "工单会话"}
+                    ? `${view === "platform" ? tr("平台工单") : tr("组织工单")} · ${statusLabel(selectedTicket.status, tr)} · ${formatDate(selectedTicket.lastMessageAt ?? selectedTicket.createdAt, locale)}`
+                    : tr("工单会话")}
                 </DialogDescription>
               </div>
               {selectedTicket && selectedTicket.status !== "archived" && (
                 <Button
+                  className="bg-destructive text-white hover:bg-destructive/90 dark:hover:bg-destructive/80"
                   disabled={submitting}
-                  onClick={() => void closeSelectedTicket()}
+                  onClick={() => setCloseConfirmOpen(true)}
                   size="sm"
                   type="button"
-                  variant="outline"
+                  variant="destructive"
                 >
-                  关闭
+                  {tr("关闭工单")}
                 </Button>
               )}
             </div>
@@ -557,10 +590,10 @@ export default function TicketsPage() {
                 onError={(err) => {
                   setError(
                     err.code === "accept"
-                      ? "仅支持图片附件"
+                      ? tr("仅支持图片附件")
                       : err.code === "max_files"
-                        ? "最多上传 6 张图片"
-                        : "图片附件过大",
+                        ? tr("最多上传 6 张图片")
+                        : tr("图片附件过大"),
                   );
                 }}
                 onSubmit={sendMessage}
@@ -569,7 +602,7 @@ export default function TicketsPage() {
                   <PromptInputAttachmentPreview />
                   <PromptInputTextarea
                     disabled={messageInputDisabled}
-                    placeholder="输入 Markdown 消息；输入 @邮箱 或 @用户名可提及成员"
+                    placeholder={tr("输入 Markdown 消息；输入 @邮箱 或 @用户名可提及成员")}
                   />
                 </PromptInputBody>
                 <PromptInputFooter>
@@ -577,12 +610,12 @@ export default function TicketsPage() {
                     <PromptInputActionMenu>
                       <PromptInputActionMenuTrigger
                         disabled={messageInputDisabled}
-                        tooltip="添加图片"
+                        tooltip={tr("添加图片")}
                       >
                         <AppIcon className="size-4" name="image-upload" />
                       </PromptInputActionMenuTrigger>
                       <PromptInputActionMenuContent>
-                        <PromptInputActionAddAttachments label="图片" />
+                        <PromptInputActionAddAttachments label={tr("图片")} />
                       </PromptInputActionMenuContent>
                     </PromptInputActionMenu>
                   </PromptInputTools>
@@ -591,6 +624,40 @@ export default function TicketsPage() {
               </PromptInput>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{tr("关闭工单")}</DialogTitle>
+            <DialogDescription>
+              {tr(
+                "关闭后，这个工单会从你的待处理流程中移出。对方仍可继续回复并重新打开会话；当双方都关闭后，工单会进入归档状态。",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="-mx-4 -mb-4">
+            <Button
+              disabled={submitting}
+              onClick={() => setCloseConfirmOpen(false)}
+              type="button"
+              variant="outline"
+            >
+              {tr("取消")}
+            </Button>
+            <Button
+              className="bg-destructive text-white hover:bg-destructive/90 dark:hover:bg-destructive/80"
+              disabled={submitting}
+              onClick={async () => {
+                if (await closeSelectedTicket()) setCloseConfirmOpen(false);
+              }}
+              type="button"
+              variant="destructive"
+            >
+              {tr("关闭工单")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -603,9 +670,9 @@ export default function TicketsPage() {
         <DialogContent className="max-w-5xl overflow-hidden p-0">
           <DialogHeader className="border-b px-5 py-4">
             <DialogTitle className="truncate">
-              {previewAttachment?.name ?? "图片预览"}
+              {previewAttachment?.name ?? tr("图片预览")}
             </DialogTitle>
-            <DialogDescription>工单图片附件预览</DialogDescription>
+            <DialogDescription>{tr("工单图片附件预览")}</DialogDescription>
           </DialogHeader>
           {previewAttachment && (
             <div className="grid max-h-[78svh] place-items-center overflow-auto bg-muted/20 p-4">
@@ -623,6 +690,7 @@ export default function TicketsPage() {
 }
 
 function PromptInputAttachmentPreview() {
+  const tr = useTextTranslation();
   const attachments = usePromptInputAttachments();
   if (attachments.files.length === 0) return null;
 
@@ -635,19 +703,19 @@ function PromptInputAttachmentPreview() {
         >
           {file.url && (
             <img
-              alt={file.filename ?? "图片附件"}
+              alt={file.filename ?? tr("图片附件")}
               className="size-8 rounded object-cover"
               src={file.url}
             />
           )}
           <span className="max-w-40 truncate">
-            {file.filename ?? "图片附件"}
+            {file.filename ?? tr("图片附件")}
           </span>
           <Button
-            aria-label="移除附件"
+            aria-label={tr("移除附件")}
             onClick={() => attachments.remove(file.id)}
             size="icon-xs"
-            title="移除附件"
+            title={tr("移除附件")}
             type="button"
             variant="ghost"
           >
@@ -670,6 +738,8 @@ function TicketListPanel({
   tickets: Ticket[];
   title: string;
 }) {
+  const locale = useLocale();
+  const tr = useTextTranslation();
   return (
     <section className="flex min-h-0 flex-col rounded-lg border bg-background">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
@@ -694,11 +764,17 @@ function TicketListPanel({
                   <span className="truncate text-sm font-medium">
                     {ticket.subject}
                   </span>
-                  <Badge variant="outline">{statusLabel(ticket.status)}</Badge>
+                  <Badge variant="outline">
+                    {statusLabel(ticket.status, tr)}
+                  </Badge>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span>{formatDate(ticket.lastMessageAt ?? ticket.createdAt)}</span>
-                  <span>{ticket.scope === "platform" ? "平台" : "组织"}</span>
+                  <span>
+                    {formatDate(ticket.lastMessageAt ?? ticket.createdAt, locale)}
+                  </span>
+                  <span>
+                    {ticket.scope === "platform" ? tr("平台") : tr("组织")}
+                  </span>
                 </div>
               </button>
             ))}
@@ -718,12 +794,14 @@ function MessageBubble({
   message: TicketMessage;
   onPreviewAttachment: (attachment: TicketMessageAttachment) => void;
 }) {
+  const locale = useLocale();
+  const tr = useTextTranslation();
   const mine = message.authorUserId === currentUserId;
   const authorName =
     message.author?.displayName ||
     message.author?.username ||
     message.author?.email ||
-    "未知用户";
+    tr("未知用户");
 
   return (
     <div className={mine ? "flex justify-end" : "flex justify-start"}>
@@ -737,7 +815,7 @@ function MessageBubble({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs opacity-80">
           <span className="font-medium">{authorName}</span>
           {message.author?.email && <span>{message.author.email}</span>}
-          <span>{formatDate(message.createdAt)}</span>
+          <span>{formatDate(message.createdAt, locale)}</span>
         </div>
         <MarkdownContent value={message.body} />
         {message.attachments.length > 0 && (
@@ -762,11 +840,12 @@ function AttachmentPicker({
   onRemove: (index: number) => void;
   onUpload: (file: File) => void;
 }) {
+  const tr = useTextTranslation();
   return (
     <div className="grid gap-2">
       <label className="inline-flex h-8 w-fit cursor-pointer items-center gap-2 rounded-md border px-2.5 text-sm transition-colors hover:bg-muted has-disabled:pointer-events-none has-disabled:opacity-50">
         <AppIcon className="size-3.5" name="image-upload" />
-        图片
+        {tr("图片")}
         <input
           accept="image/*"
           className="sr-only"
@@ -788,10 +867,10 @@ function AttachmentPicker({
             >
               <span className="truncate">{attachment.name}</span>
               <Button
-                aria-label="移除附件"
+                aria-label={tr("移除附件")}
                 onClick={() => onRemove(index)}
                 size="icon-xs"
-                title="移除附件"
+                title={tr("移除附件")}
                 type="button"
                 variant="ghost"
               >
@@ -938,9 +1017,12 @@ function emptyDraft(): CreateDraft {
   };
 }
 
-async function filePartToFile(filePart: PromptInputMessage["files"][number]) {
+async function filePartToFile(
+  filePart: PromptInputMessage["files"][number],
+  tr: (value: string) => string,
+) {
   if (!filePart.url) {
-    throw new Error("图片上传失败");
+    throw new Error(tr("图片上传失败"));
   }
   const response = await fetch(filePart.url);
   const blob = await response.blob();
@@ -948,17 +1030,17 @@ async function filePartToFile(filePart: PromptInputMessage["files"][number]) {
   return new File([blob], filePart.filename ?? "ticket-image", { type });
 }
 
-function statusLabel(status: Ticket["status"]) {
-  if (status === "archived") return "已归档";
-  if (status === "closed") return "已关闭";
-  return "处理中";
+function statusLabel(status: Ticket["status"], tr: (value: string) => string) {
+  if (status === "archived") return tr("已归档");
+  if (status === "closed") return tr("已关闭");
+  return tr("处理中");
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, locale: string) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }
 
 function getPlatformBooleanSetting(

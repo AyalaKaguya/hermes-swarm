@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { cn } from "@/lib/utils";
 
 type AvatarUser = {
@@ -20,9 +21,11 @@ export function UserAvatar({
   size?: "lg" | "md" | "sm";
   user: AvatarUser | null | undefined;
 }) {
+  const tr = useTextTranslation();
   const imageUrl = user?.imageUrl?.trim() || "";
   const [imageFailed, setImageFailed] = useState(false);
-  const initials = useMemo(() => getInitials(user), [user]);
+  const displayName = getDisplayName(user, tr);
+  const initials = useMemo(() => getInitials(displayName), [displayName]);
 
   useEffect(() => {
     setImageFailed(false);
@@ -30,10 +33,10 @@ export function UserAvatar({
 
   return (
     <Avatar
-      aria-label={`${getDisplayName(user)} 头像`}
+      aria-label={`${displayName} ${tr("头像")}`}
       className={cn("bg-muted", className)}
       size={size === "md" ? "default" : size}
-      title={getDisplayName(user)}
+      title={displayName}
     >
       {imageUrl && !imageFailed ? (
         <AvatarImage
@@ -49,12 +52,15 @@ export function UserAvatar({
   );
 }
 
-function getDisplayName(user: AvatarUser | null | undefined) {
-  return user?.displayName || user?.username || user?.email || "用户";
+function getDisplayName(
+  user: AvatarUser | null | undefined,
+  tr: (value: string) => string,
+) {
+  return user?.displayName || user?.username || user?.email || tr("用户");
 }
 
-function getInitials(user: AvatarUser | null | undefined) {
-  const source = getDisplayName(user).trim();
+function getInitials(displayName: string) {
+  const source = displayName.trim();
   if (!source) return "U";
 
   const words = source.split(/\s+/).filter(Boolean);

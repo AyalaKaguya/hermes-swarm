@@ -38,10 +38,12 @@ import {
   type Organization,
   type OrganizationPayload,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
 import { getStoredSession } from "@/lib/session";
 
 export default function OrganizationsPage() {
+  const tr = useTextTranslation();
   const router = useRouter();
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
@@ -77,11 +79,11 @@ export default function OrganizationsPage() {
     try {
       setItems(await listOrganizations(session.accessToken));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [canViewPlatformOrganizations]);
+  }, [canViewPlatformOrganizations, tr]);
 
   useEffect(() => {
     void load();
@@ -118,7 +120,7 @@ export default function OrganizationsPage() {
       await refreshSnapshot();
       router.push(`/settings/organizations/${created.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败");
+      setError(err instanceof Error ? err.message : tr("创建失败"));
     } finally {
       setCreating(false);
     }
@@ -127,7 +129,7 @@ export default function OrganizationsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   }
@@ -136,7 +138,7 @@ export default function OrganizationsPage() {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
-          当前账号无权访问组织列表。
+          {tr("当前账号无权访问组织列表。")}
         </div>
       </div>
     );
@@ -146,20 +148,20 @@ export default function OrganizationsPage() {
     <section className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">组织列表</h1>
-          <p className="text-sm">平台范围内的组织管理视图</p>
+          <h1 className="text-lg font-semibold">{tr("组织列表")}</h1>
+          <p className="text-sm">{tr("平台范围内的组织管理视图")}</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Input
             className="w-full sm:w-72"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索组织..."
+            placeholder={tr("搜索组织...")}
             value={search}
           />
           {canManage && (
             <Button onClick={() => setCreateOpen(true)} type="button">
               <AppIcon className="size-3.5" name="building" />
-              新建组织
+              {tr("新建组织")}
             </Button>
           )}
         </div>
@@ -171,17 +173,19 @@ export default function OrganizationsPage() {
       )}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">组织</CardTitle>
+          <CardTitle className="text-base">{tr("组织")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>标识</TableHead>
-                <TableHead>子域名</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="w-24 text-right">操作</TableHead>
+                <TableHead>{tr("名称")}</TableHead>
+                <TableHead>{tr("标识")}</TableHead>
+                <TableHead>{tr("子域名")}</TableHead>
+                <TableHead>{tr("状态")}</TableHead>
+                <TableHead className="w-24 text-right">
+                  {tr("操作")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -198,14 +202,14 @@ export default function OrganizationsPage() {
                         item.status === "active" ? "default" : "secondary"
                       }
                     >
-                      {item.status === "active" ? "启用" : "停用"}
+                      {item.status === "active" ? tr("启用") : tr("停用")}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button asChild size="sm" variant="ghost">
                       <Link href={`/settings/organizations/${item.id}`}>
                         <AppIcon className="size-3.5" name="settings" />
-                        配置
+                        {tr("配置")}
                       </Link>
                     </Button>
                   </TableCell>
@@ -214,7 +218,7 @@ export default function OrganizationsPage() {
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell className="py-8 text-center text-sm" colSpan={5}>
-                    暂无组织
+                    {tr("暂无组织")}
                   </TableCell>
                 </TableRow>
               )}
@@ -226,14 +230,14 @@ export default function OrganizationsPage() {
       <Dialog onOpenChange={setCreateOpen} open={createOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>新建组织</DialogTitle>
+            <DialogTitle>{tr("新建组织")}</DialogTitle>
             <DialogDescription>
-              创建后进入该组织的完整配置页。
+              {tr("创建后进入该组织的完整配置页。")}
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitCreate}>
             <div className="grid gap-2">
-              <Label htmlFor="organization-create-name">名称</Label>
+              <Label htmlFor="organization-create-name">{tr("名称")}</Label>
               <Input
                 id="organization-create-name"
                 onChange={(event) =>
@@ -247,7 +251,7 @@ export default function OrganizationsPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="organization-create-slug">标识符</Label>
+              <Label htmlFor="organization-create-slug">{tr("标识符")}</Label>
               <Input
                 id="organization-create-slug"
                 onChange={(event) =>
@@ -256,12 +260,14 @@ export default function OrganizationsPage() {
                     slug: event.target.value,
                   }))
                 }
-                placeholder="留空后根据名称生成"
+                placeholder={tr("留空后根据名称生成")}
                 value={createForm.slug}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="organization-create-subdomain">子域名</Label>
+              <Label htmlFor="organization-create-subdomain">
+                {tr("子域名")}
+              </Label>
               <Input
                 id="organization-create-subdomain"
                 onChange={(event) =>
@@ -280,10 +286,10 @@ export default function OrganizationsPage() {
                 type="button"
                 variant="outline"
               >
-                取消
+                {tr("取消")}
               </Button>
               <Button disabled={creating} type="submit">
-                {creating ? "创建中..." : "创建"}
+                {creating ? tr("创建中...") : tr("创建")}
               </Button>
             </DialogFooter>
           </form>

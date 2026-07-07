@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import {
@@ -19,6 +20,7 @@ import {
   findPageAccessDefinitionsByPath,
 } from "@hermes-swarm/rbac-api";
 import { usePermission } from "@/hooks/use-permission";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { cn } from "@/lib/utils";
 
 const SETTINGS_SIDEBAR_DEFAULT_SIZE = "240px";
@@ -33,6 +35,8 @@ export default function SettingsLayout({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const t = useTranslations();
+  const tr = useTextTranslation();
   const { resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
   const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] =
@@ -50,6 +54,7 @@ export default function SettingsLayout({
 
   const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
     ...section,
+    label: tr(section.label),
     items: section.items
       .filter((item) => {
         if (!snapshot || !resolvedSession) return false;
@@ -65,8 +70,9 @@ export default function SettingsLayout({
                 item.href,
                 snapshot.organization.id,
               ),
+              label: tr(item.label),
             }
-          : item,
+          : { ...item, label: tr(item.label) },
       ),
   })).filter((section) => section.items.length > 0);
   const visibleItems = navSections.flatMap((section) => section.items);
@@ -126,7 +132,7 @@ export default function SettingsLayout({
 
       <div className="hidden min-w-0 gap-4 px-4 py-5 max-lg:grid">
         <nav
-          aria-label="配置导航"
+          aria-label={t("shell.settingsNavigation")}
           className="-mx-4 flex min-w-0 gap-2 overflow-x-auto border-b px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {visibleItems.map((item) => (
@@ -171,9 +177,11 @@ function SettingsSidebar({
     label: string;
   }>;
 }) {
+  const t = useTranslations();
+
   return (
     <aside
-      aria-label="配置导航"
+      aria-label={t("shell.settingsNavigation")}
       className={cn(
         "flex h-full min-h-0 flex-col overflow-hidden",
         collapsed && "items-center",
@@ -185,14 +193,18 @@ function SettingsSidebar({
             "grid size-8 shrink-0 place-items-center rounded-md",
             collapsed && "mx-auto",
           )}
-          title="配置"
+          title={t("shell.settings")}
         >
           <AppIcon className="size-4" name="settings" />
         </span>
         {!collapsed && (
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium">配置</div>
-            <div className="truncate text-xs">个人、组织与平台管理</div>
+            <div className="truncate text-sm font-medium">
+              {t("shell.settings")}
+            </div>
+            <div className="truncate text-xs">
+              {t("shell.settingsDescription")}
+            </div>
           </div>
         )}
       </div>
@@ -271,14 +283,19 @@ function SettingsAccessDenied({
   pages: ReturnType<typeof findPageAccessDefinitionsByPath>;
 }) {
   const page = pages[0] ?? null;
+  const t = useTranslations();
+  const tr = useTextTranslation();
+
   return (
     <div className="flex min-h-[360px] items-center justify-center">
       <div className="grid max-w-md gap-2 text-center">
-        <div className="text-base font-semibold">没有页面访问权限</div>
+        <div className="text-base font-semibold">
+          {t("shell.noPageAccessTitle")}
+        </div>
         <div className="text-sm text-muted-foreground">
           {page
-            ? `当前角色不能访问“${page.label}”。`
-            : "当前角色不能访问此页面。"}
+            ? t("shell.noPageAccessNamedDescription", { page: tr(page.label) })
+            : t("shell.noPageAccessDescription")}
         </div>
         {pages.length > 0 && (
           <div className="grid gap-1 font-mono text-xs text-muted-foreground">

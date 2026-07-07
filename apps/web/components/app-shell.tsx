@@ -3,6 +3,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { AppIcon, type AppIconName } from "@/components/app-icon";
 import { NotificationCenter } from "@/components/notification-center";
 import { UserMenu, type UserMenuTicketAccess } from "@/components/user-menu";
@@ -31,6 +32,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import type { Organization, User } from "@/lib/admin-api";
 import { cn } from "@/lib/utils";
 
@@ -88,6 +90,8 @@ export function AppShell({
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const [mainSidebarOpen, setMainSidebarOpen] = useState(false);
+  const t = useTranslations();
+  const tr = useTextTranslation();
   const sections = navSections ?? [];
   const footerItems = footerNavItems ?? [];
   const shellTitle = platformName?.trim() || "Hermes Swarm";
@@ -110,8 +114,8 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
-    document.title = `${shellTitle} Console`;
-  }, [shellTitle]);
+    document.title = t("shell.documentTitle", { name: shellTitle });
+  }, [shellTitle, t]);
 
   function updateMainSidebarOpen(open: boolean) {
     setMainSidebarOpen(open);
@@ -158,7 +162,7 @@ export function AppShell({
                   active={pathname === "/home"}
                   href="/home"
                   icon="home"
-                  label="主页"
+                  label={t("shell.home")}
                 />
               </SidebarMenu>
             </SidebarGroupContent>
@@ -171,7 +175,7 @@ export function AppShell({
                 <SidebarGroup key={section.key}>
                   {(section.label || section.badge) && (
                     <SidebarGroupLabel>
-                      <span className="truncate">{section.label}</span>
+                      <span className="truncate">{tr(section.label)}</span>
                       {section.badge && (
                         <span className="ml-auto rounded-md bg-sidebar-accent px-1.5 py-0.5 text-[0.68rem]">
                           {section.badge}
@@ -216,7 +220,7 @@ export function AppShell({
               active={pathname.startsWith("/settings")}
               href="/settings/account"
               icon="settings"
-              label="设置"
+              label={t("shell.settings")}
             />
             <UserMenu
               onUserUpdated={onUserUpdated}
@@ -238,7 +242,7 @@ export function AppShell({
         <div className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:hidden">
           <SidebarTrigger />
           <span className="truncate text-sm font-medium">
-            {organizationName ?? "管理控制台"}
+            {organizationName ?? t("shell.console")}
           </span>
         </div>
         <main
@@ -291,7 +295,8 @@ function ScopeSwitcher({
   organizationName?: string | null;
   organizations: Organization[];
 }) {
-  const currentLabel = organizationName ?? "管理控制台";
+  const t = useTranslations();
+  const currentLabel = organizationName ?? t("shell.console");
   const canSwitch = organizations.length > 0;
 
   return (
@@ -302,7 +307,9 @@ function ScopeSwitcher({
             <SidebarMenuButton
               className="h-14 rounded-lg border bg-background/70 px-2 shadow-xs group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none"
               size="lg"
-              tooltip={`当前组织：${currentLabel}`}
+              tooltip={t("shell.currentOrganizationTooltip", {
+                name: currentLabel,
+              })}
               type="button"
             >
               <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted group-data-[collapsible=icon]:bg-sidebar-accent">
@@ -310,7 +317,7 @@ function ScopeSwitcher({
               </span>
               <span className="grid min-w-0 flex-1 leading-tight">
                 <span className="truncate text-[0.65rem] uppercase">
-                  当前组织
+                  {t("shell.currentOrganization")}
                 </span>
                 <span className="truncate text-sm font-medium">
                   {currentLabel}
@@ -323,10 +330,12 @@ function ScopeSwitcher({
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-72">
-            <DropdownMenuLabel>切换组织</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("shell.switchOrganization")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {organizations.length === 0 ? (
-              <DropdownMenuItem disabled>暂无可切换组织</DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                {t("shell.noSwitchableOrganizations")}
+              </DropdownMenuItem>
             ) : (
               organizations.map((organization) => {
                 const active = organization.id === currentOrganizationId;
@@ -352,7 +361,7 @@ function ScopeSwitcher({
                     </span>
                     {active && (
                       <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.68rem]">
-                        当前
+                        {t("shell.current")}
                       </span>
                     )}
                   </DropdownMenuItem>
@@ -412,10 +421,12 @@ function NavItem({
   item: AppShellNavItem;
   onNavigate?: (item: AppShellNavItem) => void;
 }) {
+  const tr = useTextTranslation();
+  const label = tr(item.label);
   const content = (
     <>
       <AppIcon className="size-4 shrink-0" name={item.icon ?? "users"} />
-      <span>{item.label}</span>
+      <span>{label}</span>
     </>
   );
 
@@ -425,13 +436,13 @@ function NavItem({
         <SidebarMenuButton
           isActive={active}
           onClick={() => onNavigate(item)}
-          tooltip={item.label}
+          tooltip={label}
           type="button"
         >
           {content}
         </SidebarMenuButton>
       ) : (
-        <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+        <SidebarMenuButton asChild isActive={active} tooltip={label}>
           <Link href={item.href}>{content}</Link>
         </SidebarMenuButton>
       )}

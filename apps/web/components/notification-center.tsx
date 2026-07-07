@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useFormatter, useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,14 +26,16 @@ import { getStoredSession } from "@/lib/session";
 
 type NotificationItem = {
   body?: string | null;
+  createdAt: string;
   id: string;
   kind?: string;
   message: string;
   status?: "read" | "unread";
-  time: string;
 };
 
 export function NotificationCenter() {
+  const t = useTranslations();
+  const format = useFormatter();
   const [items, setItems] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
@@ -43,9 +46,9 @@ export function NotificationCenter() {
     function push(message: string) {
       setItems((current) => [
         {
+          createdAt: new Date().toISOString(),
           id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
           message,
-          time: new Date().toLocaleTimeString(),
         },
         ...current.slice(0, 99),
       ]);
@@ -56,11 +59,11 @@ export function NotificationCenter() {
         const next = [
           {
             body: notification.body,
+            createdAt: notification.createdAt,
             id: notification.id,
             kind: notification.kind,
             message: notification.title,
             status: notification.status,
-            time: formatNotificationTime(notification.createdAt),
           },
           ...current.filter((item) => item.id !== notification.id),
         ];
@@ -95,7 +98,7 @@ export function NotificationCenter() {
     }
 
     function onError(event: ErrorEvent) {
-      push(event.message || "应用运行时错误");
+      push(event.message || t("notifications.runtimeError"));
     }
 
     function onUnhandledRejection(event: PromiseRejectionEvent) {
@@ -103,7 +106,7 @@ export function NotificationCenter() {
       push(
         reason instanceof Error
           ? reason.message
-          : String(reason || "异步任务失败"),
+          : String(reason || t("notifications.unhandledRejection")),
       );
     }
 
@@ -122,7 +125,7 @@ export function NotificationCenter() {
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       window.removeEventListener("hermes:notification", onCustom);
     };
-  }, []);
+  }, [t]);
 
   const countLabel = useMemo(
     () => {
@@ -137,24 +140,30 @@ export function NotificationCenter() {
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuButton isActive={false} tooltip="通知" type="button">
+          <SidebarMenuButton
+            isActive={false}
+            tooltip={t("notifications.title")}
+            type="button"
+          >
             <span className="relative">
               <AppIcon className="size-4 shrink-0" name="bell" />
               {unreadCount > 0 && (
                 <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive" />
               )}
             </span>
-            <span>通知</span>
+            <span>{t("notifications.title")}</span>
           </SidebarMenuButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80">
           <div className="flex items-center justify-between gap-3 px-1.5 py-1">
             <DropdownMenuLabel className="p-0">
-              通知{items.length > 0 ? ` (${countLabel})` : ""}
+              {items.length > 0
+                ? t("notifications.titleWithCount", { count: countLabel })
+                : t("notifications.title")}
             </DropdownMenuLabel>
             <div className="flex items-center gap-1">
               <Button
-                aria-label="全部已读"
+                aria-label={t("notifications.allRead")}
                 disabled={items.length === 0}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -165,14 +174,14 @@ export function NotificationCenter() {
                   );
                 }}
                 size="icon-xs"
-                title="全部已读"
+                title={t("notifications.allRead")}
                 type="button"
                 variant="ghost"
               >
                 <AppIcon className="size-3.5" name="check" />
               </Button>
               <Button
-                aria-label="清理已读"
+                aria-label={t("notifications.clearRead")}
                 disabled={!items.some((item) => item.status === "read")}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -183,7 +192,7 @@ export function NotificationCenter() {
                   );
                 }}
                 size="icon-xs"
-                title="清理已读"
+                title={t("notifications.clearRead")}
                 type="button"
                 variant="ghost"
               >
@@ -193,7 +202,9 @@ export function NotificationCenter() {
           </div>
           <DropdownMenuSeparator />
           {items.length === 0 ? (
-            <div className="px-2 py-6 text-center text-sm">暂无通知</div>
+            <div className="px-2 py-6 text-center text-sm">
+              {t("notifications.empty")}
+            </div>
           ) : (
             <div className="max-h-80 overflow-auto">
               {items.map((item, index) => (
@@ -231,10 +242,12 @@ export function NotificationCenter() {
                         {item.body}
                       </span>
                     )}
-                    <span className="text-xs">{item.time}</span>
+                    <span className="text-xs">
+                      {formatNotificationTime(item.createdAt, format)}
+                    </span>
                   </span>
                   <Button
-                    aria-label="移除通知"
+                    aria-label={t("notifications.dismiss")}
                     onClick={(event) => {
                       event.stopPropagation();
                       const token = getStoredSession()?.accessToken;
@@ -244,7 +257,7 @@ export function NotificationCenter() {
                       );
                     }}
                     size="icon-xs"
-                    title="移除通知"
+                    title={t("notifications.dismiss")}
                     type="button"
                     variant="ghost"
                   >
@@ -263,18 +276,24 @@ export function NotificationCenter() {
 function toNotificationItem(notification: UserNotification): NotificationItem {
   return {
     body: notification.body,
+    createdAt: notification.createdAt,
     id: notification.id,
     kind: notification.kind,
     message: notification.title,
     status: notification.status,
-    time: formatNotificationTime(notification.createdAt),
   };
 }
 
-function formatNotificationTime(value: string) {
+function formatNotificationTime(
+  value: string,
+  format: ReturnType<typeof useFormatter>,
+) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString();
+  return format.dateTime(date, {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 }
 
 function isUserNotification(value: unknown): value is UserNotification {

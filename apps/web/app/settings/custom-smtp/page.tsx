@@ -19,9 +19,11 @@ import {
   validateSmtpConfig,
   type SmtpConfig,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { getStoredSession } from "@/lib/session";
 
 export default function CustomSmtpPage() {
+  const tr = useTextTranslation();
   const { snapshot } = useAdminShell();
   const organizationId = snapshot?.organization?.id ?? null;
   const [config, setConfig] = useState<SmtpConfig | null>(null);
@@ -55,11 +57,11 @@ export default function CustomSmtpPage() {
         setFromAddress(c.fromAddress ?? "");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, tr]);
 
   useEffect(() => {
     void load();
@@ -87,10 +89,10 @@ export default function CustomSmtpPage() {
         },
         { organizationId },
       );
-      setMsg("保存成功");
+      setMsg(tr("保存成功"));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -117,9 +119,9 @@ export default function CustomSmtpPage() {
         },
         { organizationId },
       );
-      setMsg("配置验证通过");
+      setMsg(tr("配置验证通过"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "验证失败");
+      setError(err instanceof Error ? err.message : tr("验证失败"));
     } finally {
       setValidating(false);
     }
@@ -128,7 +130,7 @@ export default function CustomSmtpPage() {
   if (loading)
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
 
@@ -136,12 +138,14 @@ export default function CustomSmtpPage() {
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle>自定义 SMTP</CardTitle>
-          <CardDescription>配置组织级别的邮件发送服务器</CardDescription>
+          <CardTitle>{tr("自定义 SMTP")}</CardTitle>
+          <CardDescription>
+            {tr("配置组织级别的邮件发送服务器")}
+          </CardDescription>
         </div>
         {config?.isValidated && (
           <span className="rounded-md border bg-muted/40 px-2 py-1 text-xs">
-            已验证
+            {tr("已验证")}
           </span>
         )}
       </CardHeader>
@@ -158,7 +162,7 @@ export default function CustomSmtpPage() {
         )}
         <div className="grid max-w-xl gap-4">
           <div className="grid gap-2">
-            <Label>SMTP 服务器</Label>
+            <Label>{tr("SMTP 服务器")}</Label>
             <Input
               onChange={(e) => setHost(e.target.value)}
               placeholder="smtp.example.com"
@@ -167,7 +171,7 @@ export default function CustomSmtpPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
-              <Label>端口</Label>
+              <Label>{tr("端口")}</Label>
               <Input
                 onChange={(e) => setPort(e.target.value)}
                 placeholder="587"
@@ -186,7 +190,7 @@ export default function CustomSmtpPage() {
             </div>
           </div>
           <div className="grid gap-2">
-            <Label>用户名</Label>
+            <Label>{tr("用户名")}</Label>
             <Input
               onChange={(e) => setUsername(e.target.value)}
               placeholder="user@example.com"
@@ -194,16 +198,16 @@ export default function CustomSmtpPage() {
             />
           </div>
           <div className="grid gap-2">
-            <Label>密码</Label>
+            <Label>{tr("密码")}</Label>
             <Input
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="留空不修改"
+              placeholder={tr("留空不修改")}
               type="password"
               value={password}
             />
           </div>
           <div className="grid gap-2">
-            <Label>发件人地址</Label>
+            <Label>{tr("发件人地址")}</Label>
             <Input
               onChange={(e) => setFromAddress(e.target.value)}
               placeholder="noreply@example.com"
@@ -212,14 +216,14 @@ export default function CustomSmtpPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={save} disabled={saving || !host.trim()}>
-              保存
+              {tr("保存")}
             </Button>
             <Button
               onClick={validate}
               disabled={validating || !host.trim()}
               variant="outline"
             >
-              {validating ? "验证中..." : "测试连接"}
+              {validating ? tr("验证中...") : tr("测试连接")}
             </Button>
           </div>
         </div>

@@ -65,6 +65,7 @@ import {
   type SmtpConfig,
   type SystemSettingDto,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
 import { getStoredSession } from "@/lib/session";
 
@@ -102,6 +103,7 @@ type PlatformTab =
   | "smtp";
 
 export default function PlatformPage() {
+  const tr = useTextTranslation();
   const searchParams = useSearchParams();
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
@@ -201,11 +203,11 @@ export default function PlatformPage() {
       setOrganizations(orgs);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [canViewOrganizations, canViewPlatform]);
+  }, [canViewOrganizations, canViewPlatform, tr]);
 
   useEffect(() => {
     void load();
@@ -266,11 +268,11 @@ export default function PlatformPage() {
           ),
         ],
       });
-      notifications.success("平台设置已保存");
+      notifications.success(tr("平台设置已保存"));
       await refreshSnapshot();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingPlatform(false);
     }
@@ -288,10 +290,10 @@ export default function PlatformPage() {
           platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
         ],
       });
-      notifications.success("公共 SMTP 已保存");
+      notifications.success(tr("公共 SMTP 已保存"));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingSmtp(false);
     }
@@ -311,13 +313,13 @@ export default function PlatformPage() {
       });
       notifications.success(
         payload.value === null
-          ? "平台自定义设置已删除"
-          : "平台自定义设置已保存",
+          ? tr("平台自定义设置已删除")
+          : tr("平台自定义设置已保存"),
       );
       await load();
       await refreshSnapshot();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingCustomSetting(false);
     }
@@ -327,7 +329,7 @@ export default function PlatformPage() {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
-          当前账号无权访问平台设置。
+          {tr("当前账号无权访问平台设置。")}
         </div>
       </div>
     );
@@ -336,7 +338,7 @@ export default function PlatformPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   }
@@ -345,12 +347,12 @@ export default function PlatformPage() {
     <section className="grid gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">平台设置</h1>
-          <p className="text-sm">平台默认值、组织治理与公共服务</p>
+          <h1 className="text-lg font-semibold">{tr("平台设置")}</h1>
+          <p className="text-sm">{tr("平台默认值、组织治理与公共服务")}</p>
         </div>
         {canViewOrganizations && (
           <Badge variant="secondary">
-            {activeOrganizations}/{organizations.length} 活跃组织
+            {activeOrganizations}/{organizations.length} {tr("活跃组织")}
           </Badge>
         )}
       </div>
@@ -365,14 +367,14 @@ export default function PlatformPage() {
         <TabsContent value="profile">
           <Card>
             <CardHeader>
-              <CardTitle>平台信息</CardTitle>
+              <CardTitle>{tr("平台信息")}</CardTitle>
               <CardDescription>
-                用于全局展示和识别当前平台的基础信息
+                {tr("用于全局展示和识别当前平台的基础信息")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="max-w-xl">
-                <Field htmlFor="platform-title" label="平台名称">
+                <Field htmlFor="platform-title" label={tr("平台名称")}>
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-title"
@@ -390,7 +392,7 @@ export default function PlatformPage() {
                   onClick={savePlatform}
                   type="button"
                 >
-                  保存
+                  {tr("保存")}
                 </Button>
               </div>
             </CardContent>
@@ -400,14 +402,14 @@ export default function PlatformPage() {
         <TabsContent value="defaults">
           <Card>
             <CardHeader>
-              <CardTitle>默认控制项</CardTitle>
+              <CardTitle>{tr("默认控制项")}</CardTitle>
               <CardDescription>
-                作为组织控制项的平台默认值，组织可按需覆写
+                {tr("作为组织控制项的平台默认值，组织可按需覆写")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <Field htmlFor="platform-currency" label="默认货币">
+                <Field htmlFor="platform-currency" label={tr("默认货币")}>
                   <Select
                     disabled={!canManagePlatform}
                     onValueChange={(value) =>
@@ -421,13 +423,13 @@ export default function PlatformPage() {
                     <SelectContent>
                       {CURRENCY_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {tr(option.label)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field htmlFor="platform-language" label="默认语言">
+                <Field htmlFor="platform-language" label={tr("默认语言")}>
                   <Select
                     disabled={!canManagePlatform}
                     onValueChange={(value) =>
@@ -441,13 +443,13 @@ export default function PlatformPage() {
                     <SelectContent>
                       {LANGUAGE_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {tr(option.label)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field htmlFor="platform-time-zone" label="默认时区">
+                <Field htmlFor="platform-time-zone" label={tr("默认时区")}>
                   <Select
                     disabled={!canManagePlatform}
                     onValueChange={(value) =>
@@ -461,13 +463,13 @@ export default function PlatformPage() {
                     <SelectContent>
                       {TIME_ZONE_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {tr(option.label)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field htmlFor="platform-region-code" label="默认地区代码">
+                <Field htmlFor="platform-region-code" label={tr("默认地区代码")}>
                   <Select
                     disabled={!canManagePlatform}
                     onValueChange={(value) =>
@@ -481,13 +483,13 @@ export default function PlatformPage() {
                     <SelectContent>
                       {REGION_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {tr(option.label)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field htmlFor="platform-date-format" label="默认日期格式">
+                <Field htmlFor="platform-date-format" label={tr("默认日期格式")}>
                   <Select
                     disabled={!canManagePlatform}
                     onValueChange={(value) =>
@@ -501,7 +503,7 @@ export default function PlatformPage() {
                     <SelectContent>
                       {DATE_FORMAT_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {tr(option.label)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -509,7 +511,7 @@ export default function PlatformPage() {
                 </Field>
                 <Field
                   htmlFor="platform-password-min-length"
-                  label="密码最小长度"
+                  label={tr("密码最小长度")}
                 >
                   <Select
                     disabled={!canManagePlatform}
@@ -537,7 +539,7 @@ export default function PlatformPage() {
                   onClick={savePlatform}
                   type="button"
                 >
-                  保存
+                  {tr("保存")}
                 </Button>
               </div>
             </CardContent>
@@ -554,8 +556,10 @@ export default function PlatformPage() {
           >
             <Card>
               <CardHeader>
-                <CardTitle>组织创建设置</CardTitle>
-                <CardDescription>控制新组织创建入口和默认状态</CardDescription>
+                <CardTitle>{tr("组织创建设置")}</CardTitle>
+                <CardDescription>
+                  {tr("控制新组织创建入口和默认状态")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -563,12 +567,12 @@ export default function PlatformPage() {
                     checked={form.allowOrganizationCreation}
                     disabled={!canManagePlatform}
                     id="platform-org-creation"
-                    label="允许创建组织"
+                    label={tr("允许创建组织")}
                     onCheckedChange={(checked) =>
                       updateField("allowOrganizationCreation", checked)
                     }
                   />
-                  <Field htmlFor="platform-org-status" label="新组织默认状态">
+                  <Field htmlFor="platform-org-status" label={tr("新组织默认状态")}>
                     <Select
                       disabled={!canManagePlatform}
                       onValueChange={(value) =>
@@ -585,7 +589,7 @@ export default function PlatformPage() {
                       <SelectContent>
                         {ORGANIZATION_STATUS_OPTIONS.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                            {tr(option.label)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -598,7 +602,7 @@ export default function PlatformPage() {
                     onClick={savePlatform}
                     type="button"
                   >
-                    保存
+                    {tr("保存")}
                   </Button>
                 </div>
               </CardContent>
@@ -608,13 +612,15 @@ export default function PlatformPage() {
               <Card>
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                   <div>
-                    <CardTitle>组织配置</CardTitle>
-                    <CardDescription>平台下全部组织的配置入口</CardDescription>
+                    <CardTitle>{tr("组织配置")}</CardTitle>
+                    <CardDescription>
+                      {tr("平台下全部组织的配置入口")}
+                    </CardDescription>
                   </div>
                   <Button asChild size="sm" variant="outline">
                     <Link href="/settings/organizations">
                       <AppIcon className="size-3.5" name="building" />
-                      组织列表
+                      {tr("组织列表")}
                     </Link>
                   </Button>
                 </CardHeader>
@@ -640,20 +646,24 @@ export default function PlatformPage() {
                             : "secondary"
                         }
                       >
-                        {organization.status === "active" ? "启用" : "停用"}
+                        {organization.status === "active"
+                          ? tr("启用")
+                          : tr("停用")}
                       </Badge>
                     </Link>
                   ))}
                   {organizations.length === 0 && (
                     <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
-                      暂无组织
+                      {tr("暂无组织")}
                     </div>
                   )}
                   {organizations.length > 6 && (
                     <>
                       <Separator />
                       <Button asChild size="sm" variant="ghost">
-                        <Link href="/settings/organizations">查看全部组织</Link>
+                        <Link href="/settings/organizations">
+                          {tr("查看全部组织")}
+                        </Link>
                       </Button>
                     </>
                   )}
@@ -667,14 +677,16 @@ export default function PlatformPage() {
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>消息服务</CardTitle>
-                <CardDescription>平台级公共消息服务开关和提供方</CardDescription>
+                <CardTitle>{tr("消息服务")}</CardTitle>
+                <CardDescription>
+                  {tr("平台级公共消息服务开关和提供方")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field
                     htmlFor="platform-message-provider"
-                    label="消息服务提供方"
+                    label={tr("消息服务提供方")}
                   >
                     <Input
                       disabled={!canManagePlatform}
@@ -690,7 +702,7 @@ export default function PlatformPage() {
                     checked={form.messageServiceEnabled}
                     disabled={!canManagePlatform}
                     id="platform-message-enabled"
-                    label="启用公共消息服务"
+                    label={tr("启用公共消息服务")}
                     onCheckedChange={(checked) =>
                       updateField("messageServiceEnabled", checked)
                     }
@@ -701,15 +713,17 @@ export default function PlatformPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>工单服务</CardTitle>
-                <CardDescription>控制用户入口和平台工单提交能力</CardDescription>
+                <CardTitle>{tr("工单服务")}</CardTitle>
+                <CardDescription>
+                  {tr("控制用户入口和平台工单提交能力")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <ToggleField
                   checked={form.ticketingVisible}
                   disabled={!canManagePlatform}
                   id="platform-ticketing-visible"
-                  label="显示工单入口"
+                  label={tr("显示工单入口")}
                   onCheckedChange={(checked) =>
                     updateField("ticketingVisible", checked)
                   }
@@ -718,7 +732,7 @@ export default function PlatformPage() {
                   checked={form.ticketingPlatformSubmissionEnabled}
                   disabled={!canManagePlatform || !form.ticketingVisible}
                   id="platform-ticketing-platform-submission"
-                  label="允许提交平台工单"
+                  label={tr("允许提交平台工单")}
                   onCheckedChange={(checked) =>
                     updateField("ticketingPlatformSubmissionEnabled", checked)
                   }
@@ -732,7 +746,7 @@ export default function PlatformPage() {
                 onClick={savePlatform}
                 type="button"
               >
-                保存
+                {tr("保存")}
               </Button>
             </div>
           </div>
@@ -741,9 +755,9 @@ export default function PlatformPage() {
         <TabsContent value="smtp">
           <Card>
             <CardHeader>
-              <CardTitle>公共 SMTP</CardTitle>
+              <CardTitle>{tr("公共 SMTP")}</CardTitle>
               <CardDescription>
-                组织未配置 SMTP 时使用的平台邮件服务
+                {tr("组织未配置 SMTP 时使用的平台邮件服务")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -751,7 +765,7 @@ export default function PlatformPage() {
                 checked={form.publicSmtpEnabled}
                 disabled={!canManagePlatform}
                 id="platform-smtp-enabled"
-                label="启用公共 SMTP"
+                label={tr("启用公共 SMTP")}
                 onCheckedChange={(checked) =>
                   updateField("publicSmtpEnabled", checked)
                 }
@@ -767,7 +781,7 @@ export default function PlatformPage() {
                     value={form.smtpHost}
                   />
                 </Field>
-                <Field htmlFor="platform-smtp-port" label="端口">
+                <Field htmlFor="platform-smtp-port" label={tr("端口")}>
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-smtp-port"
@@ -778,7 +792,7 @@ export default function PlatformPage() {
                     value={form.smtpPort}
                   />
                 </Field>
-                <Field htmlFor="platform-smtp-from" label="发件地址">
+                <Field htmlFor="platform-smtp-from" label={tr("发件地址")}>
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-smtp-from"
@@ -788,7 +802,7 @@ export default function PlatformPage() {
                     value={form.smtpFromAddress}
                   />
                 </Field>
-                <Field htmlFor="platform-smtp-username" label="用户名">
+                <Field htmlFor="platform-smtp-username" label={tr("用户名")}>
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-smtp-username"
@@ -798,14 +812,14 @@ export default function PlatformPage() {
                     value={form.smtpUsername}
                   />
                 </Field>
-                <Field htmlFor="platform-smtp-password" label="密码">
+                <Field htmlFor="platform-smtp-password" label={tr("密码")}>
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-smtp-password"
                     onChange={(event) =>
                       updateField("smtpPassword", event.target.value)
                     }
-                    placeholder="留空则保留当前密码"
+                    placeholder={tr("留空则保留当前密码")}
                     type="password"
                     value={form.smtpPassword}
                   />
@@ -814,7 +828,7 @@ export default function PlatformPage() {
                   checked={form.smtpSecure}
                   disabled={!canManagePlatform}
                   id="platform-smtp-secure"
-                  label="启用 SSL/TLS"
+                  label={tr("启用 SSL/TLS")}
                   onCheckedChange={(checked) =>
                     updateField("smtpSecure", checked)
                   }
@@ -827,7 +841,7 @@ export default function PlatformPage() {
                   type="button"
                   variant="outline"
                 >
-                  保存
+                  {tr("保存")}
                 </Button>
               </div>
             </CardContent>
@@ -860,9 +874,9 @@ export default function PlatformPage() {
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>自定义平台设置</CardTitle>
+                <CardTitle>{tr("自定义平台设置")}</CardTitle>
                 <CardDescription>
-                  作为组织配置的默认键值，可由组织覆写
+                  {tr("作为组织配置的默认键值，可由组织覆写")}
                 </CardDescription>
               </div>
               <CustomSettingDialog
@@ -870,16 +884,16 @@ export default function PlatformPage() {
                 idPrefix="platform-custom-setting"
                 onSubmit={saveCustomSystemSetting}
                 saving={savingCustomSetting}
-                scopeOptions={[{ label: "平台", value: "platform" }]}
+                scopeOptions={[{ label: tr("平台"), value: "platform" }]}
                 showScope
-                title="添加平台设置"
+                title={tr("添加平台设置")}
               />
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
                 {customSystemSettings.length === 0 ? (
                   <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
-                    暂无自定义平台设置
+                    {tr("暂无自定义平台设置")}
                   </div>
                 ) : (
                   customSystemSettings.map((setting) => {

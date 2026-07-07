@@ -83,6 +83,7 @@ import {
   type User,
   type UserStatus,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
 import { getStoredSession } from "@/lib/session";
 
@@ -123,6 +124,7 @@ type OrganizationTab =
   | "profile";
 
 export default function OrganizationDetailPage() {
+  const tr = useTextTranslation();
   const params = useParams<{ orgId?: string | string[] }>();
   const searchParams = useSearchParams();
   const organizationId = Array.isArray(params.orgId)
@@ -229,11 +231,11 @@ export default function OrganizationDetailPage() {
         ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, tr]);
 
   useEffect(() => {
     void load();
@@ -269,7 +271,7 @@ export default function OrganizationDetailPage() {
   ) {
     const setting = findSetting(name);
     const value = setting?.defaultValue ?? setting?.value ?? "";
-    if (!value) return "未设置";
+    if (!value) return tr("未设置");
     return options?.find((option) => option.value === value)?.label ?? value;
   }
 
@@ -294,10 +296,10 @@ export default function OrganizationDetailPage() {
       );
       setOrganization(updated);
       setForm(toOrganizationForm(updated));
-      notifications.success("组织配置已保存");
+      notifications.success(tr("组织配置已保存"));
       await refreshSnapshot();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -314,16 +316,16 @@ export default function OrganizationDetailPage() {
         uploaded.destinations.find(
           (item) => item.status === "success" && item.url,
         )?.url;
-      if (!imageUrl) throw new Error("上传成功但未返回图片地址");
+      if (!imageUrl) throw new Error(tr("上传成功但未返回图片地址"));
       const updated = await updateOrganization(token, organization.id, {
         imageUrl,
       });
       setOrganization(updated);
       setForm(toOrganizationForm(updated));
-      notifications.success("组织 Logo 已上传");
+      notifications.success(tr("组织 Logo 已上传"));
       await refreshSnapshot();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "上传失败");
+      setError(err instanceof Error ? err.message : tr("上传失败"));
     } finally {
       setUploadingLogo(false);
       if (logoInputRef.current) logoInputRef.current.value = "";
@@ -348,10 +350,10 @@ export default function OrganizationDetailPage() {
         organization.id,
       );
       setOrganizationSettings(settings);
-      notifications.success("组织控制项已保存");
+      notifications.success(tr("组织控制项已保存"));
       await refreshSnapshot();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingControls(false);
     }
@@ -373,11 +375,11 @@ export default function OrganizationDetailPage() {
       );
       setOrganizationSettings(settings);
       notifications.success(
-        payload.value === null ? "自定义设置已删除" : "自定义设置已保存",
+        payload.value === null ? tr("自定义设置已删除") : tr("自定义设置已保存"),
       );
       await refreshSnapshot();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingCustomSetting(false);
     }
@@ -390,7 +392,7 @@ export default function OrganizationDetailPage() {
 
   function roleLabel(roleId: string | null) {
     if (!roleId) return "-";
-    return roles.find((role) => role.id === roleId)?.label ?? "受限角色";
+    return roles.find((role) => role.id === roleId)?.label ?? tr("受限角色");
   }
 
   function membershipForUser(userId: string) {
@@ -404,7 +406,7 @@ export default function OrganizationDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
-        加载中...
+        {tr("加载中...")}
       </div>
     );
   }
@@ -432,7 +434,7 @@ export default function OrganizationDetailPage() {
         <Badge
           variant={organization.status === "active" ? "default" : "secondary"}
         >
-          {organization.status === "active" ? "启用" : "已停用"}
+          {organization.status === "active" ? tr("启用") : tr("已停用")}
         </Badge>
       </div>
 
@@ -451,8 +453,10 @@ export default function OrganizationDetailPage() {
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
             <Card>
               <CardHeader>
-                <CardTitle>组织信息</CardTitle>
-                <CardDescription>维护组织名称、标识和生命周期</CardDescription>
+                <CardTitle>{tr("组织信息")}</CardTitle>
+                <CardDescription>
+                  {tr("维护组织名称、标识和生命周期")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <Field label="名称" htmlFor="organization-name">
@@ -519,9 +523,9 @@ export default function OrganizationDetailPage() {
                   <>
                     <div className="flex items-center justify-between rounded-md border px-3 py-2">
                       <div className="grid gap-0.5">
-                        <Label htmlFor="organization-active">启用组织</Label>
+                        <Label htmlFor="organization-active">{tr("启用组织")}</Label>
                         <span className="text-xs">
-                          停用后该组织用户不能继续登录
+                          {tr("停用后该组织用户不能继续登录")}
                         </span>
                       </div>
                       <Switch
@@ -538,8 +542,10 @@ export default function OrganizationDetailPage() {
                     </div>
                     <div className="flex items-center justify-between rounded-md border px-3 py-2">
                       <div className="grid gap-0.5">
-                        <Label htmlFor="organization-default">默认组织</Label>
-                        <span className="text-xs">用于平台默认组织选择</span>
+                        <Label htmlFor="organization-default">{tr("默认组织")}</Label>
+                        <span className="text-xs">
+                          {tr("用于平台默认组织选择")}
+                        </span>
                       </div>
                       <Switch
                         checked={form.isDefault}
@@ -558,7 +564,9 @@ export default function OrganizationDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Logo</CardTitle>
-                <CardDescription>通过上传图片更新组织头像</CardDescription>
+                <CardDescription>
+                  {tr("通过上传图片更新组织头像")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3">
                 <div className="flex items-center gap-3">
@@ -596,7 +604,7 @@ export default function OrganizationDetailPage() {
                   variant="outline"
                 >
                   <AppIcon className="size-3.5" name="image-upload" />
-                  {uploadingLogo ? "上传中..." : "上传 Logo"}
+                  {uploadingLogo ? tr("上传中...") : tr("上传 Logo")}
                 </Button>
               </CardContent>
             </Card>
@@ -607,9 +615,9 @@ export default function OrganizationDetailPage() {
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>组织成员</CardTitle>
+                <CardTitle>{tr("组织成员")}</CardTitle>
                 <CardDescription>
-                  维护当前组织的成员账号和角色
+                  {tr("维护当前组织的成员账号和角色")}
                 </CardDescription>
               </div>
               <Dialog onOpenChange={setCreateUserOpen} open={createUserOpen}>
@@ -622,12 +630,12 @@ export default function OrganizationDetailPage() {
                     size="sm"
                   >
                     <AppIcon className="size-3.5" name="users" />
-                    添加成员
+                    {tr("添加成员")}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>添加成员</DialogTitle>
+                    <DialogTitle>{tr("添加成员")}</DialogTitle>
                   </DialogHeader>
                   <OrganizationUserForm
                     mode="create"
@@ -646,20 +654,20 @@ export default function OrganizationDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-56">成员</TableHead>
-                    <TableHead>邮箱</TableHead>
-                    <TableHead>角色</TableHead>
-                    <TableHead>状态</TableHead>
+                    <TableHead className="w-56">{tr("成员")}</TableHead>
+                    <TableHead>{tr("邮箱")}</TableHead>
+                    <TableHead>{tr("角色")}</TableHead>
+                    <TableHead>{tr("状态")}</TableHead>
                     <TableHead className="w-20" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {users.length === 0 ? (
-                    <TableRow>
-                      <TableCell className="text-center" colSpan={5}>
-                        暂无成员
-                      </TableCell>
-                    </TableRow>
+                      <TableRow>
+                        <TableCell className="text-center" colSpan={5}>
+                          {tr("暂无成员")}
+                        </TableCell>
+                      </TableRow>
                   ) : (
                     users.map((user) => (
                       <TableRow key={user.id}>
@@ -691,7 +699,7 @@ export default function OrganizationDetailPage() {
                               user.status === "active" ? "default" : "secondary"
                             }
                           >
-                            {user.status === "active" ? "启用" : "禁用"}
+                            {user.status === "active" ? tr("启用") : tr("禁用")}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -701,7 +709,7 @@ export default function OrganizationDetailPage() {
                             size="sm"
                             variant="ghost"
                           >
-                            编辑
+                            {tr("编辑")}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -717,9 +725,9 @@ export default function OrganizationDetailPage() {
           <div className="grid gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>默认值</CardTitle>
+                <CardTitle>{tr("默认值")}</CardTitle>
                 <CardDescription>
-                  为空时继承平台设置，选择后保存为组织覆写
+                  {tr("为空时继承平台设置，选择后保存为组织覆写")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
@@ -737,10 +745,10 @@ export default function OrganizationDetailPage() {
                           item.key,
                           item.options,
                         )}
-                        noneLabel="继承平台默认"
+                        noneLabel={tr("继承平台默认")}
                         onChange={(value) => updateField(item.field, value)}
                         options={item.options}
-                        placeholder="继承平台默认"
+                        placeholder={tr("继承平台默认")}
                         value={form[item.field]}
                       />
                     </Field>
@@ -764,7 +772,7 @@ export default function OrganizationDetailPage() {
                     onClick={save}
                     type="button"
                   >
-                    保存
+                    {tr("保存")}
                   </Button>
                 </div>
               </CardContent>
@@ -772,9 +780,9 @@ export default function OrganizationDetailPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>基础控制项</CardTitle>
+                <CardTitle>{tr("基础控制项")}</CardTitle>
                 <CardDescription>
-                  为空时继承平台默认，选择后保存为组织覆写
+                  {tr("为空时继承平台默认，选择后保存为组织覆写")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
@@ -792,7 +800,7 @@ export default function OrganizationDetailPage() {
                           item.key,
                           item.options,
                         )}
-                        noneLabel="继承平台默认"
+                        noneLabel={tr("继承平台默认")}
                         onChange={(value) =>
                           setControlValues((current) => ({
                             ...current,
@@ -800,7 +808,7 @@ export default function OrganizationDetailPage() {
                           }))
                         }
                         options={item.options}
-                        placeholder="继承平台默认"
+                        placeholder={tr("继承平台默认")}
                         value={controlValues[item.key] ?? ""}
                       />
                     </Field>
@@ -812,7 +820,7 @@ export default function OrganizationDetailPage() {
                     onClick={saveControls}
                     type="button"
                   >
-                    保存
+                    {tr("保存")}
                   </Button>
                 </div>
               </CardContent>
@@ -821,9 +829,9 @@ export default function OrganizationDetailPage() {
             <Card>
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                 <div>
-                  <CardTitle>自定义设置</CardTitle>
+                  <CardTitle>{tr("自定义设置")}</CardTitle>
                   <CardDescription>
-                    新增组织专属设置，或覆写平台自定义默认值
+                    {tr("新增组织专属设置，或覆写平台自定义默认值")}
                   </CardDescription>
                 </div>
                 <CustomSettingDialog
@@ -831,16 +839,16 @@ export default function OrganizationDetailPage() {
                   idPrefix="organization-custom-setting"
                   onSubmit={saveCustomSetting}
                   saving={savingCustomSetting}
-                  scopeOptions={[{ label: "组织", value: "organization" }]}
+                  scopeOptions={[{ label: tr("组织"), value: "organization" }]}
                   showScope
-                  title="添加组织设置"
+                  title={tr("添加组织设置")}
                 />
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-2 text-sm">
                   {customSettings.length === 0 ? (
                     <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
-                      暂无自定义设置
+                      {tr("暂无自定义设置")}
                     </div>
                   ) : (
                     customSettings.map((setting) => {
@@ -871,11 +879,11 @@ export default function OrganizationDetailPage() {
                             <div className="truncate font-mono text-xs">
                               {setting.name}
                             </div>
-                            <div className="text-xs">
-                              {setting.isOverridden
-                                ? "组织覆写"
-                                : "继承平台设置"}
-                            </div>
+                              <div className="text-xs">
+                                {setting.isOverridden
+                                  ? tr("组织覆写")
+                                  : tr("继承平台设置")}
+                              </div>
                           </div>
                           <div className="min-w-0 sm:justify-self-end">
                             <SettingValueInput
@@ -959,9 +967,9 @@ export default function OrganizationDetailPage() {
         <TabsContent value="profile">
           <Card>
             <CardHeader>
-              <CardTitle>展示资料</CardTitle>
+              <CardTitle>{tr("展示资料")}</CardTitle>
               <CardDescription>
-                维护组织公开展示字段
+                {tr("维护组织公开展示字段")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -1036,7 +1044,7 @@ export default function OrganizationDetailPage() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>编辑成员</DialogTitle>
+              <DialogTitle>{tr("编辑成员")}</DialogTitle>
             </DialogHeader>
             <OrganizationUserForm
               initialRoleId={membershipForUser(editUser.id)?.roleId ?? null}
@@ -1062,10 +1070,10 @@ export default function OrganizationDetailPage() {
           onClick={() => setForm(toOrganizationForm(organization))}
           variant="outline"
         >
-          重置
+          {tr("重置")}
         </Button>
         <Button disabled={!canManage || !dirty || saving} onClick={save}>
-          保存
+          {tr("保存")}
         </Button>
       </div>
     </section>
@@ -1091,6 +1099,7 @@ function OrganizationUserForm({
   user?: User;
   onDone: () => void;
 }) {
+  const tr = useTextTranslation();
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
@@ -1120,7 +1129,7 @@ function OrganizationUserForm({
       }
       onDone();
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "保存失败");
+      setMsg(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -1160,7 +1169,7 @@ function OrganizationUserForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">未分配</SelectItem>
+            <SelectItem value="none">{tr("未分配")}</SelectItem>
             {roles.map((role) => (
               <SelectItem key={role.id} value={role.id}>
                 {role.label}
@@ -1178,8 +1187,8 @@ function OrganizationUserForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="active">启用</SelectItem>
-            <SelectItem value="disabled">禁用</SelectItem>
+            <SelectItem value="active">{tr("启用")}</SelectItem>
+            <SelectItem value="disabled">{tr("禁用")}</SelectItem>
           </SelectContent>
         </Select>
       </Field>
@@ -1193,7 +1202,7 @@ function OrganizationUserForm({
         }
         onClick={submit}
       >
-        {mode === "create" ? "创建成员" : "保存"}
+        {mode === "create" ? tr("创建成员") : tr("保存")}
       </Button>
     </div>
   );
@@ -1208,9 +1217,10 @@ function Field({
   htmlFor: string;
   label: string;
 }) {
+  const tr = useTextTranslation();
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
+      <Label htmlFor={htmlFor}>{tr(label)}</Label>
       {children}
     </div>
   );
@@ -1235,6 +1245,7 @@ function EnumSelect({
   placeholder: string;
   value: string;
 }) {
+  const tr = useTextTranslation();
   const displayLabel =
     options.find((option) => option.value === value)?.label ??
     inheritedLabel ??
@@ -1249,13 +1260,13 @@ function EnumSelect({
       value={value || "__none__"}
     >
       <SelectTrigger id={id}>
-        <SelectValue placeholder={placeholder}>{displayLabel}</SelectValue>
+        <SelectValue placeholder={tr(placeholder)}>{tr(displayLabel)}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="__none__">{noneLabel}</SelectItem>
+        <SelectItem value="__none__">{tr(noneLabel)}</SelectItem>
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {option.label}
+            {tr(option.label)}
           </SelectItem>
         ))}
       </SelectContent>

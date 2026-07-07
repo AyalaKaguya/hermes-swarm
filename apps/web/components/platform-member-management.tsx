@@ -46,6 +46,7 @@ import {
   type Role,
   type User,
 } from "@/lib/admin-api";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { getStoredSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +74,7 @@ export function PlatformMemberManagement({
   canViewRoles,
   onChanged,
 }: PlatformMemberManagementProps) {
+  const tr = useTextTranslation();
   const [createOpen, setCreateOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, MemberDraft>>({});
   const [error, setError] = useState<string | null>(null);
@@ -111,11 +113,11 @@ export function PlatformMemberManagement({
       );
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [canViewMembers, canViewRoles]);
+  }, [canViewMembers, canViewRoles, tr]);
 
   useEffect(() => {
     void load();
@@ -144,7 +146,7 @@ export function PlatformMemberManagement({
       await load();
       await onChanged?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingMemberId(null);
     }
@@ -159,20 +161,20 @@ export function PlatformMemberManagement({
       await load();
       await onChanged?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "移除失败");
+      setError(err instanceof Error ? err.message : tr("移除失败"));
     } finally {
       setSavingMemberId(null);
     }
   }
 
   if (loading) {
-    return <div className="py-10 text-center text-sm">加载中...</div>;
+    return <div className="py-10 text-center text-sm">{tr("加载中...")}</div>;
   }
 
   if (!canViewMembers) {
     return (
       <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
-        当前账号无权查看平台用户。
+        {tr("当前账号无权查看平台用户。")}
       </div>
     );
   }
@@ -181,9 +183,9 @@ export function PlatformMemberManagement({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle>平台用户管理</CardTitle>
+          <CardTitle>{tr("平台用户管理")}</CardTitle>
           <CardDescription>
-            为已有用户授予平台角色，控制其可使用的平台能力
+            {tr("为已有用户授予平台角色，控制其可使用的平台能力")}
           </CardDescription>
         </div>
         <Button
@@ -193,7 +195,7 @@ export function PlatformMemberManagement({
           type="button"
         >
           <AppIcon className="size-3.5" name="plus" />
-          添加
+          {tr("添加")}
         </Button>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -204,12 +206,14 @@ export function PlatformMemberManagement({
         )}
         {!canOpenCreate && (
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            添加平台用户需要拥有用户搜索、平台成员添加和平台角色查看权限，并至少存在一个平台角色。
+            {tr(
+              "添加平台用户需要拥有用户搜索、平台成员添加和平台角色查看权限，并至少存在一个平台角色。",
+            )}
           </div>
         )}
         {members.length === 0 ? (
           <div className="rounded-md border bg-muted/30 px-3 py-8 text-center text-sm">
-            暂无平台用户
+            {tr("暂无平台用户")}
           </div>
         ) : (
           <div className="grid gap-2">
@@ -253,7 +257,7 @@ export function PlatformMemberManagement({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">未分配</SelectItem>
+                      <SelectItem value="none">{tr("未分配")}</SelectItem>
                       {roles.map((role) => (
                         <SelectItem key={role.id} value={role.id}>
                           {role.displayName ?? role.label}
@@ -278,8 +282,8 @@ export function PlatformMemberManagement({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="active">启用</SelectItem>
-                      <SelectItem value="disabled">禁用</SelectItem>
+                      <SelectItem value="active">{tr("启用")}</SelectItem>
+                      <SelectItem value="disabled">{tr("禁用")}</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="flex justify-end gap-1">
@@ -290,7 +294,7 @@ export function PlatformMemberManagement({
                       type="button"
                       variant="outline"
                     >
-                      保存
+                      {tr("保存")}
                     </Button>
                     <Button
                       disabled={!canRemoveMember || busy}
@@ -338,6 +342,7 @@ function AddPlatformMemberDialog({
   roles: Role[];
   token: string;
 }) {
+  const tr = useTextTranslation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
@@ -369,13 +374,13 @@ function AddPlatformMemberDialog({
           setError(null);
         })
         .catch((err) =>
-          setError(err instanceof Error ? err.message : "搜索失败"),
+          setError(err instanceof Error ? err.message : tr("搜索失败")),
         )
         .finally(() => setSearching(false));
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [open, query, token]);
+  }, [open, query, token, tr]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -396,7 +401,7 @@ function AddPlatformMemberDialog({
       onOpenChange(false);
       await onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "添加失败");
+      setError(err instanceof Error ? err.message : tr("添加失败"));
     } finally {
       setSaving(false);
     }
@@ -406,9 +411,9 @@ function AddPlatformMemberDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>添加平台用户</DialogTitle>
+          <DialogTitle>{tr("添加平台用户")}</DialogTitle>
           <DialogDescription>
-            搜索已有用户，并为其分配一个平台角色。
+            {tr("搜索已有用户，并为其分配一个平台角色。")}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
@@ -418,7 +423,7 @@ function AddPlatformMemberDialog({
             </div>
           )}
           <div className="grid gap-2">
-            <Label htmlFor="platform-member-search">搜索用户</Label>
+            <Label htmlFor="platform-member-search">{tr("搜索用户")}</Label>
             <Input
               autoComplete="off"
               id="platform-member-search"
@@ -426,7 +431,7 @@ function AddPlatformMemberDialog({
                 setQuery(event.target.value);
                 setSelectedUser(null);
               }}
-              placeholder="输入邮箱、名称或手机号"
+              placeholder={tr("输入邮箱、名称或手机号")}
               value={query}
             />
             <div className="grid max-h-64 gap-1 overflow-auto rounded-md border bg-background p-1">
@@ -438,15 +443,15 @@ function AddPlatformMemberDialog({
                 />
               ) : query.trim().length < 2 ? (
                 <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  至少输入 2 个字符开始搜索
+                  {tr("至少输入 2 个字符开始搜索")}
                 </div>
               ) : searching ? (
                 <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  搜索中...
+                  {tr("搜索中...")}
                 </div>
               ) : results.length === 0 ? (
                 <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  没有匹配的用户
+                  {tr("没有匹配的用户")}
                 </div>
               ) : (
                 results.map((user) => {
@@ -468,10 +473,10 @@ function AddPlatformMemberDialog({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label htmlFor="platform-member-role">平台角色</Label>
+              <Label htmlFor="platform-member-role">{tr("平台角色")}</Label>
               <Select onValueChange={setRoleId} value={roleId}>
                 <SelectTrigger id="platform-member-role">
-                  <SelectValue placeholder="选择平台角色" />
+                  <SelectValue placeholder={tr("选择平台角色")} />
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map((role) => (
@@ -483,7 +488,7 @@ function AddPlatformMemberDialog({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="platform-member-status">状态</Label>
+              <Label htmlFor="platform-member-status">{tr("状态")}</Label>
               <Select
                 onValueChange={(value) =>
                   setStatus(value as PlatformMember["status"])
@@ -494,8 +499,8 @@ function AddPlatformMemberDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">启用</SelectItem>
-                  <SelectItem value="disabled">禁用</SelectItem>
+                  <SelectItem value="active">{tr("启用")}</SelectItem>
+                  <SelectItem value="disabled">{tr("禁用")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -507,10 +512,10 @@ function AddPlatformMemberDialog({
               type="button"
               variant="outline"
             >
-              取消
+              {tr("取消")}
             </Button>
             <Button disabled={saving || !selectedUser || !roleId} type="submit">
-              {saving ? "添加中..." : "添加"}
+              {saving ? tr("添加中...") : tr("添加")}
             </Button>
           </DialogFooter>
         </form>
@@ -530,6 +535,8 @@ function UserOption({
   selected: boolean;
   user: User;
 }) {
+  const tr = useTextTranslation();
+
   return (
     <button
       className={cn(
@@ -554,9 +561,9 @@ function UserOption({
         </span>
       </span>
       {disabled ? (
-        <Badge variant="secondary">已添加</Badge>
+        <Badge variant="secondary">{tr("已添加")}</Badge>
       ) : selected ? (
-        <Badge variant="outline">已选择</Badge>
+        <Badge variant="outline">{tr("已选择")}</Badge>
       ) : null}
     </button>
   );

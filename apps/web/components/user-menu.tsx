@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppIcon } from "@/components/app-icon";
+import { useNotifications } from "@/components/app-notifications";
+import { useI18n } from "@/components/i18n-provider";
 import { UserAvatar } from "@/components/user-avatar";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,13 +23,10 @@ import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import {
   LANGUAGE_OPTIONS,
   THEME_OPTIONS,
-  applyLanguagePreference,
   getLanguageLabel,
   getStoredThemeMode,
-  getThemeModeLabel,
   normalizeLanguagePreference,
   setThemeMode,
-  type PreferredLanguage,
   type ThemeMode,
 } from "@/lib/appearance";
 import {
@@ -52,19 +52,18 @@ export function UserMenu({
   user?: User | null;
 }) {
   const router = useRouter();
-  const [language, setLanguage] = useState<PreferredLanguage>(
-    normalizeLanguagePreference(user?.preferredLanguage),
-  );
+  const notifications = useNotifications();
+  const { language, setLanguage, t } = useI18n();
+  const tr = useTextTranslation();
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [savingLanguage, setSavingLanguage] = useState(false);
 
   useEffect(() => {
     const normalized = normalizeLanguagePreference(user?.preferredLanguage);
-    setLanguage(normalized);
     if (user?.preferredLanguage) {
-      applyLanguagePreference(normalized);
+      setLanguage(normalized);
     }
-  }, [user?.preferredLanguage]);
+  }, [setLanguage, user?.preferredLanguage]);
 
   useEffect(() => {
     setThemeModeState(getStoredThemeMode());
@@ -73,7 +72,6 @@ export function UserMenu({
   async function changeLanguage(nextLanguage: string) {
     const normalized = normalizeLanguagePreference(nextLanguage);
     setLanguage(normalized);
-    applyLanguagePreference(normalized);
 
     const session = getStoredSession();
     if (!session?.accessToken || !user || normalized === language) return;
@@ -83,12 +81,9 @@ export function UserMenu({
       await updateUserPreferredLanguage(session.accessToken, user.id, normalized);
       await onUserUpdated?.();
     } catch (err) {
-      window.dispatchEvent(
-        new CustomEvent("hermes:notification", {
-          detail: {
-            message: err instanceof Error ? err.message : "语言偏好保存失败",
-          },
-        }),
+      notifications.error(
+        t("language.saveFailed"),
+        err instanceof Error ? err.message : undefined,
       );
     } finally {
       setSavingLanguage(false);
@@ -115,9 +110,10 @@ export function UserMenu({
   }
 
   const displayName =
-    user?.displayName || user?.username || user?.email || "未登录";
+    user?.displayName || user?.username || user?.email || t("user.notSignedIn");
   const languageLabel = getLanguageLabel(language);
-  const themeLabel = getThemeModeLabel(themeMode);
+  const themeLabel = t(getThemeTranslationKey(themeMode));
+  const consoleLabel = t("shell.console");
 
   return (
     <SidebarMenuItem>
@@ -134,7 +130,7 @@ export function UserMenu({
                 {displayName}
               </span>
               <span className="truncate text-xs">
-                {user?.email ?? organizationName ?? "管理控制台"}
+                {user?.email ?? organizationName ?? consoleLabel}
               </span>
             </span>
           </SidebarMenuButton>
@@ -150,7 +146,7 @@ export function UserMenu({
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{displayName}</div>
               <div className="truncate text-xs">
-                {user?.email ?? organizationName ?? "管理控制台"}
+                {user?.email ?? organizationName ?? consoleLabel}
               </div>
             </div>
           </div>
@@ -202,7 +198,7 @@ export function UserMenu({
                     value={option.value}
                   >
                     <AppIcon className="size-4" name={option.icon} />
-                    {option.label}
+                    {t(getThemeTranslationKey(option.value))}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -215,7 +211,7 @@ export function UserMenu({
           >
             <span className="flex min-w-0 items-center gap-2">
               <AppIcon className="size-4" name="user" />
-              <span>用户配置</span>
+              <span>{t("user.profile")}</span>
             </span>
           </DropdownMenuItem>
 
@@ -226,7 +222,7 @@ export function UserMenu({
             >
               <span className="flex min-w-0 items-center gap-2">
                 <AppIcon className="size-4" name="file" />
-                <span>工单</span>
+                <span>{tr("工单")}</span>
               </span>
             </DropdownMenuItem>
           )}
@@ -240,11 +236,22 @@ export function UserMenu({
           >
             <span className="flex min-w-0 items-center gap-2">
               <AppIcon className="size-4" name="logout" />
-              <span>退出账号</span>
+              <span>{t("user.logout")}</span>
             </span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>
   );
+}
+
+function getThemeTranslationKey(mode: ThemeMode) {
+  switch (mode) {
+    case "dark":
+      return "theme.dark";
+    case "light":
+      return "theme.light";
+    default:
+      return "theme.system";
+  }
 }

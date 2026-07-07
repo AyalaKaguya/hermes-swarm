@@ -1,0 +1,79 @@
+{
+  "common": {
+    "add": "Add",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "create": "Create",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "processing": "Processing...",
+    "refresh": "Refresh",
+    "remove": "Remove",
+    "retry": "Retry",
+    "save": "Save",
+    "saving": "Saving...",
+    "search": "Search"
+  },
+  "language": {
+    "english": "English",
+    "saveFailed": "Failed to save language preference",
+    "simplifiedChinese": "Simplified Chinese",
+    "traditionalChinese": "Traditional Chinese"
+  },
+  "theme": {
+    "dark": "Dark",
+    "light": "Light",
+    "system": "System"
+  },
+  "user": {
+    "logout": "Sign out",
+    "notSignedIn": "Not signed in",
+    "profile": "User settings"
+  },
+  "shell": {
+    "business": "Business",
+    "console": "Admin console",
+    "current": "Current",
+    "currentOrganization": "Current organization",
+    "currentOrganizationTooltip": "Current organization: {name}",
+    "home": "Home",
+    "loadSessionFailed": "Unable to load current session",
+    "loadingSessionFailed": "Failed to load session",
+    "noPageAccessDescription": "The current role cannot access this page.",
+    "noPageAccessNamedDescription": "The current role cannot access \"{page}\".",
+    "noPageAccessTitle": "No page access",
+    "noSwitchableOrganizations": "No organizations available",
+    "settings": "Settings",
+    "settingsDescription": "Personal, organization, and platform management",
+    "settingsNavigation": "Settings navigation",
+    "switchOrganization": "Switch organization",
+    "documentTitle": "{name} Console"
+  },
+  "notifications": {
+    "allRead": "Mark all as read",
+    "clearRead": "Clear read notifications",
+    "dismiss": "Remove notification",
+    "empty": "No notifications",
+    "runtimeError": "Application runtime error",
+    "title": "Notifications",
+    "titleWithCount": "Notifications ({count})",
+    "unhandledRejection": "Async task failed"
+  },
+  "auth": {
+    "console": "Admin console",
+    "email": "Email",
+    "noAdminAccess": "The current user does not have admin console access",
+    "password": "Password",
+    "passwordPlaceholder": "At least 8 characters",
+    "requestFailed": "Request failed",
+    "signIn": "Sign in",
+    "subtitle": "Use an admin account to enter the workspace"
+  },
+  "dialogs": {
+    "deleteEmailTemplateDescription": "After deleting template \"{name}\", related emails can no longer use it.",
+    "deleteGroupConfirm": "Delete group \"{name}\"?",
+    "deleteRoleConfirm": "Delete role \"{name}\"?"
+  }
+}

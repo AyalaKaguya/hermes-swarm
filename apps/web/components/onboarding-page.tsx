@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,9 +18,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getPublicBootstrap, onboard } from "@/lib/admin-api";
 import { storeSession } from "@/lib/session";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 
 export function OnboardingPage() {
   const router = useRouter();
+  const tr = useTextTranslation();
+  const { setLanguage } = useI18n();
   const [organizationName, setOrganizationName] = useState("Hermes");
   const [organizationSlug, setOrganizationSlug] = useState("hermes");
   const [adminName, setAdminName] = useState("Admin");
@@ -41,14 +45,14 @@ export function OnboardingPage() {
           return;
         }
       } catch (loadError) {
-        setError(getErrorMessage(loadError));
+        setError(getErrorMessage(loadError, tr("操作失败")));
       } finally {
         setLoading(false);
       }
     }
 
     void load();
-  }, [router]);
+  }, [router, tr]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,9 +73,10 @@ export function OnboardingPage() {
         expiresAt: response.expiresAt,
         sessionId: response.sessionId,
       });
+      setLanguage(response.snapshot.user.preferredLanguage);
       router.replace("/home");
     } catch (saveError) {
-      setError(getErrorMessage(saveError));
+      setError(getErrorMessage(saveError, tr("操作失败")));
     } finally {
       setSaving(false);
     }
@@ -87,12 +92,12 @@ export function OnboardingPage() {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">Hermes Swarm</p>
-              <p className="text-xs">首次设置</p>
+              <p className="text-xs">{tr("首次设置")}</p>
             </div>
           </div>
           <div className="grid gap-1">
-            <CardTitle>初始化</CardTitle>
-            <CardDescription>创建管理员账号和默认组织</CardDescription>
+            <CardTitle>{tr("初始化")}</CardTitle>
+            <CardDescription>{tr("创建管理员账号和默认组织")}</CardDescription>
           </div>
         </CardHeader>
 
@@ -100,7 +105,9 @@ export function OnboardingPage() {
           <CardContent className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5 sm:col-span-2">
-                <Label htmlFor="onboarding-organization-name">组织名称</Label>
+                <Label htmlFor="onboarding-organization-name">
+                  {tr("组织名称")}
+                </Label>
                 <Input
                   id="onboarding-organization-name"
                   onChange={(event) => setOrganizationName(event.target.value)}
@@ -108,7 +115,9 @@ export function OnboardingPage() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="onboarding-organization-slug">组织标识</Label>
+                <Label htmlFor="onboarding-organization-slug">
+                  {tr("组织标识")}
+                </Label>
                 <Input
                   id="onboarding-organization-slug"
                   onChange={(event) => setOrganizationSlug(event.target.value)}
@@ -116,7 +125,7 @@ export function OnboardingPage() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="onboarding-admin-name">管理员名称</Label>
+                <Label htmlFor="onboarding-admin-name">{tr("管理员名称")}</Label>
                 <Input
                   id="onboarding-admin-name"
                   onChange={(event) => setAdminName(event.target.value)}
@@ -124,7 +133,7 @@ export function OnboardingPage() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="onboarding-admin-email">管理员邮箱</Label>
+                <Label htmlFor="onboarding-admin-email">{tr("管理员邮箱")}</Label>
                 <Input
                   id="onboarding-admin-email"
                   onChange={(event) => setAdminEmail(event.target.value)}
@@ -133,7 +142,9 @@ export function OnboardingPage() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="onboarding-admin-password">管理员密码</Label>
+                <Label htmlFor="onboarding-admin-password">
+                  {tr("管理员密码")}
+                </Label>
                 <Input
                   id="onboarding-admin-password"
                   onChange={(event) => setAdminPassword(event.target.value)}
@@ -155,14 +166,14 @@ export function OnboardingPage() {
 
           <CardFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
             <Button asChild className="w-full sm:w-auto" variant="ghost">
-              <a href="/login">返回登录</a>
+              <a href="/login">{tr("返回登录")}</a>
             </Button>
             <Button
               className="w-full sm:w-auto"
               disabled={loading || saving}
               type="submit"
             >
-              创建并进入
+              {tr("创建并进入")}
             </Button>
           </CardFooter>
         </form>
@@ -171,6 +182,6 @@ export function OnboardingPage() {
   );
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "操作失败";
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }

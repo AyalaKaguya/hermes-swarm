@@ -5,6 +5,7 @@ import { AppIcon } from "@/components/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import type {
   PermissionCatalog,
   PermissionCatalogOperation,
@@ -24,6 +25,7 @@ export function PermissionTree({
   isChecked,
   onToggle,
 }: PermissionTreeProps) {
+  const tr = useTextTranslation();
   const scopes = useMemo(() => catalog?.scopes ?? [], [catalog]);
   const entityKeys = useMemo(
     () =>
@@ -43,7 +45,7 @@ export function PermissionTree({
   if (scopes.length === 0) {
     return (
       <div className="flex min-h-40 items-center justify-center text-sm">
-        暂无可配置权限
+        {tr("暂无可配置权限")}
       </div>
     );
   }
@@ -59,7 +61,7 @@ export function PermissionTree({
           variant="ghost"
         >
           <AppIcon className="size-3.5" name="chevron-down" />
-          展开全部
+          {tr("展开全部")}
         </Button>
         <Button
           disabled={expandedEntityKeys.size === 0}
@@ -69,7 +71,7 @@ export function PermissionTree({
           variant="ghost"
         >
           <AppIcon className="size-3.5 rotate-180" name="chevron-down" />
-          收起全部
+          {tr("收起全部")}
         </Button>
       </div>
       {scopes.map((scope) => (
@@ -149,6 +151,7 @@ function PurposeNode({
   onToggle: (permission: string, enabled?: boolean) => void;
   purpose: PermissionCatalogPurpose;
 }) {
+  const tr = useTextTranslation();
   const total = purpose.operations.length;
   const enabled = purpose.operations.filter((operation) =>
     isChecked(operation.permission),
@@ -183,7 +186,7 @@ function PurposeNode({
             type="button"
             variant="ghost"
           >
-            全选
+            {tr("全选")}
           </Button>
           <Button
             disabled={disabled}
@@ -192,7 +195,7 @@ function PurposeNode({
             type="button"
             variant="ghost"
           >
-            清空
+            {tr("清空")}
           </Button>
         </div>
       </div>
@@ -222,6 +225,8 @@ function OperationNode({
   onToggle: (permission: string, enabled?: boolean) => void;
   operation: PermissionCatalogOperation;
 }) {
+  const tr = useTextTranslation();
+
   return (
     <label className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/50">
       <Checkbox
@@ -234,7 +239,7 @@ function OperationNode({
           <span className="font-medium">{operation.label}</span>
           {operation.isDangerous && (
             <Badge className="px-1.5 text-[11px]" variant="destructive">
-              高危
+              {tr("高危")}
             </Badge>
           )}
         </span>
