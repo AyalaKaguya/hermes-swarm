@@ -11,13 +11,15 @@ import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   IntegrationToken,
+  Organization,
   Permission,
   PlatformMember,
   RolePermission,
+  User,
   UserOrganization,
   type IntegrationTokenScope,
 } from "@hermes-swarm/core";
-import { In, Repository } from "typeorm";
+import { In, IsNull, Repository } from "typeorm";
 import type { CreateIntegrationTokenPayload } from "../../common/admin-api.types.js";
 import {
   INTEGRATION_SESSION_PREFIX,
@@ -33,6 +35,10 @@ export class IntegrationTokensService {
   constructor(
     @InjectRepository(IntegrationToken)
     private readonly tokenRepository: Repository<IntegrationToken>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(Organization)
+    private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(Permission)
     private readonly permissionRepository: Repository<Permission>,
     @InjectRepository(PlatformMember)
@@ -59,7 +65,28 @@ export class IntegrationTokensService {
       order: { createdAt: "DESC" },
       where: { ownerUserId: userId },
     });
-    return tokens.map(toIntegrationTokenDto);
+    return this.toIntegrationTokenDtos(tokens);
+  }
+
+  async listOrganization(
+    authorization: string | undefined,
+    organizationId: string,
+  ) {
+    await this.requireInteractiveSession(authorization);
+    const tokens = await this.tokenRepository.find({
+      order: { createdAt: "DESC" },
+      where: { organizationId, scope: "organization" },
+    });
+    return this.toIntegrationTokenDtos(tokens);
+  }
+
+  async listPlatform(authorization: string | undefined) {
+    await this.requireInteractiveSession(authorization);
+    const tokens = await this.tokenRepository.find({
+      order: { createdAt: "DESC" },
+      where: { organizationId: IsNull(), scope: "platform" },
+    });
+    return this.toIntegrationTokenDtos(tokens);
   }
 
   async create(
@@ -117,8 +144,12 @@ export class IntegrationTokensService {
       }),
     );
 
+    const organization = organizationId
+      ? await this.organizationRepository.findOne({ where: { id: organizationId } })
+      : null;
+
     return {
-      ...toIntegrationTokenDto(record),
+      ...toIntegrationTokenDto(record, null, organization),
       token,
     };
   }
@@ -137,18 +168,47 @@ export class IntegrationTokensService {
     await this.tokenRepository.save(token);
   }
 
+  async revokeOrganization(
+    authorization: string | undefined,
+    organizationId: string,
+    tokenId: string,
+  ) {
+    await this.requireInteractiveSession(authorization);
+    const token = await this.tokenRepository.findOne({
+      where: { id: tokenId, organizationId, scope: "organization" },
+    });
+    if (!token) throw new NotFoundException("Token 不存在");
+    token.revokedAt = token.revokedAt ?? new Date();
+    await this.tokenRepository.save(token);
+  }
+
+  async revokePlatform(authorization: string | undefined, tokenId: string) {
+    await this.requireInteractiveSession(authorization);
+    const token = await this.tokenRepository.findOne({
+      where: { id: tokenId, organizationId: IsNull(), scope: "platform" },
+    });
+    if (!token) throw new NotFoundException("Token 不存在");
+    token.revokedAt = token.revokedAt ?? new Date();
+    await this.tokenRepository.save(token);
+  }
+
   private async requireInteractiveOwnerSession(
     authorization: string | undefined,
     userId: string,
   ) {
+    const session = await this.requireInteractiveSession(authorization);
+    if (session.userId !== userId) {
+      throw new ForbiddenException("只能管理自己的集成 Token");
+    }
+    return session;
+  }
+
+  private async requireInteractiveSession(authorization: string | undefined) {
     const session = await this.authSessionService.validateAccessToken(
       extractBearerToken(authorization),
     );
     if (session.tokenKind === "integration") {
       throw new ForbiddenException("集成 Token 不能管理集成 Token");
-    }
-    if (session.userId !== userId) {
-      throw new ForbiddenException("只能管理自己的集成 Token");
     }
     return session;
   }
@@ -258,14 +318,52 @@ export class IntegrationTokensService {
       .filter((permission) => permission.code)
       .map((permission) => ({
         description: permission.description,
+        entity: permission.entity,
+        entityLabel: permission.entityLabel ?? permission.entity,
+        entityOrder: permission.entityOrder,
         isDangerous: permission.isDangerous,
         label: permission.operationLabel ?? permission.code ?? "",
+        operation: permission.operation ?? permission.code ?? "",
+        operationOrder: permission.operationOrder,
         permission: permission.code ?? "",
+        purpose: permission.purpose ?? "default",
+        purposeLabel: permission.purposeLabel ?? permission.purpose ?? "权限",
+        purposeOrder: permission.purposeOrder,
       }));
   }
 
   private get sessionSecret() {
     return this.configService.getOrThrow<string>("auth.sessionSecret");
+  }
+
+  private async toIntegrationTokenDtos(tokens: IntegrationToken[]) {
+    const ownerIds = [...new Set(tokens.map((token) => token.ownerUserId))];
+    const organizationIds = [
+      ...new Set(
+        tokens
+          .map((token) => token.organizationId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ];
+    const [users, organizations] = await Promise.all([
+      ownerIds.length
+        ? this.userRepository.find({ where: { id: In(ownerIds) } })
+        : Promise.resolve([]),
+      organizationIds.length
+        ? this.organizationRepository.find({ where: { id: In(organizationIds) } })
+        : Promise.resolve([]),
+    ]);
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const organizationsById = new Map(
+      organizations.map((organization) => [organization.id, organization]),
+    );
+    return tokens.map((token) =>
+      toIntegrationTokenDto(
+        token,
+        usersById.get(token.ownerUserId) ?? null,
+        token.organizationId ? organizationsById.get(token.organizationId) ?? null : null,
+      ),
+    );
   }
 }
 
@@ -274,14 +372,26 @@ type IntegrationTokenScopeCapability = {
   organizationName: string | null;
   permissions: Array<{
     description: string | null;
+    entity: string;
+    entityLabel: string;
+    entityOrder: number | null;
     isDangerous: boolean;
     label: string;
+    operation: string;
+    operationOrder: number | null;
     permission: string;
+    purpose: string;
+    purposeLabel: string;
+    purposeOrder: number | null;
   }>;
   scope: IntegrationTokenScope;
 };
 
-function toIntegrationTokenDto(token: IntegrationToken) {
+function toIntegrationTokenDto(
+  token: IntegrationToken,
+  owner: User | null = null,
+  organization: Organization | null = null,
+) {
   return {
     createdAt: token.createdAt,
     expiresAt: token.expiresAt,
@@ -290,6 +400,18 @@ function toIntegrationTokenDto(token: IntegrationToken) {
     lastUsedAt: token.lastUsedAt,
     note: token.note,
     organizationId: token.organizationId,
+    organizationName: organization?.name ?? null,
+    owner: owner
+      ? {
+          avatarUrl: owner.avatarUrl,
+          displayName: owner.displayName,
+          email: owner.email,
+          id: owner.id,
+          imageUrl: owner.imageUrl,
+          username: owner.username,
+        }
+      : null,
+    ownerUserId: token.ownerUserId,
     permissions: token.permissions ?? [],
     revokedAt: token.revokedAt,
     scope: token.scope,
@@ -309,7 +431,9 @@ function hashToken(token: string) {
 function isDelegablePermission(permission: string) {
   return (
     !permission.startsWith("integration_token.") &&
-    permission !== "page.settings.integrations.access:own"
+    permission !== "page.settings.integrations.access:own" &&
+    permission !== "page.settings.organization-integrations.access:organization" &&
+    permission !== "page.settings.platform-integrations.access:platform"
   );
 }
 

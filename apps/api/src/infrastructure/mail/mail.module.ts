@@ -11,5 +11,6 @@ import { MailService } from "./mail.service.js";
   ],
   controllers: [MailController],
   providers: [MailService, EmailSendService],
+  exports: [MailService, EmailSendService],
 })
 export class MailModule {}

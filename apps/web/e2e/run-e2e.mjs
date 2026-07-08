@@ -56,6 +56,7 @@ const organization = {
 const platformPermissions = [
   "page.settings.account.access:own",
   "page.settings.sessions.access:own",
+  "page.settings.integrations.access:own",
   "page.settings.organization.access:organization",
   "page.settings.custom-smtp.access:organization",
   "page.settings.email-templates.access:organization",
@@ -63,12 +64,18 @@ const platformPermissions = [
   "page.settings.features.access:organization",
   "page.settings.groups.access:organization",
   "page.settings.roles.access:organization",
+  "page.settings.organization-integrations.access:organization",
   "page.settings.platform.access:platform",
   "page.settings.organizations.access:platform",
+  "page.settings.platform-integrations.access:platform",
   "organization.platform_organization.list:platform",
   "organization.platform_organization.create:platform",
   "organization.platform_organization.delete:platform",
   "organization.profile.view:organization",
+  "integration_token.organization_integration.list:organization",
+  "integration_token.organization_integration.revoke:organization",
+  "integration_token.platform_integration.list:platform",
+  "integration_token.platform_integration.revoke:platform",
   "setting.organization_config.list:organization",
   "user.organization_member.list:organization",
   "role.organization_role.list:organization",
@@ -76,8 +83,11 @@ const platformPermissions = [
 
 const orgScopedPermissions = [
   "page.settings.account.access:own",
+  "page.settings.integrations.access:own",
   "page.settings.organization.access:organization",
+  "page.settings.organization-integrations.access:organization",
   "organization.profile.view:organization",
+  "integration_token.organization_integration.list:organization",
   "setting.organization_config.list:organization",
   "user.organization_member.list:organization",
   "role.organization_role.list:organization",
@@ -172,6 +182,65 @@ const organizationMemberships = [
 ];
 
 const organizationRoles = [roleFor("platformAdmin"), roleFor("orgScopedUser")];
+
+const personalIntegrationTokens = [
+  {
+    createdAt: "2026-07-07T00:00:00.000Z",
+    expiresAt: "2026-08-07T00:00:00.000Z",
+    id: "token-personal-org",
+    isExpired: false,
+    lastUsedAt: null,
+    note: "Personal org token",
+    organizationId: organization.id,
+    organizationName: organization.name,
+    owner: null,
+    ownerUserId: user.id,
+    permissions: ["ticket.conversation.list_organization:organization"],
+    revokedAt: null,
+    scope: "organization",
+    tokenPrefix: "v1.personal",
+    updatedAt: "2026-07-07T00:00:00.000Z",
+  },
+];
+
+const organizationIntegrationTokens = [
+  {
+    ...personalIntegrationTokens[0],
+    id: "token-organization-managed",
+    note: "Organization managed token",
+    owner: {
+      avatarUrl: null,
+      displayName: "Org Operator",
+      email: "operator@hermes.local",
+      id: "user-operator",
+      imageUrl: null,
+      username: "operator",
+    },
+    ownerUserId: "user-operator",
+    tokenPrefix: "v1.organization",
+  },
+];
+
+const platformIntegrationTokens = [
+  {
+    ...personalIntegrationTokens[0],
+    id: "token-platform-managed",
+    note: "Platform managed token",
+    organizationId: null,
+    organizationName: null,
+    owner: {
+      avatarUrl: null,
+      displayName: "Platform Operator",
+      email: "platform@hermes.local",
+      id: "user-platform",
+      imageUrl: null,
+      username: "platform",
+    },
+    ownerUserId: "user-platform",
+    scope: "platform",
+    tokenPrefix: "v1.platform",
+  },
+];
 
 const authSession = {
   accessToken: "e2e-access-token",
@@ -309,6 +378,32 @@ const tests = [
       await expectVisibleText(page, "Hermes");
       await expectHiddenText(page, "Acme Labs");
       await expectEnabled(page.getByRole("button", { name: "新建组织" }));
+    },
+  },
+  {
+    name: "integration management is split between personal organization and platform pages",
+    run: async ({ page }) => {
+      await installApiMocks(page, { onboardingRequired: false });
+      await seedSession(page);
+
+      await page.goto(`${baseUrl}/settings/integrations`);
+      await expectVisibleText(page, "Personal org token");
+      await expectVisibleText(page, "创建 Token");
+      await expectHiddenText(page, "组织集成");
+      await expectHiddenText(page, "平台集成");
+      await expectHiddenText(page, "Organization managed token");
+
+      await page.goto(`${baseUrl}/settings/organization-integrations`);
+      await expectVisibleText(page, "组织集成");
+      await expectVisibleText(page, "Organization managed token");
+      await expectVisibleText(page, "Org Operator");
+      await expectHiddenText(page, "创建 Token");
+
+      await page.goto(`${baseUrl}/settings/platform-integrations`);
+      await expectVisibleText(page, "平台集成");
+      await expectVisibleText(page, "Platform managed token");
+      await expectVisibleText(page, "Platform Operator");
+      await expectHiddenText(page, "创建 Token");
     },
   },
   {
@@ -518,6 +613,64 @@ async function installApiMocks(page, options) {
 
     if (method === "GET" && path === "/auth/me") {
       await json(route, principal(personaName));
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === `/users/${user.id}/integration-tokens/capabilities`
+    ) {
+      await json(route, {
+        scopes: [
+          {
+            organizationId: organization.id,
+            organizationName: organization.name,
+            permissions: [
+              {
+                description: "查看组织工单。",
+                entity: "ticket",
+                entityLabel: "工单",
+                entityOrder: 10,
+                isDangerous: false,
+                label: "查看组织工单",
+                operation: "list_organization",
+                operationOrder: 10,
+                permission: "ticket.conversation.list_organization:organization",
+                purpose: "conversation",
+                purposeLabel: "会话",
+                purposeOrder: 10,
+              },
+            ],
+            scope: "organization",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/users/${user.id}/integration-tokens`) {
+      await json(route, personalIntegrationTokens);
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === `/organizations/${organization.id}/integration-tokens`
+    ) {
+      if (!can("integration_token.organization_integration.list:organization")) {
+        await forbidden(route);
+        return;
+      }
+      await json(route, organizationIntegrationTokens);
+      return;
+    }
+
+    if (method === "GET" && path === "/platform/integration-tokens") {
+      if (!can("integration_token.platform_integration.list:platform")) {
+        await forbidden(route);
+        return;
+      }
+      await json(route, platformIntegrationTokens);
       return;
     }
 

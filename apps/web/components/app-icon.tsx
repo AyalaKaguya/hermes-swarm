@@ -17,6 +17,7 @@ import {
   Languages,
   ListX,
   LogOut,
+  Mail,
   Menu,
   Monitor,
   Moon,
@@ -63,6 +64,7 @@ export type AppIconName =
   | "language"
   | "list-x"
   | "logout"
+  | "mail"
   | "menu"
   | "moon"
   | "more"
@@ -105,6 +107,7 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   language: Languages,
   "list-x": ListX,
   logout: LogOut,
+  mail: Mail,
   menu: Menu,
   moon: Moon,
   more: MoreVertical,

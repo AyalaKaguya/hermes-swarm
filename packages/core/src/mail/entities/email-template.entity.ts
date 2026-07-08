@@ -15,6 +15,18 @@ export class EmailTemplate extends OrganizationBaseEntity {
   name!: string;
 
   /**
+   * Marks templates owned by the system. These can be edited but not deleted.
+   */
+  @Column({ name: "is_system", type: "boolean", default: false })
+  isSystem!: boolean;
+
+  /**
+   * Optional user-facing description shown in template management screens.
+   */
+  @Column({ type: "varchar", length: 240, nullable: true })
+  description!: string | null;
+
+  /**
    * Language code used to select localized template content.
    */
   @Column({ name: "language_code", type: "varchar", length: 16, default: "en" })

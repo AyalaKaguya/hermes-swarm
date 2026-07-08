@@ -7,14 +7,22 @@ export type InfrastructureNavItem = AppShellNavSection["items"][number] & {
   permission: string;
 };
 
-const BASE_INFRASTRUCTURE_NAV_ITEMS = PAGE_ACCESS_DEFINITIONS.map((item) => ({
-  href: item.href,
-  icon: item.icon as AppIconName,
-  key: item.key,
-  label: item.label,
-  pageKey: item.key,
-  permission: item.permission,
-})) satisfies InfrastructureNavItem[];
+const BASE_INFRASTRUCTURE_NAV_ITEMS = [...PAGE_ACCESS_DEFINITIONS]
+  .sort(
+    (left, right) =>
+      (left.order ?? Number.MAX_SAFE_INTEGER) -
+        (right.order ?? Number.MAX_SAFE_INTEGER) ||
+      left.label.localeCompare(right.label, "zh-Hans") ||
+      left.key.localeCompare(right.key),
+  )
+  .map((item) => ({
+    href: item.href,
+    icon: item.icon as AppIconName,
+    key: item.key,
+    label: item.label,
+    pageKey: item.key,
+    permission: item.permission,
+  })) satisfies InfrastructureNavItem[];
 
 export const INFRASTRUCTURE_NAV_ITEMS = BASE_INFRASTRUCTURE_NAV_ITEMS.flatMap(
   (item) =>
@@ -75,7 +83,7 @@ export const INFRASTRUCTURE_NAV_ITEMS = BASE_INFRASTRUCTURE_NAV_ITEMS.flatMap(
             },
             {
               href: "/settings/platform?tab=smtp",
-              icon: "plug" as AppIconName,
+              icon: "mail" as AppIconName,
               key: "settings.platform.smtp",
               label: "公共 SMTP",
               pageKey: item.pageKey,

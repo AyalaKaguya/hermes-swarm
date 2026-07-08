@@ -93,3 +93,106 @@ export class IntegrationTokensController {
     await this.integrationTokensService.revoke(authorization, userId, tokenId);
   }
 }
+
+@Controller("admin/organizations/:organizationId/integration-tokens")
+@AccessResource({
+  entity: "integration_token",
+  entityLabel: "集成 Token",
+  entityOrder: 20,
+  purpose: "organization_integration",
+  purposeLabel: "组织集成",
+  purposeOrder: 20,
+  scope: "organization",
+})
+export class OrganizationIntegrationTokensController {
+  constructor(
+    @Inject(IntegrationTokensService)
+    private readonly integrationTokensService: IntegrationTokensService,
+  ) {}
+
+  @Get()
+  @AccessOperation({
+    defaultRoles: ["owner", "admin"],
+    description: "查看当前组织内所有用户创建的组织集成 Token。",
+    label: "查看组织集成 Token",
+    operation: "list",
+    sortOrder: 10,
+  })
+  list(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
+  ) {
+    return this.integrationTokensService.listOrganization(
+      authorization,
+      organizationId,
+    );
+  }
+
+  @Delete(":tokenId")
+  @AccessOperation({
+    defaultRoles: ["owner", "admin"],
+    description: "撤销当前组织内用户创建的组织集成 Token。",
+    isDangerous: true,
+    label: "撤销组织集成 Token",
+    operation: "revoke",
+    sortOrder: 90,
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async revoke(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
+    @Param("tokenId") tokenId: string,
+  ) {
+    await this.integrationTokensService.revokeOrganization(
+      authorization,
+      organizationId,
+      tokenId,
+    );
+  }
+}
+
+@Controller("admin/platform/integration-tokens")
+@AccessResource({
+  entity: "integration_token",
+  entityLabel: "集成 Token",
+  entityOrder: 20,
+  purpose: "platform_integration",
+  purposeLabel: "平台集成",
+  purposeOrder: 30,
+  scope: "platform",
+})
+export class PlatformIntegrationTokensController {
+  constructor(
+    @Inject(IntegrationTokensService)
+    private readonly integrationTokensService: IntegrationTokensService,
+  ) {}
+
+  @Get()
+  @AccessOperation({
+    defaultRoles: ["platform-admin"],
+    description: "查看所有用户创建的平台集成 Token。",
+    label: "查看平台集成 Token",
+    operation: "list",
+    sortOrder: 10,
+  })
+  list(@Headers("authorization") authorization: string | undefined) {
+    return this.integrationTokensService.listPlatform(authorization);
+  }
+
+  @Delete(":tokenId")
+  @AccessOperation({
+    defaultRoles: ["platform-admin"],
+    description: "撤销用户创建的平台集成 Token。",
+    isDangerous: true,
+    label: "撤销平台集成 Token",
+    operation: "revoke",
+    sortOrder: 90,
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async revoke(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("tokenId") tokenId: string,
+  ) {
+    await this.integrationTokensService.revokePlatform(authorization, tokenId);
+  }
+}

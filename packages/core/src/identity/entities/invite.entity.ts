@@ -6,7 +6,12 @@ import { OrganizationBaseEntity } from "./organization-base.entity.js";
 /**
  * Invite lifecycle status.
  */
-export type InviteStatus = "invited" | "accepted" | "expired" | "revoked";
+export type InviteStatus =
+  | "accepted"
+  | "declined"
+  | "expired"
+  | "invited"
+  | "revoked";
 
 @Entity({ name: "invites" })
 @Index(["organizationId", "email"], { unique: true })
@@ -44,6 +49,29 @@ export class Invite extends OrganizationBaseEntity {
    */
   @Column({ name: "action_date", type: "timestamptz", nullable: true })
   actionDate!: Date | null;
+
+  /**
+   * When the invite link was closed by an organization administrator.
+   */
+  @Column({ name: "closed_at", type: "timestamptz", nullable: true })
+  closedAt!: Date | null;
+
+  /**
+   * Number of successful joins attributed to this invite link.
+   */
+  @Column({ name: "accepted_count", type: "integer", default: 0 })
+  acceptedCount!: number;
+
+  /**
+   * User that accepted this invite most recently.
+   */
+  @Column({ name: "accepted_user_id", type: "uuid", nullable: true })
+  @Index()
+  acceptedUserId!: string | null;
+
+  @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "accepted_user_id" })
+  acceptedUser!: User | null;
 
   /**
    * User who sent the invitation.

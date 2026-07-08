@@ -212,6 +212,7 @@ export type PermissionCatalogDto = {
  */
 export type CreateBulkInvitesPayload = {
   emailIds?: string[];
+  expiresIn?: "3d" | "7d" | "never";
   roleId?: string;
   invitedById?: string;
 };
@@ -220,6 +221,7 @@ export type CreateBulkInvitesPayload = {
  * Invite acceptance payload for user registration.
  */
 export type AcceptInvitePayload = {
+  action?: "accept" | "decline";
   email?: string;
   token?: string;
   password?: string;
@@ -230,10 +232,23 @@ export type AcceptInvitePayload = {
  * Invite DTO output.
  */
 export type InviteDto = {
+  acceptedCount: number;
+  acceptedUserId: string | null;
+  closedAt: Date | null;
   id: string;
   email: string;
+  existingUser?: boolean;
+  link?: string;
+  organization?: {
+    id: string;
+    imageUrl: string | null;
+    logoUrl: string | null;
+    name: string;
+    shortDescription: string | null;
+    slug: string;
+  };
   token?: string;
-  status: "invited" | "accepted" | "expired" | "revoked";
+  status: "invited" | "accepted" | "declined" | "expired" | "revoked";
   createdAt: Date;
   actionDate: Date | null;
   expireDate: Date | null;

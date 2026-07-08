@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import {
-  findPageAccessDefinitionByPath,
+  findPageAccessDefinitionsByPath,
   type PageAccessDefinition,
 } from "@hermes-swarm/rbac-api";
 import { usePermission } from "@/hooks/use-permission";
@@ -44,13 +44,14 @@ export default function SettingsLayout({
     useState(false);
   const activeOrganizationId = snapshot?.organization?.id ?? "none";
   const routeOrganizationId = getRouteOrganizationId(pathname);
-  const currentPage = findPageAccessDefinitionByPath(pathname);
-  const currentPages = currentPage ? [currentPage] : [];
+  const currentPages = findPageAccessDefinitionsByPath(pathname);
   const canAccessCurrentPage =
-    Boolean(currentPage) &&
-    access.hasPageAccess(currentPage.key, {
-      organizationId: routeOrganizationId ?? snapshot?.organization?.id,
-    });
+    currentPages.length > 0 &&
+    currentPages.some((page) =>
+      access.hasPageAccess(page.key, {
+        organizationId: routeOrganizationId ?? snapshot?.organization?.id,
+      }),
+    );
 
   const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
     ...section,

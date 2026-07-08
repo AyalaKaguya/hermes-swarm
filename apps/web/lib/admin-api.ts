@@ -450,9 +450,17 @@ export type IntegrationTokenScope = "organization" | "own" | "platform";
 
 export type IntegrationTokenPermissionOption = {
   description: string | null;
+  entity: string;
+  entityLabel: string;
+  entityOrder: number | null;
   isDangerous: boolean;
   label: string;
+  operation: string;
+  operationOrder: number | null;
   permission: string;
+  purpose: string;
+  purposeLabel: string;
+  purposeOrder: number | null;
 };
 
 export type IntegrationTokenScopeCapability = {
@@ -474,6 +482,12 @@ export type IntegrationToken = {
   lastUsedAt: string | null;
   note: string | null;
   organizationId: string | null;
+  organizationName?: string | null;
+  owner?: Pick<
+    User,
+    "avatarUrl" | "displayName" | "email" | "id" | "imageUrl" | "username"
+  > | null;
+  ownerUserId?: string;
   permissions: string[];
   revokedAt: string | null;
   scope: IntegrationTokenScope;
@@ -878,6 +892,43 @@ export function revokeIntegrationToken(
 ) {
   return fetchAdmin<void>(
     `/users/${userId}/integration-tokens/${integrationTokenId}`,
+    { method: "DELETE", token },
+  );
+}
+
+export function listOrganizationIntegrationTokens(
+  token: string,
+  organizationId: string,
+) {
+  return fetchAdmin<IntegrationToken[]>(
+    `/organizations/${organizationId}/integration-tokens`,
+    { token },
+  );
+}
+
+export function revokeOrganizationIntegrationToken(
+  token: string,
+  organizationId: string,
+  integrationTokenId: string,
+) {
+  return fetchAdmin<void>(
+    `/organizations/${organizationId}/integration-tokens/${integrationTokenId}`,
+    { method: "DELETE", token },
+  );
+}
+
+export function listPlatformIntegrationTokens(token: string) {
+  return fetchAdmin<IntegrationToken[]>("/platform/integration-tokens", {
+    token,
+  });
+}
+
+export function revokePlatformIntegrationToken(
+  token: string,
+  integrationTokenId: string,
+) {
+  return fetchAdmin<void>(
+    `/platform/integration-tokens/${integrationTokenId}`,
     { method: "DELETE", token },
   );
 }
