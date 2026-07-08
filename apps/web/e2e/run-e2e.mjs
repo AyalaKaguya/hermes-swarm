@@ -381,6 +381,26 @@ const tests = [
     },
   },
   {
+    name: "organization creation settings live under platform default controls",
+    run: async ({ page }) => {
+      await installApiMocks(page, { onboardingRequired: false });
+      await seedSession(page);
+
+      await page.goto(`${baseUrl}/settings/platform?tab=defaults`);
+      await expectVisibleText(page, "默认控制项");
+      await expectVisibleText(page, "允许创建组织");
+      await expectVisibleText(page, "新组织默认状态");
+      await expectHiddenText(page, "组织创建");
+      await expectHiddenText(page, "组织配置");
+      await expectHiddenText(page, "活跃组织");
+
+      await page.goto(`${baseUrl}/settings/platform?tab=organization`);
+      await expectVisibleText(page, "默认控制项");
+      await expectVisibleText(page, "允许创建组织");
+      await expectHiddenText(page, "组织创建设置");
+    },
+  },
+  {
     name: "integration management is split between personal organization and platform pages",
     run: async ({ page }) => {
       await installApiMocks(page, { onboardingRequired: false });

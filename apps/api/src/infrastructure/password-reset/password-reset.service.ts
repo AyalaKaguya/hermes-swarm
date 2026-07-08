@@ -6,12 +6,15 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import jwt from "jsonwebtoken";
 import { MoreThan, Repository } from "typeorm";
-import { PasswordReset, User } from "@hermes-swarm/core";
+import { PasswordReset, User, UserOrganization } from "@hermes-swarm/core";
+import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import type {
   RequestPasswordResetPayload,
   ResetPasswordPayload,
 } from "../../common/admin-api.types.js";
 import { hashPassword } from "../../common/security/password-hash.js";
+import { EmailSendService } from "../mail/email-send.service.js";
+import { SettingsService } from "../settings/settings.service.js";
 
 const PASSWORD_RESET_JWT_SECRET =
   process.env.PASSWORD_RESET_JWT_SECRET ||
@@ -30,6 +33,10 @@ export class PasswordResetService {
     private readonly passwordResetRepository: Repository<PasswordReset>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(UserOrganization)
+    private readonly membershipRepository: Repository<UserOrganization>,
+    private readonly emailSendService: EmailSendService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   /**
@@ -61,7 +68,33 @@ export class PasswordResetService {
       }),
     );
 
+    const membership = await this.membershipRepository.findOne({
+      order: { createdAt: "ASC" },
+      where: { userId: user.id },
+    });
+    await this.emailSendService.send({
+      email: user.email,
+      organizationId: membership?.organizationId ?? null,
+      templateName: "password-reset",
+      locals: {
+        email: user.email,
+        expiresIn: "10 分钟",
+        resetLink: await this.buildPasswordResetLink(user.email, token),
+      },
+    });
+
     return { success: true };
+  }
+
+  private async buildPasswordResetLink(email: string, token: string) {
+    const baseUrl = await this.settingsService.getPlatformValue(
+      PLATFORM_SETTING_KEYS.publicBaseUrl,
+      resolvePublicBaseUrl(),
+    );
+    const url = new URL("/reset-password", baseUrl || resolvePublicBaseUrl());
+    url.searchParams.set("email", email);
+    url.searchParams.set("token", token);
+    return url.toString();
   }
 
   /**
@@ -118,6 +151,7 @@ export class PasswordResetService {
     user.emailVerified = true;
 
     await this.userRepository.save(user);
+    await this.passwordResetRepository.delete({ id: record.id });
 
     return { success: true };
   }
@@ -150,4 +184,14 @@ function requirePassword(value: string | undefined) {
   const password = requireText(value, "密码");
   if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
   return password;
+}
+
+function resolvePublicBaseUrl() {
+  return (
+    process.env.WEB_PUBLIC_URL ||
+    process.env.APP_PUBLIC_URL ||
+    process.env.PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3100"
+  );
 }

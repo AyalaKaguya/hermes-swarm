@@ -21,6 +21,7 @@ import { Repository } from "typeorm";
 import { AuthService } from "./auth/auth.service.js";
 import type { OnboardingPayload } from "../common/admin-api.types.js";
 import { hashPassword } from "../common/security/password-hash.js";
+import { MailService } from "./mail/mail.service.js";
 import { SettingsService } from "./settings/settings.service.js";
 
 @Controller("admin")
@@ -42,6 +43,7 @@ export class InfrastructureBootstrapController {
     private readonly membershipRepository: Repository<UserOrganization>,
     private readonly authService: AuthService,
     private readonly settingsService: SettingsService,
+    private readonly mailService: MailService,
   ) {}
 
   @Get("bootstrap")
@@ -118,6 +120,7 @@ export class InfrastructureBootstrapController {
     );
 
     const ownerRole = await this.createOrganizationOwnerRole(organization.id);
+    await this.mailService.ensureDefaultTemplatesForOrganization(organization.id);
     await this.membershipRepository.save(
       this.membershipRepository.create({
         displayName,

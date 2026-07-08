@@ -24,6 +24,7 @@ import type {
   UpdateOrganizationPayload,
 } from "../../common/admin-api.types.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
+import { MailService } from "../mail/mail.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import type { OrganizationRolePayload } from "./organizations.controller.js";
 
@@ -51,6 +52,8 @@ export class OrganizationsService {
     private readonly authSessionService: AuthSessionService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService,
+    @Inject(MailService)
+    private readonly mailService: MailService,
   ) {}
 
   async list() {
@@ -109,6 +112,7 @@ export class OrganizationsService {
     );
 
     const ownerRole = await this.createDefaultOrganizationRoles(organization.id);
+    await this.mailService.ensureDefaultTemplatesForOrganization(organization.id);
     await this.membershipRepository.save(
       this.membershipRepository.create({
         displayName: null,

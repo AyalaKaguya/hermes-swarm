@@ -196,10 +196,22 @@ export default function EmailTemplatesPage() {
                 <div className="flex flex-1 flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="font-semibold text-sm">{t.name}</div>
-                    <Badge className="text-xs" variant="outline">
-                      {t.languageCode}
-                    </Badge>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {t.isSystem && (
+                        <Badge className="text-xs" variant="secondary">
+                          {tr("系统模板")}
+                        </Badge>
+                      )}
+                      <Badge className="text-xs" variant="outline">
+                        {t.languageCode}
+                      </Badge>
+                    </div>
                   </div>
+                  {t.description && (
+                    <div className="text-xs text-muted-foreground">
+                      {tr(t.description)}
+                    </div>
+                  )}
                   {t.subject && (
                     <div className="text-xs line-clamp-1">{t.subject}</div>
                   )}
@@ -229,6 +241,7 @@ export default function EmailTemplatesPage() {
                     {tr("编辑")}
                   </Button>
                   <Button
+                    disabled={t.isSystem}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeleteTemplate(t);
@@ -439,11 +452,19 @@ function EditTemplateForm({
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
           <Label>{tr("模板名称")}</Label>
-          <Input onChange={(e) => setName(e.target.value)} value={name} />
+          <Input
+            disabled={template.isSystem}
+            onChange={(e) => setName(e.target.value)}
+            value={name}
+          />
         </div>
         <div className="grid gap-2">
           <Label>{tr("语言")}</Label>
-          <Select onValueChange={setLanguageCode} value={languageCode}>
+          <Select
+            disabled={template.isSystem}
+            onValueChange={setLanguageCode}
+            value={languageCode}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>

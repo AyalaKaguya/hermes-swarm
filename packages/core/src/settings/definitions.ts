@@ -100,7 +100,10 @@ export const PLATFORM_SETTING_KEYS = {
   messageServiceEnabled: "platform.messageServiceEnabled",
   messageServiceProvider: "platform.messageServiceProvider",
   passwordMinLength: "auth.passwordPolicy.minLength",
+  publicBaseUrl: "platform.publicBaseUrl",
   publicSmtpEnabled: "platform.publicSmtpEnabled",
+  rootDomain: "platform.rootDomain",
+  subdomainRoutingEnabled: "platform.subdomainRoutingEnabled",
   ticketingPlatformSubmissionEnabled:
     "platform.ticketing.platformSubmissionEnabled",
   ticketingVisible: "platform.ticketing.visible",
@@ -273,9 +276,27 @@ export const PLATFORM_SETTING_DEFINITIONS = {
     valueOptions: PASSWORD_LENGTH_OPTIONS,
     valueType: "enum",
   },
+  publicBaseUrl: {
+    defaultValue: "http://localhost:3100",
+    key: PLATFORM_SETTING_KEYS.publicBaseUrl,
+    scope: "platform",
+    valueType: "string",
+  },
   publicSmtpEnabled: {
     defaultValue: "false",
     key: PLATFORM_SETTING_KEYS.publicSmtpEnabled,
+    scope: "platform",
+    valueType: "boolean",
+  },
+  rootDomain: {
+    defaultValue: "localhost",
+    key: PLATFORM_SETTING_KEYS.rootDomain,
+    scope: "platform",
+    valueType: "string",
+  },
+  subdomainRoutingEnabled: {
+    defaultValue: "false",
+    key: PLATFORM_SETTING_KEYS.subdomainRoutingEnabled,
     scope: "platform",
     valueType: "boolean",
   },

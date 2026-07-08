@@ -8,6 +8,7 @@ import {
   Building2,
   Check,
   ChevronDown,
+  Copy,
   Database,
   ImageUp,
   FileText,
@@ -54,6 +55,7 @@ export type AppIconName =
   | "chart"
   | "check"
   | "chevron-down"
+  | "copy"
   | "database"
   | "file"
   | "grid"
@@ -97,6 +99,7 @@ const ICONS: Record<AppIconName, LucideIcon> = {
   chart: BarChart3,
   check: Check,
   "chevron-down": ChevronDown,
+  copy: Copy,
   database: Database,
   file: FileText,
   grid: Grid2X2,

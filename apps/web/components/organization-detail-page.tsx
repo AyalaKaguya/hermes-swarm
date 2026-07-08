@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ComponentProps,
   type ReactNode,
 } from "react";
 import { useSearchParams } from "next/navigation";
@@ -52,6 +53,11 @@ import {
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   CustomSettingDialog,
   SettingEditDialog,
   SettingValueInput,
@@ -68,16 +74,22 @@ import {
 import {
   AdminApiError,
   createOrganizationMember,
+  createOrganizationInvites,
+  deleteOrganizationInvite,
   getOrganization,
+  getOrganizationInvites,
   listOrganizationMembers,
   listOrganizationRoles,
   listOrganizationSettingsForOrganization,
+  resendOrganizationInvite,
   saveOrganizationSettingsForOrganization,
+  searchUsers,
   updateOrganizationMember,
   updateOrganization,
   uploadAdminFile,
   type OrganizationMembership,
   type Organization,
+  type Invite,
   type OrganizationPayload,
   type OrganizationSetting,
   type Role,
@@ -127,7 +139,7 @@ type OrganizationTab =
   | "members"
   | "profile";
 
-type SectionKey = "members" | "roles" | "settings";
+type SectionKey = "invites" | "members" | "roles" | "settings";
 
 export function OrganizationDetailPage({
   organizationId,
@@ -141,6 +153,7 @@ export function OrganizationDetailPage({
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<OrganizationTab>("general");
   const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [createInviteOpen, setCreateInviteOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const notifications = useNotifications();
   const [controlValues, setControlValues] = useState<Record<string, string>>(
@@ -154,6 +167,8 @@ export function OrganizationDetailPage({
   const [organizationSettings, setOrganizationSettings] = useState<
     OrganizationSetting[]
   >([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [inviteToClose, setInviteToClose] = useState<Invite | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [memberships, setMemberships] = useState<OrganizationMembership[]>([]);
   const [customSettingToDelete, setCustomSettingToDelete] =
@@ -164,6 +179,7 @@ export function OrganizationDetailPage({
   const [saving, setSaving] = useState(false);
   const [savingControls, setSavingControls] = useState(false);
   const [savingCustomSetting, setSavingCustomSetting] = useState(false);
+  const [closingInvite, setClosingInvite] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const canUpdateOrganizationProfile =
@@ -210,6 +226,22 @@ export function OrganizationDetailPage({
     snapshot && resolvedSession
       ? access.hasPermission("user.organization_member.create:organization")
       : false;
+  const canViewInvites =
+    snapshot && resolvedSession
+      ? access.hasPermission("invite.organization_invite.list:organization")
+      : false;
+  const canCreateInvites =
+    snapshot && resolvedSession
+      ? access.hasPermission("invite.organization_invite.create_bulk:organization")
+      : false;
+  const canResendInvites =
+    snapshot && resolvedSession
+      ? access.hasPermission("invite.organization_invite.resend:organization")
+      : false;
+  const canCloseInvites =
+    snapshot && resolvedSession
+      ? access.hasPermission("invite.organization_invite.delete:organization")
+      : false;
   const canUpdateOrganizationMember =
     snapshot && resolvedSession
       ? access.hasPermission("user.organization_member.update:organization")
@@ -235,7 +267,7 @@ export function OrganizationDetailPage({
       setForm(toOrganizationForm(data));
 
       const sectionErrors: Partial<Record<SectionKey, string>> = {};
-      const [settingsResult, membersResult, rolesResult] =
+      const [settingsResult, membersResult, rolesResult, invitesResult] =
         await Promise.allSettled([
           canViewOrganizationSettings
             ? listOrganizationSettingsForOrganization(
@@ -249,6 +281,9 @@ export function OrganizationDetailPage({
           canViewOrganizationRoles
             ? listOrganizationRoles(token, organizationId)
             : Promise.resolve<Role[] | null>(null),
+          canViewInvites
+            ? getOrganizationInvites(token, organizationId)
+            : Promise.resolve<Invite[] | null>(null),
         ]);
 
       if (settingsResult.status === "fulfilled") {
@@ -295,6 +330,16 @@ export function OrganizationDetailPage({
         );
       }
 
+      if (invitesResult.status === "fulfilled") {
+        setInvites(invitesResult.value ?? []);
+      } else {
+        setInvites([]);
+        sectionErrors.invites = formatSectionError(
+          invitesResult.reason,
+          tr("邀请加载失败"),
+        );
+      }
+
       setSectionErrors(sectionErrors);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
@@ -305,6 +350,7 @@ export function OrganizationDetailPage({
     canViewOrganizationMembers,
     canViewOrganizationRoles,
     canViewOrganizationSettings,
+    canViewInvites,
     organizationId,
     tr,
   ]);
@@ -477,6 +523,47 @@ export function OrganizationDetailPage({
 
   function canEditUser(user: User) {
     return canUpdateOrganizationMember && Boolean(membershipForUser(user.id));
+  }
+
+  async function reloadInvites() {
+    if (!organization || !canViewInvites) return;
+    const token = await requireAuthenticatedAdminToken();
+    setInvites(await getOrganizationInvites(token, organization.id));
+  }
+
+  async function resendInvite(invite: Invite) {
+    if (!organization || !canResendInvites) return;
+    try {
+      const token = await requireAuthenticatedAdminToken();
+      await resendOrganizationInvite(token, organization.id, invite.id);
+      notifications.success(tr("邀请已重发"));
+      await reloadInvites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tr("操作失败"));
+    }
+  }
+
+  async function closeInvite() {
+    if (!organization || !inviteToClose || !canCloseInvites) return;
+    setClosingInvite(true);
+    setError(null);
+    try {
+      const token = await requireAuthenticatedAdminToken();
+      await deleteOrganizationInvite(token, organization.id, inviteToClose.id);
+      notifications.success(tr("邀请已关闭"));
+      setInviteToClose(null);
+      await reloadInvites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tr("操作失败"));
+    } finally {
+      setClosingInvite(false);
+    }
+  }
+
+  async function copyInviteLink(invite: Invite) {
+    if (!invite.link) return;
+    await navigator.clipboard.writeText(invite.link);
+    notifications.success(tr("邀请地址已复制"));
   }
 
   if (loading) {
@@ -687,7 +774,7 @@ export function OrganizationDetailPage({
           </div>
         </TabsContent>
 
-        <TabsContent value="members">
+        <TabsContent className="grid content-start gap-6" value="members">
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
@@ -696,34 +783,61 @@ export function OrganizationDetailPage({
                   {tr("维护当前组织的成员账号和角色")}
                 </CardDescription>
               </div>
-              <Dialog onOpenChange={setCreateUserOpen} open={createUserOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    disabled={
-                      !canCreateOrganizationMember ||
-                      assignableRoles.length === 0
-                    }
-                    size="sm"
-                  >
-                    <AppIcon className="size-3.5" name="users" />
-                    {tr("添加成员")}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{tr("添加成员")}</DialogTitle>
-                  </DialogHeader>
-                  <OrganizationUserForm
-                    mode="create"
-                    organizationId={organization.id}
-                    roles={assignableRoles}
-                    onDone={() => {
-                      setCreateUserOpen(false);
-                      void load();
-                    }}
-                  />
-                </DialogContent>
-              </Dialog>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Dialog onOpenChange={setCreateUserOpen} open={createUserOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      disabled={
+                        !canCreateOrganizationMember ||
+                        assignableRoles.length === 0
+                      }
+                      size="sm"
+                      variant="outline"
+                    >
+                      <AppIcon className="size-3.5" name="users" />
+                      {tr("添加成员")}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{tr("添加成员")}</DialogTitle>
+                    </DialogHeader>
+                    <OrganizationUserForm
+                      mode="create"
+                      organizationId={organization.id}
+                      roles={assignableRoles}
+                      onDone={() => {
+                        setCreateUserOpen(false);
+                        void load();
+                      }}
+                    />
+                  </DialogContent>
+                </Dialog>
+                <Dialog onOpenChange={setCreateInviteOpen} open={createInviteOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      disabled={!canCreateInvites || assignableRoles.length === 0}
+                      size="sm"
+                    >
+                      <AppIcon className="size-3.5" name="invite" />
+                      {tr("邀请成员")}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{tr("邀请成员")}</DialogTitle>
+                    </DialogHeader>
+                    <OrganizationInviteForm
+                      organizationId={organization.id}
+                      roles={assignableRoles}
+                      onDone={() => {
+                        setCreateInviteOpen(false);
+                        void reloadInvites();
+                      }}
+                    />
+                  </DialogContent>
+                </Dialog>
+              </div>
             </CardHeader>
             <CardContent>
               {!canViewOrganizationMembers ? (
@@ -814,6 +928,144 @@ export function OrganizationDetailPage({
                     </TableBody>
                   </Table>
                 </>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tr("成员邀请")}</CardTitle>
+              <CardDescription>
+                {tr("查看公开邀请链接、定向邀请和加入状态")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!canViewInvites ? (
+                <SectionNotice
+                  description={tr("当前账号没有查看组织邀请的权限。")}
+                  title={tr("无法查看邀请")}
+                />
+              ) : sectionErrors.invites ? (
+                <SectionNotice
+                  description={sectionErrors.invites}
+                  title={tr("邀请加载失败")}
+                />
+              ) : (
+                <Table className="min-w-[1120px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{tr("类型")}</TableHead>
+                      <TableHead>{tr("邮箱")}</TableHead>
+                      <TableHead>{tr("角色")}</TableHead>
+                      <TableHead>{tr("邀请人")}</TableHead>
+                      <TableHead>{tr("创建时间")}</TableHead>
+                      <TableHead>{tr("状态")}</TableHead>
+                      <TableHead>{tr("过期时间")}</TableHead>
+                      <TableHead>{tr("加入人数")}</TableHead>
+                      <TableHead className="sticky right-0 z-20 w-32 border-l bg-card text-right shadow-[-10px_0_16px_-16px_rgba(0,0,0,0.45)]">
+                        {tr("操作")}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invites.length === 0 ? (
+                      <TableRow>
+                        <TableCell className="text-center" colSpan={9}>
+                          {tr("暂无邀请")}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      invites.map((invite) => (
+                        <TableRow key={invite.id}>
+                          <TableCell>
+                            <Badge variant={invite.email ? "outline" : "secondary"}>
+                              {tr(invite.email ? "定向邀请" : "公开链接")}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <div className="grid gap-1">
+                              <span>{invite.email ?? tr("不限邮箱")}</span>
+                              {invite.existingUser && (
+                                <span className="text-xs text-muted-foreground">
+                                  {tr("平台内账号")}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {invite.role?.label ?? roleLabel(invite.roleId)}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {invite.invitedBy ? (
+                              <div className="flex min-w-0 items-center gap-2">
+                                <UserAvatar
+                                  className="size-6"
+                                  size="sm"
+                                  user={invite.invitedBy}
+                                />
+                                <div className="min-w-0">
+                                  <div className="truncate">
+                                    {invite.invitedBy.displayName ||
+                                      invite.invitedBy.username ||
+                                      invite.invitedBy.email}
+                                  </div>
+                                  <div className="truncate text-xs text-muted-foreground">
+                                    {invite.invitedBy.email}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDateTime(invite.createdAt)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={invite.status === "invited" ? "default" : "secondary"}>
+                              {tr(inviteStatusLabel(invite.status))}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {invite.expireDate
+                              ? formatDateTime(invite.expireDate)
+                              : tr("永久有效")}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {invite.acceptedCount}
+                          </TableCell>
+                          <TableCell className="sticky right-0 z-10 border-l bg-card text-right shadow-[-10px_0_16px_-16px_rgba(0,0,0,0.45)]">
+                            <div className="flex items-center justify-end gap-1">
+                              <InviteActionButton
+                                disabled={!invite.link}
+                                icon="copy"
+                                label={tr("复制地址")}
+                                onClick={() => void copyInviteLink(invite)}
+                              />
+                              <InviteActionButton
+                                disabled={
+                                  !canResendInvites ||
+                                  invite.status === "accepted"
+                                }
+                                icon="refresh"
+                                label={tr("重发")}
+                                onClick={() => void resendInvite(invite)}
+                              />
+                              <InviteActionButton
+                                disabled={
+                                  !canCloseInvites ||
+                                  invite.status !== "invited"
+                                }
+                                icon="x"
+                                label={tr("关闭邀请")}
+                                onClick={() => setInviteToClose(invite)}
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>
@@ -1217,6 +1469,23 @@ export function OrganizationDetailPage({
         pending={savingCustomSetting}
         title="删除组织设置"
       />
+      <ConfirmActionDialog
+        confirmLabel="关闭"
+        description={
+          inviteToClose
+            ? inviteToClose.email
+              ? `${tr("关闭后该用户将无法通过此邀请加入组织")} ${inviteToClose.email}`
+              : tr("关闭后该公开邀请链接将无法继续加入组织")
+            : ""
+        }
+        onConfirm={() => void closeInvite()}
+        onOpenChange={(open) => {
+          if (!open) setInviteToClose(null);
+        }}
+        open={Boolean(inviteToClose)}
+        pending={closingInvite}
+        title="关闭邀请"
+      />
     </section>
   );
 }
@@ -1238,6 +1507,260 @@ function SectionNotice({
     >
       <div className="font-medium">{title}</div>
       <div className="mt-1 text-muted-foreground">{description}</div>
+    </div>
+  );
+}
+
+function InviteActionButton({
+  disabled,
+  icon,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon: ComponentProps<typeof AppIcon>["name"];
+  label: string;
+  onClick: () => void;
+}) {
+  const button = (
+    <Button
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      size="icon-sm"
+      type="button"
+      variant="ghost"
+    >
+      <AppIcon className="size-3.5" name={icon} />
+    </Button>
+  );
+
+  if (disabled) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function OrganizationInviteForm({
+  organizationId,
+  roles,
+  onDone,
+}: {
+  organizationId: string;
+  roles: Role[];
+  onDone: () => void;
+}) {
+  const tr = useTextTranslation();
+  const notifications = useNotifications();
+  const [inviteMode, setInviteMode] = useState<"directed" | "open">("open");
+  const [emails, setEmails] = useState("");
+  const [expiresIn, setExpiresIn] = useState<"3d" | "7d" | "never">("3d");
+  const [roleId, setRoleId] = useState(roles[0]?.id ?? "none");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [userSearchResults, setUserSearchResults] = useState<User[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+
+  const parsedEmails = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...selectedEmails,
+            ...emails
+              .split(/[\s,;，；]+/)
+              .map((email) => email.trim().toLowerCase())
+              .filter(Boolean),
+          ],
+        ),
+      ),
+    [emails, selectedEmails],
+  );
+
+  useEffect(() => {
+    if (inviteMode !== "directed" || userSearch.trim().length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setSearchingUsers(true);
+      void requireAuthenticatedAdminToken()
+        .then((token) => searchUsers(token, userSearch))
+        .then(setUserSearchResults)
+        .catch(() => setUserSearchResults([]))
+        .finally(() => setSearchingUsers(false));
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [inviteMode, userSearch]);
+
+  function addEmail(email: string) {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return;
+    setSelectedEmails((current) =>
+      current.includes(normalized) ? current : [...current, normalized],
+    );
+    setUserSearch("");
+    setUserSearchResults([]);
+  }
+
+  function removeEmail(email: string) {
+    setSelectedEmails((current) => current.filter((item) => item !== email));
+  }
+
+  async function submit() {
+    setSaving(true);
+    setMsg("");
+    try {
+      const emailIds = inviteMode === "directed" ? parsedEmails : [];
+      const token = await requireAuthenticatedAdminToken();
+      const result = await createOrganizationInvites(token, organizationId, {
+        emailIds,
+        expiresIn,
+        roleId: roleId === "none" ? undefined : roleId,
+      });
+      notifications.success(
+        emailIds.length
+          ? `${tr("邀请已发送")} ${result.total}${result.ignored ? `, ${tr("已忽略")} ${result.ignored}` : ""}`
+          : tr("公开邀请链接已创建"),
+      );
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : tr("发送失败"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Field htmlFor="organization-invite-mode" label="邀请类型">
+        <Select
+          onValueChange={(value) => setInviteMode(value as "directed" | "open")}
+          value={inviteMode}
+        >
+          <SelectTrigger id="organization-invite-mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="open">{tr("公开链接")}</SelectItem>
+            <SelectItem value="directed">{tr("定向邀请")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      {inviteMode === "directed" && (
+        <>
+          <Field htmlFor="organization-invite-user-search" label="搜索用户">
+            <Input
+              id="organization-invite-user-search"
+              onChange={(event) => setUserSearch(event.target.value)}
+              placeholder={tr("输入邮箱、名称或手机号")}
+              value={userSearch}
+            />
+          </Field>
+          {(searchingUsers || userSearchResults.length > 0) && (
+            <div className="max-h-40 overflow-auto rounded-md border">
+              {searchingUsers ? (
+                <div className="px-3 py-2 text-sm text-muted-foreground">
+                  {tr("搜索中...")}
+                </div>
+              ) : (
+                userSearchResults.map((user) => (
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                    key={user.id}
+                    onClick={() => addEmail(user.email)}
+                    type="button"
+                  >
+                    <UserAvatar className="size-6" size="sm" user={user} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">
+                        {user.displayName || user.username || user.email}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {user.email}
+                      </span>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+          <Field htmlFor="organization-invite-emails" label="指定邮箱">
+            <Textarea
+              id="organization-invite-emails"
+              onChange={(event) => setEmails(event.target.value)}
+              placeholder="user@example.com, another@example.com"
+              rows={3}
+              value={emails}
+            />
+          </Field>
+          {selectedEmails.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {selectedEmails.map((email) => (
+                <Badge key={email} variant="secondary">
+                  {email}
+                  <button
+                    aria-label={`${tr("移除")} ${email}`}
+                    className="ml-1"
+                    onClick={() => removeEmail(email)}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      <Field htmlFor="organization-invite-role" label="角色">
+        <Select onValueChange={setRoleId} value={roleId}>
+          <SelectTrigger id="organization-invite-role">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">{tr("未分配")}</SelectItem>
+            {roles.map((role) => (
+              <SelectItem key={role.id} value={role.id}>
+                {role.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field htmlFor="organization-invite-expiry" label="有效期">
+        <Select
+          onValueChange={(value) =>
+            setExpiresIn(value as "3d" | "7d" | "never")
+          }
+          value={expiresIn}
+        >
+          <SelectTrigger id="organization-invite-expiry">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="3d">{tr("3 天")}</SelectItem>
+            <SelectItem value="7d">{tr("7 天")}</SelectItem>
+            <SelectItem value="never">{tr("永久")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      {msg && <div className="text-sm text-destructive">{msg}</div>}
+      <Button disabled={saving} onClick={submit}>
+        {saving
+          ? tr("发送中...")
+          : inviteMode === "open"
+            ? tr("创建邀请链接")
+            : tr("发送邀请")}
+      </Button>
     </div>
   );
 }
@@ -1433,6 +1956,29 @@ function EnumSelect({
       </SelectContent>
     </Select>
   );
+}
+
+function inviteStatusLabel(status: Invite["status"]) {
+  switch (status) {
+    case "accepted":
+      return "已接受";
+    case "declined":
+      return "已拒绝";
+    case "expired":
+      return "已过期";
+    case "revoked":
+      return "已关闭";
+    case "invited":
+    default:
+      return "待接受";
+  }
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function emptyOrganizationForm(): OrganizationForm {

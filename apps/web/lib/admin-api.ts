@@ -317,17 +317,43 @@ export type OrganizationGroupMember = {
   userId: string;
 };
 
-export type InviteStatus = "invited" | "accepted" | "expired" | "revoked";
+export type InviteStatus =
+  | "accepted"
+  | "declined"
+  | "expired"
+  | "invited"
+  | "revoked";
 
 export type Invite = {
-  id: string;
-  email: string;
-  status: InviteStatus;
-  createdAt: string;
+  acceptedCount: number;
+  acceptedUserId: string | null;
   actionDate: string | null;
+  closedAt: string | null;
+  email: string | null;
+  existingUser?: boolean;
+  createdAt: string;
   expireDate: string | null;
-  roleId: string | null;
+  id: string;
   invitedById: string | null;
+  invitedBy?: Pick<
+    User,
+    "avatarUrl" | "displayName" | "email" | "id" | "imageUrl" | "username"
+  > | null;
+  link?: string;
+  organization?: {
+    id: string;
+    imageUrl: string | null;
+    logoUrl: string | null;
+    name: string;
+    shortDescription: string | null;
+    slug: string;
+  };
+  role?: Pick<
+    Role,
+    "color" | "displayName" | "id" | "isSystem" | "label" | "name"
+  > | null;
+  roleId: string | null;
+  status: InviteStatus;
 };
 
 export type OrganizationSetting = {
@@ -829,6 +855,25 @@ export async function logoutAuthSession(token: string | null | undefined) {
   clearStoredSession();
 }
 
+export function requestPasswordReset(email: string) {
+  return fetchAdmin<{ success: boolean }>("/auth/request-password", {
+    body: { email },
+    method: "POST",
+  });
+}
+
+export function resetPassword(payload: {
+  confirmPassword?: string;
+  email?: string;
+  password?: string;
+  token?: string;
+}) {
+  return fetchAdmin<{ success: boolean }>("/auth/reset-password", {
+    body: payload,
+    method: "POST",
+  });
+}
+
 export function listAuthSessions(token: string) {
   return fetchAdmin<AuthSessionDevice[]>("/auth/sessions", { token });
 }
@@ -942,7 +987,7 @@ export function getOrganizationInvites(token: string, organizationId: string) {
 export function createOrganizationInvites(
   token: string,
   organizationId: string,
-  payload: { emailIds?: string[]; roleId?: string },
+  payload: { emailIds?: string[]; expiresIn?: "3d" | "7d" | "never"; roleId?: string },
 ) {
   return fetchAdmin<{ ignored: number; items: Invite[]; total: number }>(
     `/organizations/${organizationId}/invites`,
@@ -970,6 +1015,26 @@ export function deleteOrganizationInvite(
     `/organizations/${organizationId}/invites/${inviteId}`,
     { method: "DELETE", token },
   );
+}
+
+export function validateInvite(email: string | null | undefined, token: string) {
+  return fetchAdmin<Invite>("/invites/validate", {
+    body: { email, token },
+    method: "POST",
+  });
+}
+
+export function acceptInvite(payload: {
+  action?: "accept" | "decline";
+  displayName?: string;
+  email?: string;
+  password?: string;
+  token?: string;
+}) {
+  return fetchAdmin<Invite>("/invites/accept", {
+    body: payload,
+    method: "POST",
+  });
 }
 
 export function fetchMe(token: string) {
@@ -1026,8 +1091,10 @@ export type SmtpConfig = {
 };
 
 export type EmailTemplateDto = {
+  description: string | null;
   hbs: string;
   id: string;
+  isSystem: boolean;
   languageCode: string;
   mjml: string | null;
   name: string;
@@ -1082,6 +1149,41 @@ export function validateSmtpConfig(token: string, payload: {
     `/organizations/${options.organizationId}/mail/smtp/validate`,
     { body: payload, method: "POST", token },
   );
+}
+
+export function getPlatformSmtpConfig(token: string) {
+  return fetchAdmin<SmtpConfig | null>("/platform/mail/smtp", { token });
+}
+
+export function savePlatformSmtpConfig(token: string, payload: {
+  fromAddress?: string | null;
+  host?: string;
+  isValidated?: boolean;
+  password?: string | null;
+  port?: number;
+  secure?: boolean;
+  username?: string | null;
+}) {
+  return fetchAdmin<SmtpConfig>("/platform/mail/smtp", {
+    body: payload,
+    method: "PATCH",
+    token,
+  });
+}
+
+export function validatePlatformSmtpConfig(token: string, payload: {
+  fromAddress?: string | null;
+  host?: string;
+  password?: string | null;
+  port?: number;
+  secure?: boolean;
+  username?: string | null;
+}) {
+  return fetchAdmin<{ ok: boolean }>("/platform/mail/smtp/validate", {
+    body: payload,
+    method: "POST",
+    token,
+  });
 }
 
 export function createUser(token: string, payload: {
@@ -1148,6 +1250,46 @@ export function deleteEmailTemplate(token: string, organizationId: string, templ
     `/organizations/${organizationId}/mail/templates/${templateId}`,
     { method: "DELETE", token },
   );
+}
+
+export function listPlatformEmailTemplates(token: string) {
+  return fetchAdmin<EmailTemplateDto[]>("/platform/mail/templates", { token });
+}
+
+export function createPlatformEmailTemplate(token: string, payload: {
+  description?: string | null;
+  hbs?: string;
+  languageCode?: string;
+  mjml?: string | null;
+  name?: string;
+  subject?: string | null;
+}) {
+  return fetchAdmin<EmailTemplateDto>("/platform/mail/templates", {
+    body: payload,
+    method: "POST",
+    token,
+  });
+}
+
+export function updatePlatformEmailTemplate(token: string, templateId: string, payload: Partial<{
+  description: string | null;
+  hbs: string;
+  languageCode: string;
+  mjml: string | null;
+  name: string;
+  subject: string | null;
+}>) {
+  return fetchAdmin<EmailTemplateDto>(
+    `/platform/mail/templates/${templateId}`,
+    { body: payload, method: "PATCH", token },
+  );
+}
+
+export function deletePlatformEmailTemplate(token: string, templateId: string) {
+  return fetchAdmin<void>(`/platform/mail/templates/${templateId}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export function listSystemSettings(token: string) {

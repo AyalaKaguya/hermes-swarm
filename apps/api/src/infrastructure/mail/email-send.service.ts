@@ -2,14 +2,16 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import Handlebars from "handlebars";
 import nodemailer from "nodemailer";
-import { Repository } from "typeorm";
+import { IsNull, Repository } from "typeorm";
 import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
+import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
+import { SettingsService } from "../settings/settings.service.js";
 
 export type EmailLanguageCode = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
 
 export type SendEmailContext = {
   email: string;
-  organizationId: string;
+  organizationId: string | null;
   templateName: string;
   languageCode?: EmailLanguageCode;
   locals?: Record<string, unknown>;
@@ -26,6 +28,7 @@ export class EmailSendService {
     private readonly templateRepository: Repository<EmailTemplate>,
     @InjectRepository(EmailLog)
     private readonly emailLogRepository: Repository<EmailLog>,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async send(ctx: SendEmailContext): Promise<void> {
@@ -36,7 +39,11 @@ export class EmailSendService {
     }
 
     const langCode = ctx.languageCode || "zh-CN";
-    const template = await this.resolveTemplate(ctx.templateName, langCode, ctx.organizationId);
+    const template = await this.resolveTemplate(
+      ctx.templateName,
+      langCode,
+      ctx.organizationId,
+    );
     if (!template) {
       this.logger.warn(`No template "${ctx.templateName}" for lang "${langCode}"`);
       return;
@@ -92,28 +99,48 @@ export class EmailSendService {
   private async resolveTemplate(
     name: string,
     languageCode: string,
-    organizationId: string,
+    organizationId: string | null,
   ): Promise<EmailTemplate | null> {
-    let template = await this.templateRepository.findOne({
-      where: { name, languageCode, organizationId },
-    });
-    if (template) return template;
-    template = await this.templateRepository.findOne({
-      where: { name, languageCode: "en", organizationId },
-    });
-    if (template) return template;
-    template = await this.templateRepository.findOne({
-      where: { name, languageCode, organizationId: null as unknown as string },
-    });
-    if (template) return template;
-    return this.templateRepository.findOne({
-      where: { name, languageCode: "en", organizationId: null as unknown as string },
-    });
+    const languageCodes = getTemplateLanguageCandidates(languageCode);
+
+    if (organizationId) {
+      for (const candidate of languageCodes) {
+        const template = await this.templateRepository.findOne({
+          where: { name, languageCode: candidate, organizationId },
+        });
+        if (template) return template;
+      }
+    }
+
+    for (const candidate of languageCodes) {
+      const template = await this.templateRepository.findOne({
+        where: { name, languageCode: candidate, organizationId: IsNull() },
+      });
+      if (template) return template;
+    }
+
+    return null;
   }
 
-  private async findSmtpRecord(organizationId: string): Promise<CustomSmtp | null> {
+  private async findSmtpRecord(
+    organizationId: string | null,
+  ): Promise<CustomSmtp | null> {
+    if (organizationId) {
+      const organizationSmtp = await this.smtpRepository.findOne({
+        where: { organizationId },
+        order: { createdAt: "DESC" },
+      });
+      if (organizationSmtp) return organizationSmtp;
+    }
+
+    const publicSmtpEnabled = await this.settingsService.getPlatformValue(
+      PLATFORM_SETTING_KEYS.publicSmtpEnabled,
+      "false",
+    );
+    if (publicSmtpEnabled !== "true") return null;
+
     return this.smtpRepository.findOne({
-      where: [{ organizationId }, { organizationId: null as unknown as string }],
+      where: { organizationId: IsNull() },
       order: { createdAt: "DESC" },
     });
   }
@@ -121,7 +148,7 @@ export class EmailSendService {
   private async recordLog(entry: {
     content: string | null;
     email: string;
-    organizationId: string;
+    organizationId: string | null;
     status: "sent" | "failed";
     subject: string | null;
     templateName: string;
@@ -140,4 +167,18 @@ export class EmailSendService {
       return false;
     }
   }
+}
+
+function getTemplateLanguageCandidates(languageCode: string) {
+  const normalized = languageCode.trim();
+  const candidates = [normalized];
+
+  if (normalized === "zh-Hans" || normalized === "zh-CN" || normalized === "zh") {
+    candidates.push("zh-CN", "zh-Hans", "zh");
+  } else if (normalized === "zh-Hant") {
+    candidates.push("zh-TW", "zh-HK");
+  }
+
+  candidates.push("en");
+  return [...new Set(candidates.filter(Boolean))];
 }

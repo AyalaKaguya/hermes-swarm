@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  type OnModuleInit,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
 import { IsNull, Repository } from "typeorm";
@@ -14,7 +20,9 @@ type SmtpPayload = {
 };
 
 type EmailTemplatePayload = {
+  description?: string | null;
   hbs?: string;
+  isSystem?: boolean;
   languageCode?: string;
   mjml?: string | null;
   name?: string;
@@ -31,7 +39,9 @@ type EmailLogPayload = {
 };
 
 @Injectable()
-export class MailService {
+export class MailService implements OnModuleInit {
+  private readonly logger = new Logger(MailService.name);
+
   constructor(
     @InjectRepository(CustomSmtp)
     private readonly smtpRepository: Repository<CustomSmtp>,
@@ -41,8 +51,19 @@ export class MailService {
     private readonly emailLogRepository: Repository<EmailLog>,
   ) {}
 
+  async onModuleInit() {
+    await this.ensureDefaultPlatformTemplates().catch((error) => {
+      this.logger.warn(`Failed to seed platform email templates: ${error}`);
+    });
+  }
+
   async getSmtp(organizationId: string) {
     const record = await this.findSmtpRecord(organizationId);
+    return record ? toSmtpDto(record) : null;
+  }
+
+  async getPlatformSmtp() {
+    const record = await this.findGlobalSmtpRecord();
     return record ? toSmtpDto(record) : null;
   }
 
@@ -54,21 +75,41 @@ export class MailService {
     return toSmtpDto(await this.smtpRepository.save(entity));
   }
 
+  async savePlatformSmtp(payload: SmtpPayload) {
+    const entity = await this.findOrCreateSmtpRecord(null);
+    applySmtpPayload(entity, payload);
+    entity.organizationId = null;
+    entity.isValidated = Boolean(payload.isValidated);
+    return toSmtpDto(await this.smtpRepository.save(entity));
+  }
+
   validateSmtp(payload: SmtpPayload) {
     return validateSmtpPayload(payload);
   }
 
-  async listTemplates(organizationId: string) {
+  async listTemplates(organizationId: string | null) {
+    if (organizationId === null) {
+      await this.ensureDefaultPlatformTemplates();
+    } else {
+      await this.ensureDefaultTemplatesForOrganization(organizationId);
+    }
+
+    const where =
+      organizationId === null
+        ? { organizationId: IsNull() }
+        : [{ organizationId }, { organizationId: IsNull() }];
     const templates = await this.emailTemplateRepository.find({
-      where: [{ organizationId }, { organizationId: IsNull() }],
+      where,
       order: { name: "ASC", languageCode: "ASC" },
     });
-    return templates.map(toTemplateDto);
+    return dedupeTemplatesForDisplay(templates, organizationId).map(toTemplateDto);
   }
 
-  async createTemplate(organizationId: string, payload: EmailTemplatePayload) {
+  async createTemplate(organizationId: string | null, payload: EmailTemplatePayload) {
     const template = this.emailTemplateRepository.create({
+      description: normalizeOptionalText(payload.description),
       hbs: requireText(payload.hbs, "模板内容"),
+      isSystem: Boolean(payload.isSystem),
       languageCode: requireText(payload.languageCode, "语言编码"),
       mjml: normalizeOptionalText(payload.mjml),
       name: requireText(payload.name, "模板名称"),
@@ -79,16 +120,27 @@ export class MailService {
   }
 
   async updateTemplate(
-    organizationId: string,
+    organizationId: string | null,
     templateId: string,
     payload: EmailTemplatePayload,
   ) {
     const template = await this.getTemplateOrThrow(organizationId, templateId);
     if (payload.name !== undefined) {
-      template.name = requireText(payload.name, "模板名称");
+      const nextName = requireText(payload.name, "模板名称");
+      if (template.isSystem && nextName !== template.name) {
+        throw new BadRequestException("系统模板名称不能修改");
+      }
+      template.name = nextName;
+    }
+    if (payload.description !== undefined) {
+      template.description = normalizeOptionalText(payload.description);
     }
     if (payload.languageCode !== undefined) {
-      template.languageCode = requireText(payload.languageCode, "语言编码");
+      const nextLanguageCode = requireText(payload.languageCode, "语言编码");
+      if (template.isSystem && nextLanguageCode !== template.languageCode) {
+        throw new BadRequestException("系统模板语言不能修改");
+      }
+      template.languageCode = nextLanguageCode;
     }
     if (payload.hbs !== undefined) {
       template.hbs = requireText(payload.hbs, "模板内容");
@@ -102,10 +154,19 @@ export class MailService {
     return toTemplateDto(await this.emailTemplateRepository.save(template));
   }
 
-  async deleteTemplate(organizationId: string, templateId: string) {
+  async deleteTemplate(organizationId: string | null, templateId: string) {
     const template = await this.getTemplateOrThrow(organizationId, templateId);
+    if (template.isSystem) throw new BadRequestException("系统模板不能删除");
     await this.emailTemplateRepository.remove(template);
     return { id: templateId };
+  }
+
+  async ensureDefaultTemplatesForOrganization(organizationId: string) {
+    await this.ensureDefaultTemplates(organizationId);
+  }
+
+  async ensureDefaultPlatformTemplates() {
+    await this.ensureDefaultTemplates(null);
   }
 
   async listLogs(organizationId: string) {
@@ -129,24 +190,38 @@ export class MailService {
     return toLogDto(await this.emailLogRepository.save(log));
   }
 
-  private async getTemplateOrThrow(organizationId: string, templateId: string) {
+  private async getTemplateOrThrow(organizationId: string | null, templateId: string) {
     const template = await this.emailTemplateRepository.findOne({
-      where: { id: templateId, organizationId },
+      where: {
+        id: templateId,
+        organizationId: organizationId ?? IsNull(),
+      },
     });
     if (!template) throw new NotFoundException("邮件模板不存在");
     return template;
   }
 
   private async findSmtpRecord(organizationId: string) {
+    const organizationRecord = await this.smtpRepository.findOne({
+      where: { organizationId },
+      order: { createdAt: "DESC" },
+    });
+    return organizationRecord ?? this.findGlobalSmtpRecord();
+  }
+
+  private async findGlobalSmtpRecord() {
     return this.smtpRepository.findOne({
-      where: [{ organizationId }, { organizationId: IsNull() }],
+      where: { organizationId: IsNull() },
       order: { createdAt: "DESC" },
     });
   }
 
-  private async findOrCreateSmtpRecord(organizationId: string) {
+  private async findOrCreateSmtpRecord(organizationId: string | null) {
     const existing = await this.smtpRepository.findOne({
-      where: { organizationId },
+      where:
+        organizationId === null
+          ? { organizationId: IsNull() }
+          : { organizationId },
       order: { createdAt: "DESC" },
     });
     return (
@@ -161,6 +236,26 @@ export class MailService {
         username: null,
       })
     );
+  }
+
+  private async ensureDefaultTemplates(organizationId: string | null) {
+    for (const definition of DEFAULT_EMAIL_TEMPLATES) {
+      const existing = await this.emailTemplateRepository.findOne({
+        where: {
+          languageCode: definition.languageCode,
+          name: definition.name,
+          organizationId: organizationId ?? IsNull(),
+        },
+      });
+      if (existing) continue;
+      await this.emailTemplateRepository.save(
+        this.emailTemplateRepository.create({
+          ...definition,
+          isSystem: true,
+          organizationId: organizationId as string | null,
+        }),
+      );
+    }
   }
 }
 
@@ -210,8 +305,10 @@ function toSmtpDto(entity: CustomSmtp) {
 
 function toTemplateDto(entity: EmailTemplate) {
   return {
+    description: entity.description,
     hbs: entity.hbs,
     id: entity.id,
+    isSystem: entity.isSystem,
     languageCode: entity.languageCode,
     mjml: entity.mjml,
     name: entity.name,
@@ -233,6 +330,28 @@ function toLogDto(entity: EmailLog) {
   };
 }
 
+function dedupeTemplatesForDisplay(
+  templates: EmailTemplate[],
+  organizationId: string | null,
+) {
+  if (organizationId === null) return templates;
+
+  const templatesByKey = new Map<string, EmailTemplate>();
+  for (const template of templates) {
+    const key = `${template.name}:${template.languageCode}`;
+    const existing = templatesByKey.get(key);
+    if (!existing || (!existing.organizationId && template.organizationId)) {
+      templatesByKey.set(key, template);
+    }
+  }
+
+  return [...templatesByKey.values()].sort(
+    (left, right) =>
+      left.name.localeCompare(right.name, "zh-Hans") ||
+      left.languageCode.localeCompare(right.languageCode, "zh-Hans"),
+  );
+}
+
 function requireText(value: string | undefined, label: string) {
   const text = value?.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
@@ -251,3 +370,30 @@ function normalizePort(value: number | string | undefined) {
   }
   return port;
 }
+
+const DEFAULT_EMAIL_TEMPLATES = [
+  {
+    description: "发送给被邀请加入组织的用户。",
+    hbs: [
+      "<p>{{organizationName}} 邀请你加入组织。</p>",
+      "<p><a href=\"{{inviteLink}}\">打开邀请链接</a></p>",
+      "<p>有效期：{{expiresAt}}</p>",
+    ].join("\n"),
+    languageCode: "zh-CN",
+    mjml: null,
+    name: "organization-invite",
+    subject: "邀请加入 {{organizationName}}",
+  },
+  {
+    description: "发送给请求重置密码的用户。",
+    hbs: [
+      "<p>你正在重置 Hermes Swarm 账号密码。</p>",
+      "<p><a href=\"{{resetLink}}\">打开重置密码链接</a></p>",
+      "<p>该链接将在 {{expiresIn}} 后失效。</p>",
+    ].join("\n"),
+    languageCode: "zh-CN",
+    mjml: null,
+    name: "password-reset",
+    subject: "重置密码",
+  },
+] satisfies EmailTemplatePayload[];

@@ -28,6 +28,7 @@ import {
   type ResolvedSession,
 } from "@/lib/session";
 import { hasPageAccess } from "@/lib/access-control";
+import { resolveHostOrganizationIdFromPrincipal } from "@/lib/host-organization";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 
 type AdminShellContextValue = {
@@ -236,9 +237,11 @@ function createShellSnapshot(
     .filter((organization): organization is NonNullable<typeof organization> =>
       Boolean(organization),
     );
+  const hostOrganizationId =
+    preferredOrganizationId ?? resolveHostOrganizationId(principal);
   const activeMembership =
     memberships.find(
-      (membership) => membership.organizationId === preferredOrganizationId,
+      (membership) => membership.organizationId === hostOrganizationId,
     ) ??
     memberships[0] ??
     null;
@@ -272,6 +275,14 @@ function createShellSnapshot(
     systemSettings: principal.systemSettings ?? [],
     users: [],
   };
+}
+
+function resolveHostOrganizationId(principal: Awaited<ReturnType<typeof fetchMe>>) {
+  if (typeof window === "undefined") return null;
+  return resolveHostOrganizationIdFromPrincipal(
+    principal,
+    window.location.hostname,
+  );
 }
 
 function resolveActivePermissions(

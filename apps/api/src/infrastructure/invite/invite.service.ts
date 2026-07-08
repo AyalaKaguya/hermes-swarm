@@ -15,14 +15,20 @@ import {
   UserOrganization,
   type InviteStatus,
 } from "@hermes-swarm/core";
+import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import type {
   AcceptInvitePayload,
   CreateBulkInvitesPayload,
   InviteDto,
 } from "../../common/admin-api.types.js";
-import { hashPassword } from "../../common/security/password-hash.js";
+import {
+  hashPassword,
+  verifyPassword,
+} from "../../common/security/password-hash.js";
 import { EmailSendService } from "../mail/email-send.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
+import { SettingsService } from "../settings/settings.service.js";
+import { toUserDto } from "../users/user-dto.js";
 
 const INVITE_JWT_SECRET =
   process.env.INVITE_JWT_SECRET || "hermes-swarm-invite-secret-change-me";
@@ -44,6 +50,7 @@ export class InviteService {
     private readonly membershipRepository: Repository<UserOrganization>,
     private readonly emailSendService: EmailSendService,
     private readonly notificationsService: NotificationsService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   /**
@@ -66,13 +73,31 @@ export class InviteService {
       ),
     ];
 
-    if (!emails.length) {
-      return { items: [], total: 0, ignored: 0 };
-    }
-
     const roleId = payload.roleId
       ? await this.resolveAssignableRoleId(organizationId, payload.roleId)
       : null;
+
+    if (!emails.length) {
+      const invite = this.inviteRepository.create({
+        acceptedCount: 0,
+        actionDate: null,
+        acceptedUserId: null,
+        closedAt: null,
+        email: null,
+        expireDate: computeExpireDate(expiresIn),
+        invitedById,
+        organizationId,
+        roleId,
+        status: "invited",
+        token: signInviteToken(null, organizationId, expiresIn),
+      });
+      const saved = await this.inviteRepository.save(invite);
+      return {
+        ignored: 0,
+        items: [await this.toInviteDto(saved)],
+        total: 1,
+      };
+    }
 
     const existingInvites = await this.inviteRepository
       .createQueryBuilder("invite")
@@ -99,18 +124,33 @@ export class InviteService {
       ...existingMemberships.map((membership) => membership.email),
     ]);
     const emailsToCreate = emails.filter((email) => !blockedEmails.has(email));
+    const reusableInvites = emailsToCreate.length
+      ? await this.inviteRepository.find({
+          where: emailsToCreate.map((email) => ({ email, organizationId })),
+        })
+      : [];
+    const reusableByEmail = new Map(
+      reusableInvites.map((invite) => [invite.email, invite]),
+    );
 
     const invites = emailsToCreate.map((email) => {
       const expireDate = computeExpireDate(expiresIn);
-      return this.inviteRepository.create({
-        email,
-        expireDate,
-        invitedById,
-        organizationId,
-        roleId: roleId || null,
-        status: "invited",
-        token: signInviteToken(email, organizationId, expiresIn),
-      });
+      const invite =
+        reusableByEmail.get(email) ??
+        this.inviteRepository.create({
+          email,
+          organizationId,
+        });
+      invite.actionDate = null;
+      invite.acceptedUserId = null;
+      invite.closedAt = null;
+      invite.email = email;
+      invite.expireDate = expireDate;
+      invite.invitedById = invitedById;
+      invite.roleId = roleId || null;
+      invite.status = "invited";
+      invite.token = signInviteToken(email, organizationId, expiresIn);
+      return invite;
     });
 
     const saved = invites.length ? await this.inviteRepository.save(invites) : [];
@@ -158,9 +198,10 @@ export class InviteService {
     );
     const organizationId = requireOrganizationId(inviteEntity);
     const organization = await this.getOrganizationOrThrow(organizationId);
+    const targetEmail = resolveAcceptanceEmail(inviteEntity, payload.email);
 
     let user = await this.userRepository.findOne({
-      where: { email: inviteEntity.email },
+      where: { email: targetEmail },
     });
     if (user) {
       const existingMembership = await this.membershipRepository.findOne({
@@ -168,6 +209,12 @@ export class InviteService {
       });
       if (existingMembership) {
         throw new ConflictException("该邮箱已加入组织");
+      }
+      if (!inviteEntity.email) {
+        const password = requirePassword(payload.password);
+        if (!verifyPassword(password, user.passwordHash)) {
+          throw new BadRequestException("邮箱或密码不正确");
+        }
       }
     }
 
@@ -177,7 +224,7 @@ export class InviteService {
       user = await this.userRepository.save(
         this.userRepository.create({
           displayName,
-          email: inviteEntity.email,
+          email: targetEmail,
           emailVerified: true,
           nickname: displayName,
           passwordHash: hashPassword(password),
@@ -202,7 +249,9 @@ export class InviteService {
     inviteEntity.acceptedCount = (inviteEntity.acceptedCount ?? 0) + 1;
     inviteEntity.acceptedUserId = user.id;
     inviteEntity.actionDate = new Date();
-    inviteEntity.status = "accepted";
+    if (inviteEntity.email) {
+      inviteEntity.status = "accepted";
+    }
     await this.inviteRepository.save(inviteEntity);
 
     await this.notificationsService.createForUser({
@@ -222,6 +271,9 @@ export class InviteService {
 
   async decline(payload: AcceptInvitePayload): Promise<InviteDto> {
     const invite = await this.getActiveInviteOrThrow(payload.email, payload.token);
+    if (!invite.email) {
+      return this.toInviteDto(invite, { includeOrganization: true });
+    }
     invite.actionDate = new Date();
     invite.status = "declined";
     await this.inviteRepository.save(invite);
@@ -232,6 +284,7 @@ export class InviteService {
     await this.getOrganizationOrThrow(organizationId);
     const invites = await this.inviteRepository.find({
       order: { createdAt: "DESC" },
+      relations: { invitedBy: true, role: true },
       where: { organizationId },
     });
     return Promise.all(invites.map((invite) => this.toInviteDto(invite)));
@@ -278,7 +331,9 @@ export class InviteService {
     invite.token = signInviteToken(invite.email, organizationId, expiresIn);
     await this.inviteRepository.save(invite);
 
-    await this.notifyInvitee({ invite, invitedById, organization });
+    if (invite.email) {
+      await this.notifyInvitee({ invite, invitedById, organization });
+    }
     return this.toInviteDto(invite);
   }
 
@@ -287,25 +342,28 @@ export class InviteService {
     token: string | undefined,
   ) {
     const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail || !token) {
-      throw new BadRequestException("邮箱和令牌不能为空");
+    if (!token) {
+      throw new BadRequestException("令牌不能为空");
     }
 
-    let payload: { email: string; organizationId: string };
+    let payload: { email?: string | null; organizationId: string };
     try {
       payload = jwt.verify(token, INVITE_JWT_SECRET) as typeof payload;
     } catch {
       throw new BadRequestException("邀请链接无效或已过期");
     }
 
-    if (payload.email !== normalizedEmail) {
+    if (payload.email && normalizedEmail && payload.email !== normalizedEmail) {
       throw new BadRequestException("邮箱与邀请不匹配");
     }
 
     const invite = await this.inviteRepository.findOne({
-      where: { email: normalizedEmail, token },
+      where: { token },
     });
     if (!invite) throw new BadRequestException("邀请链接无效或已过期");
+    if (invite.email && normalizedEmail && invite.email !== normalizedEmail) {
+      throw new BadRequestException("邮箱与邀请不匹配");
+    }
     if (deriveInviteStatus(invite) !== "invited") {
       throw new BadRequestException("邀请链接无效或已过期");
     }
@@ -333,7 +391,8 @@ export class InviteService {
     invitedById: string;
     organization: Organization;
   }) {
-    const link = buildInviteLink(input.invite);
+    if (!input.invite.email) return;
+    const link = await this.buildInviteLink(input.invite);
     const existingUser = await this.userRepository.findOne({
       where: { email: input.invite.email },
     });
@@ -376,9 +435,21 @@ export class InviteService {
     invite: Invite,
     options: { includeOrganization?: boolean } = {},
   ): Promise<InviteDto> {
-    const existingUser = await this.userRepository.findOne({
-      where: { email: invite.email },
-    });
+    const existingUser = invite.email
+      ? await this.userRepository.findOne({
+          where: { email: invite.email },
+        })
+      : null;
+    const role =
+      invite.role ??
+      (invite.roleId
+        ? await this.roleRepository.findOne({ where: { id: invite.roleId } })
+        : null);
+    const invitedBy =
+      invite.invitedBy ??
+      (invite.invitedById
+        ? await this.userRepository.findOne({ where: { id: invite.invitedById } })
+        : null);
     const organization =
       options.includeOrganization && invite.organizationId
         ? await this.organizationRepository.findOne({
@@ -396,8 +467,9 @@ export class InviteService {
       existingUser: Boolean(existingUser),
       expireDate: invite.expireDate,
       id: invite.id,
+      invitedBy: invitedBy ? toInviteUserDto(invitedBy) : null,
       invitedById: invite.invitedById,
-      link: buildInviteLink(invite),
+      link: await this.buildInviteLink(invite),
       organization: organization
         ? {
             id: organization.id,
@@ -408,17 +480,47 @@ export class InviteService {
             slug: organization.slug,
           }
         : undefined,
+      role: role ? toInviteRoleDto(role) : null,
       roleId: invite.roleId,
       status: deriveInviteStatus(invite),
     };
   }
+
+  private async buildInviteLink(invite: Invite) {
+    const baseUrl = await this.settingsService.getPlatformValue(
+      PLATFORM_SETTING_KEYS.publicBaseUrl,
+      resolvePublicBaseUrl(),
+    );
+    const url = new URL("/invite", baseUrl || resolvePublicBaseUrl());
+    if (invite.email) {
+      url.searchParams.set("email", invite.email);
+    }
+    url.searchParams.set("token", invite.token);
+    return url.toString();
+  }
 }
 
-function buildInviteLink(invite: Invite) {
-  const url = new URL("/invite", resolvePublicBaseUrl());
-  url.searchParams.set("email", invite.email);
-  url.searchParams.set("token", invite.token);
-  return url.toString();
+function toInviteRoleDto(role: Role) {
+  return {
+    color: role.color,
+    displayName: role.displayName,
+    id: role.id,
+    isSystem: role.isSystem,
+    label: role.label,
+    name: role.name,
+  };
+}
+
+function toInviteUserDto(user: User) {
+  const dto = toUserDto(user);
+  return {
+    avatarUrl: dto.avatarUrl,
+    displayName: dto.displayName,
+    email: dto.email,
+    id: dto.id,
+    imageUrl: dto.imageUrl,
+    username: dto.username,
+  };
 }
 
 function resolvePublicBaseUrl() {
@@ -451,7 +553,7 @@ function computeExpireDate(expiresIn: InviteExpiry) {
 }
 
 function signInviteToken(
-  email: string,
+  email: string | null,
   organizationId: string,
   expiresIn: InviteExpiry,
 ) {
@@ -473,6 +575,13 @@ function deriveInviteStatus(invite: Invite): InviteStatus {
 function requireOrganizationId(invite: Invite) {
   if (!invite.organizationId) throw new BadRequestException("邀请缺少组织信息");
   return invite.organizationId;
+}
+
+function resolveAcceptanceEmail(invite: Invite, payloadEmail: string | undefined) {
+  if (invite.email) return invite.email;
+  const normalizedEmail = normalizeEmail(payloadEmail);
+  if (!normalizedEmail) throw new BadRequestException("邮箱不能为空");
+  return normalizedEmail;
 }
 
 function requireText(value: string | undefined, label: string) {

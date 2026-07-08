@@ -12,10 +12,12 @@ import { AuthModule } from "../auth/auth.module.js";
 import { OrganizationsController } from "./organizations.controller.js";
 import { OrganizationsService } from "./organizations.service.js";
 import { SettingsModule } from "../settings/settings.module.js";
+import { MailModule } from "../mail/mail.module.js";
 
 @Module({
   imports: [
     AuthModule,
+    MailModule,
     SettingsModule,
     TypeOrmModule.forFeature([
       Organization,

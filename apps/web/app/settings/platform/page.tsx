@@ -7,7 +7,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAdminShell } from "@/components/admin-shell";
 import { useNotifications } from "@/components/app-notifications";
@@ -15,7 +14,6 @@ import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { PlatformMemberManagement } from "@/components/platform-member-management";
 import { PlatformRolePermissions } from "@/components/platform-role-permissions";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
@@ -57,10 +54,10 @@ import {
   TIME_ZONE_OPTIONS,
 } from "@hermes-swarm/core/settings/definitions";
 import {
-  listOrganizations,
+  getPlatformSmtpConfig,
   listSystemSettings,
+  savePlatformSmtpConfig,
   saveSystemSettings,
-  type Organization,
   type SettingPayloadEntry,
   type SettingPayloadValue,
   type SmtpConfig,
@@ -85,13 +82,16 @@ type PlatformForm = {
   messageServiceProvider: string;
   passwordMinLength: string;
   platformTitle: string;
+  publicBaseUrl: string;
   publicSmtpEnabled: boolean;
+  rootDomain: string;
   smtpFromAddress: string;
   smtpHost: string;
   smtpPassword: string;
   smtpPort: string;
   smtpSecure: boolean;
   smtpUsername: string;
+  subdomainRoutingEnabled: boolean;
   ticketingPlatformSubmissionEnabled: boolean;
   ticketingVisible: boolean;
 };
@@ -101,7 +101,6 @@ type PlatformTab =
   | "custom"
   | "defaults"
   | "messaging"
-  | "organization"
   | "profile"
   | "roles"
   | "smtp";
@@ -116,7 +115,6 @@ export default function PlatformPage() {
   const [activeTab, setActiveTab] = useState<PlatformTab>("profile");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [form, setForm] = useState<PlatformForm>(emptyPlatformForm());
   const [systemSettings, setSystemSettings] = useState<SystemSettingDto[]>([]);
   const [customSystemSettingToDelete, setCustomSystemSettingToDelete] =
@@ -173,18 +171,9 @@ export default function PlatformPage() {
     snapshot && resolvedSession
       ? access.hasPermission("user.platform_user.search:platform")
       : false;
-  const canViewOrganizations =
-    canViewPlatform &&
-    Boolean(
-      snapshot && resolvedSession
-        ? access.hasPageAccess("settings.organizations")
-        : false,
-    );
 
-  const activeOrganizations = useMemo(
-    () => organizations.filter((item) => item.status === "active").length,
-    [organizations],
-  );
+  const publicSmtpMissingHost =
+    form.publicSmtpEnabled && !form.smtpHost.trim();
   const customSystemSettings = useMemo(() => {
     const knownNames = new Set<string>(KNOWN_PLATFORM_SETTING_KEYS);
     return systemSettings.filter((setting) => !knownNames.has(setting.name));
@@ -204,27 +193,32 @@ export default function PlatformPage() {
 
     setLoading(true);
     try {
-      const [settings, orgs] = await Promise.all([
+      const [settings, smtp] = await Promise.all([
         listSystemSettings(token),
-        canViewOrganizations ? listOrganizations(token) : Promise.resolve([]),
+        getPlatformSmtpConfig(token).catch(() => null),
       ]);
-      setForm(toPlatformForm(settings, null));
+      setForm(toPlatformForm(settings, smtp));
       setSystemSettings(settings);
-      setOrganizations(orgs);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [canViewOrganizations, canViewPlatform, tr]);
+  }, [canViewPlatform, tr]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
-    setActiveTab(isPlatformTab(requestedTab) ? requestedTab : "profile");
+    setActiveTab(
+      requestedTab === "organization"
+        ? "defaults"
+        : isPlatformTab(requestedTab)
+          ? requestedTab
+          : "profile",
+    );
   }, [requestedTab]);
 
   function updateField<K extends keyof PlatformForm>(
@@ -262,6 +256,12 @@ export default function PlatformPage() {
           platformSettingEntry("defaultRegionCode", form.defaultRegionCode),
           platformSettingEntry("defaultTimeZone", form.defaultTimeZone),
           platformSettingEntry("passwordMinLength", form.passwordMinLength),
+          platformSettingEntry("publicBaseUrl", form.publicBaseUrl),
+          platformSettingEntry("rootDomain", form.rootDomain),
+          platformSettingEntry(
+            "subdomainRoutingEnabled",
+            form.subdomainRoutingEnabled,
+          ),
           platformSettingEntry(
             "messageServiceEnabled",
             form.messageServiceEnabled,
@@ -300,6 +300,16 @@ export default function PlatformPage() {
           platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
         ],
       });
+      if (form.publicSmtpEnabled || form.smtpHost.trim()) {
+        await savePlatformSmtpConfig(token, {
+          fromAddress: nullableText(form.smtpFromAddress),
+          host: form.smtpHost,
+          password: nullableText(form.smtpPassword) ?? undefined,
+          port: Number(form.smtpPort),
+          secure: form.smtpSecure,
+          username: nullableText(form.smtpUsername),
+        });
+      }
       notifications.success(tr("公共 SMTP 已保存"));
       await load();
     } catch (err) {
@@ -360,11 +370,6 @@ export default function PlatformPage() {
           <h1 className="text-lg font-semibold">{tr("平台设置")}</h1>
           <p className="text-sm">{tr("平台默认值、组织治理与公共服务")}</p>
         </div>
-        {canViewOrganizations && (
-          <Badge variant="secondary">
-            {activeOrganizations}/{organizations.length} {tr("活跃组织")}
-          </Badge>
-        )}
       </div>
 
       {error && (
@@ -383,7 +388,7 @@ export default function PlatformPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
-              <div className="max-w-xl">
+              <div className="grid gap-4 md:grid-cols-2">
                 <Field htmlFor="platform-title" label={tr("平台名称")}>
                   <Input
                     disabled={!canManagePlatform}
@@ -395,6 +400,37 @@ export default function PlatformPage() {
                     value={form.platformTitle}
                   />
                 </Field>
+                <Field htmlFor="platform-public-base-url" label={tr("访问地址")}>
+                  <Input
+                    disabled={!canManagePlatform}
+                    id="platform-public-base-url"
+                    onChange={(event) =>
+                      updateField("publicBaseUrl", event.target.value)
+                    }
+                    placeholder="https://console.example.com"
+                    value={form.publicBaseUrl}
+                  />
+                </Field>
+                <Field htmlFor="platform-root-domain" label={tr("主域名")}>
+                  <Input
+                    disabled={!canManagePlatform}
+                    id="platform-root-domain"
+                    onChange={(event) =>
+                      updateField("rootDomain", event.target.value)
+                    }
+                    placeholder="example.com"
+                    value={form.rootDomain}
+                  />
+                </Field>
+                <ToggleField
+                  checked={form.subdomainRoutingEnabled}
+                  disabled={!canManagePlatform}
+                  id="platform-subdomain-routing"
+                  label={tr("启用组织子域名路由")}
+                  onCheckedChange={(checked) =>
+                    updateField("subdomainRoutingEnabled", checked)
+                  }
+                />
               </div>
               <div className="flex justify-end">
                 <Button
@@ -542,6 +578,38 @@ export default function PlatformPage() {
                     </SelectContent>
                   </Select>
                 </Field>
+                <ToggleField
+                  checked={form.allowOrganizationCreation}
+                  disabled={!canManagePlatform}
+                  id="platform-org-creation"
+                  label={tr("允许创建组织")}
+                  onCheckedChange={(checked) =>
+                    updateField("allowOrganizationCreation", checked)
+                  }
+                />
+                <Field htmlFor="platform-org-status" label={tr("新组织默认状态")}>
+                  <Select
+                    disabled={!canManagePlatform}
+                    onValueChange={(value) =>
+                      updateField(
+                        "defaultOrganizationStatus",
+                        value as PlatformForm["defaultOrganizationStatus"],
+                      )
+                    }
+                    value={form.defaultOrganizationStatus}
+                  >
+                    <SelectTrigger id="platform-org-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ORGANIZATION_STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {tr(option.label)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
               </div>
               <div className="flex justify-end">
                 <Button
@@ -554,133 +622,6 @@ export default function PlatformPage() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="organization">
-          <div
-            className={
-              canViewOrganizations
-                ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]"
-                : "grid gap-4"
-            }
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>{tr("组织创建设置")}</CardTitle>
-                <CardDescription>
-                  {tr("控制新组织创建入口和默认状态")}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <ToggleField
-                    checked={form.allowOrganizationCreation}
-                    disabled={!canManagePlatform}
-                    id="platform-org-creation"
-                    label={tr("允许创建组织")}
-                    onCheckedChange={(checked) =>
-                      updateField("allowOrganizationCreation", checked)
-                    }
-                  />
-                  <Field htmlFor="platform-org-status" label={tr("新组织默认状态")}>
-                    <Select
-                      disabled={!canManagePlatform}
-                      onValueChange={(value) =>
-                        updateField(
-                          "defaultOrganizationStatus",
-                          value as PlatformForm["defaultOrganizationStatus"],
-                        )
-                      }
-                      value={form.defaultOrganizationStatus}
-                    >
-                      <SelectTrigger id="platform-org-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ORGANIZATION_STATUS_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {tr(option.label)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    disabled={!canManagePlatform || savingPlatform}
-                    onClick={savePlatform}
-                    type="button"
-                  >
-                    {tr("保存")}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {canViewOrganizations && (
-              <Card>
-                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <CardTitle>{tr("组织配置")}</CardTitle>
-                    <CardDescription>
-                      {tr("平台下全部组织的配置入口")}
-                    </CardDescription>
-                  </div>
-                  <Button asChild size="sm" variant="outline">
-                    <Link href="/settings/organizations">
-                      <AppIcon className="size-3.5" name="building" />
-                      {tr("组织列表")}
-                    </Link>
-                  </Button>
-                </CardHeader>
-                <CardContent className="grid gap-2">
-                  {organizations.slice(0, 6).map((organization) => (
-                    <Link
-                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm hover:bg-muted/50"
-                      href={`/settings/organizations/${organization.id}`}
-                      key={organization.id}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">
-                          {organization.name}
-                        </span>
-                        <span className="block truncate font-mono text-xs">
-                          {organization.slug}
-                        </span>
-                      </span>
-                      <Badge
-                        variant={
-                          organization.status === "active"
-                            ? "default"
-                            : "secondary"
-                        }
-                      >
-                        {organization.status === "active"
-                          ? tr("启用")
-                          : tr("停用")}
-                      </Badge>
-                    </Link>
-                  ))}
-                  {organizations.length === 0 && (
-                    <div className="rounded-md border bg-muted/30 px-3 py-6 text-center text-sm">
-                      {tr("暂无组织")}
-                    </div>
-                  )}
-                  {organizations.length > 6 && (
-                    <>
-                      <Separator />
-                      <Button asChild size="sm" variant="ghost">
-                        <Link href="/settings/organizations">
-                          {tr("查看全部组织")}
-                        </Link>
-                      </Button>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
         </TabsContent>
 
         <TabsContent value="messaging">
@@ -846,7 +787,9 @@ export default function PlatformPage() {
               </div>
               <div className="flex justify-end">
                 <Button
-                  disabled={!canManagePlatform || savingSmtp}
+                  disabled={
+                    !canManagePlatform || savingSmtp || publicSmtpMissingHost
+                  }
                   onClick={savePublicSmtp}
                   type="button"
                   variant="outline"
@@ -1068,7 +1011,6 @@ function isPlatformTab(value: string | null): value is PlatformTab {
     value === "custom" ||
     value === "defaults" ||
     value === "messaging" ||
-    value === "organization" ||
     value === "profile" ||
     value === "roles" ||
     value === "smtp"
@@ -1093,13 +1035,16 @@ function emptyPlatformForm(): PlatformForm {
     passwordMinLength:
       PLATFORM_SETTING_DEFINITIONS.passwordMinLength.defaultValue,
     platformTitle: "",
+    publicBaseUrl: PLATFORM_SETTING_DEFINITIONS.publicBaseUrl.defaultValue,
     publicSmtpEnabled: false,
+    rootDomain: PLATFORM_SETTING_DEFINITIONS.rootDomain.defaultValue,
     smtpFromAddress: "",
     smtpHost: "",
     smtpPassword: "",
     smtpPort: "587",
     smtpSecure: false,
     smtpUsername: "",
+    subdomainRoutingEnabled: false,
     ticketingPlatformSubmissionEnabled: true,
     ticketingVisible: true,
   };
@@ -1133,13 +1078,19 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
     messageServiceProvider: getDefined("messageServiceProvider"),
     passwordMinLength: getDefined("passwordMinLength"),
     platformTitle: get(PLATFORM_TITLE_SETTING_KEY) || "",
+    publicBaseUrl: getDefined("publicBaseUrl"),
     publicSmtpEnabled: parseBoolean(getDefined("publicSmtpEnabled"), false),
+    rootDomain: getDefined("rootDomain"),
     smtpFromAddress: smtp?.fromAddress ?? "",
     smtpHost: smtp?.host ?? "",
     smtpPassword: "",
     smtpPort: smtp?.port ? String(smtp.port) : "587",
     smtpSecure: Boolean(smtp?.secure),
     smtpUsername: smtp?.username ?? "",
+    subdomainRoutingEnabled: parseBoolean(
+      getDefined("subdomainRoutingEnabled"),
+      false,
+    ),
     ticketingPlatformSubmissionEnabled: parseBoolean(
       getDefined("ticketingPlatformSubmissionEnabled"),
       true,

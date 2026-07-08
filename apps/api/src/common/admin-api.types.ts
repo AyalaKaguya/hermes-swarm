@@ -236,7 +236,7 @@ export type InviteDto = {
   acceptedUserId: string | null;
   closedAt: Date | null;
   id: string;
-  email: string;
+  email: string | null;
   existingUser?: boolean;
   link?: string;
   organization?: {
@@ -247,6 +247,22 @@ export type InviteDto = {
     shortDescription: string | null;
     slug: string;
   };
+  invitedBy?: {
+    avatarUrl: string | null;
+    displayName: string;
+    email: string;
+    id: string;
+    imageUrl: string | null;
+    username: string | null;
+  } | null;
+  role?: {
+    color: string | null;
+    displayName: string | null;
+    id: string;
+    isSystem: boolean;
+    label: string;
+    name: string;
+  } | null;
   token?: string;
   status: "invited" | "accepted" | "declined" | "expired" | "revoked";
   createdAt: Date;

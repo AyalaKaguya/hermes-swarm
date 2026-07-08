@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -147,6 +148,9 @@ export function LoginPage() {
               type="submit"
             >
               {t("auth.signIn")}
+            </Button>
+            <Button asChild className="w-full" variant="ghost">
+              <Link href="/forgot-password">忘记密码</Link>
             </Button>
           </form>
         </CardContent>

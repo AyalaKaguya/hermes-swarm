@@ -27,10 +27,11 @@ export class Invite extends OrganizationBaseEntity {
   token!: string;
 
   /**
-   * Invitee email address.
+   * Invitee email address. Null means this is a reusable organization invite
+   * link rather than a directed email invite.
    */
-  @Column({ type: "varchar", length: 240 })
-  email!: string;
+  @Column({ type: "varchar", length: 240, nullable: true })
+  email!: string | null;
 
   /**
    * Current lifecycle status.

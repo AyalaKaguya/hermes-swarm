@@ -66,14 +66,6 @@ export const INFRASTRUCTURE_NAV_ITEMS = BASE_INFRASTRUCTURE_NAV_ITEMS.flatMap(
               permission: item.permission,
             },
             {
-              href: "/settings/platform?tab=organization",
-              icon: "building" as AppIconName,
-              key: "settings.platform.organization",
-              label: "组织创建",
-              pageKey: item.pageKey,
-              permission: item.permission,
-            },
-            {
               href: "/settings/platform?tab=messaging",
               icon: "bell" as AppIconName,
               key: "settings.platform.messaging",
