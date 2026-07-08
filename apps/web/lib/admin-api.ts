@@ -3,6 +3,7 @@ import {
   type SettingValueOption,
   type SettingValueType,
 } from "@hermes-swarm/core/settings/definitions";
+import type { AuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 
 export type OrganizationStatus = "active" | "suspended";
 export type RequestScopeLevel = "organization" | "platform";
@@ -581,7 +582,6 @@ export async function fetchAdmin<T>(
   options?: {
     body?: unknown;
     method?: string;
-    token?: string | null;
   },
 ): Promise<T> {
   const response = await sendAdminRequest(path, options);
@@ -593,7 +593,6 @@ async function sendAdminRequest(
   options?: {
     body?: unknown;
     method?: string;
-    token?: string | null;
   },
 ) {
   const headers = new Headers();
@@ -679,7 +678,7 @@ function maskSecretSettingPayload(value: unknown): unknown {
   return item;
 }
 
-export async function uploadAdminFile(token: string, file: File) {
+export async function uploadAdminFile(session: AuthenticatedAdminSessionMarker, file: File) {
   const body = new FormData();
   body.append("file", file);
 
@@ -724,8 +723,8 @@ export async function refreshAuthSession() {
   });
 }
 
-export async function logoutAuthSession(token: string | null | undefined) {
-  await fetchAdmin<void>("/auth/logout", { method: "POST", token }).catch(
+export async function logoutAuthSession() {
+  await fetchAdmin<void>("/auth/logout", { method: "POST" }).catch(
     () => undefined,
   );
 }
@@ -755,47 +754,44 @@ export function resetPassword(payload: {
   });
 }
 
-export function listAuthSessions(token: string) {
-  return fetchAdmin<AuthSessionDevice[]>("/auth/sessions", { token });
+export function listAuthSessions(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<AuthSessionDevice[]>("/auth/sessions", {});
 }
 
-export function revokeAuthSession(token: string, sessionId: string) {
+export function revokeAuthSession(session: AuthenticatedAdminSessionMarker, sessionId: string) {
   return fetchAdmin<void>(`/auth/sessions/${sessionId}`, {
     method: "DELETE",
-    token,
   });
 }
 
-export function deleteAuthSessionRecord(token: string, sessionId: string) {
+export function deleteAuthSessionRecord(session: AuthenticatedAdminSessionMarker, sessionId: string) {
   return fetchAdmin<void>(`/auth/sessions/${sessionId}/record`, {
     method: "DELETE",
-    token,
   });
 }
 
-export function revokeOtherAuthSessions(token: string) {
+export function revokeOtherAuthSessions(session: AuthenticatedAdminSessionMarker) {
   return fetchAdmin<void>("/auth/sessions", {
     method: "DELETE",
-    token,
   });
 }
 
-export function getIntegrationTokenCapabilities(token: string, userId: string) {
+export function getIntegrationTokenCapabilities(session: AuthenticatedAdminSessionMarker, userId: string) {
   return fetchAdmin<IntegrationTokenCapabilities>(
     `/users/${userId}/integration-tokens/capabilities`,
-    { token },
+    {},
   );
 }
 
-export function listIntegrationTokens(token: string, userId: string) {
+export function listIntegrationTokens(session: AuthenticatedAdminSessionMarker, userId: string) {
   return fetchAdmin<IntegrationToken[]>(
     `/users/${userId}/integration-tokens`,
-    { token },
+    {},
   );
 }
 
 export function createIntegrationToken(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   userId: string,
   payload: {
     expiresAt?: string;
@@ -807,94 +803,92 @@ export function createIntegrationToken(
 ) {
   return fetchAdmin<CreatedIntegrationToken>(
     `/users/${userId}/integration-tokens`,
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
 export function revokeIntegrationToken(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   userId: string,
   integrationTokenId: string,
 ) {
   return fetchAdmin<void>(
     `/users/${userId}/integration-tokens/${integrationTokenId}`,
-    { method: "DELETE", token },
+    { method: "DELETE" },
   );
 }
 
 export function listOrganizationIntegrationTokens(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
 ) {
   return fetchAdmin<IntegrationToken[]>(
     `/organizations/${organizationId}/integration-tokens`,
-    { token },
+    {},
   );
 }
 
 export function revokeOrganizationIntegrationToken(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   integrationTokenId: string,
 ) {
   return fetchAdmin<void>(
     `/organizations/${organizationId}/integration-tokens/${integrationTokenId}`,
-    { method: "DELETE", token },
+    { method: "DELETE" },
   );
 }
 
-export function listPlatformIntegrationTokens(token: string) {
+export function listPlatformIntegrationTokens(session: AuthenticatedAdminSessionMarker) {
   return fetchAdmin<IntegrationToken[]>("/platform/integration-tokens", {
-    token,
   });
 }
 
 export function revokePlatformIntegrationToken(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   integrationTokenId: string,
 ) {
   return fetchAdmin<void>(
     `/platform/integration-tokens/${integrationTokenId}`,
-    { method: "DELETE", token },
+    { method: "DELETE" },
   );
 }
 
-export function getOrganizationInvites(token: string, organizationId: string) {
+export function getOrganizationInvites(session: AuthenticatedAdminSessionMarker, organizationId: string) {
   return fetchAdmin<Invite[]>(`/organizations/${organizationId}/invites`, {
-    token,
   });
 }
 
 export function createOrganizationInvites(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   payload: { emailIds?: string[]; expiresIn?: "3d" | "7d" | "never"; roleId?: string },
 ) {
   return fetchAdmin<{ ignored: number; items: Invite[]; total: number }>(
     `/organizations/${organizationId}/invites`,
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
 export function resendOrganizationInvite(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   inviteId: string,
 ) {
   return fetchAdmin<Invite>(
     `/organizations/${organizationId}/invites/${inviteId}/resend`,
-    { method: "POST", token },
+    { method: "POST" },
   );
 }
 
 export function deleteOrganizationInvite(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   inviteId: string,
 ) {
   return fetchAdmin<void>(
     `/organizations/${organizationId}/invites/${inviteId}`,
-    { method: "DELETE", token },
+    { method: "DELETE" },
   );
 }
 
@@ -918,18 +912,18 @@ export function acceptInvite(payload: {
   });
 }
 
-export function fetchMe(token?: string) {
-  return fetchAdmin<PrincipalSession>("/auth/me", { token });
+export function fetchMe(session?: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<PrincipalSession>("/auth/me", {});
 }
 
-export function searchUsers(token: string, search: string) {
+export function searchUsers(session: AuthenticatedAdminSessionMarker, search: string) {
   const suffix = search.trim()
     ? `?search=${encodeURIComponent(search.trim())}`
     : "";
-  return fetchAdmin<User[]>(`/users/search${suffix}`, { token });
+  return fetchAdmin<User[]>(`/users/search${suffix}`, {});
 }
 
-export function updateUser(token: string, userId: string, payload: {
+export function updateUser(session: AuthenticatedAdminSessionMarker, userId: string, payload: {
   displayName?: string;
   email?: string;
   firstName?: string | null;
@@ -938,25 +932,24 @@ export function updateUser(token: string, userId: string, payload: {
   mobile?: string | null;
   username?: string | null;
 }) {
-  return fetchAdmin<User>(`/users/${userId}`, { body: payload, method: "PATCH", token });
+  return fetchAdmin<User>(`/users/${userId}`, { body: payload, method: "PATCH" });
 }
 
-export function updateUserPassword(token: string, userId: string, payload: {
+export function updateUserPassword(session: AuthenticatedAdminSessionMarker, userId: string, payload: {
   currentPassword: string;
   password: string;
 }) {
-  return fetchAdmin<void>(`/users/${userId}/password`, { body: payload, method: "POST", token });
+  return fetchAdmin<void>(`/users/${userId}/password`, { body: payload, method: "POST" });
 }
 
 export function updateUserPreferredLanguage(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   userId: string,
   preferredLanguage: string,
 ) {
   return fetchAdmin<User>(`/users/${userId}/preferred-language`, {
     body: { preferredLanguage },
     method: "PATCH",
-    token,
   });
 }
 
@@ -987,17 +980,17 @@ type SmtpScopeOptions = {
   organizationId?: string;
 };
 
-export function getSmtpConfig(token: string, options?: SmtpScopeOptions) {
+export function getSmtpConfig(session: AuthenticatedAdminSessionMarker, options?: SmtpScopeOptions) {
   if (!options?.organizationId) {
     throw new Error("缺少组织 ID");
   }
   return fetchAdmin<SmtpConfig | null>(
     `/organizations/${options.organizationId}/mail/smtp`,
-    { token },
+    {},
   );
 }
 
-export function saveSmtpConfig(token: string, payload: {
+export function saveSmtpConfig(session: AuthenticatedAdminSessionMarker, payload: {
   fromAddress?: string | null;
   host?: string;
   isValidated?: boolean;
@@ -1011,11 +1004,11 @@ export function saveSmtpConfig(token: string, payload: {
   }
   return fetchAdmin<SmtpConfig>(
     `/organizations/${options.organizationId}/mail/smtp`,
-    { body: payload, method: "PUT", token },
+    { body: payload, method: "PUT" },
   );
 }
 
-export function validateSmtpConfig(token: string, payload: {
+export function validateSmtpConfig(session: AuthenticatedAdminSessionMarker, payload: {
   fromAddress?: string | null;
   host?: string;
   password?: string | null;
@@ -1028,15 +1021,15 @@ export function validateSmtpConfig(token: string, payload: {
   }
   return fetchAdmin<{ ok: boolean }>(
     `/organizations/${options.organizationId}/mail/smtp/validate`,
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
-export function getPlatformSmtpConfig(token: string) {
-  return fetchAdmin<SmtpConfig | null>("/platform/mail/smtp", { token });
+export function getPlatformSmtpConfig(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<SmtpConfig | null>("/platform/mail/smtp", {});
 }
 
-export function savePlatformSmtpConfig(token: string, payload: {
+export function savePlatformSmtpConfig(session: AuthenticatedAdminSessionMarker, payload: {
   fromAddress?: string | null;
   host?: string;
   isValidated?: boolean;
@@ -1048,11 +1041,10 @@ export function savePlatformSmtpConfig(token: string, payload: {
   return fetchAdmin<SmtpConfig>("/platform/mail/smtp", {
     body: payload,
     method: "PATCH",
-    token,
   });
 }
 
-export function validatePlatformSmtpConfig(token: string, payload: {
+export function validatePlatformSmtpConfig(session: AuthenticatedAdminSessionMarker, payload: {
   fromAddress?: string | null;
   host?: string;
   password?: string | null;
@@ -1063,44 +1055,42 @@ export function validatePlatformSmtpConfig(token: string, payload: {
   return fetchAdmin<{ ok: boolean }>("/platform/mail/smtp/validate", {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
-export function createUser(token: string, payload: {
+export function createUser(session: AuthenticatedAdminSessionMarker, payload: {
   displayName?: string;
   email?: string;
   password?: string;
   roleId?: string | null;
   status?: UserStatus;
 }) {
-  return fetchAdmin<User>("/users", { body: payload, method: "POST", token });
+  return fetchAdmin<User>("/users", { body: payload, method: "POST" });
 }
 
-export function updateManagedUser(token: string, userId: string, payload: {
+export function updateManagedUser(session: AuthenticatedAdminSessionMarker, userId: string, payload: {
   displayName?: string;
   email?: string;
   roleId?: string | null;
   status?: UserStatus;
 }) {
-  return fetchAdmin<User>(`/users/platform/${userId}`, { body: payload, method: "PATCH", token });
+  return fetchAdmin<User>(`/users/platform/${userId}`, { body: payload, method: "PATCH" });
 }
 
-export function deleteManagedUser(token: string, userId: string) {
+export function deleteManagedUser(session: AuthenticatedAdminSessionMarker, userId: string) {
   return fetchAdmin<void>(`/users/platform/${userId}`, {
     method: "DELETE",
-    token,
   });
 }
 
-export function listEmailTemplates(token: string, organizationId: string) {
+export function listEmailTemplates(session: AuthenticatedAdminSessionMarker, organizationId: string) {
   return fetchAdmin<EmailTemplateDto[]>(
     `/organizations/${organizationId}/mail/templates`,
-    { token },
+    {},
   );
 }
 
-export function createEmailTemplate(token: string, organizationId: string, payload: {
+export function createEmailTemplate(session: AuthenticatedAdminSessionMarker, organizationId: string, payload: {
   hbs: string;
   languageCode: string;
   mjml?: string | null;
@@ -1109,11 +1099,11 @@ export function createEmailTemplate(token: string, organizationId: string, paylo
 }) {
   return fetchAdmin<EmailTemplateDto>(
     `/organizations/${organizationId}/mail/templates`,
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
-export function updateEmailTemplate(token: string, organizationId: string, templateId: string, payload: Partial<{
+export function updateEmailTemplate(session: AuthenticatedAdminSessionMarker, organizationId: string, templateId: string, payload: Partial<{
   hbs: string;
   languageCode: string;
   mjml: string | null;
@@ -1122,22 +1112,22 @@ export function updateEmailTemplate(token: string, organizationId: string, templ
 }>) {
   return fetchAdmin<EmailTemplateDto>(
     `/organizations/${organizationId}/mail/templates/${templateId}`,
-    { body: payload, method: "PATCH", token },
+    { body: payload, method: "PATCH" },
   );
 }
 
-export function deleteEmailTemplate(token: string, organizationId: string, templateId: string) {
+export function deleteEmailTemplate(session: AuthenticatedAdminSessionMarker, organizationId: string, templateId: string) {
   return fetchAdmin<void>(
     `/organizations/${organizationId}/mail/templates/${templateId}`,
-    { method: "DELETE", token },
+    { method: "DELETE" },
   );
 }
 
-export function listPlatformEmailTemplates(token: string) {
-  return fetchAdmin<EmailTemplateDto[]>("/platform/mail/templates", { token });
+export function listPlatformEmailTemplates(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<EmailTemplateDto[]>("/platform/mail/templates", {});
 }
 
-export function createPlatformEmailTemplate(token: string, payload: {
+export function createPlatformEmailTemplate(session: AuthenticatedAdminSessionMarker, payload: {
   description?: string | null;
   hbs?: string;
   languageCode?: string;
@@ -1148,11 +1138,10 @@ export function createPlatformEmailTemplate(token: string, payload: {
   return fetchAdmin<EmailTemplateDto>("/platform/mail/templates", {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
-export function updatePlatformEmailTemplate(token: string, templateId: string, payload: Partial<{
+export function updatePlatformEmailTemplate(session: AuthenticatedAdminSessionMarker, templateId: string, payload: Partial<{
   description: string | null;
   hbs: string;
   languageCode: string;
@@ -1162,229 +1151,224 @@ export function updatePlatformEmailTemplate(token: string, templateId: string, p
 }>) {
   return fetchAdmin<EmailTemplateDto>(
     `/platform/mail/templates/${templateId}`,
-    { body: payload, method: "PATCH", token },
+    { body: payload, method: "PATCH" },
   );
 }
 
-export function deletePlatformEmailTemplate(token: string, templateId: string) {
+export function deletePlatformEmailTemplate(session: AuthenticatedAdminSessionMarker, templateId: string) {
   return fetchAdmin<void>(`/platform/mail/templates/${templateId}`, {
     method: "DELETE",
-    token,
   });
 }
 
-export function listSystemSettings(token: string) {
-  return fetchAdmin<SystemSettingDto[]>("/platform/settings", { token });
+export function listSystemSettings(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<SystemSettingDto[]>("/platform/settings", {});
 }
 
-export function listOrganizationSettings(token: string, organizationId: string) {
+export function listOrganizationSettings(session: AuthenticatedAdminSessionMarker, organizationId: string) {
   return fetchAdmin<OrganizationSetting[]>(
     `/organizations/${organizationId}/settings`,
-    { token },
+    {},
   );
 }
 
 export function saveOrganizationSettings(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   settings: SaveSettingsPayload,
 ) {
   return fetchAdmin<OrganizationSetting[]>(
     `/organizations/${organizationId}/settings`,
-    { body: settings, method: "PUT", token },
+    { body: settings, method: "PUT" },
   );
 }
 
 export function saveSystemSettings(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   settings: SaveSettingsPayload,
 ) {
-  return fetchAdmin<SystemSettingDto[]>("/platform/settings", { body: settings, method: "PUT", token });
+  return fetchAdmin<SystemSettingDto[]>("/platform/settings", { body: settings, method: "PUT" });
 }
 
-export function listOrganizations(token: string) {
-  return fetchAdmin<Organization[]>("/organizations", { token });
+export function listOrganizations(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<Organization[]>("/organizations", {});
 }
 
-export function getOrganization(token: string, organizationId: string) {
-  return fetchAdmin<Organization>(`/organizations/${organizationId}`, { token });
+export function getOrganization(session: AuthenticatedAdminSessionMarker, organizationId: string) {
+  return fetchAdmin<Organization>(`/organizations/${organizationId}`, {});
 }
 
 export function listOrganizationSettingsForOrganization(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
 ) {
   return fetchAdmin<OrganizationSetting[]>(
     `/organizations/${organizationId}/settings`,
-    { token },
+    {},
   );
 }
 
 export function saveOrganizationSettingsForOrganization(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   settings: SaveSettingsPayload,
 ) {
   return fetchAdmin<OrganizationSetting[]>(
     `/organizations/${organizationId}/settings`,
-    { body: settings, method: "PUT", token },
+    { body: settings, method: "PUT" },
   );
 }
 
 export function updateOrganization(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   payload: OrganizationPayload,
 ) {
   return fetchAdmin<Organization>(`/organizations/${organizationId}`, {
     body: payload,
     method: "PATCH",
-    token,
   });
 }
 
-export function createOrganization(token: string, payload: OrganizationPayload) {
+export function createOrganization(session: AuthenticatedAdminSessionMarker, payload: OrganizationPayload) {
   return fetchAdmin<Organization>("/organizations", {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
-export function listOrganizationMembers(token: string, organizationId: string) {
+export function listOrganizationMembers(session: AuthenticatedAdminSessionMarker, organizationId: string) {
   return fetchAdmin<OrganizationMembership[]>(
     `/organizations/${organizationId}/members`,
-    { token },
+    {},
   );
 }
 
 export function createOrganizationMember(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   payload: OrganizationMembershipPayload,
 ) {
   return fetchAdmin<OrganizationMembership>(
     `/organizations/${organizationId}/members`,
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
 export function updateOrganizationMember(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   membershipId: string,
   payload: OrganizationMembershipPayload,
 ) {
   return fetchAdmin<OrganizationMembership>(
     `/organizations/${organizationId}/members/${membershipId}`,
-    { body: payload, method: "PATCH", token },
+    { body: payload, method: "PATCH" },
   );
 }
 
 export function deleteOrganizationMember(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   membershipId: string,
 ) {
   return fetchAdmin<void>(
     `/organizations/${organizationId}/members/${membershipId}`,
-    { method: "DELETE", token },
+    { method: "DELETE" },
   );
 }
 
-export function listOrganizationGroups(token: string, organizationId: string) {
+export function listOrganizationGroups(session: AuthenticatedAdminSessionMarker, organizationId: string) {
   return fetchAdmin<OrganizationGroup[]>(
     `/organizations/${organizationId}/groups`,
-    { token },
+    {},
   );
 }
 
 export function createOrganizationGroup(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   payload: OrganizationGroupPayload,
 ) {
   return fetchAdmin<OrganizationGroup>(
     `/organizations/${organizationId}/groups`,
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
 export function getOrganizationGroup(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   groupId: string,
 ) {
   return fetchAdmin<OrganizationGroup>(
     `/organizations/${organizationId}/groups/${groupId}`,
-    { token },
+    {},
   );
 }
 
 export function updateOrganizationGroup(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   groupId: string,
   payload: OrganizationGroupPayload,
 ) {
   return fetchAdmin<OrganizationGroup>(
     `/organizations/${organizationId}/groups/${groupId}`,
-    { body: payload, method: "PATCH", token },
+    { body: payload, method: "PATCH" },
   );
 }
 
 export function deleteOrganizationGroup(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   groupId: string,
 ) {
   return fetchAdmin<void>(`/organizations/${organizationId}/groups/${groupId}`, {
     method: "DELETE",
-    token,
   });
 }
 
 export function listOrganizationGroupMembers(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   groupId: string,
 ) {
   return fetchAdmin<OrganizationGroupMember[]>(
     `/organizations/${organizationId}/groups/${groupId}/members`,
-    { token },
+    {},
   );
 }
 
 export function replaceOrganizationGroupMembers(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   groupId: string,
   membershipIds: string[],
 ) {
   return fetchAdmin<OrganizationGroupMember[]>(
     `/organizations/${organizationId}/groups/${groupId}/members`,
-    { body: { membershipIds }, method: "PUT", token },
+    { body: { membershipIds }, method: "PUT" },
   );
 }
 
-export function listOrganizationRoles(token: string, organizationId: string) {
-  return fetchAdmin<Role[]>(`/organizations/${organizationId}/roles`, { token });
+export function listOrganizationRoles(session: AuthenticatedAdminSessionMarker, organizationId: string) {
+  return fetchAdmin<Role[]>(`/organizations/${organizationId}/roles`, {});
 }
 
 export function createOrganizationRole(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   payload: RolePayload,
 ) {
   return fetchAdmin<Role>(`/organizations/${organizationId}/roles`, {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
 export function updateOrganizationRole(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   roleId: string,
   payload: RolePayload,
@@ -1392,132 +1376,122 @@ export function updateOrganizationRole(
   return fetchAdmin<Role>(`/organizations/${organizationId}/roles/${roleId}`, {
     body: payload,
     method: "PATCH",
-    token,
   });
 }
 
 export function replaceOrganizationRolePermissions(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   roleId: string,
   permissions: Array<{ enabled?: boolean; permission?: string }>,
 ) {
   return fetchAdmin<RolePermission[]>(
     `/organizations/${organizationId}/roles/${roleId}/permissions`,
-    { body: { permissions }, method: "PUT", token },
+    { body: { permissions }, method: "PUT" },
   );
 }
 
 export function deleteOrganizationRole(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   roleId: string,
 ) {
   return fetchAdmin<void>(`/organizations/${organizationId}/roles/${roleId}`, {
     method: "DELETE",
-    token,
   });
 }
 
 export function listPermissionCatalog(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   scope?: PermissionScope,
 ) {
   const suffix = scope ? `?scope=${encodeURIComponent(scope)}` : "";
   return fetchAdmin<PermissionCatalog>(`/permissions/catalog${suffix}`, {
-    token,
   });
 }
 
-export function listPlatformMembers(token: string) {
-  return fetchAdmin<PlatformMember[]>("/platform/members", { token });
+export function listPlatformMembers(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<PlatformMember[]>("/platform/members", {});
 }
 
-export function createPlatformMember(token: string, payload: PlatformMemberPayload) {
+export function createPlatformMember(session: AuthenticatedAdminSessionMarker, payload: PlatformMemberPayload) {
   return fetchAdmin<PlatformMember>("/platform/members", {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
 export function updatePlatformMember(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   memberId: string,
   payload: PlatformMemberPayload,
 ) {
   return fetchAdmin<PlatformMember>(`/platform/members/${memberId}`, {
     body: payload,
     method: "PATCH",
-    token,
   });
 }
 
-export function deletePlatformMember(token: string, memberId: string) {
+export function deletePlatformMember(session: AuthenticatedAdminSessionMarker, memberId: string) {
   return fetchAdmin<void>(`/platform/members/${memberId}`, {
     method: "DELETE",
-    token,
   });
 }
 
-export function listPlatformRoles(token: string) {
-  return fetchAdmin<Role[]>("/platform/roles", { token });
+export function listPlatformRoles(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<Role[]>("/platform/roles", {});
 }
 
-export function createPlatformRole(token: string, payload: RolePayload) {
+export function createPlatformRole(session: AuthenticatedAdminSessionMarker, payload: RolePayload) {
   return fetchAdmin<Role>("/platform/roles", {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
 export function updatePlatformRole(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   roleId: string,
   payload: RolePayload,
 ) {
   return fetchAdmin<Role>(`/platform/roles/${roleId}`, {
     body: payload,
     method: "PATCH",
-    token,
   });
 }
 
 export function replacePlatformRolePermissions(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   roleId: string,
   permissions: Array<{ enabled?: boolean; permission?: string }>,
 ) {
   return fetchAdmin<RolePermission[]>(`/platform/roles/${roleId}/permissions`, {
     body: { permissions },
     method: "PUT",
-    token,
   });
 }
 
-export function deletePlatformRole(token: string, roleId: string) {
+export function deletePlatformRole(session: AuthenticatedAdminSessionMarker, roleId: string) {
   return fetchAdmin<void>(`/platform/roles/${roleId}`, {
     method: "DELETE",
-    token,
   });
 }
 
-export function listNotificationDestinationTypes(token: string, organizationId: string) {
+export function listNotificationDestinationTypes(session: AuthenticatedAdminSessionMarker, organizationId: string) {
   return fetchAdmin<NotificationDestinationType[]>(
     `/organizations/${organizationId}/notification-destinations/types`,
-    { token },
+    {},
   );
 }
 
-export function listNotificationDestinations(token: string, organizationId: string) {
+export function listNotificationDestinations(session: AuthenticatedAdminSessionMarker, organizationId: string) {
   return fetchAdmin<NotificationDestination[]>(
     `/organizations/${organizationId}/notification-destinations`,
-    { token },
+    {},
   );
 }
 
-export function createNotificationDestination(token: string, organizationId: string, payload: {
+export function createNotificationDestination(session: AuthenticatedAdminSessionMarker, organizationId: string, payload: {
   name: string;
   options?: Record<string, unknown> | null;
   type: string;
@@ -1527,13 +1501,12 @@ export function createNotificationDestination(token: string, organizationId: str
     {
       body: payload,
       method: "POST",
-      token,
     },
   );
 }
 
 export function updateNotificationDestination(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   destinationId: string,
   payload: Partial<{
@@ -1547,30 +1520,28 @@ export function updateNotificationDestination(
     {
       body: payload,
       method: "PATCH",
-      token,
     },
   );
 }
 
-export function deleteNotificationDestination(token: string, organizationId: string, destinationId: string) {
+export function deleteNotificationDestination(session: AuthenticatedAdminSessionMarker, organizationId: string, destinationId: string) {
   return fetchAdmin<void>(
     `/organizations/${organizationId}/notification-destinations/${destinationId}`,
     {
       method: "DELETE",
-      token,
     },
   );
 }
 
-export function listNotificationDestinationGroups(token: string, organizationId: string, destinationId: string) {
+export function listNotificationDestinationGroups(session: AuthenticatedAdminSessionMarker, organizationId: string, destinationId: string) {
   return fetchAdmin<NotificationDestinationGroup[]>(
     `/organizations/${organizationId}/notification-destinations/${destinationId}/groups`,
-    { token },
+    {},
   );
 }
 
 export function listUserNotifications(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   options: { status?: UserNotificationStatus; take?: number } = {},
 ) {
   const params = new URLSearchParams();
@@ -1578,43 +1549,39 @@ export function listUserNotifications(
   if (options.take) params.set("take", String(options.take));
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
-  return fetchAdmin<UserNotification[]>(`/notifications${suffix}`, { token });
+  return fetchAdmin<UserNotification[]>(`/notifications${suffix}`, {});
 }
 
-export function getUnreadNotificationCount(token: string) {
-  return fetchAdmin<{ count: number }>("/notifications/unread-count", { token });
+export function getUnreadNotificationCount(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<{ count: number }>("/notifications/unread-count", {});
 }
 
-export function markNotificationRead(token: string, notificationId: string) {
+export function markNotificationRead(session: AuthenticatedAdminSessionMarker, notificationId: string) {
   return fetchAdmin<UserNotification>(`/notifications/${notificationId}/read`, {
     method: "PATCH",
-    token,
   });
 }
 
-export function markAllNotificationsRead(token: string) {
+export function markAllNotificationsRead(session: AuthenticatedAdminSessionMarker) {
   return fetchAdmin<{ ok: boolean }>("/notifications/read", {
     method: "PATCH",
-    token,
   });
 }
 
-export function dismissReadNotifications(token: string) {
+export function dismissReadNotifications(session: AuthenticatedAdminSessionMarker) {
   return fetchAdmin<{ ok: boolean }>("/notifications/read", {
     method: "DELETE",
-    token,
   });
 }
 
-export function dismissNotification(token: string, notificationId: string) {
+export function dismissNotification(session: AuthenticatedAdminSessionMarker, notificationId: string) {
   return fetchAdmin<void>(`/notifications/${notificationId}`, {
     method: "DELETE",
-    token,
   });
 }
 
 export function sendUserNotification(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   payload: {
     body?: string | null;
     kind?: UserNotificationKind;
@@ -1627,24 +1594,23 @@ export function sendUserNotification(
   return fetchAdmin<UserNotification[]>("/notifications", {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
 export function listOrganizationTickets(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   status?: TicketStatus,
 ) {
   const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
   return fetchAdmin<Ticket[]>(
     `/organizations/${organizationId}/tickets${suffix}`,
-    { token },
+    {},
   );
 }
 
 export function createOrganizationTicket(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   payload: {
     attachments?: TicketMessageAttachment[] | null;
@@ -1654,17 +1620,17 @@ export function createOrganizationTicket(
 ) {
   return fetchAdmin<Ticket & { firstMessage: TicketMessage }>(
     `/organizations/${organizationId}/tickets`,
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
-export function listPlatformTickets(token: string, status?: TicketStatus) {
+export function listPlatformTickets(session: AuthenticatedAdminSessionMarker, status?: TicketStatus) {
   const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
-  return fetchAdmin<Ticket[]>(`/tickets/platform${suffix}`, { token });
+  return fetchAdmin<Ticket[]>(`/tickets/platform${suffix}`, {});
 }
 
 export function createPlatformTicket(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   payload: {
     attachments?: TicketMessageAttachment[] | null;
     body: string;
@@ -1673,40 +1639,37 @@ export function createPlatformTicket(
 ) {
   return fetchAdmin<Ticket & { firstMessage: TicketMessage }>(
     "/tickets/platform",
-    { body: payload, method: "POST", token },
+    { body: payload, method: "POST" },
   );
 }
 
-export function getTicket(token: string, ticketId: string) {
-  return fetchAdmin<Ticket>(`/tickets/${ticketId}`, { token });
+export function getTicket(session: AuthenticatedAdminSessionMarker, ticketId: string) {
+  return fetchAdmin<Ticket>(`/tickets/${ticketId}`, {});
 }
 
-export function listTicketMessages(token: string, ticketId: string) {
-  return fetchAdmin<TicketMessage[]>(`/tickets/${ticketId}/messages`, { token });
+export function listTicketMessages(session: AuthenticatedAdminSessionMarker, ticketId: string) {
+  return fetchAdmin<TicketMessage[]>(`/tickets/${ticketId}/messages`, {});
 }
 
 export function sendTicketMessage(
-  token: string,
+  session: AuthenticatedAdminSessionMarker,
   ticketId: string,
   payload: { attachments?: TicketMessageAttachment[] | null; body: string },
 ) {
   return fetchAdmin<TicketMessage>(`/tickets/${ticketId}/messages`, {
     body: payload,
     method: "POST",
-    token,
   });
 }
 
-export function closeTicket(token: string, ticketId: string) {
+export function closeTicket(session: AuthenticatedAdminSessionMarker, ticketId: string) {
   return fetchAdmin<Ticket>(`/tickets/${ticketId}/close`, {
     method: "PATCH",
-    token,
   });
 }
 
-export function markTicketRead(token: string, ticketId: string) {
+export function markTicketRead(session: AuthenticatedAdminSessionMarker, ticketId: string) {
   return fetchAdmin<{ ok: boolean }>(`/tickets/${ticketId}/read`, {
     method: "PATCH",
-    token,
   });
 }

@@ -33,8 +33,8 @@ import {
   type NotificationDestinationType,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
@@ -53,7 +53,7 @@ export default function NotificationDestinationsPage() {
   );
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setLoading(false);
       return;
@@ -184,7 +184,7 @@ export default function NotificationDestinationsPage() {
           if (!deleting) return;
           if (!organizationId) return;
           await deleteNotificationDestination(
-            await requireAuthenticatedAdminToken(),
+            await requireAuthenticatedAdminSessionMarker(),
             organizationId,
             deleting.id,
           );
@@ -244,7 +244,7 @@ function DestinationForm({
       );
       const payload = { name: name.trim(), options: compactOptions, type };
       if (!organizationId) return;
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       if (item) {
         await updateNotificationDestination(token, organizationId, item.id, payload);
       } else {

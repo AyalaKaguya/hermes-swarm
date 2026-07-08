@@ -39,8 +39,8 @@ import {
   type OrganizationPayload,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
@@ -74,7 +74,7 @@ export default function OrganizationsPage() {
   const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !canViewPlatformOrganizations) {
       setLoading(false);
       return;
@@ -109,7 +109,7 @@ export default function OrganizationsPage() {
     setCreating(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const payload: OrganizationPayload = {
         name: createForm.name,
         slug: createForm.slug.trim() || undefined,

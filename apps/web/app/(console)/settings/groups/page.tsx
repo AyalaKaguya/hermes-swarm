@@ -37,8 +37,8 @@ import {
   type OrganizationMembership,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
@@ -101,7 +101,7 @@ export default function GroupsPage() {
   const memberDirty = !sameSet(selectedMemberIds, persistedMemberIds);
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setLoading(false);
       return;
@@ -128,7 +128,7 @@ export default function GroupsPage() {
   }, [organizationId, tr]);
 
   const loadGroupMembers = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId || !selectedGroup) {
       setSelectedMemberIds(new Set());
       setPersistedMemberIds(new Set());
@@ -183,7 +183,7 @@ export default function GroupsPage() {
     setError(null);
     setMessage("");
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const payload: OrganizationGroupPayload = {
         color: nullableText(groupForm.color),
         description: nullableText(groupForm.description),
@@ -217,7 +217,7 @@ export default function GroupsPage() {
     setError(null);
     setMessage("");
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await deleteOrganizationGroup(token, organizationId, group.id);
       setSelectedGroupId(null);
       setGroupToDelete(null);
@@ -249,7 +249,7 @@ export default function GroupsPage() {
     setError(null);
     setMessage("");
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await replaceOrganizationGroupMembers(
         token,
         organizationId,

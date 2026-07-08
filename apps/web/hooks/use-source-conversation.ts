@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createRealtimeTicket, getRealtimeUrl } from "@/lib/admin-api";
-import { getAuthenticatedAdminToken } from "@/lib/authenticated-admin";
+import {
+  getAuthenticatedAdminSessionMarker,
+  type AuthenticatedAdminSessionMarker,
+} from "@/lib/authenticated-admin";
 
 type SourceConversationMessage = {
   id: string;
@@ -33,8 +36,14 @@ export function useSourceConversation<
   TSourcePayload = unknown,
 >(input: {
   enabled: boolean;
-  loadMessages: (token: string, sourceId: string) => Promise<TMessage[]>;
-  markRead?: (token: string, sourceId: string) => Promise<unknown>;
+  loadMessages: (
+    session: AuthenticatedAdminSessionMarker,
+    sourceId: string,
+  ) => Promise<TMessage[]>;
+  markRead?: (
+    session: AuthenticatedAdminSessionMarker,
+    sourceId: string,
+  ) => Promise<unknown>;
   onError?: (message: string) => void;
   onSourceUpdated?: (payload: TSourcePayload) => void;
   sourceId: string | null;
@@ -59,7 +68,7 @@ export function useSourceConversation<
     let cancelled = false;
 
     async function loadMessages() {
-      const token = await getAuthenticatedAdminToken();
+      const token = await getAuthenticatedAdminSessionMarker();
       if (!token || cancelled || !input.sourceId) {
         if (!cancelled) setMessages([]);
         return;
@@ -100,7 +109,7 @@ export function useSourceConversation<
     let socket: WebSocket | null = null;
 
     async function connectRealtime() {
-      const sessionMarker = await getAuthenticatedAdminToken();
+      const sessionMarker = await getAuthenticatedAdminSessionMarker();
       if (!sessionMarker || cancelled) return;
       const ticket = await createRealtimeTicket()
         .then((response) => response.ticket)

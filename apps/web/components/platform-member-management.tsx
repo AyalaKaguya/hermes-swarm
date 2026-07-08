@@ -48,8 +48,8 @@ import {
   type User,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { cn } from "@/lib/utils";
@@ -96,7 +96,7 @@ export function PlatformMemberManagement({
       return;
     }
 
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token) {
       setLoading(false);
       return;
@@ -149,7 +149,7 @@ export function PlatformMemberManagement({
     setSavingMemberId(member.id);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await updatePlatformMember(token, member.id, {
         roleId: draft.roleId === "none" ? null : draft.roleId,
         status: draft.status,
@@ -168,7 +168,7 @@ export function PlatformMemberManagement({
     setSavingMemberId(member.id);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await deletePlatformMember(token, member.id);
       await load();
       await onChanged?.();
@@ -407,7 +407,7 @@ function AddPlatformMemberDialog({
 
     setSearching(true);
     const timer = window.setTimeout(() => {
-      getAuthenticatedAdminToken()
+      getAuthenticatedAdminSessionMarker()
         .then((token) => (token ? searchUsers(token, normalized) : []))
         .then((items) => {
           setResults(items);
@@ -429,7 +429,7 @@ function AddPlatformMemberDialog({
     setSaving(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await createPlatformMember(token, {
         roleId,
         status,

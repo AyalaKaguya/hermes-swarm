@@ -2,12 +2,14 @@ import { AdminApiError } from "@/lib/admin-api";
 
 const WEB_SESSION_SENTINEL = "web-session";
 
-export async function getAuthenticatedAdminToken() {
+export type AuthenticatedAdminSessionMarker = typeof WEB_SESSION_SENTINEL;
+
+export async function getAuthenticatedAdminSessionMarker(): Promise<AuthenticatedAdminSessionMarker> {
   return WEB_SESSION_SENTINEL;
 }
 
-export async function requireAuthenticatedAdminToken() {
-  const sessionMarker = await getAuthenticatedAdminToken();
+export async function requireAuthenticatedAdminSessionMarker() {
+  const sessionMarker = await getAuthenticatedAdminSessionMarker();
   if (!sessionMarker) {
     throw new AdminApiError(
       "登录已失效，请重新登录",
@@ -18,8 +20,8 @@ export async function requireAuthenticatedAdminToken() {
   return sessionMarker;
 }
 
-export async function withAuthenticatedAdminToken<T>(
-  request: (token: string) => Promise<T>,
+export async function withAuthenticatedAdminSessionMarker<T>(
+  request: (session: AuthenticatedAdminSessionMarker) => Promise<T>,
 ) {
-  return request(await requireAuthenticatedAdminToken());
+  return request(await requireAuthenticatedAdminSessionMarker());
 }

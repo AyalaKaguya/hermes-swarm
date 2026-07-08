@@ -11,7 +11,7 @@ import {
   RolePermission,
   type PermissionScope,
 } from "@hermes-swarm/core";
-import { In, Repository } from "typeorm";
+import { In, Not, Repository } from "typeorm";
 import {
   ACCESS_OPERATION_METADATA,
   ACCESS_RESOURCE_METADATA,
@@ -195,6 +195,8 @@ export class AccessCatalogService implements OnModuleInit {
     const codes = this.definitions.map((definition) => definition.id);
     if (codes.length === 0) return;
 
+    await this.pruneStaleCatalogPermissions(codes);
+
     const existing = await this.permissionRepository.find({
       where: { code: In(codes) },
     });
@@ -229,6 +231,22 @@ export class AccessCatalogService implements OnModuleInit {
     }
 
     await this.backfillMissingDefaultRolePermissions();
+  }
+
+  private async pruneStaleCatalogPermissions(activeCodes: string[]) {
+    const stalePermissions = await this.permissionRepository.find({
+      where: {
+        code: Not(In(activeCodes)),
+        source: In(["controller", "navigation"]),
+      },
+    });
+    const staleCodes = stalePermissions
+      .map((permission) => permission.code)
+      .filter((code): code is string => Boolean(code));
+    if (staleCodes.length === 0) return;
+
+    await this.rolePermissionRepository.delete({ permission: In(staleCodes) });
+    await this.permissionRepository.delete({ code: In(staleCodes) });
   }
 
   private async backfillMissingDefaultRolePermissions() {

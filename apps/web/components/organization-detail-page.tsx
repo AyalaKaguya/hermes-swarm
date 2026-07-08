@@ -97,8 +97,8 @@ import {
   type UserStatus,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
@@ -252,7 +252,7 @@ export function OrganizationDetailPage({
   );
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setLoading(false);
       return;
@@ -405,7 +405,7 @@ export function OrganizationDetailPage({
     setSaving(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const updated = await updateOrganization(
         token,
         organization.id,
@@ -429,7 +429,7 @@ export function OrganizationDetailPage({
     setUploadingLogo(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const uploaded = await uploadAdminFile(token, file);
       const imageUrl =
         uploaded.url ??
@@ -457,7 +457,7 @@ export function OrganizationDetailPage({
     setSavingControls(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await saveOrganizationSettingsForOrganization(token, organization.id, {
         settings: CONTROL_KEYS.map((item) => ({
           name: item.key,
@@ -489,7 +489,7 @@ export function OrganizationDetailPage({
     setSavingCustomSetting(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const settings = await saveOrganizationSettingsForOrganization(
         token,
         organization.id,
@@ -527,14 +527,14 @@ export function OrganizationDetailPage({
 
   async function reloadInvites() {
     if (!organization || !canViewInvites) return;
-    const token = await requireAuthenticatedAdminToken();
+    const token = await requireAuthenticatedAdminSessionMarker();
     setInvites(await getOrganizationInvites(token, organization.id));
   }
 
   async function resendInvite(invite: Invite) {
     if (!organization || !canResendInvites) return;
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await resendOrganizationInvite(token, organization.id, invite.id);
       notifications.success(tr("邀请已重发"));
       await reloadInvites();
@@ -548,7 +548,7 @@ export function OrganizationDetailPage({
     setClosingInvite(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await deleteOrganizationInvite(token, organization.id, inviteToClose.id);
       notifications.success(tr("邀请已关闭"));
       setInviteToClose(null);
@@ -1591,7 +1591,7 @@ function OrganizationInviteForm({
 
     const timer = window.setTimeout(() => {
       setSearchingUsers(true);
-      void requireAuthenticatedAdminToken()
+      void requireAuthenticatedAdminSessionMarker()
         .then((token) => searchUsers(token, userSearch))
         .then(setUserSearchResults)
         .catch(() => setUserSearchResults([]))
@@ -1620,7 +1620,7 @@ function OrganizationInviteForm({
     setMsg("");
     try {
       const emailIds = inviteMode === "directed" ? parsedEmails : [];
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const result = await createOrganizationInvites(token, organizationId, {
         emailIds,
         expiresIn,
@@ -1795,7 +1795,7 @@ function OrganizationUserForm({
     setSaving(true);
     setMsg("");
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       if (mode === "create") {
         await createOrganizationMember(token, organizationId, {
           displayName,

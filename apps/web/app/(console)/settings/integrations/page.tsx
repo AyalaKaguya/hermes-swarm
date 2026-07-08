@@ -33,8 +33,8 @@ import {
   type IntegrationTokenScopeCapability,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  withAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  withAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 
 export default function IntegrationsPage() {
@@ -73,7 +73,7 @@ export default function IntegrationsPage() {
   }, [capabilities, snapshot?.organizations]);
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !userId) {
       setLoading(false);
       return;
@@ -132,7 +132,7 @@ export default function IntegrationsPage() {
     setCreatedToken(null);
     setError(null);
     try {
-      const created = await withAuthenticatedAdminToken((token) =>
+      const created = await withAuthenticatedAdminSessionMarker((token) =>
         createIntegrationToken(token, userId, {
           expiresAt: draft.expiresAt ? new Date(draft.expiresAt).toISOString() : undefined,
           note: draft.note,
@@ -158,7 +158,7 @@ export default function IntegrationsPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await withAuthenticatedAdminToken((token) =>
+      await withAuthenticatedAdminSessionMarker((token) =>
         revokeIntegrationToken(token, userId, pendingRevoke.id),
       );
       notifications.success(tr("集成 Token 已撤销"));

@@ -11,6 +11,10 @@ export const runtime = "nodejs";
 const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
 const INTERNAL_ADMIN_API_BASE_URL =
   process.env.API_INTERNAL_BASE_URL ?? "http://localhost:3200/api/admin";
+const REFRESH_COOKIE_NAME =
+  process.env.AUTH_REFRESH_COOKIE_NAME ??
+  process.env.WEB_REFRESH_COOKIE_NAME ??
+  "hermes_refresh";
 
 const PUBLIC_ADMIN_PATHS = new Set([
   "/bootstrap",
@@ -108,7 +112,7 @@ async function handleSessionStart(request: NextRequest, path: string) {
   const sessionId = getString(detail?.sessionId);
   const refreshToken = extractCookieValue(
     upstream.headers.get("set-cookie"),
-    "hermes_refresh",
+    REFRESH_COOKIE_NAME,
   );
   if (!accessToken || !expiresAt || !sessionId || !refreshToken) {
     return jsonResponse(
@@ -168,7 +172,7 @@ async function refreshWebSession(
 ): Promise<WebSession> {
   const upstream = await fetch(`${getInternalBaseUrl()}/auth/refresh`, {
     headers: {
-      cookie: `hermes_refresh=${encodeURIComponent(session.refreshToken)}`,
+      cookie: `${REFRESH_COOKIE_NAME}=${encodeURIComponent(session.refreshToken)}`,
       ...(request.headers.get("user-agent")
         ? { "user-agent": request.headers.get("user-agent")! }
         : {}),
@@ -184,7 +188,7 @@ async function refreshWebSession(
   const expiresAt = getString(detail?.expiresAt);
   const sessionId = getString(detail?.sessionId);
   const refreshToken =
-    extractCookieValue(upstream.headers.get("set-cookie"), "hermes_refresh") ??
+    extractCookieValue(upstream.headers.get("set-cookie"), REFRESH_COOKIE_NAME) ??
     session.refreshToken;
   if (!accessToken || !expiresAt || !sessionId || !refreshToken) {
     throw new Error("Refresh response is missing session fields");

@@ -23,7 +23,7 @@ import {
   markNotificationRead,
   type UserNotification,
 } from "@/lib/admin-api";
-import { getAuthenticatedAdminToken } from "@/lib/authenticated-admin";
+import { getAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 
 type NotificationItem = {
   body?: string | null;
@@ -72,7 +72,7 @@ export function NotificationCenter() {
     }
 
     async function connectNotifications() {
-      const token = await getAuthenticatedAdminToken();
+      const token = await getAuthenticatedAdminSessionMarker();
       if (!token || closed) return;
 
       listUserNotifications(token, { take: 50 })
@@ -177,7 +177,7 @@ export function NotificationCenter() {
                 disabled={items.length === 0}
                 onClick={(event) => {
                   event.stopPropagation();
-                  void getAuthenticatedAdminToken().then((token) => {
+                  void getAuthenticatedAdminSessionMarker().then((token) => {
                     if (token) void markAllNotificationsRead(token);
                   });
                   setItems((current) =>
@@ -196,7 +196,7 @@ export function NotificationCenter() {
                 disabled={!items.some((item) => item.status === "read")}
                 onClick={(event) => {
                   event.stopPropagation();
-                  void getAuthenticatedAdminToken().then((token) => {
+                  void getAuthenticatedAdminSessionMarker().then((token) => {
                     if (token) void dismissReadNotifications(token);
                   });
                   setItems((current) =>
@@ -226,7 +226,7 @@ export function NotificationCenter() {
                   onSelect={(event) => {
                     event.preventDefault();
                     if (item.status === "unread") {
-                      void getAuthenticatedAdminToken().then((token) => {
+                      void getAuthenticatedAdminSessionMarker().then((token) => {
                         if (token) void markNotificationRead(token, item.id);
                       });
                     }
@@ -263,7 +263,7 @@ export function NotificationCenter() {
                     aria-label={t("notifications.dismiss")}
                     onClick={(event) => {
                       event.stopPropagation();
-                      void getAuthenticatedAdminToken().then((token) => {
+                      void getAuthenticatedAdminSessionMarker().then((token) => {
                         if (token) void dismissNotification(token, item.id);
                       });
                       setItems((current) =>

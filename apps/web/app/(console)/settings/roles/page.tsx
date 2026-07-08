@@ -37,8 +37,8 @@ import {
   type RolePayload,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
@@ -82,7 +82,7 @@ export default function RolesPage() {
   >({});
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setLoading(false);
       return;
@@ -187,7 +187,7 @@ export default function RolesPage() {
     if (!organizationId || !canReplaceRolePermissions || role?.isSystem) return;
     setSaving(roleId);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await replaceOrganizationRolePermissions(
         token,
         organizationId,
@@ -225,7 +225,7 @@ export default function RolesPage() {
     setSavingRole(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const payload: RolePayload = {
         color: nullableText(roleForm.color),
         description: nullableText(roleForm.description),
@@ -263,7 +263,7 @@ export default function RolesPage() {
     setSavingRole(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await deleteOrganizationRole(token, organizationId, role.id);
       setSelectedRoleId(null);
       setRoleToDelete(null);

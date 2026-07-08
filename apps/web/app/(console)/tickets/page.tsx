@@ -52,8 +52,9 @@ import {
   type TicketMessageAttachment,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
+  type AuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import {
   FEATURE_SETTING_KEYS,
@@ -158,11 +159,13 @@ export default function TicketsPage() {
     mergeTicket(ticket);
   }, []);
   const loadConversationMessages = useCallback(
-    (token: string, ticketId: string) => listTicketMessages(token, ticketId),
+    (session: AuthenticatedAdminSessionMarker, ticketId: string) =>
+      listTicketMessages(session, ticketId),
     [],
   );
   const markConversationRead = useCallback(
-    (token: string, ticketId: string) => markTicketRead(token, ticketId),
+    (session: AuthenticatedAdminSessionMarker, ticketId: string) =>
+      markTicketRead(session, ticketId),
     [],
   );
   const { appendMessage, messages } = useSourceConversation<TicketMessage, Ticket>({
@@ -182,7 +185,7 @@ export default function TicketsPage() {
   }, [canViewOrganizationTickets, canViewPlatformTickets, view]);
 
   const loadOrganizationFeatures = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setOrganizationTicketingEnabled(true);
       setOrganizationTicketHandlingEnabled(true);
@@ -209,7 +212,7 @@ export default function TicketsPage() {
   }, [organizationId]);
 
   const loadTickets = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !ticketingVisible) {
       setLoading(false);
       return;
@@ -272,7 +275,7 @@ export default function TicketsPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const payload = {
         attachments: draft.attachments,
         body: draft.body,
@@ -303,7 +306,7 @@ export default function TicketsPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const attachments = await Promise.all(
         input.files.map((item) => uploadPromptAttachment(token, item)),
       );
@@ -322,14 +325,14 @@ export default function TicketsPage() {
   }
 
   async function uploadPromptAttachment(
-    token: string,
+    session: AuthenticatedAdminSessionMarker,
     filePart: PromptInputMessage["files"][number],
   ) {
     const file = await filePartToFile(filePart, tr);
     if (!file.type.startsWith("image/")) {
       throw new Error(tr("仅支持图片附件"));
     }
-    const result = await uploadAdminFile(token, file);
+    const result = await uploadAdminFile(session, file);
     if (!result.url) throw new Error(tr("图片上传失败"));
     return {
       mimeType: result.mimeType,
@@ -348,7 +351,7 @@ export default function TicketsPage() {
     setUploading(target);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const result = await uploadAdminFile(token, file);
       if (!result.url) throw new Error(tr("图片上传失败"));
       const attachment: TicketMessageAttachment = {
@@ -376,7 +379,7 @@ export default function TicketsPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const nextTicket = await closeTicket(token, selectedTicket.id);
       mergeTicket(nextTicket);
       notifications.success(tr("工单已关闭"));

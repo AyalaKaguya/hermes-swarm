@@ -23,8 +23,8 @@ import {
   type OrganizationSetting,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { usePermission } from "@/hooks/use-permission";
 import { useTextTranslation } from "@/hooks/use-text-translation";
@@ -48,7 +48,7 @@ export default function FeaturesPage() {
   const organizationId = snapshot?.organization?.id ?? null;
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setLoading(false);
       return;
@@ -86,7 +86,7 @@ export default function FeaturesPage() {
     setError(null);
     setMsg("");
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await saveOrganizationSettings(token, organizationId, payload);
       await load();
     } catch (err) {

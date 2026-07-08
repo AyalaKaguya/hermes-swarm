@@ -33,8 +33,8 @@ import {
   type User,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
@@ -74,7 +74,7 @@ export default function AccountPage() {
   const shellUser = snapshot?.user ?? null;
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (shellUser) {
       setUser(shellUser);
       setProfile(toProfileForm(shellUser));
@@ -130,7 +130,7 @@ export default function AccountPage() {
     setError(null);
 
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const updated = await updateUser(token, user.id, {
         displayName: profile.displayName,
         email: profile.email,
@@ -154,7 +154,7 @@ export default function AccountPage() {
     setUploadingAvatar(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const uploaded = await uploadAdminFile(token, file);
       const imageUrl =
         uploaded.url ??
@@ -196,7 +196,7 @@ export default function AccountPage() {
     setError(null);
 
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await updateUserPassword(token, user.id, {
         currentPassword: password.currentPassword,
         password: password.password,

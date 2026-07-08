@@ -64,8 +64,8 @@ import {
   type SystemSettingDto,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
@@ -185,7 +185,7 @@ export default function PlatformPage() {
       return;
     }
 
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token) {
       setLoading(false);
       return;
@@ -234,7 +234,7 @@ export default function PlatformPage() {
     setSavingPlatform(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await saveSystemSettings(token, {
         settings: [
           {
@@ -294,7 +294,7 @@ export default function PlatformPage() {
     setSavingSmtp(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await saveSystemSettings(token, {
         settings: [
           platformSettingEntry("publicSmtpEnabled", form.publicSmtpEnabled),
@@ -327,7 +327,7 @@ export default function PlatformPage() {
     setSavingCustomSetting(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await saveSystemSettings(token, {
         settings: [{ ...payload, name: settingName }],
       });

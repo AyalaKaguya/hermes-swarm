@@ -20,8 +20,8 @@ import {
   type RolePermission,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  withAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  withAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 
 export default function PlatformIntegrationsPage() {
@@ -47,7 +47,7 @@ export default function PlatformIntegrationsPage() {
   }, [snapshot?.organizations]);
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token) {
       setLoading(false);
       return;
@@ -72,7 +72,7 @@ export default function PlatformIntegrationsPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await withAuthenticatedAdminToken((token) =>
+      await withAuthenticatedAdminSessionMarker((token) =>
         revokePlatformIntegrationToken(token, pendingRevoke.id),
       );
       notifications.success(tr("集成 Token 已撤销"));

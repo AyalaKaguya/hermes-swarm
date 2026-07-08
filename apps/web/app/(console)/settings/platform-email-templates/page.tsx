@@ -31,8 +31,8 @@ import {
   type EmailTemplateDto,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
@@ -47,7 +47,7 @@ export default function PlatformEmailTemplatesPage() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token) {
       setLoading(false);
       return;
@@ -69,7 +69,7 @@ export default function PlatformEmailTemplatesPage() {
   async function remove() {
     if (!deleting) return;
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await deletePlatformEmailTemplate(token, deleting.id);
       notifications.success(tr("已删除"));
       setDeleting(null);
@@ -109,7 +109,7 @@ export default function PlatformEmailTemplatesPage() {
             </DialogHeader>
             <TemplateForm
               onSubmit={async (payload) => {
-                const token = await requireAuthenticatedAdminToken();
+                const token = await requireAuthenticatedAdminSessionMarker();
                 await createPlatformEmailTemplate(token, payload);
                 notifications.success(tr("已创建"));
                 setCreateOpen(false);
@@ -193,7 +193,7 @@ export default function PlatformEmailTemplatesPage() {
             <TemplateForm
               initial={editing}
               onSubmit={async (payload) => {
-                const token = await requireAuthenticatedAdminToken();
+                const token = await requireAuthenticatedAdminSessionMarker();
                 await updatePlatformEmailTemplate(token, editing.id, payload);
                 notifications.success(tr("已保存"));
                 setEditing(null);

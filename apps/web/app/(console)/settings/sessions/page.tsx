@@ -26,8 +26,8 @@ import {
   type AuthSessionDevice,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  withAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  withAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 
 type PendingSessionAction =
@@ -51,7 +51,7 @@ export default function SessionsPage() {
   const [sessions, setSessions] = useState<AuthSessionDevice[]>([]);
 
   const loadSessions = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token) {
       setLoading(false);
       return;
@@ -76,7 +76,7 @@ export default function SessionsPage() {
     setBusySessionId(sessionId);
     setError(null);
     try {
-      await withAuthenticatedAdminToken((token) =>
+      await withAuthenticatedAdminSessionMarker((token) =>
         revokeAuthSession(token, sessionId),
       );
       notifications.success(tr("设备已登出"));
@@ -93,7 +93,7 @@ export default function SessionsPage() {
     setBusySessionId("others");
     setError(null);
     try {
-      await withAuthenticatedAdminToken((token) =>
+      await withAuthenticatedAdminSessionMarker((token) =>
         revokeOtherAuthSessions(token),
       );
       notifications.success(tr("其他设备已登出"));
@@ -110,7 +110,7 @@ export default function SessionsPage() {
     setBusySessionId(sessionId);
     setError(null);
     try {
-      await withAuthenticatedAdminToken((token) =>
+      await withAuthenticatedAdminSessionMarker((token) =>
         deleteAuthSessionRecord(token, sessionId),
       );
       notifications.success(tr("设备记录已删除"));

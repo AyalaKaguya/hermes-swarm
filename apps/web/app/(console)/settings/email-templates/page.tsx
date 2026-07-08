@@ -39,8 +39,8 @@ import {
   type EmailTemplateDto,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
@@ -73,7 +73,7 @@ export default function EmailTemplatesPage() {
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setLoading(false);
       return;
@@ -96,7 +96,7 @@ export default function EmailTemplatesPage() {
     try {
       if (!organizationId) return;
       await deleteEmailTemplate(
-        await requireAuthenticatedAdminToken(),
+        await requireAuthenticatedAdminSessionMarker(),
         organizationId,
         templateId,
       );
@@ -321,7 +321,7 @@ function CreateTemplateForm({
     setSaving(true);
     setMsg("");
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await createEmailTemplate(
         token,
         organizationId,
@@ -426,7 +426,7 @@ function EditTemplateForm({
     setMsg("");
     try {
       if (!organizationId) return;
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await updateEmailTemplate(
         token,
         organizationId,

@@ -4,6 +4,7 @@ import { AccessService } from "./access-service.js";
 import type { ResolvedAccessDefinition } from "./access.types.js";
 
 type RepositoryMock<T> = {
+  find: (options: { where: Partial<T> }) => Promise<T[]>;
   findOne: (options: { where: Partial<T> }) => Promise<T | null>;
 };
 
@@ -139,8 +140,24 @@ describe("AccessService authorization matrix", () => {
     );
   });
 
-  it("enforces own-scope APIs against the target user id", async () => {
-    const service = createService();
+  it("requires own-scope permission and matching target user id", async () => {
+    const service = createService({
+      memberships: [
+        {
+          organizationId: "org-1",
+          roleId: "role-member",
+          status: "active",
+          userId: "user-1",
+        },
+      ],
+      rolePermissions: [
+        {
+          enabled: true,
+          permission: selfUpdateProfile.id,
+          roleId: "role-member",
+        },
+      ],
+    });
 
     assert.equal(
       await service.can("user-1", selfUpdateProfile, { targetUserId: "user-1" }),
@@ -151,6 +168,24 @@ describe("AccessService authorization matrix", () => {
       false,
     );
     assert.equal(await service.can("user-1", selfUpdateProfile), false);
+  });
+
+  it("denies own-scope APIs when the user role lacks the permission", async () => {
+    const service = createService({
+      memberships: [
+        {
+          organizationId: "org-1",
+          roleId: "role-member",
+          status: "active",
+          userId: "user-1",
+        },
+      ],
+    });
+
+    assert.equal(
+      await service.can("user-1", selfUpdateProfile, { targetUserId: "user-1" }),
+      false,
+    );
   });
 });
 
@@ -168,6 +203,13 @@ function createService(options: {
 
 function repository<T extends Record<string, unknown>>(items: T[]): RepositoryMock<T> {
   return {
+    async find(options) {
+      return items.filter((item) =>
+        Object.entries(options.where).every(
+          ([key, value]) => item[key] === value,
+        ),
+      );
+    },
     async findOne(options) {
       return (
         items.find((item) =>

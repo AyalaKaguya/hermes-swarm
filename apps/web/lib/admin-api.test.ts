@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { fetchMe } from "./admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "./authenticated-admin";
 import { clearStoredSession, getStoredSession } from "./session";
 
@@ -17,8 +17,8 @@ afterEach(() => {
 
 describe("admin API browser auth client", () => {
   it("returns only a non-secret web session marker", async () => {
-    assert.equal(await getAuthenticatedAdminToken(), "web-session");
-    assert.equal(await requireAuthenticatedAdminToken(), "web-session");
+    assert.equal(await getAuthenticatedAdminSessionMarker(), "web-session");
+    assert.equal(await requireAuthenticatedAdminSessionMarker(), "web-session");
   });
 
   it("removes legacy localStorage access tokens", () => {
@@ -45,7 +45,7 @@ describe("admin API browser auth client", () => {
       return Response.json({ memberships: [], permissions: [], user: {} });
     };
 
-    await fetchMe("not-a-real-token");
+    await fetchMe();
   });
 
   it("clears legacy session storage explicitly", () => {

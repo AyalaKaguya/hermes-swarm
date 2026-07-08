@@ -20,8 +20,8 @@ import {
   type SmtpConfig,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
@@ -44,7 +44,7 @@ export default function CustomSmtpPage() {
   const [fromAddress, setFromAddress] = useState("");
 
   const load = useCallback(async () => {
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token || !organizationId) {
       setLoading(false);
       return;
@@ -79,7 +79,7 @@ export default function CustomSmtpPage() {
       return;
     }
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await saveSmtpConfig(
         token,
         {
@@ -110,7 +110,7 @@ export default function CustomSmtpPage() {
       return;
     }
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await validateSmtpConfig(
         token,
         {

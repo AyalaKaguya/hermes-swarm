@@ -35,8 +35,8 @@ import {
   type RolePayload,
 } from "@/lib/admin-api";
 import {
-  getAuthenticatedAdminToken,
-  requireAuthenticatedAdminToken,
+  getAuthenticatedAdminSessionMarker,
+  requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { cn } from "@/lib/utils";
@@ -86,7 +86,7 @@ export function PlatformRolePermissions({
       return;
     }
 
-    const token = await getAuthenticatedAdminToken();
+    const token = await getAuthenticatedAdminSessionMarker();
     if (!token) {
       setLoading(false);
       return;
@@ -181,7 +181,7 @@ export function PlatformRolePermissions({
     setSaving(roleId);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await replacePlatformRolePermissions(
         token,
         roleId,
@@ -224,7 +224,7 @@ export function PlatformRolePermissions({
     setSavingRole(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       const payload: RolePayload = {
         color: nullableText(roleForm.color),
         description: nullableText(roleForm.description),
@@ -253,7 +253,7 @@ export function PlatformRolePermissions({
     setSavingRole(true);
     setError(null);
     try {
-      const token = await requireAuthenticatedAdminToken();
+      const token = await requireAuthenticatedAdminSessionMarker();
       await deletePlatformRole(token, role.id);
       setSelectedRoleId(null);
       setRoleToDelete(null);

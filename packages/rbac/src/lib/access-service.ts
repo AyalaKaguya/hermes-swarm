@@ -28,7 +28,11 @@ export class AccessService {
     context: AccessCheckContext = {},
   ) {
     if (definition.scope === "own") {
-      return this.userOwnsTarget(userId, context.targetUserId ?? undefined);
+      if (!this.userOwnsTarget(userId, context.targetUserId ?? undefined)) {
+        return false;
+      }
+      const roleIds = await this.findOwnScopeRoleIds(userId);
+      return this.anyRoleAllows(roleIds, definition.id);
     }
 
     if (definition.scope === "platform") {
@@ -65,11 +69,33 @@ export class AccessService {
     );
   }
 
+  private async anyRoleAllows(roleIds: string[], permissionId: string) {
+    for (const roleId of roleIds) {
+      if (await this.roleAllows(roleId, permissionId)) return true;
+    }
+    return false;
+  }
+
   private async findPlatformRoleId(userId: string) {
     const member = await this.platformMemberRepository.findOne({
       where: { status: "active", userId },
     });
     return member?.roleId ?? null;
+  }
+
+  private async findOwnScopeRoleIds(userId: string) {
+    const roleIds = new Set<string>();
+    const platformRoleId = await this.findPlatformRoleId(userId);
+    if (platformRoleId) roleIds.add(platformRoleId);
+
+    const memberships = await this.membershipRepository.find({
+      where: { status: "active", userId },
+    });
+    for (const membership of memberships) {
+      if (membership.roleId) roleIds.add(membership.roleId);
+    }
+
+    return [...roleIds];
   }
 
   private async findOrganizationRoleId(
@@ -87,4 +113,3 @@ export class AccessService {
     return Boolean(targetUserId && targetUserId === userId);
   }
 }
-
