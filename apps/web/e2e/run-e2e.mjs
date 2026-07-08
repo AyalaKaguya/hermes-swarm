@@ -6,6 +6,7 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100";
 const sessionKey = "hermes-swarm.admin-session";
+const webSessionCookieName = "hermes_web_session";
 
 const user = {
   avatarUrl: null,
@@ -243,7 +244,6 @@ const platformIntegrationTokens = [
 ];
 
 const authSession = {
-  accessToken: "e2e-access-token",
   expiresAt: "2099-01-01T00:00:00.000Z",
   sessionId: "session-e2e",
 };
@@ -298,7 +298,7 @@ function principal(personaName = "platformAdmin") {
 
 const tests = [
   {
-    name: "login stores the session and opens the home shell",
+    name: "login creates a web session without exposing access tokens",
     run: async ({ page }) => {
       await installApiMocks(page, { onboardingRequired: false });
       await page.goto(`${baseUrl}/login`);
@@ -306,29 +306,46 @@ const tests = [
         state: "visible",
         timeout: 10_000,
       });
-      await waitForEnabled(page.getByRole("button", { name: "登录" }));
       await page.getByLabel("邮箱").fill("admin@hermes.local");
       await page.getByLabel("密码").fill("admin123456");
-      await page.getByRole("button", { name: "登录" }).click();
+      const loginResponses = [];
+      page.on("response", async (response) => {
+        if (response.url().includes("/api/admin/auth/login")) {
+          loginResponses.push(await response.json().catch(() => null));
+        }
+      });
+      await page.locator("form").evaluate((form) => form.requestSubmit());
 
       await page.waitForURL("**/home");
       assert.equal(
-        await page.evaluate((key) => Boolean(localStorage.getItem(key)), sessionKey),
+        await page.evaluate((key) => localStorage.getItem(key), sessionKey),
+        null,
+      );
+      assert.equal(
+        await page.evaluate(() => JSON.stringify(localStorage).includes("accessToken")),
+        false,
+      );
+      const cookies = await page.context().cookies(baseUrl);
+      assert.equal(
+        cookies.some((cookie) => cookie.name === webSessionCookieName && cookie.httpOnly),
         true,
+      );
+      assert.equal(
+        loginResponses.some((body) => body && "accessToken" in body),
+        false,
       );
     },
   },
   {
-    name: "login redirects to onboarding when the server requires setup",
+    name: "onboarding creates a web session without exposing access tokens",
     run: async ({ page }) => {
       await installApiMocks(page, { onboardingRequired: true });
-      await page.goto(`${baseUrl}/login`);
-      await page.waitForURL("**/onboarding");
+      await page.goto(`${baseUrl}/onboarding`);
       await expectVisibleText(page, "初始化");
 
       await page.getByLabel("组织名称").fill("Launch Org");
       await page.getByLabel("组织标识").fill("launch");
-      await page.getByRole("button", { name: "创建并进入" }).click();
+      await page.locator("form").evaluate((form) => form.requestSubmit());
       await page.waitForURL("**/home");
     },
   },
@@ -340,8 +357,7 @@ const tests = [
         persona: "noManagementUser",
       });
       await page.goto(`${baseUrl}/login`);
-      await waitForEnabled(page.getByRole("button", { name: "登录" }));
-      await page.getByRole("button", { name: "登录" }).click();
+      await page.locator("form").evaluate((form) => form.requestSubmit());
 
       await expectVisibleText(page, "当前用户没有管理端访问权限");
       assert.equal(page.url().endsWith("/login"), true);
@@ -601,6 +617,9 @@ async function installApiMocks(page, options) {
     const url = new URL(request.url());
     const path = url.pathname.replace("/api/admin", "");
     const method = request.method();
+    if (request.headers().authorization) {
+      throw new Error(`Browser request unexpectedly sent Authorization for ${method} ${path}`);
+    }
 
     if (method === "OPTIONS") {
       await route.fulfill({ headers: corsHeaders(request), status: 204 });
@@ -617,12 +636,16 @@ async function installApiMocks(page, options) {
     }
 
     if (method === "POST" && path === "/auth/login") {
-      await json(route, { ...authSession, snapshot: principal(personaName) });
+      await json(route, { ...authSession, snapshot: principal(personaName) }, 200, {
+        "set-cookie": `${webSessionCookieName}=e2e-web-session; Path=/; HttpOnly; SameSite=Lax`,
+      });
       return;
     }
 
     if (method === "POST" && path === "/onboarding") {
-      await json(route, { ...authSession, snapshot: principal(personaName) });
+      await json(route, { ...authSession, snapshot: principal(personaName) }, 200, {
+        "set-cookie": `${webSessionCookieName}=e2e-web-session; Path=/; HttpOnly; SameSite=Lax`,
+      });
       return;
     }
 
@@ -784,19 +807,27 @@ async function installApiMocks(page, options) {
 }
 
 async function seedSession(page) {
-  await page.goto(`${baseUrl}/login`);
-  await page.evaluate(
-    ({ key, value }) => localStorage.setItem(key, JSON.stringify(value)),
-    { key: sessionKey, value: authSession },
-  );
+  await page.context().addCookies([
+    {
+      domain: new URL(baseUrl).hostname,
+      expires: Math.floor(Date.now() / 1000) + 3600,
+      httpOnly: true,
+      name: webSessionCookieName,
+      path: "/",
+      sameSite: "Lax",
+      secure: baseUrl.startsWith("https://"),
+      value: "e2e-web-session",
+    },
+  ]);
 }
 
-async function json(route, body, status = 200) {
+async function json(route, body, status = 200, headers = {}) {
   await route.fulfill({
     body: JSON.stringify(body),
     headers: {
       ...corsHeaders(route.request()),
       "content-type": "application/json",
+      ...headers,
     },
     status,
   });

@@ -16,6 +16,7 @@ import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import {
   dismissNotification,
   dismissReadNotifications,
+  createRealtimeTicket,
   getRealtimeUrl,
   listUserNotifications,
   markAllNotificationsRead,
@@ -81,7 +82,11 @@ export function NotificationCenter() {
         .catch(() => undefined);
 
       if (closed) return;
-      socket = new WebSocket(getRealtimeUrl(token));
+      const ticket = await createRealtimeTicket()
+        .then((response) => response.ticket)
+        .catch(() => null);
+      if (!ticket || closed) return;
+      socket = new WebSocket(getRealtimeUrl(ticket));
       socket.addEventListener("message", (event) => {
         try {
           const message = JSON.parse(event.data as string) as {

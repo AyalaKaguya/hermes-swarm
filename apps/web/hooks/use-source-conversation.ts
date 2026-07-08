@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getRealtimeUrl } from "@/lib/admin-api";
+import { createRealtimeTicket, getRealtimeUrl } from "@/lib/admin-api";
 import { getAuthenticatedAdminToken } from "@/lib/authenticated-admin";
 
 type SourceConversationMessage = {
@@ -100,10 +100,14 @@ export function useSourceConversation<
     let socket: WebSocket | null = null;
 
     async function connectRealtime() {
-      const token = await getAuthenticatedAdminToken();
-      if (!token || cancelled) return;
+      const sessionMarker = await getAuthenticatedAdminToken();
+      if (!sessionMarker || cancelled) return;
+      const ticket = await createRealtimeTicket()
+        .then((response) => response.ticket)
+        .catch(() => null);
+      if (!ticket || cancelled) return;
 
-      socket = new WebSocket(getRealtimeUrl(token));
+      socket = new WebSocket(getRealtimeUrl(ticket));
       socket.addEventListener("message", (event) => {
         try {
           const data = JSON.parse(event.data as string) as
@@ -130,7 +134,7 @@ export function useSourceConversation<
 
           appendMessage(message);
           if (input.sourceId) {
-            void input.markRead?.(token, input.sourceId);
+            void input.markRead?.(sessionMarker, input.sourceId);
           }
         } catch {
           // Regular HTTP refresh remains authoritative.

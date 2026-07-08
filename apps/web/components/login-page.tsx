@@ -19,10 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authLogin, getPublicBootstrap } from "@/lib/admin-api";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
-import {
-  clearStoredSession,
-  storeSession,
-} from "@/lib/session";
+import { clearStoredSession } from "@/lib/session";
 
 export function LoginPage() {
   const router = useRouter();
@@ -74,11 +71,6 @@ export function LoginPage() {
         return;
       }
 
-      storeSession({
-        accessToken: response.accessToken,
-        expiresAt: response.expiresAt,
-        sessionId: response.sessionId,
-      });
       setLanguage(response.snapshot.user.preferredLanguage);
       router.replace("/home");
     } catch (loginError) {

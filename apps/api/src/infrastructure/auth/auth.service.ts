@@ -139,6 +139,14 @@ export class AuthService {
     );
   }
 
+  async createRealtimeTicket(authorization: string | undefined) {
+    const session = await this.validateInteractiveAuthorization(authorization);
+    return this.authSessionService.createRealtimeTicket({
+      sessionId: session.sessionId,
+      userId: session.userId,
+    });
+  }
+
   /**
    * Checks whether the bearer token resolves to an active user.
    */

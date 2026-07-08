@@ -17,16 +17,10 @@ import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import {
   fetchMe,
-  getUsableStoredSession,
   isUnauthorizedApiError,
   type Snapshot,
 } from "@/lib/admin-api";
-import {
-  clearStoredSession,
-  resolveSession,
-  storeSession,
-  type ResolvedSession,
-} from "@/lib/session";
+import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/session";
 import { hasPageAccess } from "@/lib/access-control";
 import { resolveHostOrganizationIdFromPrincipal } from "@/lib/host-organization";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
@@ -40,8 +34,6 @@ type AdminShellContextValue = {
 
 const AdminShellContext = createContext<AdminShellContextValue | null>(null);
 
-const PUBLIC_PATHS = ["/login", "/onboarding"];
-
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -49,13 +41,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const loadingSessionFailedMessageRef = useRef(
     t("shell.loadingSessionFailed"),
   );
-  const isPublicRoute = PUBLIC_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`),
-  );
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [resolvedSession, setResolvedSession] =
     useState<ResolvedSession | null>(null);
-  const [loading, setLoading] = useState(!isPublicRoute);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [redirectingToLogin, setRedirectingToLogin] = useState(false);
 
@@ -65,24 +54,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   const loadSnapshot = useCallback(
     async (options: { showLoading?: boolean } = {}) => {
-      const session = await getUsableStoredSession().catch(() => null);
-
-      if (!session?.accessToken) {
-        setSnapshot(null);
-        setResolvedSession(null);
-        setLoadError(null);
-        setRedirectingToLogin(true);
-        setLoading(false);
-        router.replace("/login");
-        return;
-      }
-
       if (options.showLoading ?? true) {
         setRedirectingToLogin(false);
         setLoading(true);
       }
       try {
-        const principal = await fetchMe(session.accessToken);
+        const principal = await fetchMe();
         const data = createShellSnapshot(principal);
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
@@ -112,23 +89,15 @@ export function AdminShell({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (isPublicRoute) {
-      setRedirectingToLogin(false);
-      setLoading(false);
-      return;
-    }
-
     void loadSnapshot({ showLoading: true });
-  }, [isPublicRoute, loadSnapshot]);
+  }, [loadSnapshot]);
 
   async function switchOrganization(organizationId: string) {
-    const session = await getUsableStoredSession().catch(() => null);
-    if (!session?.accessToken || organizationId === snapshot?.organization?.id) {
+    if (organizationId === snapshot?.organization?.id) {
       return;
     }
-    const principal = await fetchMe(session.accessToken);
+    const principal = await fetchMe();
     const result = createShellSnapshot(principal, organizationId);
-    storeSession(session);
     setSnapshot(result);
     setResolvedSession(resolveSession(result));
     if (pathname.startsWith("/settings/organizations/")) {
@@ -145,10 +114,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
     }),
     [loadSnapshot, loading, resolvedSession, snapshot],
   );
-
-  if (isPublicRoute) {
-    return children;
-  }
 
   if (loadError) {
     return (

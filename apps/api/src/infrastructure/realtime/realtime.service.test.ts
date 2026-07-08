@@ -92,6 +92,50 @@ describe("RealtimeService", () => {
     assert.equal(socket.destroyed, true);
   });
 
+  it("accepts one-time realtime tickets", async () => {
+    let upgradeHandler:
+      | ((request: unknown, socket: FakeSocket) => Promise<void> | void)
+      | null = null;
+    let consumedTicket: string | undefined;
+    const service = new RealtimeService(
+      {
+        httpAdapter: {
+          getHttpServer: () => ({
+            on: (event: string, handler: typeof upgradeHandler) => {
+              if (event === "upgrade") upgradeHandler = handler;
+            },
+          }),
+        },
+      } as any,
+      {
+        consumeRealtimeTicket: async (ticket: string | undefined) => {
+          consumedTicket = ticket;
+          return { sessionId: "session-1", userId: "user-1" };
+        },
+        validateAccessToken: async () => {
+          throw new Error("access token should not be used");
+        },
+      } as any,
+    );
+
+    service.onApplicationBootstrap();
+    assert.ok(upgradeHandler);
+
+    const socket = new FakeSocket();
+    await upgradeHandler(
+      {
+        headers: {
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+        url: "/api/realtime?ticket=ticket-1",
+      },
+      socket,
+    );
+
+    assert.equal(consumedTicket, "ticket-1");
+    assert.match(String(socket.writes[0]), /101 Switching Protocols/);
+  });
+
   it("buffers partial websocket frames before parsing client messages", async () => {
     let upgradeHandler:
       | ((request: unknown, socket: FakeSocket) => Promise<void> | void)

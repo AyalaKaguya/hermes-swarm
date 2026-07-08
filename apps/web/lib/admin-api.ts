@@ -3,12 +3,6 @@ import {
   type SettingValueOption,
   type SettingValueType,
 } from "@hermes-swarm/core/settings/definitions";
-import {
-  clearStoredSession,
-  getStoredSession,
-  storeSession,
-  type UserSession,
-} from "@/lib/session";
 
 export type OrganizationStatus = "active" | "suspended";
 export type RequestScopeLevel = "organization" | "platform";
@@ -446,16 +440,19 @@ export type PublicBootstrap = {
 };
 
 export type AuthLoginResponse = {
-  accessToken: string;
   expiresAt: string;
   sessionId: string;
   snapshot: PrincipalSession;
 };
 
 export type AuthRefreshResponse = {
-  accessToken: string;
   expiresAt: string;
   sessionId: string;
+};
+
+export type RealtimeTicketResponse = {
+  expiresAt: string;
+  ticket: string;
 };
 
 export type AuthSessionDevice = {
@@ -552,12 +549,9 @@ export type FileUploadResponse = {
   url?: string;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
-const ADMIN_API_BASE_URL = `${API_BASE_URL.replace(/\/$/, "")}/admin`;
+const API_BASE_URL = "/api";
+const ADMIN_API_BASE_URL = "/api/admin";
 const REQUEST_TIMEOUT_MS = 12_000;
-const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
-let refreshPromise: Promise<AuthRefreshResponse> | null = null;
 
 export class AdminApiError extends Error {
   constructor(
@@ -574,14 +568,11 @@ export function isUnauthorizedApiError(error: unknown) {
   return error instanceof AdminApiError && error.status === 401;
 }
 
-export function getRealtimeUrl(accessToken: string) {
-  const baseUrl =
-    API_BASE_URL.startsWith("http")
-      ? API_BASE_URL
-      : `${window.location.origin}${API_BASE_URL.startsWith("/") ? "" : "/"}${API_BASE_URL}`;
+export function getRealtimeUrl(ticket: string) {
+  const baseUrl = `${window.location.origin}${API_BASE_URL}`;
   const url = new URL(`${baseUrl.replace(/\/$/, "")}/realtime`);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.searchParams.set("access_token", accessToken);
+  url.searchParams.set("ticket", ticket);
   return url.toString();
 }
 
@@ -593,24 +584,7 @@ export async function fetchAdmin<T>(
     token?: string | null;
   },
 ): Promise<T> {
-  const requestOptions = await resolveRequestOptions(path, options);
-  const response = await sendAdminRequest(path, requestOptions);
-  if (
-    response.status === 401 &&
-    requestOptions?.token &&
-    path !== "/auth/refresh" &&
-    path !== "/auth/login"
-  ) {
-    const refreshed = await refreshStoredAccessSession().catch(() => null);
-    if (refreshed) {
-      const retryResponse = await sendAdminRequest(path, {
-        ...requestOptions,
-        token: refreshed.accessToken,
-      });
-      return parseAdminResponse<T>(retryResponse);
-    }
-  }
-
+  const response = await sendAdminRequest(path, options);
   return parseAdminResponse<T>(response);
 }
 
@@ -625,9 +599,6 @@ async function sendAdminRequest(
   const headers = new Headers();
   if (options?.body !== undefined) {
     headers.set("Content-Type", "application/json");
-  }
-  if (options?.token) {
-    headers.set("Authorization", `Bearer ${options.token}`);
   }
 
   const controller = new AbortController();
@@ -654,25 +625,6 @@ async function sendAdminRequest(
   return response;
 }
 
-async function resolveRequestOptions(
-  path: string,
-  options?: {
-    body?: unknown;
-    method?: string;
-    token?: string | null;
-  },
-) {
-  if (!options?.token || isAuthBootstrapPath(path)) return options;
-
-  const session = await getUsableStoredSession().catch(() => null);
-  if (!session?.accessToken) return options;
-
-  return {
-    ...options,
-    token: session.accessToken,
-  };
-}
-
 async function parseAdminResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await response.json().catch(() => undefined);
@@ -696,55 +648,6 @@ async function parseAdminResponse<T>(response: Response): Promise<T> {
   }
 
   return maskSecretSettingPayload(JSON.parse(text)) as T;
-}
-
-async function refreshStoredAccessSession() {
-  if (!refreshPromise) {
-    refreshPromise = refreshAuthSession().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
-}
-
-export async function getUsableStoredSession() {
-  const session = getStoredSession();
-  if (!session?.accessToken) {
-    return toUserSession(await refreshStoredAccessSession());
-  }
-
-  if (!isAccessTokenExpiring(session, ACCESS_TOKEN_REFRESH_SKEW_MS)) {
-    return session;
-  }
-
-  const refreshed = await refreshStoredAccessSession().catch(() => null);
-  if (refreshed) return toUserSession(refreshed);
-
-  return isAccessTokenExpiring(session) ? null : session;
-}
-
-function toUserSession(response: AuthRefreshResponse): UserSession {
-  return {
-    accessToken: response.accessToken,
-    expiresAt: response.expiresAt,
-    sessionId: response.sessionId,
-  };
-}
-
-function isAccessTokenExpiring(
-  session: Pick<UserSession, "expiresAt">,
-  skewMs = 0,
-) {
-  const expiresAt = Date.parse(session.expiresAt);
-  return !Number.isFinite(expiresAt) || expiresAt <= Date.now() + skewMs;
-}
-
-function isAuthBootstrapPath(path: string) {
-  return (
-    path === "/auth/login" ||
-    path === "/auth/refresh" ||
-    path === "/onboarding"
-  );
 }
 
 function maskSecretSettingPayload(value: unknown): unknown {
@@ -779,31 +682,12 @@ function maskSecretSettingPayload(value: unknown): unknown {
 export async function uploadAdminFile(token: string, file: File) {
   const body = new FormData();
   body.append("file", file);
-  const session = await getUsableStoredSession().catch(() => null);
-  const accessToken = session?.accessToken ?? token;
 
-  let response = await fetch(`${ADMIN_API_BASE_URL}/files/upload`, {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/files/upload`, {
     body,
     credentials: "include",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
     method: "POST",
   });
-
-  if (response.status === 401) {
-    const refreshed = await refreshStoredAccessSession().catch(() => null);
-    if (refreshed) {
-      response = await fetch(`${ADMIN_API_BASE_URL}/files/upload`, {
-        body,
-        credentials: "include",
-        headers: {
-          Authorization: `Bearer ${refreshed.accessToken}`,
-        },
-        method: "POST",
-      });
-    }
-  }
 
   if (!response.ok) {
     const detail = await response.json().catch(() => undefined);
@@ -835,24 +719,21 @@ export function onboard(payload: OnboardingPayload) {
 }
 
 export async function refreshAuthSession() {
-  const response = await fetchAdmin<AuthRefreshResponse>("/auth/refresh", {
+  return fetchAdmin<AuthRefreshResponse>("/auth/refresh", {
     method: "POST",
   });
-  storeSession({
-    accessToken: response.accessToken,
-    expiresAt: response.expiresAt,
-    sessionId: response.sessionId,
-  });
-  return response;
 }
 
 export async function logoutAuthSession(token: string | null | undefined) {
-  if (token) {
-    await fetchAdmin<void>("/auth/logout", { method: "POST", token }).catch(
-      () => undefined,
-    );
-  }
-  clearStoredSession();
+  await fetchAdmin<void>("/auth/logout", { method: "POST", token }).catch(
+    () => undefined,
+  );
+}
+
+export function createRealtimeTicket() {
+  return fetchAdmin<RealtimeTicketResponse>("/auth/realtime-ticket", {
+    method: "POST",
+  });
 }
 
 export function requestPasswordReset(email: string) {
@@ -1037,7 +918,7 @@ export function acceptInvite(payload: {
   });
 }
 
-export function fetchMe(token: string) {
+export function fetchMe(token?: string) {
   return fetchAdmin<PrincipalSession>("/auth/me", { token });
 }
 

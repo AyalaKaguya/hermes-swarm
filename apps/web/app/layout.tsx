@@ -3,7 +3,6 @@ import "./globals.css";
 import { Geist } from "next/font/google";
 import { getLocale, getMessages } from "next-intl/server";
 import { cn } from "@/lib/utils";
-import { AdminShell } from "@/components/admin-shell";
 import { NotificationProvider } from "@/components/app-notifications";
 import { AppearanceController } from "@/components/appearance-controller";
 import { I18nProvider } from "@/components/i18n-provider";
@@ -36,7 +35,7 @@ export default async function RootLayout({
           <AppearanceController />
           <TooltipProvider>
             <NotificationProvider>
-              <AdminShell>{children}</AdminShell>
+              {children}
             </NotificationProvider>
           </TooltipProvider>
         </I18nProvider>

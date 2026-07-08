@@ -205,14 +205,14 @@ export default function PlatformEmailTemplatesPage() {
       )}
 
       <ConfirmActionDialog
-        confirmLabel="删除"
+        confirmLabel={tr("删除")}
         description={deleting ? `${tr("删除邮件模板")} ${deleting.name}` : ""}
         onConfirm={() => void remove()}
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
         open={Boolean(deleting)}
-        title="删除邮件模板"
+        title={tr("删除邮件模板")}
       />
     </Card>
   );
@@ -280,7 +280,7 @@ function TemplateForm({
             value={languageCode}
           />
         </Field>
-        <Field id="platform-template-subject" label="主题">
+        <Field id="platform-template-subject" label="邮件主题">
           <Input
             id="platform-template-subject"
             onChange={(event) => setSubject(event.target.value)}
@@ -309,7 +309,7 @@ function TemplateForm({
         disabled={saving || !name.trim() || !languageCode.trim() || !hbs.trim()}
         onClick={submit}
       >
-        {saving ? tr("保存中...") : tr("保存")}
+        {tr("保存")}
       </Button>
     </div>
   );

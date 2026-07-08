@@ -17,7 +17,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getPublicBootstrap, onboard } from "@/lib/admin-api";
-import { storeSession } from "@/lib/session";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
 export function OnboardingPage() {
@@ -68,11 +67,6 @@ export function OnboardingPage() {
         organizationSlug,
       });
 
-      storeSession({
-        accessToken: response.accessToken,
-        expiresAt: response.expiresAt,
-        sessionId: response.sessionId,
-      });
       setLanguage(response.snapshot.user.preferredLanguage);
       router.replace("/home");
     } catch (saveError) {

@@ -42,6 +42,8 @@ import { SettingsController } from "../infrastructure/settings/settings.controll
 import { SettingsService } from "../infrastructure/settings/settings.service.js";
 import { UsersController } from "../infrastructure/users/users.controller.js";
 import { UsersService } from "../infrastructure/users/users.service.js";
+import { AuthSessionService } from "../infrastructure/auth/auth-session.service.js";
+import { MailService } from "../infrastructure/mail/mail.service.js";
 
 type Persona = "ordinary" | "orgScoped" | "platformAdmin";
 
@@ -153,7 +155,19 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
       ],
       providers: [
         GroupsService,
+        {
+          provide: AuthSessionService,
+          useClass: E2EAuthSessionService,
+        },
         MembershipsService,
+        {
+          provide: MailService,
+          useValue: {
+            async ensureDefaultTemplatesForOrganization() {
+              return undefined;
+            },
+          },
+        },
         OrganizationsService,
         PlatformMembersService,
         SettingsService,

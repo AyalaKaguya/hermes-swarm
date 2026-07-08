@@ -165,7 +165,8 @@ function parseCorsOrigin(value: string | undefined) {
     ?.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
-  return origins && origins.length > 0 ? origins : true;
+  if (origins && origins.length > 0) return origins;
+  return process.env.NODE_ENV === "production" ? false : true;
 }
 
 function validateBoolean(name: string, value: unknown) {

@@ -81,6 +81,9 @@ export const INFRASTRUCTURE_NAV_ITEMS = BASE_INFRASTRUCTURE_NAV_ITEMS.flatMap(
               pageKey: item.pageKey,
               permission: item.permission,
             },
+            ...BASE_INFRASTRUCTURE_NAV_ITEMS.filter(
+              (child) => child.key === "settings.platform-email-templates",
+            ),
             {
               href: "/settings/platform?tab=admins",
               icon: "users" as AppIconName,
@@ -106,6 +109,8 @@ export const INFRASTRUCTURE_NAV_ITEMS = BASE_INFRASTRUCTURE_NAV_ITEMS.flatMap(
               permission: item.permission,
             },
           ]
+        : item.key === "settings.platform-email-templates"
+          ? []
         : [item],
 ) satisfies InfrastructureNavItem[];
 

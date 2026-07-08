@@ -1,7 +1,6 @@
 import type { CurrentUser, PrincipalSession, Snapshot } from "./admin-api";
 
 export type UserSession = {
-  accessToken: string;
   expiresAt: string;
   sessionId: string;
 };
@@ -15,6 +14,8 @@ export function getStoredSession(): UserSession | null {
     return null;
   }
 
+  // Remove legacy browser-readable access tokens. Web auth now lives in an
+  // httpOnly BFF session cookie.
   const rawValue = window.localStorage.getItem(SESSION_KEY);
   if (!rawValue) {
     return null;
@@ -22,11 +23,14 @@ export function getStoredSession(): UserSession | null {
 
   try {
     const value = JSON.parse(rawValue) as Partial<UserSession>;
-    if (!value.accessToken || !value.expiresAt || !value.sessionId) {
+    if ("accessToken" in value) {
+      window.localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    if (!value.expiresAt || !value.sessionId) {
       return null;
     }
     return {
-      accessToken: value.accessToken,
       expiresAt: value.expiresAt,
       sessionId: value.sessionId,
     };

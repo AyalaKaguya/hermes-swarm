@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { AdminApiError } from "./admin-api";
+import { fetchMe } from "./admin-api";
 import {
   getAuthenticatedAdminToken,
   requireAuthenticatedAdminToken,
 } from "./authenticated-admin";
+import { clearStoredSession, getStoredSession } from "./session";
 
 const originalWindow = globalThis.window;
 const originalFetch = globalThis.fetch;
@@ -14,71 +15,45 @@ afterEach(() => {
   (globalThis as { window?: Window }).window = originalWindow;
 });
 
-describe("admin API authenticated token helper", () => {
-  it("returns a usable stored access token without refreshing", async () => {
+describe("admin API browser auth client", () => {
+  it("returns only a non-secret web session marker", async () => {
+    assert.equal(await getAuthenticatedAdminToken(), "web-session");
+    assert.equal(await requireAuthenticatedAdminToken(), "web-session");
+  });
+
+  it("removes legacy localStorage access tokens", () => {
     const storage = createLocalStorage();
     installWindow(storage);
     storage.setItem(
       "hermes-swarm.admin-session",
       JSON.stringify({
-        accessToken: "current-token",
+        accessToken: "legacy-token",
         expiresAt: new Date(Date.now() + 300_000).toISOString(),
         sessionId: "session-1",
       }),
     );
 
-    let fetchCalled = false;
-    globalThis.fetch = async () => {
-      fetchCalled = true;
-      return new Response(null, { status: 500 });
-    };
-
-    assert.equal(await getAuthenticatedAdminToken(), "current-token");
-    assert.equal(fetchCalled, false);
+    assert.equal(getStoredSession(), null);
+    assert.equal(storage.getItem("hermes-swarm.admin-session"), null);
   });
 
-  it("refreshes an expired stored access token and persists the new session", async () => {
-    const storage = createLocalStorage();
-    installWindow(storage);
-    storage.setItem(
-      "hermes-swarm.admin-session",
-      JSON.stringify({
-        accessToken: "expired-token",
-        expiresAt: new Date(Date.now() - 1_000).toISOString(),
-        sessionId: "session-1",
-      }),
-    );
-
-    globalThis.fetch = async (input, init) => {
-      assert.equal(String(input), "/api/admin/auth/refresh");
-      assert.equal(init?.method, "POST");
-      return Response.json({
-        accessToken: "refreshed-token",
-        expiresAt: new Date(Date.now() + 300_000).toISOString(),
-        sessionId: "session-2",
-      });
-    };
-
-    assert.equal(await getAuthenticatedAdminToken(), "refreshed-token");
-    assert.equal(
-      JSON.parse(storage.getItem("hermes-swarm.admin-session") ?? "{}")
-        .accessToken,
-      "refreshed-token",
-    );
-  });
-
-  it("throws a consistent authentication error when no usable token exists", async () => {
+  it("does not send browser Authorization headers", async () => {
     installWindow(createLocalStorage());
-    globalThis.fetch = async () =>
-      Response.json({ message: "Unauthorized" }, { status: 401 });
+    globalThis.fetch = async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.has("Authorization"), false);
+      return Response.json({ memberships: [], permissions: [], user: {} });
+    };
 
-    await assert.rejects(
-      () => requireAuthenticatedAdminToken(),
-      (error) =>
-        error instanceof AdminApiError &&
-        error.status === 401 &&
-        error.code === "AUTHENTICATION_REQUIRED",
-    );
+    await fetchMe("not-a-real-token");
+  });
+
+  it("clears legacy session storage explicitly", () => {
+    const storage = createLocalStorage();
+    installWindow(storage);
+    storage.setItem("hermes-swarm.admin-session", "{}");
+    clearStoredSession();
+    assert.equal(storage.getItem("hermes-swarm.admin-session"), null);
   });
 });
 

@@ -76,6 +76,11 @@ export class AuthController {
     await this.authService.revokeOtherSessions(authorization);
   }
 
+  @Post("realtime-ticket")
+  realtimeTicket(@Headers("authorization") authorization?: string) {
+    return this.authService.createRealtimeTicket(authorization);
+  }
+
   /**
    * Returns whether the supplied authorization header is still valid.
    */

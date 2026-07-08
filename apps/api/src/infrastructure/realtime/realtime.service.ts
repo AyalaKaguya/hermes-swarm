@@ -81,10 +81,13 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       if (typeof websocketKey !== "string" || !websocketKey.trim()) {
         throw new Error("Missing websocket key");
       }
+      const ticket = url.searchParams.get("ticket");
       const token =
         url.searchParams.get("access_token") ??
         extractBearerToken(request.headers.authorization);
-      const session = await this.authSessionService.validateAccessToken(token ?? undefined);
+      const session = ticket
+        ? await this.authSessionService.consumeRealtimeTicket(ticket)
+        : await this.authSessionService.validateAccessToken(token ?? undefined);
       const accept = createHash("sha1")
         .update(`${websocketKey}${WEBSOCKET_GUID}`)
         .digest("base64");

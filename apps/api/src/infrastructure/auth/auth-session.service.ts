@@ -56,6 +56,11 @@ export type IssuedAuthSession = {
   sessionId: string;
 };
 
+export type RealtimeTicketSession = {
+  sessionId: string;
+  userId: string;
+};
+
 @Injectable()
 export class AuthSessionService {
   constructor(
@@ -192,6 +197,57 @@ export class AuthSessionService {
       tokenKind: "session",
       userId: payload.userId,
     } satisfies ValidatedAuthSession;
+  }
+
+  async createRealtimeTicket(session: RealtimeTicketSession) {
+    const ticket = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + 30_000).toISOString();
+    await (
+      await this.redisService.getClient()
+    ).set(
+      this.realtimeTicketKey(hashToken(ticket)),
+      JSON.stringify({
+        sessionId: session.sessionId,
+        userId: session.userId,
+      } satisfies RealtimeTicketSession),
+      { EX: 30 },
+    );
+    return { expiresAt, ticket };
+  }
+
+  async consumeRealtimeTicket(ticket: string | undefined) {
+    if (!ticket) {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+
+    const client = await this.redisService.getClient();
+    const key = this.realtimeTicketKey(hashToken(ticket));
+    const rawValue = await client.get(key);
+    if (!rawValue) {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+    await client.del(key);
+
+    let ticketSession: RealtimeTicketSession;
+    try {
+      ticketSession = JSON.parse(rawValue) as RealtimeTicketSession;
+    } catch {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+
+    const record = await this.getSessionRecord(ticketSession.sessionId);
+    if (
+      !record ||
+      record.userId !== ticketSession.userId ||
+      record.revokedAt ||
+      isSessionExpired(record)
+    ) {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+
+    record.lastSeenAt = new Date().toISOString();
+    await this.saveSession(record);
+    return ticketSession;
   }
 
   async listSessions(userId: string, currentSessionId: string) {
@@ -418,6 +474,10 @@ export class AuthSessionService {
 
   private userSessionsKey(userId: string) {
     return `auth:user_sessions:${userId}`;
+  }
+
+  private realtimeTicketKey(ticketHash: string) {
+    return `auth:realtime_ticket:${ticketHash}`;
   }
 
   private get accessTokenTtlSeconds() {

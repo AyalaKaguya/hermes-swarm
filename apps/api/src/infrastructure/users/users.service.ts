@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   ForbiddenException,
+  Inject,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -30,6 +31,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
   ) {}
 

@@ -9,12 +9,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        destination: "http://localhost:3200/api/admin/:path*",
-        source: "/api/admin/:path*",
-      },
-      {
-        destination: "http://localhost:3200/api/:path*",
-        source: "/api/:path*",
+        destination: "http://localhost:3200/api/realtime",
+        source: "/api/realtime",
       },
     ];
   },
