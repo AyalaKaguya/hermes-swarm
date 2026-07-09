@@ -553,7 +553,7 @@ export function CustomSettingForm({
                   onChange={(event) =>
                     updateOption(index, "value", event.currentTarget.value)
                   }
-                  placeholder="value"
+                  placeholder={tr("值")}
                   value={option.value}
                 />
                 <Button
@@ -884,7 +884,7 @@ export function SettingEditDialog({
                       onChange={(event) =>
                         updateOption(index, "value", event.currentTarget.value)
                       }
-                      placeholder="value"
+                      placeholder={tr("值")}
                       value={option.value}
                     />
                     <Button

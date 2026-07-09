@@ -127,9 +127,9 @@ export const DATE_FORMAT_OPTIONS = [
 ] as const satisfies readonly SettingOption[];
 
 export const LANGUAGE_OPTIONS = [
-  { label: "中文", value: "zh-CN" },
+  { label: "简体中文", value: "zh-CN" },
   { label: "English", value: "en" },
-  { label: "繁体中文", value: "zh-Hant" },
+  { label: "繁體中文", value: "zh-Hant" },
 ] as const satisfies readonly SettingOption[];
 
 export const PASSWORD_LENGTH_OPTIONS = [6, 8, 10, 12, 16].map((value) => ({

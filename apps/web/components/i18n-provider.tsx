@@ -28,6 +28,11 @@ type I18nContextValue = {
   setLanguage: (language: string | null | undefined) => void;
 };
 
+type I18nState = {
+  language: SupportedLanguage;
+  messages: AbstractIntlMessages;
+};
+
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({
@@ -40,21 +45,38 @@ export function I18nProvider({
   initialMessages: AbstractIntlMessages;
 }) {
   const initialLanguage = normalizeLanguagePreference(initialLocale);
-  const [language, setLanguageState] =
-    useState<SupportedLanguage>(initialLanguage);
-  const [messages, setMessages] =
-    useState<AbstractIntlMessages>(initialMessages);
+  const [state, setState] = useState<I18nState>(() => {
+    const language =
+      typeof window === "undefined"
+        ? initialLanguage
+        : getStoredLanguagePreference();
+
+    return {
+      language,
+      messages:
+        language === initialLanguage
+          ? initialMessages
+          : getMessagesForLanguage(language),
+    };
+  });
 
   const setLanguage = useCallback((nextLanguage: string | null | undefined) => {
     const normalized = applyLanguagePreference(nextLanguage);
-    setLanguageState(normalized);
-    setMessages(getMessagesForLanguage(normalized));
+    setState((current) => {
+      if (current.language === normalized) return current;
+      return {
+        language: normalized,
+        messages: getMessagesForLanguage(normalized),
+      };
+    });
   }, []);
 
   useEffect(() => {
     const storedLanguage = getStoredLanguagePreference();
-    if (storedLanguage !== language) {
+    if (storedLanguage !== state.language) {
       setLanguage(storedLanguage);
+    } else {
+      applyLanguagePreference(state.language);
     }
 
     function onStorage(event: StorageEvent) {
@@ -65,18 +87,19 @@ export function I18nProvider({
 
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [language, setLanguage]);
+  }, [state.language, setLanguage]);
 
   const value = useMemo<I18nContextValue>(
-    () => ({ language, setLanguage }),
-    [language, setLanguage],
+    () => ({ language: state.language, setLanguage }),
+    [state.language, setLanguage],
   );
 
   return (
     <I18nContext.Provider value={value}>
       <NextIntlClientProvider
-        locale={language}
-        messages={messages}
+        key={state.language}
+        locale={state.language}
+        messages={state.messages}
         timeZone="Asia/Hong_Kong"
       >
         {children}

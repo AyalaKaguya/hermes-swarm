@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
   Tooltip,
   TooltipContent,
@@ -524,6 +525,7 @@ export const PromptInput = ({
   children,
   ...props
 }: PromptInputProps) => {
+  const tr = useTextTranslation();
   // Try to use a provider controller if present
   const controller = useOptionalPromptInputController();
   const usingProvider = !!controller;
@@ -907,12 +909,12 @@ export const PromptInput = ({
     <>
       <input
         accept={accept}
-        aria-label="Upload files"
+        aria-label={tr("上传文件")}
         className="hidden"
         multiple={multiple}
         onChange={handleChange}
         ref={inputRef}
-        title="Upload files"
+        title={tr("上传文件")}
         type="file"
       />
       <form

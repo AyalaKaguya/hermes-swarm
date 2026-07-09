@@ -35,7 +35,13 @@ describe("settings payload parsing", () => {
   });
 
   it("rejects empty payloads and blank setting names", () => {
+    assert.throws(() => parseSettingsPayload(null as any), BadRequestException);
+    assert.throws(() => parseSettingsPayload([] as any), BadRequestException);
     assert.throws(() => parseSettingsPayload({}), BadRequestException);
+    assert.throws(
+      () => parseSettingsPayload({ settings: [null] as any }),
+      BadRequestException,
+    );
     assert.throws(
       () => parseSettingsPayload({ settings: [{ name: " ", value: "x" }] }),
       BadRequestException,

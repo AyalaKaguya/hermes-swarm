@@ -558,15 +558,15 @@ export function PlatformRolePermissions({
       </Dialog>
 
       <ConfirmActionDialog
-        confirmLabel="删除"
-        description="此操作会删除该平台角色，已分配此角色的平台用户可能受到影响。"
+        confirmLabel={tr("删除")}
+        description={tr("此操作会删除该平台角色，已分配此角色的平台用户可能受到影响。")}
         onConfirm={() => void removeRole()}
         onOpenChange={(open) => {
           if (!open && !savingRole) setRoleToDelete(null);
         }}
         open={Boolean(roleToDelete)}
         pending={savingRole}
-        title="删除平台角色？"
+        title={tr("删除平台角色？")}
       />
     </div>
   );

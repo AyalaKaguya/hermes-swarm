@@ -2,11 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import jwt from "jsonwebtoken";
-import { Repository } from "typeorm";
+import { QueryFailedError, Repository } from "typeorm";
 import {
   Invite,
   Organization,
@@ -37,6 +38,8 @@ type InviteExpiry = NonNullable<CreateBulkInvitesPayload["expiresIn"]>;
 
 @Injectable()
 export class InviteService {
+  private readonly logger = new Logger(InviteService.name);
+
   constructor(
     @InjectRepository(Invite)
     private readonly inviteRepository: Repository<Invite>,
@@ -62,19 +65,22 @@ export class InviteService {
     invitedById: string,
     payload: CreateBulkInvitesPayload,
   ): Promise<{ items: InviteDto[]; total: number; ignored: number }> {
+    const input = requirePayload(payload);
     const organization = await this.getOrganizationOrThrow(organizationId);
-    const expiresIn = normalizeExpiry(payload.expiresIn);
+    const expiresIn = normalizeExpiry(input.expiresIn);
+    const requestedEmails = normalizeEmailList(input.emailIds)
+      .map(normalizeEmail)
+      .filter((email): email is string => Boolean(email));
 
     const emails = [
       ...new Set(
-        (payload.emailIds ?? [])
-          .map(normalizeEmail)
-          .filter((email): email is string => Boolean(email)),
+        requestedEmails,
       ),
     ];
 
-    const roleId = payload.roleId
-      ? await this.resolveAssignableRoleId(organizationId, payload.roleId)
+    const requestedRoleId = normalizeOptionalText(input.roleId, "角色");
+    const roleId = requestedRoleId
+      ? await this.resolveAssignableRoleId(organizationId, requestedRoleId)
       : null;
 
     if (!emails.length) {
@@ -165,7 +171,7 @@ export class InviteService {
     );
 
     return {
-      ignored: emails.length - saved.length,
+      ignored: requestedEmails.length - saved.length,
       items: await Promise.all(saved.map((invite) => this.toInviteDto(invite))),
       total: saved.length,
     };
@@ -188,95 +194,124 @@ export class InviteService {
    * invite token; new users must provide profile and password fields.
    */
   async accept(payload: AcceptInvitePayload): Promise<InviteDto> {
-    if (payload.action === "decline") {
-      return this.decline(payload);
+    const input = requirePayload(payload);
+    const action = normalizeInviteAction(input.action);
+    if (action === "decline") {
+      return this.decline(input);
     }
 
+    const inviteEntity = await this.getActiveInviteOrThrow(
+      input.email,
+      input.token,
+    );
+    const organizationId = requireOrganizationId(inviteEntity);
+    const organization = await this.getOrganizationOrThrow(organizationId);
+
+    let user: User;
+    let invite: Invite;
+    try {
+      ({ invite, user } = await this.inviteRepository.manager.transaction(
+        async (manager) => {
+          const lockedInvite = await manager.findOne(Invite, {
+            lock: { mode: "pessimistic_write" },
+            where: { id: inviteEntity.id },
+          });
+          if (!lockedInvite || deriveInviteStatus(lockedInvite) !== "invited") {
+            throw new BadRequestException("邀请链接无效或已过期");
+          }
+
+          const targetEmail = resolveAcceptanceEmail(lockedInvite, input.email);
+          let user = await manager.findOne(User, {
+            where: { email: targetEmail },
+          });
+          if (user) {
+            const existingMembership = await manager.findOne(UserOrganization, {
+              where: { organizationId, userId: user.id },
+            });
+            if (existingMembership) {
+              throw new ConflictException("该邮箱已加入组织");
+            }
+            if (!lockedInvite.email) {
+              const password = requirePassword(input.password);
+              if (!verifyPassword(password, user.passwordHash)) {
+                throw new BadRequestException("邮箱或密码不正确");
+              }
+            }
+          }
+
+          if (!user) {
+            const displayName = requireText(input.displayName, "用户名称");
+            const password = requirePassword(input.password);
+            user = await manager.save(
+              User,
+              this.userRepository.create({
+                displayName,
+                email: targetEmail,
+                emailVerified: true,
+                nickname: displayName,
+                passwordHash: hashPassword(password),
+                preferredLanguage: "zh-CN",
+                status: "active",
+                type: "user",
+              }),
+            );
+          }
+
+          await manager.save(
+            UserOrganization,
+              this.membershipRepository.create({
+              displayName: input.displayName?.trim() || user.displayName || null,
+              joinedAt: new Date(),
+              organizationId,
+              roleId: lockedInvite.roleId,
+              status: "active",
+              userId: user.id,
+            }),
+          );
+
+          lockedInvite.acceptedCount = (lockedInvite.acceptedCount ?? 0) + 1;
+          lockedInvite.acceptedUserId = user.id;
+          lockedInvite.actionDate = new Date();
+          if (lockedInvite.email) {
+            lockedInvite.status = "accepted";
+          }
+          invite = await manager.save(Invite, lockedInvite);
+          return { invite, user };
+        },
+      ));
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException("该邮箱已加入组织");
+      }
+      throw error;
+    }
+
+    await this.notifyInviteAccepted({ invite, organization, user });
+
+    return this.toInviteDto(invite, { includeOrganization: true });
+  }
+
+  async decline(payload: AcceptInvitePayload): Promise<InviteDto> {
     const inviteEntity = await this.getActiveInviteOrThrow(
       payload.email,
       payload.token,
     );
-    const organizationId = requireOrganizationId(inviteEntity);
-    const organization = await this.getOrganizationOrThrow(organizationId);
-    const targetEmail = resolveAcceptanceEmail(inviteEntity, payload.email);
-
-    let user = await this.userRepository.findOne({
-      where: { email: targetEmail },
-    });
-    if (user) {
-      const existingMembership = await this.membershipRepository.findOne({
-        where: { organizationId, userId: user.id },
-      });
-      if (existingMembership) {
-        throw new ConflictException("该邮箱已加入组织");
-      }
-      if (!inviteEntity.email) {
-        const password = requirePassword(payload.password);
-        if (!verifyPassword(password, user.passwordHash)) {
-          throw new BadRequestException("邮箱或密码不正确");
+    const invite = await this.inviteRepository.manager.transaction(
+      async (manager) => {
+        const lockedInvite = await manager.findOne(Invite, {
+          lock: { mode: "pessimistic_write" },
+          where: { id: inviteEntity.id },
+        });
+        if (!lockedInvite || deriveInviteStatus(lockedInvite) !== "invited") {
+          throw new BadRequestException("邀请链接无效或已过期");
         }
-      }
-    }
+        if (!lockedInvite.email) return lockedInvite;
 
-    if (!user) {
-      const displayName = requireText(payload.displayName, "用户名称");
-      const password = requirePassword(payload.password);
-      user = await this.userRepository.save(
-        this.userRepository.create({
-          displayName,
-          email: targetEmail,
-          emailVerified: true,
-          nickname: displayName,
-          passwordHash: hashPassword(password),
-          preferredLanguage: "zh-CN",
-          status: "active",
-          type: "user",
-        }),
-      );
-    }
-
-    await this.membershipRepository.save(
-      this.membershipRepository.create({
-        displayName: payload.displayName?.trim() || user.displayName || null,
-        joinedAt: new Date(),
-        organizationId,
-        roleId: inviteEntity.roleId,
-        status: "active",
-        userId: user.id,
-      }),
+        lockedInvite.actionDate = new Date();
+        lockedInvite.status = "declined";
+        return manager.save(Invite, lockedInvite);
+      },
     );
-
-    inviteEntity.acceptedCount = (inviteEntity.acceptedCount ?? 0) + 1;
-    inviteEntity.acceptedUserId = user.id;
-    inviteEntity.actionDate = new Date();
-    if (inviteEntity.email) {
-      inviteEntity.status = "accepted";
-    }
-    await this.inviteRepository.save(inviteEntity);
-
-    await this.notificationsService.createForUser({
-      actorUserId: inviteEntity.invitedById,
-      body: `你已加入组织 ${organization.name}。`,
-      kind: "success",
-      organizationId,
-      payload: { organizationId },
-      recipientUserId: user.id,
-      sourceId: inviteEntity.id,
-      sourceType: "organization-invite",
-      title: "组织邀请已接受",
-    });
-
-    return this.toInviteDto(inviteEntity, { includeOrganization: true });
-  }
-
-  async decline(payload: AcceptInvitePayload): Promise<InviteDto> {
-    const invite = await this.getActiveInviteOrThrow(payload.email, payload.token);
-    if (!invite.email) {
-      return this.toInviteDto(invite, { includeOrganization: true });
-    }
-    invite.actionDate = new Date();
-    invite.status = "declined";
-    await this.inviteRepository.save(invite);
     return this.toInviteDto(invite, { includeOrganization: true });
   }
 
@@ -298,14 +333,24 @@ export class InviteService {
     organizationId: string,
     inviteId: string,
   ): Promise<void> {
-    const invite = await this.inviteRepository.findOne({
-      where: { id: inviteId, organizationId },
+    await this.inviteRepository.manager.transaction(async (manager) => {
+      const invite = await manager.findOne(Invite, {
+        lock: { mode: "pessimistic_write" },
+        where: { id: inviteId, organizationId },
+      });
+      if (!invite) throw new NotFoundException("邀请不存在");
+
+      const status = deriveInviteStatus(invite);
+      if (status === "accepted") {
+        throw new BadRequestException("已接受的邀请不能关闭");
+      }
+      if (status === "revoked") return;
+
+      invite.actionDate = new Date();
+      invite.closedAt = new Date();
+      invite.status = "revoked";
+      await manager.save(Invite, invite);
     });
-    if (!invite) throw new NotFoundException("邀请不存在");
-    invite.actionDate = new Date();
-    invite.closedAt = new Date();
-    invite.status = "revoked";
-    await this.inviteRepository.save(invite);
   }
 
   async resendForOrganization(
@@ -314,22 +359,31 @@ export class InviteService {
     inviteId: string,
   ): Promise<InviteDto> {
     const organization = await this.getOrganizationOrThrow(organizationId);
-    const invite = await this.inviteRepository.findOne({
-      where: { id: inviteId, organizationId },
-    });
-    if (!invite) throw new NotFoundException("邀请不存在");
-    if (invite.status === "accepted") {
-      throw new BadRequestException("已接受的邀请不能重发");
-    }
+    const invite = await this.inviteRepository.manager.transaction(
+      async (manager) => {
+        const lockedInvite = await manager.findOne(Invite, {
+          lock: { mode: "pessimistic_write" },
+          where: { id: inviteId, organizationId },
+        });
+        if (!lockedInvite) throw new NotFoundException("邀请不存在");
+        if (deriveInviteStatus(lockedInvite) === "accepted") {
+          throw new BadRequestException("已接受的邀请不能重发");
+        }
 
-    const expiresIn = invite.expireDate === null ? "never" : "3d";
-    invite.actionDate = null;
-    invite.closedAt = null;
-    invite.expireDate = computeExpireDate(expiresIn);
-    invite.invitedById = invitedById;
-    invite.status = "invited";
-    invite.token = signInviteToken(invite.email, organizationId, expiresIn);
-    await this.inviteRepository.save(invite);
+        const expiresIn = lockedInvite.expireDate === null ? "never" : "3d";
+        lockedInvite.actionDate = null;
+        lockedInvite.closedAt = null;
+        lockedInvite.expireDate = computeExpireDate(expiresIn);
+        lockedInvite.invitedById = invitedById;
+        lockedInvite.status = "invited";
+        lockedInvite.token = signInviteToken(
+          lockedInvite.email,
+          organizationId,
+          expiresIn,
+        );
+        return manager.save(Invite, lockedInvite);
+      },
+    );
 
     if (invite.email) {
       await this.notifyInvitee({ invite, invitedById, organization });
@@ -398,37 +452,73 @@ export class InviteService {
     });
 
     if (existingUser) {
-      await this.notificationsService.createForUser({
-        actorUserId: input.invitedById,
-        body: `${input.organization.name} 邀请你加入组织。`,
-        kind: "info",
-        organizationId: input.organization.id,
-        payload: {
-          email: input.invite.email,
-          inviteId: input.invite.id,
-          link,
+      try {
+        await this.notificationsService.createForUser({
+          actorUserId: input.invitedById,
+          body: `${input.organization.name} 邀请你加入组织。`,
+          kind: "info",
           organizationId: input.organization.id,
-        },
-        recipientUserId: existingUser.id,
-        sourceId: input.invite.id,
-        sourceType: "organization-invite",
-        title: "新的组织邀请",
-      });
+          payload: {
+            email: input.invite.email,
+            inviteId: input.invite.id,
+            link,
+            organizationId: input.organization.id,
+          },
+          recipientUserId: existingUser.id,
+          sourceId: input.invite.id,
+          sourceType: "organization-invite",
+          title: "新的组织邀请",
+        });
+      } catch (error) {
+        this.logger.warn(
+          `invite notification failed for invite ${input.invite.id}: ${getErrorMessage(error)}`,
+        );
+      }
     }
 
-    await this.emailSendService.send({
-      email: input.invite.email,
-      organizationId: input.organization.id,
-      templateName: "organization-invite",
-      locals: {
+    try {
+      await this.emailSendService.send({
         email: input.invite.email,
-        expiresAt: input.invite.expireDate
-          ? input.invite.expireDate.toISOString()
-          : "永久有效",
-        inviteLink: link,
-        organizationName: input.organization.name,
-      },
-    });
+        organizationId: input.organization.id,
+        templateName: "organization-invite",
+        locals: {
+          email: input.invite.email,
+          expiresAt: input.invite.expireDate
+            ? input.invite.expireDate.toISOString()
+            : "永久有效",
+          inviteLink: link,
+          organizationName: input.organization.name,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `invite email failed for invite ${input.invite.id}: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
+  private async notifyInviteAccepted(input: {
+    invite: Invite;
+    organization: Organization;
+    user: User;
+  }) {
+    try {
+      await this.notificationsService.createForUser({
+        actorUserId: input.invite.invitedById,
+        body: `你已加入组织 ${input.organization.name}。`,
+        kind: "success",
+        organizationId: input.organization.id,
+        payload: { organizationId: input.organization.id },
+        recipientUserId: input.user.id,
+        sourceId: input.invite.id,
+        sourceType: "organization-invite",
+        title: "组织邀请已接受",
+      });
+    } catch (error) {
+      this.logger.warn(
+        `invite accepted notification failed for invite ${input.invite.id}: ${getErrorMessage(error)}`,
+      );
+    }
   }
 
   private async toInviteDto(
@@ -500,6 +590,15 @@ export class InviteService {
   }
 }
 
+function requirePayload<T extends CreateBulkInvitesPayload | AcceptInvitePayload>(
+  value: T,
+): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
+  }
+  return value;
+}
+
 function toInviteRoleDto(role: Role) {
   return {
     color: role.color,
@@ -533,8 +632,12 @@ function resolvePublicBaseUrl() {
   );
 }
 
-function normalizeEmail(email: string | null | undefined) {
-  const value = email?.trim().toLowerCase();
+function normalizeEmail(email: unknown) {
+  if (email === null || email === undefined) return null;
+  if (typeof email !== "string") {
+    throw new BadRequestException("邮箱格式不正确");
+  }
+  const value = email.trim().toLowerCase();
   if (!value) return null;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
     throw new BadRequestException("邮箱格式不正确");
@@ -542,8 +645,35 @@ function normalizeEmail(email: string | null | undefined) {
   return value;
 }
 
-function normalizeExpiry(value: string | undefined): InviteExpiry {
-  return value === "7d" || value === "never" ? value : "3d";
+function normalizeEmailList(value: unknown) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new BadRequestException("邮箱列表无效");
+  }
+  return value;
+}
+
+function normalizeExpiry(value: unknown): InviteExpiry {
+  if (value === undefined || value === null || value === "3d") return "3d";
+  if (value === "7d" || value === "never") return value;
+  throw new BadRequestException("邀请有效期无效");
+}
+
+function normalizeInviteAction(value: unknown): "accept" | "decline" {
+  if (value === undefined || value === null || value === "accept") {
+    return "accept";
+  }
+  if (value === "decline") return "decline";
+  throw new BadRequestException("邀请操作无效");
+}
+
+function normalizeOptionalText(value: unknown, label: string) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${label}无效`);
+  }
+  const text = value.trim();
+  return text || null;
 }
 
 function computeExpireDate(expiresIn: InviteExpiry) {
@@ -584,14 +714,27 @@ function resolveAcceptanceEmail(invite: Invite, payloadEmail: string | undefined
   return normalizedEmail;
 }
 
-function requireText(value: string | undefined, label: string) {
-  const text = value?.trim();
+function requireText(value: unknown, label: string) {
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${label}格式不正确`);
+  }
+  const text = value.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }
 
-function requirePassword(value: string | undefined) {
+function requirePassword(value: unknown) {
   const password = requireText(value, "密码");
   if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
   return password;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  if (!(error instanceof QueryFailedError)) return false;
+  const driverError = error.driverError as { code?: string } | undefined;
+  return driverError?.code === "23505";
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }

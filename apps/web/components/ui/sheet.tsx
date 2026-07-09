@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 import { useModalLayer } from "@/components/ui/modal-layer"
+import { useTextTranslation } from "@/hooks/use-text-translation"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
@@ -61,6 +62,7 @@ function SheetContent({
   showCloseButton?: boolean
 }) {
   const modalLayer = useModalLayer()
+  const tr = useTextTranslation()
 
   return (
     <SheetPortal>
@@ -101,7 +103,7 @@ function SheetContent({
             >
               <XIcon
               />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">{tr("关闭")}</span>
             </Button>
           </SheetPrimitive.Close>
         )}

@@ -622,7 +622,7 @@ export function OrganizationDetailPage({
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
-                <Field label="名称" htmlFor="organization-name">
+                <Field label={tr("名称")} htmlFor="organization-name">
                   <Input
                     disabled={!canManage}
                     id="organization-name"
@@ -632,7 +632,7 @@ export function OrganizationDetailPage({
                     value={form.name}
                   />
                 </Field>
-                <Field label="标识符" htmlFor="organization-slug">
+                <Field label={tr("标识符")} htmlFor="organization-slug">
                   <Input
                     disabled={!canManage}
                     id="organization-slug"
@@ -642,7 +642,7 @@ export function OrganizationDetailPage({
                     value={form.slug}
                   />
                 </Field>
-                <Field label="子域名" htmlFor="organization-subdomain">
+                <Field label={tr("子域名")} htmlFor="organization-subdomain">
                   <Input
                     disabled={!canManage}
                     id="organization-subdomain"
@@ -652,7 +652,7 @@ export function OrganizationDetailPage({
                     value={form.subdomain}
                   />
                 </Field>
-                <Field label="官方名称" htmlFor="organization-official-name">
+                <Field label={tr("官方名称")} htmlFor="organization-official-name">
                   <Input
                     disabled={!canManage}
                     id="organization-official-name"
@@ -662,7 +662,7 @@ export function OrganizationDetailPage({
                     value={form.officialName}
                   />
                 </Field>
-                <Field label="Profile Link" htmlFor="organization-profile-link">
+                <Field label={tr("资料链接")} htmlFor="organization-profile-link">
                   <Input
                     disabled={!canManage}
                     id="organization-profile-link"
@@ -672,7 +672,7 @@ export function OrganizationDetailPage({
                     value={form.profileLink}
                   />
                 </Field>
-                <Field label="网站" htmlFor="organization-website">
+                <Field label={tr("网站")} htmlFor="organization-website">
                   <Input
                     disabled={!canManage}
                     id="organization-website"
@@ -726,7 +726,7 @@ export function OrganizationDetailPage({
 
             <Card>
               <CardHeader>
-                <CardTitle>Logo</CardTitle>
+                <CardTitle>{tr("徽标")}</CardTitle>
                 <CardDescription>
                   {tr("通过上传图片更新组织头像")}
                 </CardDescription>
@@ -1114,7 +1114,7 @@ export function OrganizationDetailPage({
                       />
                     </Field>
                   ))}
-                  <Field label="员工数" htmlFor="organization-total-employees">
+                    <Field label={tr("员工数")} htmlFor="organization-total-employees">
                     <Input
                       disabled={!canManage}
                       id="organization-total-employees"
@@ -1350,7 +1350,7 @@ export function OrganizationDetailPage({
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="品牌色" htmlFor="organization-brand-color">
+              <Field label={tr("品牌色")} htmlFor="organization-brand-color">
                   <Input
                     disabled={!canManage}
                     id="organization-brand-color"
@@ -1361,7 +1361,7 @@ export function OrganizationDetailPage({
                     value={form.brandColor}
                   />
                 </Field>
-                <Field label="Banner" htmlFor="organization-banner">
+                <Field label={tr("横幅")} htmlFor="organization-banner">
                   <Input
                     disabled={!canManage}
                     id="organization-banner"
@@ -1373,7 +1373,7 @@ export function OrganizationDetailPage({
                   />
                 </Field>
               </div>
-              <Field label="短描述" htmlFor="organization-short-description">
+              <Field label={tr("短描述")} htmlFor="organization-short-description">
                 <Textarea
                   disabled={!canManage}
                   id="organization-short-description"
@@ -1384,7 +1384,7 @@ export function OrganizationDetailPage({
                   value={form.shortDescription}
                 />
               </Field>
-              <Field label="客户/领域聚焦" htmlFor="organization-client-focus">
+              <Field label={tr("客户/领域聚焦")} htmlFor="organization-client-focus">
                 <Textarea
                   disabled={!canManage}
                   id="organization-client-focus"
@@ -1395,7 +1395,7 @@ export function OrganizationDetailPage({
                   value={form.clientFocus}
                 />
               </Field>
-              <Field label="组织概览" htmlFor="organization-overview">
+              <Field label={tr("组织概览")} htmlFor="organization-overview">
                 <Textarea
                   disabled={!canManage}
                   id="organization-overview"
@@ -1452,7 +1452,7 @@ export function OrganizationDetailPage({
         </Button>
       </div>
       <ConfirmActionDialog
-        confirmLabel="删除"
+        confirmLabel={tr("删除")}
         description={
           customSettingToDelete
             ? `${tr("将删除组织覆写设置")} ${customSettingToDelete.name}`
@@ -1467,10 +1467,10 @@ export function OrganizationDetailPage({
         }}
         open={Boolean(customSettingToDelete)}
         pending={savingCustomSetting}
-        title="删除组织设置"
+        title={tr("删除组织设置")}
       />
       <ConfirmActionDialog
-        confirmLabel="关闭"
+        confirmLabel={tr("关闭")}
         description={
           inviteToClose
             ? inviteToClose.email
@@ -1484,7 +1484,7 @@ export function OrganizationDetailPage({
         }}
         open={Boolean(inviteToClose)}
         pending={closingInvite}
-        title="关闭邀请"
+        title={tr("关闭邀请")}
       />
     </section>
   );
@@ -1641,7 +1641,7 @@ function OrganizationInviteForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <Field htmlFor="organization-invite-mode" label="邀请类型">
+      <Field htmlFor="organization-invite-mode" label={tr("邀请类型")}>
         <Select
           onValueChange={(value) => setInviteMode(value as "directed" | "open")}
           value={inviteMode}
@@ -1657,7 +1657,7 @@ function OrganizationInviteForm({
       </Field>
       {inviteMode === "directed" && (
         <>
-          <Field htmlFor="organization-invite-user-search" label="搜索用户">
+          <Field htmlFor="organization-invite-user-search" label={tr("搜索用户")}>
             <Input
               id="organization-invite-user-search"
               onChange={(event) => setUserSearch(event.target.value)}
@@ -1693,7 +1693,7 @@ function OrganizationInviteForm({
               )}
             </div>
           )}
-          <Field htmlFor="organization-invite-emails" label="指定邮箱">
+          <Field htmlFor="organization-invite-emails" label={tr("指定邮箱")}>
             <Textarea
               id="organization-invite-emails"
               onChange={(event) => setEmails(event.target.value)}
@@ -1721,7 +1721,7 @@ function OrganizationInviteForm({
           )}
         </>
       )}
-      <Field htmlFor="organization-invite-role" label="角色">
+      <Field htmlFor="organization-invite-role" label={tr("角色")}>
         <Select onValueChange={setRoleId} value={roleId}>
           <SelectTrigger id="organization-invite-role">
             <SelectValue />
@@ -1736,7 +1736,7 @@ function OrganizationInviteForm({
           </SelectContent>
         </Select>
       </Field>
-      <Field htmlFor="organization-invite-expiry" label="有效期">
+      <Field htmlFor="organization-invite-expiry" label={tr("有效期")}>
         <Select
           onValueChange={(value) =>
             setExpiresIn(value as "3d" | "7d" | "never")
@@ -1821,14 +1821,14 @@ function OrganizationUserForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <Field htmlFor="organization-user-name" label="名称">
+      <Field htmlFor="organization-user-name" label={tr("名称")}>
         <Input
           id="organization-user-name"
           onChange={(event) => setDisplayName(event.target.value)}
           value={displayName}
         />
       </Field>
-      <Field htmlFor="organization-user-email" label="邮箱">
+      <Field htmlFor="organization-user-email" label={tr("邮箱")}>
         <Input
           disabled={mode === "edit"}
           id="organization-user-email"
@@ -1838,7 +1838,7 @@ function OrganizationUserForm({
         />
       </Field>
       {mode === "create" && (
-        <Field htmlFor="organization-user-password" label="密码">
+        <Field htmlFor="organization-user-password" label={tr("密码")}>
           <Input
             id="organization-user-password"
             onChange={(event) => setPassword(event.target.value)}
@@ -1847,7 +1847,7 @@ function OrganizationUserForm({
           />
         </Field>
       )}
-      <Field htmlFor="organization-user-role" label="角色">
+      <Field htmlFor="organization-user-role" label={tr("角色")}>
         <Select onValueChange={setRoleId} value={roleId}>
           <SelectTrigger id="organization-user-role">
             <SelectValue />
@@ -1862,7 +1862,7 @@ function OrganizationUserForm({
           </SelectContent>
         </Select>
       </Field>
-      <Field htmlFor="organization-user-status" label="状态">
+      <Field htmlFor="organization-user-status" label={tr("状态")}>
         <Select
           onValueChange={(value) => setStatus(value as UserStatus)}
           value={status}

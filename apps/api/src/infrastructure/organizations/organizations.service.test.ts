@@ -93,9 +93,39 @@ describe("OrganizationsService role protections", () => {
     assert.equal(state.deletedRoleQueries.length, 0);
   });
 
+  it("clears organization member role references and permissions when deleting a custom role", async () => {
+    const role = customRole();
+    const state = createService({
+      role,
+      roleMembershipUserIds: ["user-with-role"],
+    });
+
+    await state.service.deleteRole(ORGANIZATION_ID, role.id);
+
+    assert.deepEqual(state.updatedMembershipRoleQueries, [
+      {
+        query: { organizationId: ORGANIZATION_ID, roleId: role.id },
+        target: "UserOrganization",
+        value: { roleId: null },
+      },
+    ]);
+    assert.deepEqual(state.deletedRolePermissionQueries, [{ roleId: role.id }]);
+    assert.deepEqual(state.deletedRoleQueries, [{ id: role.id }]);
+    assert.equal(state.revokedIntegrationTokenUpdates.length, 1);
+    assert.equal(
+      getFindOperatorValues(
+        state.revokedIntegrationTokenUpdates[0].query.ownerUserId,
+      )[0],
+      "user-with-role",
+    );
+  });
+
   it("continues to replace permissions for custom organization roles", async () => {
     const role = customRole();
-    const state = createService({ role });
+    const state = createService({
+      role,
+      roleMembershipUserIds: ["user-with-role"],
+    });
 
     const result = await state.service.replaceRolePermissions(
       ORGANIZATION_ID,
@@ -120,7 +150,63 @@ describe("OrganizationsService role protections", () => {
       state.savedRolePermissions[0].permission,
       "organization.profile.view:organization",
     );
+    assert.equal(state.revokedIntegrationTokenUpdates.length, 1);
+    assert.equal(
+      getFindOperatorValues(
+        state.revokedIntegrationTokenUpdates[0].query.ownerUserId,
+      )[0],
+      "user-with-role",
+    );
     assert.equal(result.length, 1);
+  });
+
+  it("rejects malformed organization role permission payloads before clearing permissions", async () => {
+    const role = customRole();
+    const state = createService({ role });
+
+    await assert.rejects(
+      () => state.service.replaceRolePermissions(ORGANIZATION_ID, role.id, null as any),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.replaceRolePermissions(ORGANIZATION_ID, role.id, {
+          permissions: "all" as any,
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.replaceRolePermissions(ORGANIZATION_ID, role.id, {
+          permissions: [{ enabled: true } as any],
+        }),
+      BadRequestException,
+    );
+
+    assert.equal(state.deletedRolePermissionQueries.length, 0);
+    assert.equal(state.savedRolePermissions.length, 0);
+    assert.equal(state.revokedIntegrationTokenUpdates.length, 0);
+  });
+
+  it("does not clear existing permissions when a requested organization permission is missing", async () => {
+    const role = customRole();
+    const state = createService({ role });
+
+    await assert.rejects(
+      () =>
+        state.service.replaceRolePermissions(ORGANIZATION_ID, role.id, {
+          permissions: [
+            {
+              enabled: true,
+              permission: "missing.permission:organization",
+            },
+          ],
+        }),
+      BadRequestException,
+    );
+
+    assert.equal(state.deletedRolePermissionQueries.length, 0);
+    assert.equal(state.savedRolePermissions.length, 0);
   });
 
   it("rejects organization-scoped updates to platform organization controls", async () => {
@@ -169,9 +255,273 @@ describe("OrganizationsService role protections", () => {
     assert.equal(result.isDefault, true);
     assert.equal(state.savedOrganizations.length, 1);
   });
+
+  it("maps concurrent organization slug or subdomain uniqueness failures during create", async () => {
+    const state = createService({
+      failOrganizationSaveWithUniqueError: true,
+      role: customRole(),
+    });
+
+    await assert.rejects(
+      () =>
+        state.service.create(platformToken, {
+          name: "New Organization",
+          slug: "new-org",
+        }),
+      BadRequestException,
+    );
+
+    assert.equal(state.createdMemberships.length, 0);
+    assert.equal(state.createdRoles.length, 0);
+  });
+
+  it("maps concurrent organization slug or subdomain uniqueness failures during update", async () => {
+    const role = customRole();
+    const organization = organizationRecord();
+    const state = createService({
+      failOrganizationSaveWithUniqueError: true,
+      organization,
+      role,
+    });
+
+    await assert.rejects(
+      () =>
+        state.service.update(platformToken, ORGANIZATION_ID, {
+          slug: "renamed-org",
+        }),
+      BadRequestException,
+    );
+  });
+
+  it("maps concurrent organization role name uniqueness failures", async () => {
+    const state = createService({
+      failRoleSaveWithUniqueError: true,
+      organization: organizationRecord(),
+      role: customRole(),
+    });
+
+    await assert.rejects(
+      () =>
+        state.service.createRole(ORGANIZATION_ID, {
+          displayName: "Support",
+          name: "support",
+        }),
+      BadRequestException,
+    );
+  });
+
+  it("creates organization, default roles, and owner membership in one transaction", async () => {
+    const state = createService({ role: customRole() });
+
+    const result = await state.service.create(platformToken, {
+      name: "New Organization",
+      slug: "new-org",
+      status: "active",
+    });
+
+    assert.equal(result.slug, "new-org");
+    assert.equal(state.transactions, 1);
+    assert.equal(state.createdOrganizations.length, 1);
+    assert.equal(state.createdRoles.length, 4);
+    assert.equal(state.createdMemberships.length, 1);
+    assert.equal(state.createdMemberships[0].roleId, "role-owner");
+    assert.equal(state.seededTemplateOrganizationIds[0], "org-created");
+  });
+
+  it("rejects malformed organization create payloads before opening a transaction", async () => {
+    const state = createService({ role: customRole() });
+
+    await assert.rejects(
+      () =>
+        state.service.create(platformToken, {
+          isDefault: "false" as any,
+          name: "New Organization",
+          slug: "new-org",
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.create(platformToken, {
+          name: "New Organization",
+          status: "paused" as any,
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.create(platformToken, {
+          name: 42 as any,
+        }),
+      BadRequestException,
+    );
+
+    assert.equal(state.transactions, 0);
+    assert.equal(state.createdOrganizations.length, 0);
+  });
+
+  it("clears previous default organizations when creating a new default organization", async () => {
+    const state = createService({ role: customRole() });
+
+    const result = await state.service.create(platformToken, {
+      isDefault: true,
+      name: "New Default Organization",
+      slug: "new-default",
+      status: "active",
+    });
+
+    assert.equal(result.isDefault, true);
+    assert.equal(state.defaultOrganizationClearUpdates.length, 1);
+    assert.deepEqual(state.defaultOrganizationClearUpdates[0], {
+      update: { isDefault: false },
+      where: { isDefault: true },
+    });
+  });
+
+  it("rolls back organization creation when default role initialization fails", async () => {
+    const state = createService({
+      failDefaultRoleSave: true,
+      role: customRole(),
+    });
+
+    await assert.rejects(() =>
+      state.service.create(platformToken, {
+        name: "New Organization",
+        slug: "new-org",
+        status: "active",
+      }),
+    );
+
+    assert.equal(state.transactions, 1);
+    assert.equal(state.createdOrganizations.length, 0);
+    assert.equal(state.createdRoles.length, 0);
+    assert.equal(state.createdMemberships.length, 0);
+    assert.equal(state.seededTemplateOrganizationIds.length, 0);
+  });
+
+  it("rolls back organization creation when default email template initialization fails", async () => {
+    const state = createService({
+      failTemplateSeed: true,
+      role: customRole(),
+    });
+
+    await assert.rejects(() =>
+      state.service.create(platformToken, {
+        name: "New Organization",
+        slug: "new-org",
+        status: "active",
+      }),
+    );
+
+    assert.equal(state.transactions, 1);
+    assert.equal(state.createdOrganizations.length, 0);
+    assert.equal(state.createdRoles.length, 0);
+    assert.equal(state.createdMemberships.length, 0);
+    assert.equal(state.seededTemplateOrganizationIds.length, 0);
+  });
+
+  it("clears previous default organizations when updating an organization as default", async () => {
+    const role = customRole();
+    const organization = organizationRecord();
+    const state = createService({
+      organization,
+      platformMember: {
+        roleId: PLATFORM_ROLE_ID,
+        status: "active",
+        userId: PLATFORM_USER_ID,
+      },
+      platformRolePermissions: [
+        {
+          enabled: true,
+          permission: "organization.platform_organization.create:platform",
+          roleId: PLATFORM_ROLE_ID,
+        },
+      ],
+      role,
+    });
+
+    const result = await state.service.update(platformToken, ORGANIZATION_ID, {
+      isDefault: true,
+    });
+
+    assert.equal(result.isDefault, true);
+    assert.equal(state.transactions, 1);
+    assert.equal(state.defaultOrganizationClearUpdates.length, 1);
+    assert.deepEqual(state.defaultOrganizationClearUpdates[0], {
+      update: { isDefault: false },
+      where: { isDefault: true },
+    });
+    assert.equal(state.savedOrganizations.length, 1);
+  });
+
+  it("rejects malformed organization updates before saving or clearing defaults", async () => {
+    const role = customRole();
+    const organization = organizationRecord();
+    const state = createService({
+      organization,
+      platformMember: {
+        roleId: PLATFORM_ROLE_ID,
+        status: "active",
+        userId: PLATFORM_USER_ID,
+      },
+      platformRolePermissions: [
+        {
+          enabled: true,
+          permission: "organization.platform_organization.create:platform",
+          roleId: PLATFORM_ROLE_ID,
+        },
+      ],
+      role,
+    });
+
+    await assert.rejects(
+      () =>
+        state.service.update(platformToken, ORGANIZATION_ID, {
+          isDefault: "false" as any,
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.update(platformToken, ORGANIZATION_ID, {
+          status: "paused" as any,
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.update(platformToken, ORGANIZATION_ID, {
+          totalEmployees: "3" as any,
+        }),
+      BadRequestException,
+    );
+
+    assert.equal(state.defaultOrganizationClearUpdates.length, 0);
+    assert.equal(state.savedOrganizations.length, 0);
+    assert.equal(organization.isDefault, false);
+    assert.equal(organization.status, "active");
+  });
+
+  it("revokes organization integration tokens before deleting an organization", async () => {
+    const organization = organizationRecord();
+    const state = createService({ organization, role: customRole() });
+
+    await state.service.delete(organization.id);
+
+    assert.equal(state.revokedIntegrationTokenUpdates.length, 1);
+    assert.deepEqual(state.revokedIntegrationTokenUpdates[0].query, {
+      organizationId: organization.id,
+    });
+    assert.ok(state.revokedIntegrationTokenUpdates[0].value.revokedAt instanceof Date);
+    assert.deepEqual(state.deletedOrganizationQueries, [{ id: organization.id }]);
+  });
 });
 
 function createService(options: {
+  failDefaultRoleSave?: boolean;
+  failTemplateSeed?: boolean;
+  failOrganizationSaveWithUniqueError?: boolean;
+  failRoleSaveWithUniqueError?: boolean;
   organization?: ReturnType<typeof organizationRecord>;
   platformMember?: {
     roleId: string;
@@ -184,22 +534,141 @@ function createService(options: {
     roleId: string;
   }>;
   role: RoleRecord;
+  roleMembershipUserIds?: string[];
 }) {
   const savedOrganizations: Array<ReturnType<typeof organizationRecord>> = [];
   const savedRoles: RoleRecord[] = [];
   const deletedRoleQueries: unknown[] = [];
   const deletedRolePermissionQueries: unknown[] = [];
   const savedRolePermissions: any[] = [];
+  const createdOrganizations: any[] = [];
+  const createdRoles: any[] = [];
+  const createdMemberships: any[] = [];
+  const createdDefaultRolePermissions: any[] = [];
+  const defaultOrganizationClearUpdates: any[] = [];
+  const deletedOrganizationQueries: any[] = [];
+  const revokedIntegrationTokenUpdates: any[] = [];
+  const seededTemplateOrganizationIds: string[] = [];
+  const updatedMembershipRoleQueries: any[] = [];
+  let transactions = 0;
 
   const service = new OrganizationsService(
     {
+      create(value: any) {
+        return value;
+      },
       async findOne({ where }: any) {
         if (where.id === options.organization?.id) {
           return options.organization;
         }
         return null;
       },
+      manager: {
+        async transaction(callback: (manager: any) => Promise<unknown>) {
+          transactions += 1;
+          const snapshots = {
+            memberships: [...createdMemberships],
+            organizations: [...createdOrganizations],
+            rolePermissions: [...createdDefaultRolePermissions],
+            roles: [...createdRoles],
+          };
+          try {
+            return await callback({
+              async find() {
+                return [
+                  {
+                    code: "organization.profile.view:organization",
+                    defaultRoles: ["owner", "admin", "member", "viewer"],
+                    id: "permission-view-profile",
+                    scope: "organization",
+                  },
+                ];
+              },
+              async save(target: { name?: string }, value: any) {
+                if (target.name === "Organization") {
+                  if (options.failOrganizationSaveWithUniqueError) {
+                    throw { driverError: { code: "23505" } };
+                  }
+                  if (value.id) {
+                    savedOrganizations.push({ ...value });
+                    return value;
+                  }
+                  const organization = {
+                    createdAt: new Date("2026-07-01T00:00:00Z"),
+                    id: "org-created",
+                    updatedAt: new Date("2026-07-01T00:00:00Z"),
+                    ...value,
+                  };
+                  createdOrganizations.push(organization);
+                  return organization;
+                }
+                if (target.name === "Role") {
+                  if (options.failDefaultRoleSave) {
+                    throw new Error("role save failed");
+                  }
+                  const roles = value.map((role: any) => ({
+                    id: `role-${role.name}`,
+                    ...role,
+                  }));
+                  createdRoles.push(...roles);
+                  return roles;
+                }
+                if (target.name === "RolePermission") {
+                  createdDefaultRolePermissions.push(...value);
+                  return value;
+                }
+                if (target.name === "UserOrganization") {
+                  createdMemberships.push(value);
+                  return value;
+                }
+                return value;
+              },
+              async update(
+                target: { name?: string },
+                where: unknown,
+                update: unknown,
+              ) {
+                if (target.name === "Organization") {
+                  defaultOrganizationClearUpdates.push({ update, where });
+                }
+                if (target.name === "IntegrationToken") {
+                  revokedIntegrationTokenUpdates.push({
+                    query: where,
+                    value: update,
+                  });
+                }
+              },
+              async delete(target: { name?: string }, query: unknown) {
+                if (target.name === "Organization") {
+                  deletedOrganizationQueries.push(query);
+                }
+              },
+            });
+          } catch (error) {
+            createdOrganizations.splice(
+              0,
+              createdOrganizations.length,
+              ...snapshots.organizations,
+            );
+            createdRoles.splice(0, createdRoles.length, ...snapshots.roles);
+            createdMemberships.splice(
+              0,
+              createdMemberships.length,
+              ...snapshots.memberships,
+            );
+            createdDefaultRolePermissions.splice(
+              0,
+              createdDefaultRolePermissions.length,
+              ...snapshots.rolePermissions,
+            );
+            throw error;
+          }
+        },
+      },
       async save(organization: ReturnType<typeof organizationRecord>) {
+        if (options.failOrganizationSaveWithUniqueError) {
+          throw { driverError: { code: "23505" } };
+        }
         savedOrganizations.push({ ...organization });
         return organization;
       },
@@ -222,17 +691,64 @@ function createService(options: {
       },
     } as any,
     {
+      create(value: any) {
+        return value;
+      },
       async delete(query: unknown) {
         deletedRoleQueries.push(query);
       },
       async findOne({ where }: any) {
+        if (where.name === "support" && where.organizationId === ORGANIZATION_ID) {
+          return null;
+        }
         return where.id === options.role.id &&
           where.organizationId === options.role.organizationId &&
           where.scope === options.role.scope
           ? options.role
           : null;
       },
+      manager: {
+        async transaction(callback: (manager: any) => Promise<unknown>) {
+          return callback({
+            async delete(target: { name?: string }, query: unknown) {
+              if (target.name === "RolePermission") {
+                deletedRolePermissionQueries.push(query);
+                return;
+              }
+              if (target.name === "Role") {
+                deletedRoleQueries.push(query);
+              }
+            },
+            async update(
+              target: { name?: string },
+              query: unknown,
+              value: unknown,
+            ) {
+              if (target.name === "IntegrationToken") {
+                revokedIntegrationTokenUpdates.push({ query, value });
+              } else {
+                updatedMembershipRoleQueries.push({
+                  query,
+                  target: target.name,
+                  value,
+                });
+              }
+            },
+            async find(target: { name?: string }) {
+              if (target.name === "UserOrganization") {
+                return (options.roleMembershipUserIds ?? []).map((userId) => ({
+                  userId,
+                }));
+              }
+              return [];
+            },
+          });
+        },
+      },
       async save(role: RoleRecord) {
+        if (options.failRoleSaveWithUniqueError) {
+          throw { driverError: { code: "23505" } };
+        }
         savedRoles.push({ ...role });
         return role;
       },
@@ -243,6 +759,32 @@ function createService(options: {
       },
       async delete(query: unknown) {
         deletedRolePermissionQueries.push(query);
+      },
+      manager: {
+        async transaction(callback: (manager: any) => Promise<unknown>) {
+          return callback({
+            async delete(_target: unknown, query: unknown) {
+              deletedRolePermissionQueries.push(query);
+            },
+            async find(target: { name?: string }) {
+              if (target.name === "UserOrganization") {
+                return (options.roleMembershipUserIds ?? []).map((userId) => ({
+                  userId,
+                }));
+              }
+              return [];
+            },
+            async save(_target: unknown, values: any[]) {
+              savedRolePermissions.push(...values);
+              return values;
+            },
+            async update(target: { name?: string }, query: unknown, value: unknown) {
+              if (target.name === "IntegrationToken") {
+                revokedIntegrationTokenUpdates.push({ query, value });
+              }
+            },
+          });
+        },
       },
       async save(values: any[]) {
         savedRolePermissions.push(...values);
@@ -269,7 +811,11 @@ function createService(options: {
           : null;
       },
     } as any,
-    {} as any,
+    {
+      create(value: any) {
+        return value;
+      },
+    } as any,
     {
       validateAccessToken: async (token: string | undefined) => {
         if (token === stripBearerToken(orgToken)) {
@@ -285,16 +831,40 @@ function createService(options: {
         throw new Error("invalid token");
       },
     } as any,
-    {} as any,
+    {
+      async getPlatformValue(_key: string, fallback: string) {
+        return fallback;
+      },
+    } as any,
+    {
+      async ensureDefaultTemplatesForOrganization(organizationId: string) {
+        if (options.failTemplateSeed) {
+          throw new Error("template seed failed");
+        }
+        seededTemplateOrganizationIds.push(organizationId);
+      },
+    } as any,
   );
 
   return {
+    createdDefaultRolePermissions,
+    createdMemberships,
+    createdOrganizations,
+    createdRoles,
+    defaultOrganizationClearUpdates,
+    deletedOrganizationQueries,
     deletedRolePermissionQueries,
     deletedRoleQueries,
+    revokedIntegrationTokenUpdates,
     savedOrganizations,
     savedRolePermissions,
     savedRoles,
+    seededTemplateOrganizationIds,
     service,
+    updatedMembershipRoleQueries,
+    get transactions() {
+      return transactions;
+    },
   };
 }
 
@@ -336,6 +906,11 @@ function bearerToken(userId: string) {
 
 function stripBearerToken(value: string) {
   return value.replace(/^Bearer\s+/i, "").trim();
+}
+
+function getFindOperatorValues(value: unknown) {
+  const typed = value as { _value?: unknown };
+  return Array.isArray(typed._value) ? typed._value : [];
 }
 
 function systemRole(): RoleRecord {

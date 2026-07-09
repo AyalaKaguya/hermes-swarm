@@ -39,8 +39,9 @@ export class AuthService {
    * Authenticates an admin user and returns the session token plus principal.
    */
   async login(payload: LoginPayload, request: any, response: any) {
-    const email = normalizeEmail(payload.email);
-    const password = requireText(payload.password, "密码");
+    const input = requireLoginPayload(payload);
+    const email = normalizeEmail(input.email);
+    const password = requireText(input.password, "密码");
     const user = await this.userRepository.findOne({ where: { email } });
     if (
       !user ||
@@ -80,6 +81,21 @@ export class AuthService {
       ),
       getRequestContext(request),
     );
+    const user = await this.userRepository.findOne({
+      where: { id: session.userId },
+    });
+    if (!user || user.status !== "active") {
+      await this.authSessionService.revokeSession(
+        session.sessionId,
+        session.userId,
+      );
+      clearRefreshCookie(
+        response,
+        this.authSessionService.getRefreshCookieName(),
+        this.authSessionService.getClearRefreshCookieOptions(),
+      );
+      throw new UnauthorizedException("用户不可用");
+    }
     setRefreshCookie(
       response,
       this.authSessionService.getRefreshCookieName(),
@@ -300,12 +316,22 @@ function groupPermissionsByRoleId(permissions: RolePermission[]) {
   return permissionsByRoleId;
 }
 
-function normalizeEmail(value: string | undefined) {
+function requireLoginPayload(value: LoginPayload) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new UnauthorizedException("用户名或密码不正确");
+  }
+  return value;
+}
+
+function normalizeEmail(value: unknown) {
   return requireText(value, "邮箱").toLowerCase();
 }
 
-function requireText(value: string | undefined, label: string) {
-  const text = value?.trim();
+function requireText(value: unknown, label: string) {
+  if (value === undefined || value === null || typeof value !== "string") {
+    throw new UnauthorizedException(`${label}不能为空`);
+  }
+  const text = value.trim();
   if (!text) throw new UnauthorizedException(`${label}不能为空`);
   return text;
 }

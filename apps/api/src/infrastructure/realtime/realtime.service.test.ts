@@ -176,11 +176,143 @@ describe("RealtimeService", () => {
     socket.emit("data", frame.subarray(4));
     assert.equal(decodeServerFrame(socket.writes[2] as Buffer).type, "pong");
   });
+
+  it("closes clients whose buffered frame data exceeds the limit", async () => {
+    let upgradeHandler:
+      | ((request: unknown, socket: FakeSocket) => Promise<void> | void)
+      | null = null;
+    const service = new RealtimeService(
+      {
+        httpAdapter: {
+          getHttpServer: () => ({
+            on: (event: string, handler: typeof upgradeHandler) => {
+              if (event === "upgrade") upgradeHandler = handler;
+            },
+          }),
+        },
+      } as any,
+      {
+        validateAccessToken: async () => ({
+          sessionId: "session-1",
+          userId: "user-1",
+        }),
+      } as any,
+    );
+
+    service.onApplicationBootstrap();
+    assert.ok(upgradeHandler);
+
+    const socket = new FakeSocket();
+    await upgradeHandler(
+      {
+        headers: {
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+        url: "/api/realtime?access_token=token-1",
+      },
+      socket,
+    );
+
+    socket.emit("data", Buffer.alloc(1024 * 1024 + 1));
+
+    assert.equal(socket.destroyed, true);
+  });
+
+  it("drops a client when writing a pong fails", async () => {
+    let upgradeHandler:
+      | ((request: unknown, socket: FakeSocket) => Promise<void> | void)
+      | null = null;
+    const service = new RealtimeService(
+      {
+        httpAdapter: {
+          getHttpServer: () => ({
+            on: (event: string, handler: typeof upgradeHandler) => {
+              if (event === "upgrade") upgradeHandler = handler;
+            },
+          }),
+        },
+      } as any,
+      {
+        validateAccessToken: async () => ({
+          sessionId: "session-1",
+          userId: "user-1",
+        }),
+      } as any,
+    );
+
+    service.onApplicationBootstrap();
+    assert.ok(upgradeHandler);
+
+    const socket = new FakeSocket({ throwAfterWrites: 2 });
+    await upgradeHandler(
+      {
+        headers: {
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+        url: "/api/realtime?access_token=token-1",
+      },
+      socket,
+    );
+
+    socket.emit("data", encodeClientFrame(Buffer.from("ping"), 0x9));
+
+    assert.equal(socket.destroyed, true);
+  });
+
+  it("drops a failed socket write without blocking other client connections", async () => {
+    let upgradeHandler:
+      | ((request: unknown, socket: FakeSocket) => Promise<void> | void)
+      | null = null;
+    const service = new RealtimeService(
+      {
+        httpAdapter: {
+          getHttpServer: () => ({
+            on: (event: string, handler: typeof upgradeHandler) => {
+              if (event === "upgrade") upgradeHandler = handler;
+            },
+          }),
+        },
+      } as any,
+      {
+        validateAccessToken: async () => ({
+          sessionId: "session-1",
+          userId: "user-1",
+        }),
+      } as any,
+    );
+
+    service.onApplicationBootstrap();
+    assert.ok(upgradeHandler);
+
+    const brokenSocket = new FakeSocket({ throwAfterWrites: 2 });
+    const healthySocket = new FakeSocket();
+    const request = {
+      headers: {
+        "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+      },
+      url: "/api/realtime?access_token=token-1",
+    };
+
+    await upgradeHandler(request, brokenSocket);
+    await upgradeHandler(request, healthySocket);
+
+    service.publishToUser("user-1", {
+      payload: { value: 1 },
+      type: "custom.event",
+    });
+
+    assert.equal(brokenSocket.destroyed, true);
+    assert.equal(decodeServerFrame(healthySocket.writes[2] as Buffer).type, "custom.event");
+  });
 });
 
 class FakeSocket extends EventEmitter {
   destroyed = false;
   writes: Array<Buffer | string> = [];
+
+  constructor(private readonly options: { throwAfterWrites?: number } = {}) {
+    super();
+  }
 
   destroy() {
     this.destroyed = true;
@@ -195,6 +327,12 @@ class FakeSocket extends EventEmitter {
   }
 
   write(value: Buffer | string) {
+    if (
+      this.options.throwAfterWrites !== undefined &&
+      this.writes.length >= this.options.throwAfterWrites
+    ) {
+      throw new Error("socket write failed");
+    }
     this.writes.push(value);
     return true;
   }
@@ -216,12 +354,17 @@ function decodeServerFrame(value: Buffer) {
   };
 }
 
-function encodeClientFrame(payload: Buffer) {
+function encodeClientFrame(payload: Buffer, opcode = 0x1) {
   const mask = Buffer.from([1, 2, 3, 4]);
   const header =
     payload.length < 126
-      ? Buffer.from([0x81, 0x80 | payload.length])
-      : Buffer.from([0x81, 0x80 | 126, payload.length >> 8, payload.length & 0xff]);
+      ? Buffer.from([0x80 | opcode, 0x80 | payload.length])
+      : Buffer.from([
+          0x80 | opcode,
+          0x80 | 126,
+          payload.length >> 8,
+          payload.length & 0xff,
+        ]);
   const masked = Buffer.from(payload);
   for (let index = 0; index < masked.length; index += 1) {
     masked[index] = masked[index]! ^ mask[index % 4]!;

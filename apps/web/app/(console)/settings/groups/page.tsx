@@ -589,15 +589,15 @@ export default function GroupsPage() {
       </Dialog>
 
       <ConfirmActionDialog
-        confirmLabel="删除"
-        description="此操作会删除该用户组，并移除该用户组中的成员关联。"
+        confirmLabel={tr("删除")}
+        description={tr("此操作会删除该用户组，并移除该用户组中的成员关联。")}
         onConfirm={() => void removeGroup()}
         onOpenChange={(open) => {
           if (!open && !saving) setGroupToDelete(null);
         }}
         open={Boolean(groupToDelete)}
         pending={saving}
-        title="删除用户组？"
+        title={tr("删除用户组？")}
       />
     </div>
   );

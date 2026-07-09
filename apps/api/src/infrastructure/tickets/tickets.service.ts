@@ -20,7 +20,7 @@ import {
   type TicketStatus,
   UserOrganization,
 } from "@hermes-swarm/core";
-import { In, IsNull, LessThanOrEqual, Repository } from "typeorm";
+import { In, Repository, type EntityManager } from "typeorm";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 import {
   ConversationCapabilityService,
@@ -39,6 +39,8 @@ const ORGANIZATION_TICKET_HANDLE_PERMISSION =
   "ticket.conversation.handle:organization";
 const PLATFORM_TICKET_HANDLE_PERMISSION =
   "ticket.platform_conversation.list_platform:platform";
+const MAX_TICKET_ATTACHMENTS = 6;
+const MAX_TICKET_ATTACHMENT_SIZE = 2 * 1024 * 1024;
 
 @Injectable()
 export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -81,6 +83,7 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     status?: string,
   ) {
     await this.requireTicketingVisible();
+    const normalizedStatus = parseOptionalTicketStatus(status);
     await this.archiveExpiredTickets();
     const session = await this.requireSession(authorization);
     await this.requireOrganizationMember(session.userId, organizationId);
@@ -88,7 +91,6 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
       session.userId,
       organizationId,
     );
-    const normalizedStatus = normalizeStatus(status);
     const baseWhere = {
       organizationId,
       ...(normalizedStatus ? { status: normalizedStatus } : {}),
@@ -155,10 +157,10 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
 
   async listPlatformTickets(authorization: string | undefined, status?: string) {
     await this.requireTicketingVisible();
+    const normalizedStatus = parseOptionalTicketStatus(status);
     await this.archiveExpiredTickets();
     const session = await this.requireSession(authorization);
     const canHandle = await this.canHandlePlatformTickets(session.userId);
-    const normalizedStatus = normalizeStatus(status);
     const participantTicketIds = canHandle
       ? []
       : await this.conversationsService.listParticipantSourceIds({
@@ -270,17 +272,30 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
       resolver: this.ticketConversationAccessResolver,
       source: this.toConversationSource(ticket),
     });
-    ticket.status = "open";
-    ticket.lastMessageAt = new Date(String(message.createdAt));
-    if (ticket.requesterUserId === session.userId) {
-      ticket.requesterClosedAt = null;
-    } else {
-      ticket.handlerClosedAt = null;
-    }
-    await this.ticketRepository.save(ticket);
+    const updatedTicket = await this.ticketRepository.manager.transaction(
+      async (manager) => {
+        const lockedTicket = await this.findTicketForUpdateOrThrow(
+          manager,
+          ticketId,
+        );
+        await this.requireTicketAccess(session.userId, lockedTicket);
+        if (lockedTicket.status === "archived") {
+          throw new BadRequestException("工单已归档");
+        }
+        lockedTicket.status = "open";
+        lockedTicket.archivedAt = null;
+        lockedTicket.lastMessageAt = new Date(String(message.createdAt));
+        if (lockedTicket.requesterUserId === session.userId) {
+          lockedTicket.requesterClosedAt = null;
+        } else {
+          lockedTicket.handlerClosedAt = null;
+        }
+        return manager.save(Ticket, lockedTicket);
+      },
+    );
     await this.conversationsService.publishSourceUpdated(
-      this.toConversationSource(ticket),
-      toTicketDto(ticket),
+      this.toConversationSource(updatedTicket),
+      toTicketDto(updatedTicket),
     );
     return toTicketMessageDto(message);
   }
@@ -288,21 +303,33 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   async closeTicket(authorization: string | undefined, ticketId: string) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    const ticket = await this.findTicketOrThrow(ticketId);
-    await this.requireTicketAccess(session.userId, ticket);
-    const now = new Date();
-    if (ticket.requesterUserId === session.userId) {
-      ticket.requesterClosedAt = now;
-    } else {
-      ticket.handlerClosedAt = now;
-    }
-    if (ticket.requesterClosedAt && ticket.handlerClosedAt) {
-      ticket.status = "archived";
-      ticket.archivedAt = now;
-    } else {
-      ticket.status = "closed";
-    }
-    await this.ticketRepository.save(ticket);
+    const ticket = await this.ticketRepository.manager.transaction(
+      async (manager) => {
+        const lockedTicket = await this.findTicketForUpdateOrThrow(
+          manager,
+          ticketId,
+        );
+        await this.requireTicketAccess(session.userId, lockedTicket);
+        if (lockedTicket.status === "archived") {
+          throw new BadRequestException("工单已归档");
+        }
+
+        const now = new Date();
+        if (lockedTicket.requesterUserId === session.userId) {
+          lockedTicket.requesterClosedAt = now;
+        } else {
+          lockedTicket.handlerClosedAt = now;
+        }
+        if (lockedTicket.requesterClosedAt && lockedTicket.handlerClosedAt) {
+          lockedTicket.status = "archived";
+          lockedTicket.archivedAt = now;
+        } else {
+          lockedTicket.status = "closed";
+          lockedTicket.archivedAt = null;
+        }
+        return manager.save(Ticket, lockedTicket);
+      },
+    );
     await this.conversationsService.publishSourceUpdated(
       this.toConversationSource(ticket),
       toTicketDto(ticket),
@@ -324,35 +351,41 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
 
   async archiveExpiredTickets() {
     const threshold = new Date(Date.now() - ARCHIVE_AFTER_MS);
-    const tickets = await this.ticketRepository.find({
-      where: [
-        {
-          archivedAt: IsNull(),
-          handlerClosedAt: LessThanOrEqual(threshold),
-          requesterClosedAt: IsNull(),
-          status: "closed",
-        },
-        {
-          archivedAt: IsNull(),
-          handlerClosedAt: IsNull(),
-          requesterClosedAt: LessThanOrEqual(threshold),
-          status: "closed",
-        },
-      ],
-    });
     const now = new Date();
-    for (const ticket of tickets) {
-      ticket.status = "archived";
-      ticket.archivedAt = now;
-    }
-    if (tickets.length) {
-      await this.ticketRepository.save(tickets);
-    }
-    return { archived: tickets.length };
+    const result = await this.ticketRepository
+      .createQueryBuilder()
+      .update(Ticket)
+      .set({ archivedAt: now, status: "archived" })
+      .where("status = :status", { status: "closed" })
+      .andWhere("archived_at IS NULL")
+      .andWhere(
+        [
+          "(",
+          "handler_closed_at <= :threshold AND requester_closed_at IS NULL",
+          ") OR (",
+          "requester_closed_at <= :threshold AND handler_closed_at IS NULL",
+          ")",
+        ].join(" "),
+        { threshold },
+      )
+      .execute();
+    return { archived: result.affected ?? 0 };
   }
 
   private async findTicketOrThrow(ticketId: string) {
     const ticket = await this.ticketRepository.findOne({ where: { id: ticketId } });
+    if (!ticket) throw new NotFoundException("工单不存在");
+    return ticket;
+  }
+
+  private async findTicketForUpdateOrThrow(
+    manager: EntityManager,
+    ticketId: string,
+  ) {
+    const ticket = await manager.findOne(Ticket, {
+      lock: { mode: "pessimistic_write" },
+      where: { id: ticketId },
+    });
     if (!ticket) throw new NotFoundException("工单不存在");
     return ticket;
   }
@@ -607,30 +640,42 @@ function requireText(value: unknown, label: string) {
 function parseAttachments(value: unknown): ConversationMessageAttachment[] | null {
   if (value === undefined || value === null) return null;
   if (!Array.isArray(value)) throw new BadRequestException("附件格式无效");
+  if (value.length > MAX_TICKET_ATTACHMENTS) {
+    throw new BadRequestException(`附件不能超过 ${MAX_TICKET_ATTACHMENTS} 个`);
+  }
   return value.map((item) => {
     const attachment = assertObject(item);
     const url = requireText(attachment.url, "附件地址");
     const name = requireText(attachment.name, "附件名称");
     const type = attachment.type === "image" ? "image" : null;
     if (!type) throw new BadRequestException("仅支持图片附件");
+    const size = parseOptionalAttachmentSize(attachment.size);
     return {
       mimeType:
         typeof attachment.mimeType === "string" ? attachment.mimeType : undefined,
       name,
-      size:
-        typeof attachment.size === "number" && Number.isFinite(attachment.size)
-          ? attachment.size
-          : undefined,
+      size,
       type,
       url,
     };
   });
 }
 
-function normalizeStatus(value: string | undefined): TicketStatus | undefined {
-  return value === "open" || value === "closed" || value === "archived"
-    ? value
-    : undefined;
+function parseOptionalAttachmentSize(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new BadRequestException("附件大小无效");
+  }
+  if (value > MAX_TICKET_ATTACHMENT_SIZE) {
+    throw new BadRequestException("附件大小超过限制");
+  }
+  return value;
+}
+
+function parseOptionalTicketStatus(value: string | undefined): TicketStatus | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (value === "open" || value === "closed" || value === "archived") return value;
+  throw new BadRequestException("工单状态无效");
 }
 
 function toTicketDto(ticket: Ticket) {

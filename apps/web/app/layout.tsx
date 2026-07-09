@@ -1,20 +1,27 @@
-import type { Metadata } from "next";
 import "./globals.css";
+import type { Metadata } from "next";
 import { Geist } from "next/font/google";
-import { getLocale, getMessages } from "next-intl/server";
+import { getLocale } from "next-intl/server";
 import { cn } from "@/lib/utils";
 import { NotificationProvider } from "@/components/app-notifications";
 import { AppearanceController } from "@/components/appearance-controller";
 import { I18nProvider } from "@/components/i18n-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { normalizeLanguagePreference } from "@/lib/i18n";
+import { getMessagesForLanguage, normalizeLanguagePreference } from "@/lib/i18n";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
-export const metadata: Metadata = {
-  title: "Hermes Swarm Console",
-  description: "Operational console for Hermes Swarm.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = normalizeLanguagePreference(await getLocale());
+  const messages = getMessagesForLanguage(locale) as {
+    metadata?: { description?: string; title?: string };
+  };
+
+  return {
+    description: messages.metadata?.description,
+    title: messages.metadata?.title,
+  };
+}
 
 export default async function RootLayout({
   children,
@@ -22,7 +29,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = normalizeLanguagePreference(await getLocale());
-  const messages = await getMessages();
+  const messages = getMessagesForLanguage(locale);
 
   return (
     <html

@@ -8,6 +8,10 @@ export type RoleScope = "platform" | "organization";
 
 @Entity({ name: "roles" })
 @Index(["organizationId", "name"], { unique: true })
+@Index("IDX_roles_platform_name_unique", ["name"], {
+  unique: true,
+  where: "organization_id IS NULL AND scope = 'platform'",
+})
 export class Role extends OrganizationBaseEntity {
   @Column({ type: "varchar", length: 24, default: "organization" })
   scope!: RoleScope;

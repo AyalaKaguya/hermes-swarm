@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,10 +15,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requestPasswordReset } from "@/lib/admin-api";
-import { useTextTranslation } from "@/hooks/use-text-translation";
+import { useTranslations } from "next-intl";
 
 export default function ForgotPasswordPage() {
-  const tr = useTextTranslation();
+  const t = useTranslations("auth");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -29,27 +30,28 @@ export default function ForgotPasswordPage() {
     setMessage("");
     try {
       await requestPasswordReset(email);
-      setMessage(tr("如果邮箱存在，重置链接将发送到该邮箱。"));
+      setMessage(t("forgotPasswordSuccess"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : tr("发送失败"));
+      setError(err instanceof Error ? err.message : t("sendFailed"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <main className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <PublicLanguageSwitcher />
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="mb-2 flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
             <AppIcon className="size-5" name="mail" />
           </div>
-          <CardTitle>{tr("忘记密码")}</CardTitle>
-          <CardDescription>{tr("输入邮箱以接收密码重置链接")}</CardDescription>
+          <CardTitle>{t("forgotPassword")}</CardTitle>
+          <CardDescription>{t("forgotPasswordDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="forgot-email">{tr("邮箱")}</Label>
+            <Label htmlFor="forgot-email">{t("email")}</Label>
             <Input
               id="forgot-email"
               onChange={(event) => setEmail(event.target.value)}
@@ -68,10 +70,10 @@ export default function ForgotPasswordPage() {
             </div>
           )}
           <Button disabled={loading || !email.trim()} onClick={submit}>
-            {loading ? tr("发送中...") : tr("发送重置链接")}
+            {loading ? t("sending") : t("sendResetLink")}
           </Button>
           <Button asChild variant="ghost">
-            <Link href="/login">{tr("返回登录")}</Link>
+            <Link href="/login">{t("backToSignIn")}</Link>
           </Button>
         </CardContent>
       </Card>

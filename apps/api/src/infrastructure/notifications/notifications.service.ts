@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -30,6 +31,8 @@ export type CreateUserNotificationInput = {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     @InjectRepository(UserNotification)
     private readonly notificationRepository: Repository<UserNotification>,
@@ -42,34 +45,38 @@ export class NotificationsService {
   ) {}
 
   async createForUser(input: CreateUserNotificationInput) {
+    const entityInput = toNotificationEntityInput(input);
     const notification = await this.notificationRepository.save(
-      this.notificationRepository.create({
-        body: input.body ?? null,
-        actorUserId: input.actorUserId ?? null,
-        kind: input.kind ?? "info",
-        organizationId: input.organizationId ?? null,
-        payload: input.payload ?? null,
-        recipientUserId: input.recipientUserId,
-        sourceId: input.sourceId ?? null,
-        sourceType: input.sourceType ?? null,
-        status: "unread",
-        title: normalizeTitle(input.title),
-      }),
+      this.notificationRepository.create(entityInput),
     );
     const dto = toNotificationDto(notification);
-    this.realtimeService.publishToUser(input.recipientUserId, {
-      type: "notification.created",
-      payload: dto,
-    });
+    this.publishCreatedNotification(entityInput.recipientUserId, dto);
     return dto;
   }
 
-  async createForUsers(userIds: string[], input: Omit<CreateUserNotificationInput, "recipientUserId">) {
-    const notifications = [];
-    for (const userId of new Set(userIds)) {
-      notifications.push(await this.createForUser({ ...input, recipientUserId: userId }));
+  async createForUsers(
+    userIds: string[],
+    input: Omit<CreateUserNotificationInput, "recipientUserId">,
+  ) {
+    const recipientUserIds = normalizeRecipientUserIds(userIds);
+    if (recipientUserIds.length === 0) return [];
+
+    const savedNotifications = await this.notificationRepository.manager.transaction(
+      async (manager) => {
+        const repository = manager.getRepository(UserNotification);
+        const notifications = recipientUserIds.map((recipientUserId) =>
+          repository.create(
+            toNotificationEntityInput({ ...input, recipientUserId }),
+          ),
+        );
+        return repository.save(notifications);
+      },
+    );
+    const dtos = savedNotifications.map(toNotificationDto);
+    for (let index = 0; index < dtos.length; index += 1) {
+      this.publishCreatedNotification(recipientUserIds[index]!, dtos[index]!);
     }
-    return notifications;
+    return dtos;
   }
 
   async sendFromAuthorization(
@@ -102,12 +109,13 @@ export class NotificationsService {
     options: { status?: UserNotificationStatus; take?: number } = {},
   ) {
     const session = await this.requireSession(authorization);
-    const take = Math.min(Math.max(options.take ?? 50, 1), 100);
+    const take = normalizeTake(options.take);
+    const status = normalizeNotificationStatus(options.status);
     const items = await this.notificationRepository.find({
       order: { createdAt: "DESC" },
       take,
       where: {
-        ...(options.status ? { status: options.status } : {}),
+        ...(status ? { status } : {}),
         dismissedAt: IsNull(),
         recipientUserId: session.userId,
       },
@@ -131,7 +139,11 @@ export class NotificationsService {
   async markRead(authorization: string | undefined, notificationId: string) {
     const session = await this.requireSession(authorization);
     const notification = await this.notificationRepository.findOne({
-      where: { id: notificationId, recipientUserId: session.userId },
+      where: {
+        dismissedAt: IsNull(),
+        id: notificationId,
+        recipientUserId: session.userId,
+      },
     });
     if (!notification) throw new NotFoundException("通知不存在");
     if (notification.status === "unread") {
@@ -149,6 +161,7 @@ export class NotificationsService {
   ) {
     await this.notificationRepository.update(
       {
+        dismissedAt: IsNull(),
         recipientUserId: userId,
         sourceId,
         sourceType,
@@ -165,6 +178,7 @@ export class NotificationsService {
     const session = await this.requireSession(authorization);
     await this.notificationRepository.update(
       {
+        dismissedAt: IsNull(),
         recipientUserId: session.userId,
         status: "unread",
       },
@@ -194,7 +208,11 @@ export class NotificationsService {
   async dismiss(authorization: string | undefined, notificationId: string) {
     const session = await this.requireSession(authorization);
     const notification = await this.notificationRepository.findOne({
-      where: { id: notificationId, recipientUserId: session.userId },
+      where: {
+        dismissedAt: IsNull(),
+        id: notificationId,
+        recipientUserId: session.userId,
+      },
     });
     if (!notification) throw new NotFoundException("通知不存在");
     notification.dismissedAt = new Date();
@@ -232,12 +250,60 @@ export class NotificationsService {
       throw new BadRequestException("接收人不属于当前组织");
     }
   }
+
+  private publishCreatedNotification(
+    recipientUserId: string,
+    dto: ReturnType<typeof toNotificationDto>,
+  ) {
+    try {
+      this.realtimeService.publishToUser(recipientUserId, {
+        type: "notification.created",
+        payload: dto,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `notification realtime publish failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
 }
 
-function normalizeTitle(value: string) {
-  const title = value.trim();
+function toNotificationEntityInput(input: CreateUserNotificationInput) {
+  return {
+    body: optionalString(input.body),
+    actorUserId: optionalString(input.actorUserId),
+    kind: normalizeNotificationKind(input.kind),
+    organizationId: optionalString(input.organizationId),
+    payload: input.payload && isRecord(input.payload) ? input.payload : null,
+    recipientUserId: requireString(input.recipientUserId, "接收人"),
+    sourceId: optionalString(input.sourceId),
+    sourceType: optionalString(input.sourceType, {
+      label: "通知来源类型",
+      maxLength: 80,
+    }),
+    status: "unread" as const,
+    title: normalizeTitle(input.title),
+  };
+}
+
+function normalizeTitle(value: unknown) {
+  const title = requireString(value, "通知标题");
   if (!title) throw new BadRequestException("通知标题不能为空");
-  return title.slice(0, 240);
+  if (title.length > 240) {
+    throw new BadRequestException("通知标题不能超过 240 个字符");
+  }
+  return title;
+}
+
+function normalizeRecipientUserIds(userIds: unknown) {
+  if (!Array.isArray(userIds)) {
+    throw new BadRequestException("接收人列表无效");
+  }
+  return [
+    ...new Set(userIds.map((item) => requireString(item, "接收人"))),
+  ];
 }
 
 function toNotificationDto(notification: UserNotification) {
@@ -265,11 +331,11 @@ function parseSendNotificationPayload(payload: unknown) {
   if (!Array.isArray(recipientUserIds) || recipientUserIds.length === 0) {
     throw new BadRequestException("接收人不能为空");
   }
-  const title = normalizeTitle(requireString(Reflect.get(value, "title"), "通知标题"));
+  const title = normalizeTitle(Reflect.get(value, "title"));
   const kind = Reflect.get(value, "kind");
   return {
     body: optionalString(Reflect.get(value, "body")),
-    kind: isNotificationKind(kind) ? kind : "info",
+    kind: normalizeNotificationKind(kind),
     organizationId: optionalString(Reflect.get(value, "organizationId")),
     payload: isRecord(Reflect.get(value, "payload"))
       ? (Reflect.get(value, "payload") as Record<string, unknown>)
@@ -297,8 +363,22 @@ function requireString(value: unknown, label: string) {
   return value.trim();
 }
 
-function optionalString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+function optionalString(
+  value: unknown,
+  options: { label: string; maxLength: number } | null = null,
+) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${options?.label ?? "字段"}无效`);
+  }
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (options && normalized.length > options.maxLength) {
+    throw new BadRequestException(
+      `${options.label}不能超过 ${options.maxLength} 个字符`,
+    );
+  }
+  return normalized;
 }
 
 function isNotificationKind(value: unknown): value is UserNotificationKind {
@@ -308,4 +388,28 @@ function isNotificationKind(value: unknown): value is UserNotificationKind {
     value === "success" ||
     value === "warning"
   );
+}
+
+function normalizeNotificationKind(value: unknown): UserNotificationKind {
+  if (value === undefined || value === null || value === "") return "info";
+  if (!isNotificationKind(value)) {
+    throw new BadRequestException("通知类型无效");
+  }
+  return value;
+}
+
+function normalizeTake(value: number | undefined) {
+  if (value === undefined) return 50;
+  if (!Number.isInteger(value)) {
+    throw new BadRequestException("通知数量无效");
+  }
+  return Math.min(Math.max(value, 1), 100);
+}
+
+function normalizeNotificationStatus(
+  value: unknown,
+): UserNotificationStatus | undefined {
+  if (value === undefined) return undefined;
+  if (value === "read" || value === "unread") return value;
+  throw new BadRequestException("通知状态无效");
 }

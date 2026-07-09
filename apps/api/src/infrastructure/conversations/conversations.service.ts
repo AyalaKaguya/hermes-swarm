@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -14,7 +15,13 @@ import {
   type ConversationMessageAttachment,
   type ConversationParticipantJoinedReason,
 } from "@hermes-swarm/core";
-import { In, IsNull, Repository, type FindOptionsWhere } from "typeorm";
+import {
+  In,
+  IsNull,
+  Repository,
+  type EntityManager,
+  type FindOptionsWhere,
+} from "typeorm";
 import { NotificationsService } from "../notifications/notifications.service.js";
 import { RealtimeService } from "../realtime/realtime.service.js";
 import type {
@@ -26,6 +33,8 @@ import type {
 
 @Injectable()
 export class ConversationCapabilityService {
+  private readonly logger = new Logger(ConversationCapabilityService.name);
+
   constructor(
     @InjectRepository(Conversation)
     private readonly conversationRepository: Repository<Conversation>,
@@ -44,22 +53,42 @@ export class ConversationCapabilityService {
   ) {}
 
   async ensureConversationForSource(source: ConversationSource) {
-    const existing = await this.conversationRepository.findOne({
+    return this.ensureConversationForSourceWithManager(
+      source,
+      this.conversationRepository.manager,
+    );
+  }
+
+  private async ensureConversationForSourceWithManager(
+    source: ConversationSource,
+    manager: EntityManager,
+  ) {
+    const existing = await manager.findOne(Conversation, {
       where: { sourceId: source.sourceId, sourceType: source.sourceType },
     });
-    if (existing) return this.syncConversation(existing, source);
+    if (existing) return this.syncConversation(existing, source, manager);
 
-    return this.conversationRepository.save(
-      this.conversationRepository.create({
-        lastMessageAt: null,
-        organizationId: source.organizationId ?? null,
-        scope: source.scope,
-        sourceId: source.sourceId,
-        sourceType: source.sourceType,
-        status: source.status ?? "open",
-        subject: source.subject,
-      }),
-    );
+    try {
+      return await manager.save(
+        Conversation,
+        this.conversationRepository.create({
+          lastMessageAt: null,
+          organizationId: source.organizationId ?? null,
+          scope: source.scope,
+          sourceId: source.sourceId,
+          sourceType: source.sourceType,
+          status: source.status ?? "open",
+          subject: source.subject,
+        }),
+      );
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const concurrent = await manager.findOne(Conversation, {
+        where: { sourceId: source.sourceId, sourceType: source.sourceType },
+      });
+      if (!concurrent) throw error;
+      return this.syncConversation(concurrent, source, manager);
+    }
   }
 
   async listMessages(input: {
@@ -89,62 +118,83 @@ export class ConversationCapabilityService {
       throw new ForbiddenException("没有发送会话消息的权限");
     }
 
-    const conversation = await this.ensureConversationForSource(input.source);
     const mentionUserIds = await this.resolveMentionedUserIds(
       input.message.body,
       input.source,
       input.authorUserId,
       input.resolver,
     );
-    await this.addParticipants({
-      conversationId: conversation.id,
-      joinedReason: "reply",
-      userIds: [input.authorUserId],
-    });
-    await this.addParticipants({
-      conversationId: conversation.id,
-      joinedReason: "mention",
-      userIds: mentionUserIds,
-    });
 
-    const message = await this.messageRepository.save(
-      this.messageRepository.create({
-        attachments: input.message.attachments ?? null,
-        authorUserId: input.authorUserId,
-        body: input.message.body,
-        conversationId: conversation.id,
-        kind: "message",
-        metadata: input.message.metadata ?? null,
-      }),
-    );
+    let conversation!: Conversation;
+    let message!: ConversationMessage;
+    await this.conversationRepository.manager.transaction(async (manager) => {
+      const conversationInTransaction =
+        await this.ensureConversationForSourceWithManager(input.source, manager);
+      await this.addParticipantsWithManager(manager, {
+        conversationId: conversationInTransaction.id,
+        joinedReason: "reply",
+        userIds: [input.authorUserId],
+      });
+      await this.addParticipantsWithManager(manager, {
+        conversationId: conversationInTransaction.id,
+        joinedReason: "mention",
+        userIds: mentionUserIds,
+      });
+
+      message = await manager.save(
+        ConversationMessage,
+        this.messageRepository.create({
+          attachments: input.message.attachments ?? null,
+          authorUserId: input.authorUserId,
+          body: input.message.body,
+          conversationId: conversationInTransaction.id,
+          kind: "message",
+          metadata: input.message.metadata ?? null,
+        }),
+      );
+
+      conversationInTransaction.lastMessageAt = message.createdAt;
+      conversationInTransaction.status =
+        input.source.status ?? conversationInTransaction.status;
+      conversation = await manager.save(Conversation, conversationInTransaction);
+    });
     message.authorUser =
       (await this.userRepository.findOne({ where: { id: input.authorUserId } })) ??
       null;
-
-    conversation.lastMessageAt = message.createdAt;
-    conversation.status = input.source.status ?? conversation.status;
-    await this.conversationRepository.save(conversation);
 
     const participantIds = await this.findParticipantUserIds(conversation.id);
     const recipientIds = excludeUserIds(
       participantIds.filter((id) => id !== input.authorUserId),
       mentionUserIds,
     );
-    await this.notifyUsers(recipientIds, conversation, input.source, message, {
-      body: message.body,
-      title: `会话新消息：${conversation.subject}`,
-    }, input.resolver);
-    await this.notifyMentions(
-      mentionUserIds,
-      conversation,
-      input.source,
-      message,
-      input.resolver,
+    await this.runNonCriticalSideEffect(
+      "notify conversation participants",
+      async () =>
+        this.notifyUsers(recipientIds, conversation, input.source, message, {
+          body: message.body,
+          title: `会话新消息：${conversation.subject}`,
+        }, input.resolver),
     );
-    this.publishMessage(
-      [input.authorUserId, ...recipientIds, ...mentionUserIds],
-      conversation,
-      message,
+    await this.runNonCriticalSideEffect(
+      "notify conversation mentions",
+      async () =>
+        this.notifyMentions(
+          mentionUserIds,
+          conversation,
+          input.source,
+          message,
+          input.resolver,
+        ),
+    );
+    await this.runNonCriticalSideEffect(
+      "publish conversation message",
+      async () => {
+        this.publishMessage(
+          [input.authorUserId, ...recipientIds, ...mentionUserIds],
+          conversation,
+          message,
+        );
+      },
     );
 
     return toConversationMessageDto(message, conversation);
@@ -155,9 +205,20 @@ export class ConversationCapabilityService {
     joinedReason: ConversationParticipantJoinedReason;
     userIds: string[];
   }) {
+    await this.addParticipantsWithManager(this.participantRepository.manager, input);
+  }
+
+  private async addParticipantsWithManager(
+    manager: EntityManager,
+    input: {
+      conversationId: string;
+      joinedReason: ConversationParticipantJoinedReason;
+      userIds: string[];
+    },
+  ) {
     const userIds = [...new Set(input.userIds)].filter(Boolean);
     if (userIds.length === 0) return;
-    const existing = await this.participantRepository.find({
+    const existing = await manager.find(ConversationParticipant, {
       where: { conversationId: input.conversationId, userId: In(userIds) },
     });
     const existingIds = new Set(existing.map((item) => item.userId));
@@ -172,7 +233,15 @@ export class ConversationCapabilityService {
           userId,
         }),
       );
-    if (next.length > 0) await this.participantRepository.save(next);
+    if (next.length > 0) {
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(ConversationParticipant)
+        .values(next)
+        .orIgnore()
+        .execute();
+    }
   }
 
   async markRead(input: {
@@ -241,14 +310,19 @@ export class ConversationCapabilityService {
   async publishSourceUpdated(source: ConversationSource, payload: unknown) {
     const conversation = await this.ensureConversationForSource(source);
     const recipients = await this.findParticipantUserIds(conversation.id);
-    this.realtimeService.publishToUsers(recipients, {
-      type: "conversation.source.updated",
-      payload: {
-        conversation: toConversationDto(conversation),
-        source,
-        sourcePayload: payload,
+    await this.runNonCriticalSideEffect(
+      "publish conversation source update",
+      async () => {
+        this.realtimeService.publishToUsers(recipients, {
+          type: "conversation.source.updated",
+          payload: {
+            conversation: toConversationDto(conversation),
+            source,
+            sourcePayload: payload,
+          },
+        });
       },
-    });
+    );
   }
 
   async isParticipant(source: ConversationSource, userId: string) {
@@ -299,6 +373,7 @@ export class ConversationCapabilityService {
   private async syncConversation(
     conversation: Conversation,
     source: ConversationSource,
+    manager: EntityManager = this.conversationRepository.manager,
   ) {
     let changed = false;
     if (conversation.subject !== source.subject) {
@@ -313,7 +388,7 @@ export class ConversationCapabilityService {
       conversation.organizationId = source.organizationId ?? null;
       changed = true;
     }
-    return changed ? this.conversationRepository.save(conversation) : conversation;
+    return changed ? manager.save(Conversation, conversation) : conversation;
   }
 
   private async resolveMentionedUserIds(
@@ -437,6 +512,19 @@ export class ConversationCapabilityService {
       },
     });
   }
+
+  private async runNonCriticalSideEffect(
+    label: string,
+    action: () => Promise<void> | void,
+  ) {
+    try {
+      await action();
+    } catch (error) {
+      this.logger.warn(
+        `${label} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 }
 
 function toConversationDto(conversation: Conversation) {
@@ -496,4 +584,9 @@ function excludeUserIds(userIds: string[], excludedUserIds: string[]) {
   if (excludedUserIds.length === 0) return userIds;
   const excluded = new Set(excludedUserIds);
   return userIds.filter((userId) => !excluded.has(userId));
+}
+
+function isUniqueConstraintError(error: unknown) {
+  const typed = error as { code?: string; driverError?: { code?: string } };
+  return typed.code === "23505" || typed.driverError?.code === "23505";
 }

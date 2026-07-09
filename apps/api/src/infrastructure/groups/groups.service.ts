@@ -69,16 +69,24 @@ export class GroupsService {
     const name = normalizeSlug(payload.name ?? displayName, "group");
     await this.assertUniqueGroupName(organizationId, name);
 
-    const group = await this.groupRepository.save(
-      this.groupRepository.create({
-        color: normalizeNullableText(payload.color),
-        createdByUserId,
-        description: normalizeNullableText(payload.description),
-        displayName,
-        name,
-        organizationId,
-      }),
-    );
+    let group: OrganizationGroup;
+    try {
+      group = await this.groupRepository.save(
+        this.groupRepository.create({
+          color: normalizeNullableText(payload.color),
+          createdByUserId,
+          description: normalizeNullableText(payload.description),
+          displayName,
+          name,
+          organizationId,
+        }),
+      );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("用户组标识已被使用");
+      }
+      throw error;
+    }
     return toGroupDto(group, 0);
   }
 
@@ -106,7 +114,15 @@ export class GroupsService {
       group.description = normalizeNullableText(payload.description);
     }
 
-    const saved = await this.groupRepository.save(group);
+    let saved: OrganizationGroup;
+    try {
+      saved = await this.groupRepository.save(group);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("用户组标识已被使用");
+      }
+      throw error;
+    }
     const memberCount = await this.groupMemberRepository.count({
       where: { groupId: saved.id, organizationId },
     });
@@ -115,11 +131,13 @@ export class GroupsService {
 
   async remove(organizationId: string, groupId: string) {
     const group = await this.getGroupOrThrow(organizationId, groupId);
-    await this.groupMemberRepository.delete({
-      groupId: group.id,
-      organizationId,
+    await this.groupRepository.manager.transaction(async (manager) => {
+      await manager.delete(OrganizationGroupMember, {
+        groupId: group.id,
+        organizationId,
+      });
+      await manager.delete(OrganizationGroup, { id: group.id, organizationId });
     });
-    await this.groupRepository.delete({ id: group.id, organizationId });
   }
 
   async listMembers(organizationId: string, groupId: string) {
@@ -155,19 +173,25 @@ export class GroupsService {
       throw new BadRequestException("成员不属于当前组织");
     }
 
-    await this.groupMemberRepository.delete({ groupId: group.id, organizationId });
-    if (memberships.length > 0) {
-      await this.groupMemberRepository.save(
-        memberships.map((membership) =>
-          this.groupMemberRepository.create({
-            groupId: group.id,
-            membershipId: membership.id,
-            organizationId,
-            userId: membership.userId,
-          }),
-        ),
-      );
-    }
+    await this.groupMemberRepository.manager.transaction(async (manager) => {
+      await manager.delete(OrganizationGroupMember, {
+        groupId: group.id,
+        organizationId,
+      });
+      if (memberships.length > 0) {
+        await manager.save(
+          OrganizationGroupMember,
+          memberships.map((membership) =>
+            this.groupMemberRepository.create({
+              groupId: group.id,
+              membershipId: membership.id,
+              organizationId,
+              userId: membership.userId,
+            }),
+          ),
+        );
+      }
+    });
     return this.listMembers(organizationId, group.id);
   }
 
@@ -240,6 +264,11 @@ function normalizeUuidList(value: unknown, label: string) {
     throw new BadRequestException(`${label}列表格式无效`);
   }
   return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+function isUniqueConstraintError(error: unknown) {
+  const typed = error as { code?: string; driverError?: { code?: string } };
+  return typed.code === "23505" || typed.driverError?.code === "23505";
 }
 
 function toGroupDto(group: OrganizationGroup, memberCount: number) {

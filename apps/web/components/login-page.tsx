@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
+import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("admin@hermes.local");
   const [password, setPassword] = useState("admin123456");
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [platformName, setPlatformName] = useState<string | null>(null);
 
@@ -62,7 +64,9 @@ export function LoginPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loading || submitting) return;
     setError("");
+    setSubmitting(true);
 
     try {
       const response = await authLogin({ email, password });
@@ -75,13 +79,16 @@ export function LoginPage() {
       router.replace("/home");
     } catch (loginError) {
       setError(getErrorMessage(loginError, t("auth.requestFailed")));
+    } finally {
+      setSubmitting(false);
     }
   }
 
   const title = platformName || "Hermes Swarm";
 
   return (
-    <main className="grid min-h-svh place-items-center bg-muted/30 p-4">
+    <main className="relative grid min-h-svh place-items-center bg-muted/30 p-4">
+      <PublicLanguageSwitcher />
       <Card className="w-full max-w-sm" size="sm">
         <CardHeader className="gap-3">
           <div className="flex items-center gap-2">
@@ -136,14 +143,19 @@ export function LoginPage() {
 
             <Button
               className="w-full"
-              disabled={loading || !email || !password}
+              disabled={loading || submitting || !email || !password}
               type="submit"
             >
               {t("auth.signIn")}
             </Button>
-            <Button asChild className="w-full" variant="ghost">
-              <Link href="/forgot-password">忘记密码</Link>
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button asChild variant="ghost">
+                <Link href="/forgot-password">{t("auth.forgotPassword")}</Link>
+              </Button>
+              <Button asChild variant="ghost">
+                <Link href="/signup">{t("auth.signUp")}</Link>
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

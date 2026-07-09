@@ -325,7 +325,7 @@ function SessionDeviceRow({
           </div>
         </div>
         <div className="grid gap-x-10 gap-y-1 text-xs text-muted-foreground sm:grid-cols-[minmax(10rem,auto)_minmax(13rem,auto)] lg:max-w-xl">
-          <SessionMeta label="IP" value={device.ipAddress ?? tr("未知")} />
+          <SessionMeta label={tr("IP")} value={device.ipAddress ?? tr("未知")} />
           <SessionMeta
             label={tr("最近活跃")}
             value={formatDateTime(device.lastSeenAt, locale)}
@@ -389,30 +389,30 @@ function getPendingActionDialogContent(
 
   if (action.type === "revoke-others") {
     return {
-      confirmLabel: "登出",
-      description: "此操作会使除当前设备以外的所有活跃设备退出当前账号。",
-      title: "登出其他设备？",
+      confirmLabel: tr("登出"),
+      description: tr("此操作会使除当前设备以外的所有活跃设备退出当前账号。"),
+      title: tr("登出其他设备？"),
     };
   }
 
   if (action.type === "delete") {
     const device = formatSessionDeviceSummary(action.device, locale, tr);
     return {
-      confirmLabel: "删除",
+      confirmLabel: tr("删除"),
       description: `${tr("设备")}：${device}。${tr(
         "此操作只会删除历史登录记录，不会影响当前账号。",
       )}`,
-      title: "删除此设备记录？",
+      title: tr("删除此设备记录？"),
     };
   }
 
   const device = formatSessionDeviceSummary(action.device, locale, tr);
   return {
-    confirmLabel: "登出",
+    confirmLabel: tr("登出"),
     description: `${tr("设备")}：${device}。${tr(
       "此操作会使该设备立即退出当前账号。",
     )}`,
-    title: "登出此设备？",
+    title: tr("登出此设备？"),
   };
 }
 

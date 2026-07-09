@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
+  IntegrationToken,
   Permission,
   PlatformMember,
   Role,
@@ -17,7 +18,7 @@ import {
   type OrganizationStatus,
 } from "@hermes-swarm/core";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
-import { Repository } from "typeorm";
+import { In, IsNull, Repository, type EntityManager } from "typeorm";
 import type {
   CreateOrganizationPayload,
   ReplaceRolePermissionsPayload,
@@ -82,47 +83,77 @@ export class OrganizationsService {
 
     const name = requireText(payload.name, "组织名称");
     const slug = normalizeSlug(payload.slug || name, "org");
+    const isDefault = normalizeBoolean(payload.isDefault, "默认组织");
+    const status = normalizeOrganizationStatus(payload.status) ?? "active";
     await this.assertUniqueOrganizationSlug(slug);
 
-    const organization = await this.organizationRepository.save(
-      this.organizationRepository.create({
-        banner: normalizeNullableText(payload.banner),
-        brandColor: normalizeNullableText(payload.brandColor),
-        clientFocus: normalizeNullableText(payload.clientFocus),
-        createdByUserId: userId,
-        currency: normalizeNullableText(payload.currency),
-        dateFormat: normalizeNullableText(payload.dateFormat),
-        imageUrl: normalizeNullableText(payload.imageUrl),
-        isDefault: Boolean(payload.isDefault),
-        logoUrl: normalizeNullableText(payload.imageUrl),
-        name,
-        officialName: normalizeNullableText(payload.officialName),
-        overview: normalizeNullableText(payload.overview),
-        preferredLanguage: normalizeNullableText(payload.preferredLanguage),
-        profileLink: normalizeNullableText(payload.profileLink),
-        regionCode: normalizeNullableText(payload.regionCode),
-        shortDescription: normalizeNullableText(payload.shortDescription),
-        slug,
-        status: payload.status ?? "active",
-        subdomain: normalizeNullableText(payload.subdomain),
-        timeZone: normalizeNullableText(payload.timeZone),
-        totalEmployees: normalizeOptionalInteger(payload.totalEmployees),
-        website: normalizeNullableText(payload.website),
-      }),
-    );
+    let organization: Organization;
+    try {
+      organization = await this.organizationRepository.manager.transaction(
+        async (manager) => {
+          if (isDefault) {
+            await manager.update(
+              Organization,
+              { isDefault: true },
+              { isDefault: false },
+            );
+          }
+          const organization = await manager.save(
+            Organization,
+            this.organizationRepository.create({
+              banner: normalizeNullableText(payload.banner),
+              brandColor: normalizeNullableText(payload.brandColor),
+              clientFocus: normalizeNullableText(payload.clientFocus),
+              createdByUserId: userId,
+              currency: normalizeNullableText(payload.currency),
+              dateFormat: normalizeNullableText(payload.dateFormat),
+              imageUrl: normalizeNullableText(payload.imageUrl),
+              isDefault,
+              logoUrl: normalizeNullableText(payload.imageUrl),
+              name,
+              officialName: normalizeNullableText(payload.officialName),
+              overview: normalizeNullableText(payload.overview),
+              preferredLanguage: normalizeNullableText(payload.preferredLanguage),
+              profileLink: normalizeNullableText(payload.profileLink),
+              regionCode: normalizeNullableText(payload.regionCode),
+              shortDescription: normalizeNullableText(payload.shortDescription),
+              slug,
+              status,
+              subdomain: normalizeNullableText(payload.subdomain),
+              timeZone: normalizeNullableText(payload.timeZone),
+              totalEmployees: normalizeOptionalInteger(payload.totalEmployees),
+              website: normalizeNullableText(payload.website),
+            }),
+          );
 
-    const ownerRole = await this.createDefaultOrganizationRoles(organization.id);
-    await this.mailService.ensureDefaultTemplatesForOrganization(organization.id);
-    await this.membershipRepository.save(
-      this.membershipRepository.create({
-        displayName: null,
-        joinedAt: new Date(),
-        organizationId: organization.id,
-        roleId: ownerRole.id,
-        status: "active",
-        userId,
-      }),
-    );
+          const ownerRole = await this.createDefaultOrganizationRoles(
+            organization.id,
+            manager,
+          );
+          await manager.save(
+            UserOrganization,
+            this.membershipRepository.create({
+              displayName: null,
+              joinedAt: new Date(),
+              organizationId: organization.id,
+              roleId: ownerRole.id,
+              status: "active",
+              userId,
+            }),
+          );
+          await this.mailService.ensureDefaultTemplatesForOrganization(
+            organization.id,
+            manager,
+          );
+          return organization;
+        },
+      );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("组织标识或子域名已被使用");
+      }
+      throw error;
+    }
 
     return toOrganizationDto(organization);
   }
@@ -133,8 +164,16 @@ export class OrganizationsService {
     payload: UpdateOrganizationPayload,
   ) {
     const organization = await this.getOrganizationOrThrow(organizationId);
+    const nextIsDefault =
+      payload.isDefault !== undefined
+        ? normalizeBoolean(payload.isDefault, "默认组织")
+        : undefined;
+    const nextStatus =
+      payload.status !== undefined
+        ? normalizeOrganizationStatus(payload.status)
+        : undefined;
     const updatesPlatformControls =
-      payload.isDefault !== undefined || payload.status !== undefined;
+      nextIsDefault !== undefined || nextStatus !== undefined;
 
     if (updatesPlatformControls) {
       await this.assertCanUpdatePlatformOrganizationControls(authorization);
@@ -150,7 +189,7 @@ export class OrganizationsService {
       }
       organization.slug = slug;
     }
-    if (payload.status !== undefined) organization.status = payload.status;
+    if (nextStatus !== undefined) organization.status = nextStatus;
     if (payload.website !== undefined) {
       organization.website = normalizeNullableText(payload.website);
     }
@@ -173,8 +212,8 @@ export class OrganizationsService {
     if (payload.dateFormat !== undefined) {
       organization.dateFormat = normalizeNullableText(payload.dateFormat);
     }
-    if (payload.isDefault !== undefined) {
-      organization.isDefault = Boolean(payload.isDefault);
+    if (nextIsDefault !== undefined) {
+      organization.isDefault = nextIsDefault;
     }
     if (payload.officialName !== undefined) {
       organization.officialName = normalizeNullableText(payload.officialName);
@@ -210,14 +249,48 @@ export class OrganizationsService {
       );
     }
 
-    return toOrganizationDto(
-      await this.organizationRepository.save(organization),
-    );
+    if (nextIsDefault === true) {
+      try {
+        const saved = await this.organizationRepository.manager.transaction(
+          async (manager) => {
+            await manager.update(
+              Organization,
+              { isDefault: true },
+              { isDefault: false },
+            );
+            return manager.save(Organization, organization);
+          },
+        );
+        return toOrganizationDto(saved);
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          throw new BadRequestException("组织标识或子域名已被使用");
+        }
+        throw error;
+      }
+    }
+
+    try {
+      return toOrganizationDto(await this.organizationRepository.save(organization));
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("组织标识或子域名已被使用");
+      }
+      throw error;
+    }
   }
 
   async delete(organizationId: string) {
     const organization = await this.getOrganizationOrThrow(organizationId);
-    await this.organizationRepository.delete({ id: organization.id });
+    const revokedAt = new Date();
+    await this.organizationRepository.manager.transaction(async (manager) => {
+      await manager.update(
+        IntegrationToken,
+        { organizationId: organization.id },
+        { revokedAt },
+      );
+      await manager.delete(Organization, { id: organization.id });
+    });
   }
 
   async listRoles(organizationId: string) {
@@ -242,18 +315,26 @@ export class OrganizationsService {
     const name = normalizeSlug(payload.name ?? displayName, "role");
     await this.assertUniqueRoleName(organizationId, name);
 
-    const role = await this.roleRepository.save(
-      this.roleRepository.create({
-        color: normalizeNullableText(payload.color),
-        description: normalizeNullableText(payload.description),
-        displayName,
-        isSystem: false,
-        label: displayName,
-        name,
-        organizationId,
-        scope: "organization",
-      }),
-    );
+    let role: Role;
+    try {
+      role = await this.roleRepository.save(
+        this.roleRepository.create({
+          color: normalizeNullableText(payload.color),
+          description: normalizeNullableText(payload.description),
+          displayName,
+          isSystem: false,
+          label: displayName,
+          name,
+          organizationId,
+          scope: "organization",
+        }),
+      );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("角色标识已被使用");
+      }
+      throw error;
+    }
     return toRoleDto(role);
   }
 
@@ -283,7 +364,14 @@ export class OrganizationsService {
     if (payload.description !== undefined) {
       role.description = normalizeNullableText(payload.description);
     }
-    return toRoleDto(await this.roleRepository.save(role));
+    try {
+      return toRoleDto(await this.roleRepository.save(role));
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("角色标识已被使用");
+      }
+      throw error;
+    }
   }
 
   async replaceRolePermissions(
@@ -295,17 +383,22 @@ export class OrganizationsService {
     if (role.isSystem) {
       throw new BadRequestException("系统角色权限不能替换");
     }
-    const permissions = payload.permissions ?? [];
-
-    await this.rolePermissionRepository.delete({ roleId: role.id });
+    const permissions = requireReplaceRolePermissionsPayload(payload);
     const records = await Promise.all(
       permissions
-        .filter((item) => item.permission && item.enabled !== false)
+        .filter((item) => item.enabled !== false)
         .map((item) => this.getPermissionOrThrow(item.permission, "organization")),
     );
 
-    return this.rolePermissionRepository.save(
-      records.map(({ key, permission }) =>
+    let saved: RolePermission[] = [];
+    await this.rolePermissionRepository.manager.transaction(async (manager) => {
+      await revokeOrganizationIntegrationTokensForRole(
+        manager,
+        organizationId,
+        role.id,
+      );
+      await manager.delete(RolePermission, { roleId: role.id });
+      const nextRows = records.map(({ key, permission }) =>
         this.rolePermissionRepository.create({
           enabled: true,
           organizationId,
@@ -313,14 +406,32 @@ export class OrganizationsService {
           permissionId: permission.id,
           roleId: role.id,
         }),
-      ),
-    );
+      );
+      saved =
+        nextRows.length > 0
+          ? await manager.save(RolePermission, nextRows)
+          : [];
+    });
+    return saved;
   }
 
   async deleteRole(organizationId: string, roleId: string) {
     const role = await this.getOrganizationRoleOrThrow(organizationId, roleId);
     if (role.isSystem) throw new BadRequestException("系统角色不能删除");
-    await this.roleRepository.delete({ id: role.id });
+    await this.roleRepository.manager.transaction(async (manager) => {
+      await revokeOrganizationIntegrationTokensForRole(
+        manager,
+        organizationId,
+        role.id,
+      );
+      await manager.update(
+        UserOrganization,
+        { organizationId, roleId: role.id },
+        { roleId: null },
+      );
+      await manager.delete(RolePermission, { roleId: role.id });
+      await manager.delete(Role, { id: role.id });
+    });
   }
 
   private async getOrganizationOrThrow(organizationId: string) {
@@ -368,7 +479,10 @@ export class OrganizationsService {
     }
   }
 
-  private async createDefaultOrganizationRoles(organizationId: string) {
+  private async createDefaultOrganizationRoles(
+    organizationId: string,
+    manager: EntityManager = this.roleRepository.manager,
+  ) {
     const roles = [
       {
         color: "#2563eb",
@@ -396,40 +510,39 @@ export class OrganizationsService {
       },
     ];
 
-    const savedRoles = await Promise.all(
+    const savedRoles = await manager.save(
+      Role,
       roles.map((role) =>
-        this.roleRepository.save(
-          this.roleRepository.create({
-            ...role,
-            isSystem: true,
-            label: role.displayName,
-            organizationId,
-            scope: "organization",
-          }),
-        ),
+        this.roleRepository.create({
+          ...role,
+          isSystem: true,
+          label: role.displayName,
+          organizationId,
+          scope: "organization",
+        }),
       ),
     );
 
+    const defaultPermissions = await manager.find(Permission, {
+      order: { code: "ASC" },
+      where: [{ scope: "organization" }, { scope: "own" }],
+    });
     for (const role of savedRoles) {
-      const records = (
-        await this.permissionRepository.find({
-          order: { code: "ASC" },
-          where: [{ scope: "organization" }, { scope: "own" }],
-        })
-      ).filter((permission) =>
+      const records = defaultPermissions.filter((permission) =>
         permission.defaultRoles?.includes(role.name),
       );
-      await this.rolePermissionRepository.save(
-        records.map((permission) =>
-          this.rolePermissionRepository.create({
-            enabled: true,
-            organizationId,
-            permission: permission.code ?? "",
-            permissionId: permission.id,
-            roleId: role.id,
-          }),
-        ),
+      const rows = records.map((permission) =>
+        this.rolePermissionRepository.create({
+          enabled: true,
+          organizationId,
+          permission: permission.code ?? "",
+          permissionId: permission.id,
+          roleId: role.id,
+        }),
       );
+      if (rows.length > 0) {
+        await manager.save(RolePermission, rows);
+      }
     }
 
     const ownerRole = savedRoles.find((role) => role.name === "owner");
@@ -486,26 +599,50 @@ export class OrganizationsService {
   }
 }
 
-function requireText(value: string | undefined | null, label: string) {
-  const text = value?.trim();
+function requireText(value: unknown, label: string) {
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${label}格式不正确`);
+  }
+  const text = value.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }
 
-function normalizeNullableText(value: string | null | undefined) {
-  const text = value?.trim();
+function normalizeNullableText(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException("文本格式不正确");
+  }
+  const text = value.trim();
   return text || null;
 }
 
-function normalizeOptionalInteger(value: number | null | undefined) {
+function normalizeOptionalInteger(value: unknown) {
   if (value === null || value === undefined) return null;
-  if (!Number.isInteger(value) || value < 0) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     throw new BadRequestException("人数必须是非负整数");
   }
   return value;
 }
 
-function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
+function normalizeBoolean(value: unknown, label: string, defaultValue = false) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value !== "boolean") {
+    throw new BadRequestException(`${label}格式不正确`);
+  }
+  return value;
+}
+
+function normalizeOrganizationStatus(value: unknown): OrganizationStatus | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value === "active" || value === "suspended") return value;
+  throw new BadRequestException("组织状态无效");
+}
+
+function normalizeSlug(value: unknown, fallbackPrefix: string) {
+  if (value !== undefined && typeof value !== "string") {
+    throw new BadRequestException("标识格式不正确");
+  }
   const slug = value
     ?.trim()
     .toLowerCase()
@@ -517,6 +654,62 @@ function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
 function requirePermissionCode(permission: string | undefined) {
   const value = requireText(permission, "权限");
   return value;
+}
+
+function requireReplaceRolePermissionsPayload(
+  value: ReplaceRolePermissionsPayload,
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
+  }
+  if (value.permissions === undefined || value.permissions === null) {
+    return [];
+  }
+  if (!Array.isArray(value.permissions)) {
+    throw new BadRequestException("权限列表格式不正确");
+  }
+
+  return value.permissions.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new BadRequestException("权限项格式不正确");
+    }
+    if (item.enabled !== undefined && typeof item.enabled !== "boolean") {
+      throw new BadRequestException("权限启用状态格式不正确");
+    }
+    if (item.enabled !== false) {
+      requirePermissionCode(item.permission);
+    }
+    return item;
+  });
+}
+
+async function revokeOrganizationIntegrationTokensForRole(
+  manager: EntityManager,
+  organizationId: string,
+  roleId: string,
+) {
+  const memberships = await manager.find(UserOrganization, {
+    select: { userId: true },
+    where: { organizationId, roleId },
+  });
+  const userIds = [...new Set(memberships.map((membership) => membership.userId))];
+  if (userIds.length === 0) return;
+
+  await manager.update(
+    IntegrationToken,
+    {
+      organizationId,
+      ownerUserId: In(userIds),
+      revokedAt: IsNull(),
+      scope: "organization",
+    },
+    { revokedAt: new Date() },
+  );
+}
+
+function isUniqueConstraintError(error: unknown) {
+  const typed = error as { code?: string; driverError?: { code?: string } };
+  return typed.code === "23505" || typed.driverError?.code === "23505";
 }
 
 function toOrganizationDto(organization: Organization) {

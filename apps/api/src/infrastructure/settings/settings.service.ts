@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { EntityManager, Repository } from "typeorm";
 import {
   FEATURE_SETTING_DEFINITIONS,
   getFeatureSettingDefaultValue,
@@ -62,56 +62,17 @@ export class SettingsService implements OnModuleInit {
     payload: SaveSettingsPayload,
   ) {
     const entries = parseSettingsPayload(payload);
-
-    for (const entry of entries) {
-      const [existing, platformSetting] = await Promise.all([
-        this.organizationSettingRepository.findOne({
-          where: { name: entry.name, organizationId },
-        }),
-        this.platformSettingRepository.findOne({
-          where: { name: entry.name },
-        }),
-      ]);
-
-      if (entry.value === null || entry.value === undefined) {
-        await this.organizationSettingRepository.delete({
-          name: entry.name,
+    const invalidations = await this.platformSettingRepository.manager.transaction(
+      async (manager) =>
+        this.saveOrganizationSettingsInTransaction(
+          manager,
           organizationId,
-        });
-        await this.deleteCache(this.organizationCacheKey(organizationId, entry.name));
-        await this.publishSettingsInvalidation({
-          name: entry.name,
-          organizationId,
-          scope: "organization",
-        });
-        continue;
-      }
+          entries,
+        ),
+    );
 
-      const normalized = normalizeSettingEntry(entry, [
-        existing,
-        platformSetting,
-      ]);
-      const setting =
-        existing ??
-        this.organizationSettingRepository.create({
-          name: entry.name,
-          organizationId,
-        });
-
-      setting.value = normalized.value;
-      setting.valueOptions = normalized.valueOptions;
-      setting.valueType = normalized.valueType;
-
-      const persisted = await this.organizationSettingRepository.save(setting);
-      await this.setCache(
-        this.organizationCacheKey(organizationId, entry.name),
-        persisted.value,
-      );
-      await this.publishSettingsInvalidation({
-        name: entry.name,
-        organizationId,
-        scope: "organization",
-      });
+    for (const invalidation of invalidations) {
+      await this.applySettingsInvalidation(invalidation);
     }
 
     return this.listOrganizationSettingsForOrganization(organizationId);
@@ -126,39 +87,12 @@ export class SettingsService implements OnModuleInit {
 
   async savePlatformSettings(payload: SaveSettingsPayload) {
     const entries = parseSettingsPayload(payload);
+    const invalidations = await this.platformSettingRepository.manager.transaction(
+      async (manager) => this.savePlatformSettingsInTransaction(manager, entries),
+    );
 
-    for (const entry of entries) {
-      if (entry.value === null || entry.value === undefined) {
-        await this.platformSettingRepository.delete({ name: entry.name });
-        await this.deleteCache(this.platformCacheKey(entry.name));
-        await this.publishSettingsInvalidation({
-          name: entry.name,
-          scope: "platform",
-        });
-        continue;
-      }
-
-      const existing = await this.platformSettingRepository.findOne({
-        where: { name: entry.name },
-      });
-      const normalized = normalizeSettingEntry(entry, [existing]);
-      const setting =
-        existing ??
-        this.platformSettingRepository.create({
-          name: entry.name,
-          scope: "global",
-        });
-
-      setting.value = normalized.value;
-      setting.valueOptions = normalized.valueOptions;
-      setting.valueType = normalized.valueType;
-
-      const persisted = await this.platformSettingRepository.save(setting);
-      await this.setCache(this.platformCacheKey(entry.name), persisted.value);
-      await this.publishSettingsInvalidation({
-        name: entry.name,
-        scope: "platform",
-      });
+    for (const invalidation of invalidations) {
+      await this.applySettingsInvalidation(invalidation);
     }
 
     return this.listPlatformSettings();
@@ -217,16 +151,154 @@ export class SettingsService implements OnModuleInit {
       if (existing) continue;
 
       const valueOptions = getDefinitionValueOptions(definition);
-      await this.platformSettingRepository.save(
-        this.platformSettingRepository.create({
-          name: definition.key,
-          scope: definition.scope ?? "global",
-          value: definition.defaultValue ?? null,
-          valueOptions,
-          valueType: definition.valueType,
-        }),
-      );
+      try {
+        await this.platformSettingRepository.save(
+          this.platformSettingRepository.create({
+            name: definition.key,
+            scope: definition.scope ?? "global",
+            value: definition.defaultValue ?? null,
+            valueOptions,
+            valueType: definition.valueType,
+          }),
+        );
+      } catch (error) {
+        if (isUniqueConstraintError(error)) continue;
+        throw error;
+      }
     }
+  }
+
+  private async savePlatformSettingsInTransaction(
+    manager: EntityManager,
+    entries: ReturnType<typeof parseSettingsPayload>,
+  ) {
+    const platformSettingRepository = manager.getRepository(PlatformSetting);
+    const invalidations: AppliedSettingsInvalidation[] = [];
+
+    for (const entry of entries) {
+      if (entry.value === null || entry.value === undefined) {
+        await platformSettingRepository.delete({ name: entry.name });
+        invalidations.push({
+          cacheKey: this.platformCacheKey(entry.name),
+          name: entry.name,
+          scope: "platform",
+          value: null,
+        });
+        continue;
+      }
+
+      const existing = await platformSettingRepository.findOne({
+        where: { name: entry.name },
+      });
+      const normalized = normalizeSettingEntry(entry, [existing]);
+      const setting =
+        existing ??
+        platformSettingRepository.create({
+          name: entry.name,
+          scope: "global",
+        });
+
+      setting.value = normalized.value;
+      setting.valueOptions = normalized.valueOptions;
+      setting.valueType = normalized.valueType;
+
+      const persisted = await platformSettingRepository.save(setting);
+      invalidations.push({
+        cacheKey: this.platformCacheKey(entry.name),
+        name: entry.name,
+        scope: "platform",
+        value: persisted.value,
+      });
+    }
+
+    return invalidations;
+  }
+
+  private async saveOrganizationSettingsInTransaction(
+    manager: EntityManager,
+    organizationId: string,
+    entries: ReturnType<typeof parseSettingsPayload>,
+  ) {
+    const organizationSettingRepository =
+      manager.getRepository(OrganizationSetting);
+    const platformSettingRepository = manager.getRepository(PlatformSetting);
+    const invalidations: AppliedSettingsInvalidation[] = [];
+
+    for (const entry of entries) {
+      const [existing, platformSetting] = await Promise.all([
+        organizationSettingRepository.findOne({
+          where: { name: entry.name, organizationId },
+        }),
+        platformSettingRepository.findOne({
+          where: { name: entry.name },
+        }),
+      ]);
+
+      if (entry.value === null || entry.value === undefined) {
+        await organizationSettingRepository.delete({
+          name: entry.name,
+          organizationId,
+        });
+        invalidations.push({
+          cacheKey: this.organizationCacheKey(organizationId, entry.name),
+          name: entry.name,
+          organizationId,
+          scope: "organization",
+          value: null,
+        });
+        continue;
+      }
+
+      const normalized = normalizeSettingEntry(entry, [
+        existing,
+        platformSetting,
+      ]);
+      const setting =
+        existing ??
+        organizationSettingRepository.create({
+          name: entry.name,
+          organizationId,
+        });
+
+      setting.value = normalized.value;
+      setting.valueOptions = normalized.valueOptions;
+      setting.valueType = normalized.valueType;
+
+      const persisted = await organizationSettingRepository.save(setting);
+      invalidations.push({
+        cacheKey: this.organizationCacheKey(organizationId, entry.name),
+        name: entry.name,
+        organizationId,
+        scope: "organization",
+        value: persisted.value,
+      });
+    }
+
+    return invalidations;
+  }
+
+  private async applySettingsInvalidation(
+    invalidation: AppliedSettingsInvalidation,
+  ) {
+    if (invalidation.value === null) {
+      await this.deleteCache(invalidation.cacheKey);
+    } else {
+      await this.setCache(invalidation.cacheKey, invalidation.value);
+    }
+
+    if (invalidation.scope === "platform") {
+      await this.publishSettingsInvalidation({
+        name: invalidation.name,
+        scope: "platform",
+      });
+      return;
+    }
+
+    await this.publishSettingsInvalidation({
+      name: invalidation.name,
+      organizationId: invalidation.organizationId,
+      scope: "organization",
+    });
   }
 
   private platformCacheKey(name: string) {
@@ -319,6 +391,21 @@ type SettingsInvalidationEvent =
       scope: "organization";
     };
 
+type AppliedSettingsInvalidation =
+  | {
+      cacheKey: string;
+      name: string;
+      scope: "platform";
+      value: string | null;
+    }
+  | {
+      cacheKey: string;
+      name: string;
+      organizationId: string;
+      scope: "organization";
+      value: string | null;
+    };
+
 function getDefinitionValueOptions(definition: unknown) {
   const valueOptions =
     definition && typeof definition === "object" && "valueOptions" in definition
@@ -343,4 +430,9 @@ function toPlatformSettingDto(setting: PlatformSetting) {
     valueOptions,
     valueType,
   };
+}
+
+function isUniqueConstraintError(error: unknown) {
+  const typed = error as { code?: string; driverError?: { code?: string } };
+  return typed.code === "23505" || typed.driverError?.code === "23505";
 }

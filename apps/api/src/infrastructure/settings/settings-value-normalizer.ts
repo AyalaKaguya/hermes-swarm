@@ -32,20 +32,29 @@ export type NormalizedSettingEntry = {
 export function parseSettingsPayload(
   payload: SaveSettingsPayload,
 ): ParsedSettingPayloadEntry[] {
-  const entries = Array.isArray((payload as { settings?: unknown }).settings)
-    ? (payload as {
-        settings: Array<{
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new BadRequestException("请求内容无效");
+  }
+
+  const rawSettings = (payload as { settings?: unknown }).settings;
+  const entries = Array.isArray(rawSettings)
+    ? rawSettings.map((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          throw new BadRequestException("设置项格式无效");
+        }
+        const setting = item as {
           name?: string;
           value?: unknown;
           valueOptions?: unknown;
           valueType?: unknown;
-        }>;
-      }).settings.map((item) => ({
-        name: requireSettingName(item.name),
-        value: item.value,
-        valueOptions: item.valueOptions,
-        valueType: item.valueType,
-      }))
+        };
+        return {
+          name: requireSettingName(setting.name),
+          value: setting.value,
+          valueOptions: setting.valueOptions,
+          valueType: setting.valueType,
+        };
+      })
     : Object.entries(payload)
         .filter(([key]) => key !== "settings")
         .map(([name, value]) => ({

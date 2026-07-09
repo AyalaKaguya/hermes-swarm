@@ -44,7 +44,8 @@ export class PasswordResetService {
    * email and persists a PasswordReset record.
    */
   async requestReset(payload: RequestPasswordResetPayload) {
-    const email = normalizeEmail(payload.email);
+    const input = requirePayload(payload);
+    const email = normalizeEmail(input.email);
     const user = await this.userRepository.findOne({
       where: { email },
     });
@@ -102,10 +103,11 @@ export class PasswordResetService {
    * marks the email as verified.
    */
   async resetPassword(payload: ResetPasswordPayload) {
-    const email = normalizeEmail(payload.email);
-    const token = requireText(payload.token, "令牌");
-    const password = requirePassword(payload.password);
-    const confirmPassword = payload.confirmPassword;
+    const input = requirePayload(payload);
+    const email = normalizeEmail(input.email);
+    const token = requireText(input.token, "令牌");
+    const password = requirePassword(input.password);
+    const confirmPassword = input.confirmPassword;
 
     if (password !== confirmPassword) {
       throw new BadRequestException("两次输入的密码不一致");
@@ -123,38 +125,52 @@ export class PasswordResetService {
       throw new BadRequestException("邮箱与令牌不匹配");
     }
 
-    // Find an unexpired PasswordReset record
-    const record = await this.passwordResetRepository.findOne({
-      where: {
-        email,
-        token,
-        createdAt: MoreThan(new Date(Date.now() - TEN_MINUTES_MS)),
-      },
-      order: { createdAt: "DESC" },
+    const passwordHash = hashPassword(password);
+
+    await this.userRepository.manager.transaction(async (manager) => {
+      const record = await manager.findOne(PasswordReset, {
+        lock: { mode: "pessimistic_write" },
+        order: { createdAt: "DESC" },
+        where: {
+          createdAt: MoreThan(new Date(Date.now() - TEN_MINUTES_MS)),
+          email,
+          token,
+        },
+      });
+
+      if (!record || record.expired) {
+        throw new BadRequestException("令牌无效或已过期");
+      }
+
+      const user = await manager.findOne(User, {
+        lock: { mode: "pessimistic_write" },
+        where: { id: decoded.userId },
+      });
+
+      if (!user) {
+        throw new NotFoundException("用户不存在");
+      }
+
+      user.passwordHash = passwordHash;
+      user.emailVerified = true;
+      await manager.save(User, user);
+      const deleteResult = await manager.delete(PasswordReset, { id: record.id });
+      if (!deleteResult.affected) {
+        throw new BadRequestException("令牌无效或已过期");
+      }
     });
-
-    if (!record || record.expired) {
-      throw new BadRequestException("令牌无效或已过期");
-    }
-
-    // Find the user
-    const user = await this.userRepository.findOne({
-      where: { id: decoded.userId },
-    });
-
-    if (!user) {
-      throw new NotFoundException("用户不存在");
-    }
-
-    // Update password hash
-    user.passwordHash = hashPassword(password);
-    user.emailVerified = true;
-
-    await this.userRepository.save(user);
-    await this.passwordResetRepository.delete({ id: record.id });
 
     return { success: true };
   }
+}
+
+function requirePayload<T extends RequestPasswordResetPayload | ResetPasswordPayload>(
+  value: T,
+): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
+  }
+  return value;
 }
 
 /**

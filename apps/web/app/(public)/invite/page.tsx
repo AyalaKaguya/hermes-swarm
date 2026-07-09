@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
+import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { useNotifications } from "@/components/app-notifications";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,10 +22,9 @@ import {
   validateInvite,
   type Invite,
 } from "@/lib/admin-api";
-import { useTextTranslation } from "@/hooks/use-text-translation";
 
 export default function InvitePage() {
-  const tr = useTextTranslation();
+  const t = useTranslations();
   const searchParams = useSearchParams();
   const notifications = useNotifications();
   const email = searchParams.get("email") ?? "";
@@ -61,16 +62,16 @@ export default function InvitePage() {
     setLoading(true);
     setError(null);
     try {
-      if (!token) throw new Error(tr("邀请链接缺少必要参数"));
+      if (!token) throw new Error(t("invite.missingParams"));
       const data = await validateInvite(email, token);
       setInvite(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : tr("邀请链接无效或已过期"));
+      setError(err instanceof Error ? err.message : t("invite.invalidOrExpired"));
       setInvite(null);
     } finally {
       setLoading(false);
     }
-  }, [email, token, tr]);
+  }, [email, token, t]);
 
   useEffect(() => {
     void load();
@@ -93,45 +94,48 @@ export default function InvitePage() {
         token,
       });
       notifications.success(
-        action === "accept" ? tr("已加入组织") : tr("已拒绝邀请"),
+        action === "accept" ? t("invite.joined") : t("invite.declined"),
       );
       setCompletedAction(action);
     } catch (err) {
-      setError(err instanceof Error ? err.message : tr("操作失败"));
+      setError(err instanceof Error ? err.message : t("common.operationFailed"));
     } finally {
       setSubmitting(null);
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <main className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <PublicLanguageSwitcher />
       <Card className="w-full max-w-lg">
         <CardHeader>
           <div className="mb-2 flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
             <AppIcon className="size-5" name="invite" />
           </div>
-          <CardTitle>{tr("组织邀请")}</CardTitle>
+          <CardTitle>{t("invite.title")}</CardTitle>
           <CardDescription>
             {organization
-              ? `${organization.name} ${tr("邀请你加入组织")}`
-              : tr("确认邀请链接后加入组织")}
+              ? t("invite.organizationDescription", {
+                  organization: organization.name,
+                })
+              : t("invite.description")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           {loading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              {tr("加载中...")}
+              {t("common.loading")}
             </div>
           ) : completedAction ? (
             <div className="grid gap-4">
               <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
                 {completedAction === "accept"
-                  ? tr("已加入组织，请使用该账号登录。")
-                  : tr("已拒绝邀请。")}
+                  ? t("invite.joinedDescription")
+                  : t("invite.declinedDescription")}
               </div>
               {completedAction === "accept" && (
                 <Button asChild>
-                  <Link href="/login">{tr("前往登录")}</Link>
+                  <Link href="/login">{t("auth.goToSignIn")}</Link>
                 </Button>
               )}
             </div>
@@ -152,7 +156,11 @@ export default function InvitePage() {
                 </div>
               )}
               <div className="grid gap-1.5">
-                <Label>{tr(isDirectedInvite ? "受邀邮箱" : "邮箱")}</Label>
+                <Label>
+                  {isDirectedInvite
+                    ? t("invite.invitedEmail")
+                    : t("auth.email")}
+                </Label>
                 <Input
                   disabled={isDirectedInvite}
                   onChange={(event) => setAcceptEmail(event.target.value)}
@@ -163,7 +171,9 @@ export default function InvitePage() {
               {requiresRegistration && (
                 <>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="invite-display-name">{tr("名称")}</Label>
+                    <Label htmlFor="invite-display-name">
+                      {t("common.name")}
+                    </Label>
                     <Input
                       id="invite-display-name"
                       onChange={(event) => setDisplayName(event.target.value)}
@@ -171,7 +181,9 @@ export default function InvitePage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="invite-password">{tr("密码")}</Label>
+                    <Label htmlFor="invite-password">
+                      {t("auth.password")}
+                    </Label>
                     <Input
                       id="invite-password"
                       onChange={(event) => setPassword(event.target.value)}
@@ -188,14 +200,18 @@ export default function InvitePage() {
                   type="button"
                   variant="outline"
                 >
-                  {submitting === "decline" ? tr("处理中...") : tr("拒绝")}
+                  {submitting === "decline"
+                    ? t("common.processing")
+                    : t("invite.decline")}
                 </Button>
                 <Button
                   disabled={!canAccept || Boolean(submitting)}
                   onClick={() => void submit("accept")}
                   type="button"
                 >
-                  {submitting === "accept" ? tr("处理中...") : tr("加入组织")}
+                  {submitting === "accept"
+                    ? t("common.processing")
+                    : t("invite.join")}
                 </Button>
               </div>
             </>

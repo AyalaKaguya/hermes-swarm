@@ -78,7 +78,7 @@ export function PermissionTree({
         <div className="grid gap-2 p-3" key={scope.scope}>
           <div className="flex items-center gap-2 text-sm font-semibold">
             <AppIcon className="size-4" name="shield" />
-            {scope.label}
+            {tr(scope.label)}
           </div>
           <div className="grid gap-2">
             {scope.entities.map((entity) => {
@@ -108,7 +108,9 @@ export function PermissionTree({
                         className="size-3.5 shrink-0 transition-transform group-open:rotate-180"
                         name="chevron-down"
                       />
-                      <span className="min-w-0 truncate">{entity.label}</span>
+                      <span className="min-w-0 truncate">
+                        {tr(entity.label)}
+                      </span>
                     </span>
                     <span className="text-xs">
                       {enabledCount(entity.purposes, isChecked)}/
@@ -173,7 +175,7 @@ function PurposeNode({
             disabled={disabled}
             onCheckedChange={(value) => setPurpose(value !== true)}
           />
-          <span className="truncate">{purpose.label}</span>
+          <span className="truncate">{tr(purpose.label)}</span>
           <span className="text-xs">
             {enabled}/{total}
           </span>
@@ -236,7 +238,7 @@ function OperationNode({
       />
       <span className="grid min-w-0 flex-1 gap-1">
         <span className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">{operation.label}</span>
+          <span className="font-medium">{tr(operation.label)}</span>
           {operation.isDangerous && (
             <Badge className="px-1.5 text-[11px]" variant="destructive">
               {tr("高危")}
@@ -244,7 +246,9 @@ function OperationNode({
           )}
         </span>
         {operation.description && (
-          <span className="text-xs leading-5">{operation.description}</span>
+          <span className="text-xs leading-5">
+            {tr(operation.description)}
+          </span>
         )}
         <span className="truncate font-mono text-[11px]">
           {operation.permission}

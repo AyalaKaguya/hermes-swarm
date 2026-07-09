@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,10 +16,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { resetPassword } from "@/lib/admin-api";
-import { useTextTranslation } from "@/hooks/use-text-translation";
+import { useTranslations } from "next-intl";
 
 export default function ResetPasswordPage() {
-  const tr = useTextTranslation();
+  const t = useTranslations("auth");
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? "";
   const token = searchParams.get("token") ?? "";
@@ -35,40 +36,41 @@ export default function ResetPasswordPage() {
       await resetPassword({ confirmPassword, email, password, token });
       setDone(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : tr("重置失败"));
+      setError(err instanceof Error ? err.message : t("resetFailed"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <main className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <PublicLanguageSwitcher />
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="mb-2 flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
             <AppIcon className="size-5" name="shield" />
           </div>
-          <CardTitle>{tr("重置密码")}</CardTitle>
-          <CardDescription>{tr("设置新的登录密码")}</CardDescription>
+          <CardTitle>{t("resetPassword")}</CardTitle>
+          <CardDescription>{t("resetPasswordDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           {done ? (
             <>
               <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                {tr("密码已重置，请使用新密码登录。")}
+                {t("resetPasswordSuccess")}
               </div>
               <Button asChild>
-                <Link href="/login">{tr("返回登录")}</Link>
+                <Link href="/login">{t("backToSignIn")}</Link>
               </Button>
             </>
           ) : (
             <>
               <div className="grid gap-1.5">
-                <Label>{tr("邮箱")}</Label>
+                <Label>{t("email")}</Label>
                 <Input disabled value={email} />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="reset-password">{tr("新密码")}</Label>
+                <Label htmlFor="reset-password">{t("newPassword")}</Label>
                 <Input
                   id="reset-password"
                   onChange={(event) => setPassword(event.target.value)}
@@ -77,7 +79,9 @@ export default function ResetPasswordPage() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="reset-confirm-password">{tr("确认密码")}</Label>
+                <Label htmlFor="reset-confirm-password">
+                  {t("confirmPassword")}
+                </Label>
                 <Input
                   id="reset-confirm-password"
                   onChange={(event) => setConfirmPassword(event.target.value)}
@@ -100,7 +104,7 @@ export default function ResetPasswordPage() {
                 }
                 onClick={submit}
               >
-                {loading ? tr("处理中...") : tr("重置密码")}
+                {loading ? t("processing") : t("resetPassword")}
               </Button>
             </>
           )}

@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
-import { IsNull, Repository } from "typeorm";
+import { IsNull, QueryFailedError, Repository, type EntityManager } from "typeorm";
 
 type SmtpPayload = {
   fromAddress?: string | null;
@@ -68,23 +68,27 @@ export class MailService implements OnModuleInit {
   }
 
   async saveSmtp(organizationId: string, payload: SmtpPayload) {
+    const parsedPayload = parseSmtpPayload(payload);
     const entity = await this.findOrCreateSmtpRecord(organizationId);
-    applySmtpPayload(entity, payload);
+    applySmtpPayload(entity, parsedPayload);
     entity.organizationId = organizationId;
-    entity.isValidated = Boolean(payload.isValidated);
+    entity.isValidated = normalizeBoolean(parsedPayload.isValidated, "验证状态");
+    normalizeSmtpRecordForSave(entity);
     return toSmtpDto(await this.smtpRepository.save(entity));
   }
 
   async savePlatformSmtp(payload: SmtpPayload) {
+    const parsedPayload = parseSmtpPayload(payload);
     const entity = await this.findOrCreateSmtpRecord(null);
-    applySmtpPayload(entity, payload);
+    applySmtpPayload(entity, parsedPayload);
     entity.organizationId = null;
-    entity.isValidated = Boolean(payload.isValidated);
+    entity.isValidated = normalizeBoolean(parsedPayload.isValidated, "验证状态");
+    normalizeSmtpRecordForSave(entity);
     return toSmtpDto(await this.smtpRepository.save(entity));
   }
 
   validateSmtp(payload: SmtpPayload) {
-    return validateSmtpPayload(payload);
+    return validateSmtpPayload(parseSmtpPayload(payload));
   }
 
   async listTemplates(organizationId: string | null) {
@@ -106,17 +110,18 @@ export class MailService implements OnModuleInit {
   }
 
   async createTemplate(organizationId: string | null, payload: EmailTemplatePayload) {
+    const parsedPayload = parseTemplatePayload(payload);
     const template = this.emailTemplateRepository.create({
-      description: normalizeOptionalText(payload.description),
-      hbs: requireText(payload.hbs, "模板内容"),
-      isSystem: Boolean(payload.isSystem),
-      languageCode: requireText(payload.languageCode, "语言编码"),
-      mjml: normalizeOptionalText(payload.mjml),
-      name: requireText(payload.name, "模板名称"),
+      description: normalizeOptionalText(parsedPayload.description, 240),
+      hbs: requireText(parsedPayload.hbs, "模板内容"),
+      isSystem: normalizeBoolean(parsedPayload.isSystem, "系统模板"),
+      languageCode: requireText(parsedPayload.languageCode, "语言编码", 16),
+      mjml: normalizeOptionalText(parsedPayload.mjml),
+      name: requireText(parsedPayload.name, "模板名称", 120),
       organizationId,
-      subject: normalizeOptionalText(payload.subject),
+      subject: normalizeOptionalText(parsedPayload.subject, 240),
     });
-    return toTemplateDto(await this.emailTemplateRepository.save(template));
+    return toTemplateDto(await saveTemplateOrThrow(this.emailTemplateRepository, template));
   }
 
   async updateTemplate(
@@ -124,34 +129,35 @@ export class MailService implements OnModuleInit {
     templateId: string,
     payload: EmailTemplatePayload,
   ) {
+    const parsedPayload = parseTemplatePayload(payload);
     const template = await this.getTemplateOrThrow(organizationId, templateId);
-    if (payload.name !== undefined) {
-      const nextName = requireText(payload.name, "模板名称");
+    if (parsedPayload.name !== undefined) {
+      const nextName = requireText(parsedPayload.name, "模板名称", 120);
       if (template.isSystem && nextName !== template.name) {
         throw new BadRequestException("系统模板名称不能修改");
       }
       template.name = nextName;
     }
-    if (payload.description !== undefined) {
-      template.description = normalizeOptionalText(payload.description);
+    if (parsedPayload.description !== undefined) {
+      template.description = normalizeOptionalText(parsedPayload.description, 240);
     }
-    if (payload.languageCode !== undefined) {
-      const nextLanguageCode = requireText(payload.languageCode, "语言编码");
+    if (parsedPayload.languageCode !== undefined) {
+      const nextLanguageCode = requireText(parsedPayload.languageCode, "语言编码", 16);
       if (template.isSystem && nextLanguageCode !== template.languageCode) {
         throw new BadRequestException("系统模板语言不能修改");
       }
       template.languageCode = nextLanguageCode;
     }
-    if (payload.hbs !== undefined) {
-      template.hbs = requireText(payload.hbs, "模板内容");
+    if (parsedPayload.hbs !== undefined) {
+      template.hbs = requireText(parsedPayload.hbs, "模板内容");
     }
-    if (payload.mjml !== undefined) {
-      template.mjml = normalizeOptionalText(payload.mjml);
+    if (parsedPayload.mjml !== undefined) {
+      template.mjml = normalizeOptionalText(parsedPayload.mjml);
     }
-    if (payload.subject !== undefined) {
-      template.subject = normalizeOptionalText(payload.subject);
+    if (parsedPayload.subject !== undefined) {
+      template.subject = normalizeOptionalText(parsedPayload.subject, 240);
     }
-    return toTemplateDto(await this.emailTemplateRepository.save(template));
+    return toTemplateDto(await saveTemplateOrThrow(this.emailTemplateRepository, template));
   }
 
   async deleteTemplate(organizationId: string | null, templateId: string) {
@@ -161,31 +167,35 @@ export class MailService implements OnModuleInit {
     return { id: templateId };
   }
 
-  async ensureDefaultTemplatesForOrganization(organizationId: string) {
-    await this.ensureDefaultTemplates(organizationId);
+  async ensureDefaultTemplatesForOrganization(
+    organizationId: string,
+    manager?: EntityManager,
+  ) {
+    await this.ensureDefaultTemplates(organizationId, manager);
   }
 
-  async ensureDefaultPlatformTemplates() {
-    await this.ensureDefaultTemplates(null);
+  async ensureDefaultPlatformTemplates(manager?: EntityManager) {
+    await this.ensureDefaultTemplates(null, manager);
   }
 
   async listLogs(organizationId: string) {
     const logs = await this.emailLogRepository.find({
-      where: { organizationId },
+      where: { isArchived: false, organizationId },
       order: { createdAt: "DESC" },
     });
     return logs.map(toLogDto);
   }
 
   async createLog(organizationId: string, payload: EmailLogPayload) {
+    const parsedPayload = parseEmailLogPayload(payload);
     const log = this.emailLogRepository.create({
-      content: normalizeOptionalText(payload.content),
-      email: requireText(payload.email, "收件邮箱"),
-      isArchived: Boolean(payload.isArchived),
+      content: normalizeOptionalText(parsedPayload.content),
+      email: requireText(parsedPayload.email, "收件邮箱", 240),
+      isArchived: normalizeBoolean(parsedPayload.isArchived, "归档状态"),
       organizationId,
-      status: payload.status ?? "queued",
-      subject: normalizeOptionalText(payload.subject),
-      templateName: normalizeOptionalText(payload.templateName),
+      status: normalizeEmailLogStatus(parsedPayload.status),
+      subject: normalizeOptionalText(parsedPayload.subject, 240),
+      templateName: normalizeOptionalText(parsedPayload.templateName, 120),
     });
     return toLogDto(await this.emailLogRepository.save(log));
   }
@@ -238,9 +248,12 @@ export class MailService implements OnModuleInit {
     );
   }
 
-  private async ensureDefaultTemplates(organizationId: string | null) {
+  private async ensureDefaultTemplates(
+    organizationId: string | null,
+    manager: EntityManager = this.emailTemplateRepository.manager,
+  ) {
     for (const definition of DEFAULT_EMAIL_TEMPLATES) {
-      const existing = await this.emailTemplateRepository.findOne({
+      const existing = await manager.findOne(EmailTemplate, {
         where: {
           languageCode: definition.languageCode,
           name: definition.name,
@@ -248,45 +261,94 @@ export class MailService implements OnModuleInit {
         },
       });
       if (existing) continue;
-      await this.emailTemplateRepository.save(
-        this.emailTemplateRepository.create({
-          ...definition,
-          isSystem: true,
-          organizationId: organizationId as string | null,
-        }),
-      );
+      try {
+        await manager.save(
+          EmailTemplate,
+          this.emailTemplateRepository.create({
+            ...definition,
+            isSystem: true,
+            organizationId: organizationId as string | null,
+          }),
+        );
+      } catch (error) {
+        if (isUniqueConstraintError(error)) continue;
+        throw error;
+      }
     }
   }
 }
 
-function applySmtpPayload(entity: CustomSmtp, payload: SmtpPayload) {
-  if (payload.fromAddress !== undefined) {
-    entity.fromAddress = normalizeOptionalText(payload.fromAddress);
-  }
-  if (payload.host !== undefined) {
-    entity.host = requireText(payload.host, "SMTP Host");
-  }
-  if (payload.port !== undefined) entity.port = normalizePort(payload.port);
-  if (payload.secure !== undefined) entity.secure = Boolean(payload.secure);
-  if (payload.username !== undefined) {
-    entity.username = normalizeOptionalText(payload.username);
-  }
-  if (payload.password !== undefined) {
-    entity.password = normalizeOptionalText(payload.password);
+async function saveTemplateOrThrow(
+  repository: Repository<EmailTemplate>,
+  template: EmailTemplate,
+) {
+  try {
+    return await repository.save(template);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new BadRequestException("邮件模板已存在");
+    }
+    throw error;
   }
 }
 
+function parseSmtpPayload(payload: unknown): SmtpPayload {
+  return assertPayloadObject(payload, "SMTP 配置");
+}
+
+function parseTemplatePayload(payload: unknown): EmailTemplatePayload {
+  return assertPayloadObject(payload, "邮件模板");
+}
+
+function parseEmailLogPayload(payload: unknown): EmailLogPayload {
+  return assertPayloadObject(payload, "邮件日志");
+}
+
+function assertPayloadObject<T extends Record<string, unknown>>(
+  payload: unknown,
+  label: string,
+): T {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new BadRequestException(`${label}请求体不能为空`);
+  }
+  return payload as T;
+}
+
+function applySmtpPayload(entity: CustomSmtp, payload: SmtpPayload) {
+  if (payload.fromAddress !== undefined) {
+    entity.fromAddress = normalizeOptionalText(payload.fromAddress, 240);
+  }
+  if (payload.host !== undefined) {
+    entity.host = requireText(payload.host, "SMTP Host", 240);
+  }
+  if (payload.port !== undefined) entity.port = normalizePort(payload.port);
+  if (payload.secure !== undefined) {
+    entity.secure = normalizeBoolean(payload.secure, "安全连接");
+  }
+  if (payload.username !== undefined) {
+    entity.username = normalizeOptionalText(payload.username, 240);
+  }
+  if (payload.password !== undefined) {
+    entity.password = normalizeOptionalText(payload.password, 500);
+  }
+}
+
+function normalizeSmtpRecordForSave(entity: CustomSmtp) {
+  entity.host = requireText(entity.host, "SMTP Host", 240);
+  entity.port = normalizePort(entity.port ?? 587);
+  entity.secure = normalizeBoolean(entity.secure, "安全连接");
+}
+
 function validateSmtpPayload(payload: SmtpPayload) {
-  const host = payload.host?.trim();
+  const host = requireText(payload.host, "SMTP Host", 240);
   const port = normalizePort(payload.port ?? 587);
-  if (!host) throw new BadRequestException("SMTP Host 不能为空");
   return {
-    fromAddress: normalizeOptionalText(payload.fromAddress),
+    fromAddress: normalizeOptionalText(payload.fromAddress, 240),
     host,
     isValid: true,
     port,
-    secure: Boolean(payload.secure),
-    username: normalizeOptionalText(payload.username),
+    secure: normalizeBoolean(payload.secure, "安全连接"),
+    username: normalizeOptionalText(payload.username, 240),
   };
 }
 
@@ -352,15 +414,46 @@ function dedupeTemplatesForDisplay(
   );
 }
 
-function requireText(value: string | undefined, label: string) {
-  const text = value?.trim();
+function requireText(value: unknown, label: string, maxLength?: number) {
+  const text = typeof value === "string" ? value.trim() : "";
   if (!text) throw new BadRequestException(`${label}不能为空`);
+  if (maxLength !== undefined && text.length > maxLength) {
+    throw new BadRequestException(`${label}过长`);
+  }
   return text;
 }
 
-function normalizeOptionalText(value: string | null | undefined) {
-  const text = value?.trim();
+function normalizeOptionalText(value: unknown, maxLength?: number) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException("文本格式不正确");
+  }
+  const text = value.trim();
+  if (maxLength !== undefined && text.length > maxLength) {
+    throw new BadRequestException("文本过长");
+  }
   return text || null;
+}
+
+function normalizeBoolean(value: unknown, label: string, defaultValue = false) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value !== "boolean") {
+    throw new BadRequestException(`${label}格式不正确`);
+  }
+  return value;
+}
+
+function normalizeEmailLogStatus(value: unknown) {
+  if (value === undefined) return "queued";
+  if (
+    value === "failed" ||
+    value === "queued" ||
+    value === "sent" ||
+    value === "skipped"
+  ) {
+    return value;
+  }
+  throw new BadRequestException("邮件状态无效");
 }
 
 function normalizePort(value: number | string | undefined) {
@@ -369,6 +462,12 @@ function normalizePort(value: number | string | undefined) {
     throw new BadRequestException("端口格式不正确");
   }
   return port;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  if (!(error instanceof QueryFailedError)) return false;
+  const driverError = error.driverError as { code?: string } | undefined;
+  return driverError?.code === "23505";
 }
 
 const DEFAULT_EMAIL_TEMPLATES = [

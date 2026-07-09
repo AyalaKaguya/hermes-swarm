@@ -29,6 +29,10 @@ import { AuthSessionService } from "../auth/auth-session.service.js";
 
 const MAX_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const DEFAULT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const ORGANIZATION_INTEGRATION_TOKEN_CREATE_PERMISSION =
+  "integration_token.organization_integration.create:organization";
+const PLATFORM_INTEGRATION_TOKEN_CREATE_PERMISSION =
+  "integration_token.platform_integration.create:platform";
 
 @Injectable()
 export class IntegrationTokensService {
@@ -95,16 +99,23 @@ export class IntegrationTokensService {
     payload: CreateIntegrationTokenPayload,
   ) {
     await this.requireInteractiveOwnerSession(authorization, userId);
-    const scope = requireScope(payload.scope);
-    const expiresAt = normalizeExpiresAt(payload.expiresAt);
-    const permissions = normalizePermissions(payload.permissions);
-    const organizationId =
-      scope === "organization" ? requireText(payload.organizationId, "组织") : null;
+    const input = requireCreatePayload(payload);
+    const scope = requireScope(input.scope);
+    const expiresAt = normalizeExpiresAt(input.expiresAt);
+    const permissions = normalizePermissions(input.permissions);
+    const organizationId = normalizeOrganizationIdForScope(
+      scope,
+      input.organizationId,
+    );
     const capability = await this.getScopeCapability(userId, scope, organizationId);
 
     if (!capability) {
       throw new ForbiddenException("当前账号没有该作用范围");
     }
+
+    const organization = organizationId
+      ? await this.requireActiveOrganization(organizationId)
+      : null;
 
     const allowed = new Set(capability.permissions.map((item) => item.permission));
     const invalid = permissions.filter((permission) => !allowed.has(permission));
@@ -133,7 +144,7 @@ export class IntegrationTokensService {
       this.tokenRepository.create({
         id,
         expiresAt,
-        note: normalizeNullableText(payload.note),
+        note: normalizeNullableText(input.note),
         organizationId,
         ownerUserId: userId,
         permissions,
@@ -144,14 +155,35 @@ export class IntegrationTokensService {
       }),
     );
 
-    const organization = organizationId
-      ? await this.organizationRepository.findOne({ where: { id: organizationId } })
-      : null;
-
     return {
       ...toIntegrationTokenDto(record, null, organization),
       token,
     };
+  }
+
+  async createForCurrentUserInOrganization(
+    authorization: string | undefined,
+    organizationId: string,
+    payload: Omit<CreateIntegrationTokenPayload, "organizationId" | "scope">,
+  ) {
+    const session = await this.requireInteractiveSession(authorization);
+    return this.create(authorization, session.userId, {
+      ...payload,
+      organizationId,
+      scope: "organization",
+    });
+  }
+
+  async createForCurrentUserInPlatform(
+    authorization: string | undefined,
+    payload: Omit<CreateIntegrationTokenPayload, "organizationId" | "scope">,
+  ) {
+    const session = await this.requireInteractiveSession(authorization);
+    return this.create(authorization, session.userId, {
+      ...payload,
+      organizationId: null,
+      scope: "platform",
+    });
   }
 
   async revoke(
@@ -241,6 +273,20 @@ export class IntegrationTokensService {
 
     for (const membership of memberships) {
       if (!membership.roleId) continue;
+      if (
+        membership.organization &&
+        (membership.organization.status ?? "active") !== "active"
+      ) {
+        continue;
+      }
+      if (
+        !(await this.roleAllows(
+          membership.roleId,
+          ORGANIZATION_INTEGRATION_TOKEN_CREATE_PERMISSION,
+        ))
+      ) {
+        continue;
+      }
       const permissions = await this.getRolePermissionOptions(
         [membership.roleId],
         "organization",
@@ -254,7 +300,13 @@ export class IntegrationTokensService {
       });
     }
 
-    if (platformMembership?.roleId) {
+    if (
+      platformMembership?.roleId &&
+      (await this.roleAllows(
+        platformMembership.roleId,
+        PLATFORM_INTEGRATION_TOKEN_CREATE_PERMISSION,
+      ))
+    ) {
       const permissions = await this.getRolePermissionOptions(
         [platformMembership.roleId],
         "platform",
@@ -330,6 +382,24 @@ export class IntegrationTokensService {
         purposeLabel: permission.purposeLabel ?? permission.purpose ?? "权限",
         purposeOrder: permission.purposeOrder,
       }));
+  }
+
+  private async roleAllows(roleId: string, permission: string) {
+    return Boolean(
+      await this.rolePermissionRepository.findOne({
+        where: { enabled: true, permission, roleId },
+      }),
+    );
+  }
+
+  private async requireActiveOrganization(organizationId: string) {
+    const organization = await this.organizationRepository.findOne({
+      where: { id: organizationId },
+    });
+    if (!organization || organization.status !== "active") {
+      throw new ForbiddenException("组织不可用");
+    }
+    return organization;
   }
 
   private get sessionSecret() {
@@ -437,10 +507,23 @@ function isDelegablePermission(permission: string) {
   );
 }
 
-function normalizeExpiresAt(value: string | undefined) {
+function requireCreatePayload(
+  value: unknown,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("Token 请求内容无效");
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeExpiresAt(value: unknown) {
   const now = Date.now();
-  const expiresAt = value
-    ? new Date(value)
+  if (value !== undefined && value !== null && typeof value !== "string") {
+    throw new BadRequestException("有效期无效");
+  }
+  const normalized = typeof value === "string" ? value.trim() : "";
+  const expiresAt = normalized
+    ? new Date(normalized)
     : new Date(now + DEFAULT_TOKEN_TTL_MS);
   if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= now) {
     throw new BadRequestException("有效期无效");
@@ -451,15 +534,29 @@ function normalizeExpiresAt(value: string | undefined) {
   return expiresAt;
 }
 
-function normalizeNullableText(value: string | null | undefined) {
-  const text = value?.trim();
-  return text ? text.slice(0, 160) : null;
+function normalizeNullableText(value: unknown) {
+  if (value !== undefined && value !== null && typeof value !== "string") {
+    throw new BadRequestException("备注无效");
+  }
+  const text = typeof value === "string" ? value.trim() : "";
+  if (text.length > 160) {
+    throw new BadRequestException("备注最多 160 个字符");
+  }
+  return text || null;
 }
 
-function normalizePermissions(value: string[] | undefined) {
+function normalizePermissions(value: unknown) {
+  if (!Array.isArray(value)) {
+    throw new BadRequestException("Token 至少需要选择一个权限");
+  }
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new BadRequestException("Token 权限无效");
+    }
+  }
   const permissions = [
     ...new Set(
-      (value ?? []).map((item) => item.trim()).filter((item) => Boolean(item)),
+      value.map((item) => item.trim()).filter((item) => Boolean(item)),
     ),
   ];
   if (permissions.length === 0) {
@@ -468,15 +565,31 @@ function normalizePermissions(value: string[] | undefined) {
   return permissions;
 }
 
-function requireScope(value: string | undefined): IntegrationTokenScope {
+function requireScope(value: unknown): IntegrationTokenScope {
   if (value === "own" || value === "organization" || value === "platform") {
     return value;
   }
   throw new BadRequestException("Token 作用范围无效");
 }
 
-function requireText(value: string | null | undefined, label: string) {
-  const text = value?.trim();
+function normalizeOrganizationIdForScope(
+  scope: IntegrationTokenScope,
+  value: unknown,
+) {
+  if (scope === "organization") {
+    return requireText(value, "组织");
+  }
+  if (value !== undefined && value !== null && value !== "") {
+    throw new BadRequestException("非组织作用范围不能指定组织");
+  }
+  return null;
+}
+
+function requireText(value: unknown, label: string) {
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${label}无效`);
+  }
+  const text = value.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }

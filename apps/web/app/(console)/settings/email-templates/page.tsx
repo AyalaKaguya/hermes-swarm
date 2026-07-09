@@ -390,7 +390,7 @@ function CreateTemplateForm({
         <Textarea
           className="font-mono text-xs"
           onChange={(e) => setMjml(e.target.value)}
-          placeholder="MJML markup..."
+          placeholder={tr("MJML 标记...")}
           rows={4}
           value={mjml}
         />

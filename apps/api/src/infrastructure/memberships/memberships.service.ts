@@ -8,11 +8,13 @@ import {
   Organization,
   OrganizationGroup,
   OrganizationGroupMember,
+  IntegrationToken,
   Role,
   User,
   UserOrganization,
+  type UserOrganizationStatus,
 } from "@hermes-swarm/core";
-import { In, Repository } from "typeorm";
+import { In, IsNull, Repository, type EntityManager } from "typeorm";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { toUserDto } from "../users/user-dto.js";
 import type { MembershipPayload } from "./memberships.controller.js";
@@ -30,6 +32,8 @@ export class MembershipsService {
     private readonly groupMemberRepository: Repository<OrganizationGroupMember>,
     @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
+    @InjectRepository(IntegrationToken)
+    private readonly integrationTokenRepository: Repository<IntegrationToken>,
   ) {}
 
   async list(organizationId: string) {
@@ -48,25 +52,49 @@ export class MembershipsService {
   }
 
   async create(organizationId: string, payload: MembershipPayload) {
+    const input = requireMembershipPayload(payload);
     await this.ensureOrganization(organizationId);
-    const user = await this.resolveOrCreateUser(payload);
-    const userId = user.id;
+    try {
+      const membership = await this.membershipRepository.manager.transaction(
+        async (manager) => {
+          const user = await this.resolveOrCreateUser(input, manager);
+          const existing = await manager.findOne(UserOrganization, {
+            where: { organizationId, userId: user.id },
+          });
+          if (existing) throw new BadRequestException("用户已经在该组织中");
 
-    const existing = await this.membershipRepository.findOne({
-      where: { organizationId, userId },
-    });
-    if (existing) throw new BadRequestException("用户已经在该组织中");
-
-    const roleId = await this.resolveRoleId(organizationId, payload.roleId);
-    const membership = this.membershipRepository.create({
-      displayName: normalizeNullableText(payload.displayName) ?? user.nickname ?? user.displayName,
-      joinedAt: new Date(),
-      organizationId,
-      roleId,
-      status: payload.status ?? "active",
-      userId,
-    });
-    return toMembershipDto(await this.membershipRepository.save(membership));
+          const roleId = await this.resolveRoleId(
+            organizationId,
+            input.roleId,
+            manager,
+          );
+          return manager.save(
+            UserOrganization,
+            this.membershipRepository.create({
+              displayName:
+                normalizeNullableText(input.displayName) ??
+                user.nickname ??
+                user.displayName,
+              joinedAt: new Date(),
+              organizationId,
+              roleId,
+              status: normalizeMembershipStatus(input.status),
+              userId: user.id,
+            }),
+          );
+        },
+      );
+      return toMembershipDto(membership);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const constraint = getConstraintName(error);
+        if (constraint?.includes("users_email")) {
+          throw new BadRequestException("邮箱已被使用");
+        }
+        throw new BadRequestException("用户已经在该组织中");
+      }
+      throw error;
+    }
   }
 
   async update(
@@ -74,44 +102,94 @@ export class MembershipsService {
     membershipId: string,
     payload: Partial<MembershipPayload>,
   ) {
-    const membership = await this.getMembershipOrThrow(
-      organizationId,
-      membershipId,
-    );
-
-    if (payload.displayName !== undefined) {
-      membership.displayName = normalizeNullableText(payload.displayName);
-    }
-    if (payload.roleId !== undefined) {
-      membership.roleId = await this.resolveRoleId(
+    const input = requireMembershipPayload(payload);
+    await this.membershipRepository.manager.transaction(async (manager) => {
+      const membership = await this.getMembershipOrThrow(
         organizationId,
-        payload.roleId,
+        membershipId,
+        manager,
+        true,
       );
-    }
-    if (payload.status !== undefined) {
-      membership.status = payload.status;
-    }
-    membership.updatedAt = new Date();
+      const wasActiveOwner = isActiveOwnerMembership(membership);
+      const previousRoleId = membership.roleId;
+      let nextRole = membership.role;
 
-    await this.membershipRepository.update(
-      { id: membership.id, organizationId },
-      {
-        displayName: membership.displayName,
-        roleId: membership.roleId,
-        status: membership.status,
-      },
-    );
+      if (input.displayName !== undefined) {
+        membership.displayName = normalizeNullableText(input.displayName);
+      }
+      if (input.roleId !== undefined) {
+        nextRole = await this.resolveRole(
+          organizationId,
+          input.roleId,
+          manager,
+        );
+        membership.roleId = nextRole?.id ?? null;
+      }
+      if (input.status !== undefined) {
+        membership.status = normalizeMembershipStatus(input.status);
+      }
+
+      if (wasActiveOwner && !isActiveOwnerState(nextRole, membership.status)) {
+        await this.assertAnotherActiveOwner(
+          organizationId,
+          membership.id,
+          manager,
+        );
+      }
+      if (
+        input.roleId !== undefined ||
+        (input.status !== undefined && membership.status !== "active")
+      ) {
+        await this.revokeOrganizationTokensForMembership(
+          membership.userId,
+          organizationId,
+          manager,
+          previousRoleId !== membership.roleId ? "role_changed" : "membership_disabled",
+        );
+      }
+
+      await manager.update(
+        UserOrganization,
+        { id: membership.id, organizationId },
+        {
+          displayName: membership.displayName,
+          roleId: membership.roleId,
+          status: membership.status,
+        },
+      );
+    });
     return toMembershipDto(
-      await this.getMembershipOrThrow(organizationId, membership.id),
+      await this.getMembershipOrThrow(organizationId, membershipId),
     );
   }
 
   async remove(organizationId: string, membershipId: string) {
-    const membership = await this.getMembershipOrThrow(
-      organizationId,
-      membershipId,
-    );
-    await this.membershipRepository.delete({ id: membership.id });
+    await this.membershipRepository.manager.transaction(async (manager) => {
+      const membership = await this.getMembershipOrThrow(
+        organizationId,
+        membershipId,
+        manager,
+        true,
+      );
+      if (isActiveOwnerMembership(membership)) {
+        await this.assertAnotherActiveOwner(
+          organizationId,
+          membership.id,
+          manager,
+        );
+      }
+      await this.revokeOrganizationTokensForMembership(
+        membership.userId,
+        organizationId,
+        manager,
+        "membership_removed",
+      );
+      await manager.delete(OrganizationGroupMember, {
+        membershipId: membership.id,
+        organizationId,
+      });
+      await manager.delete(UserOrganization, { id: membership.id, organizationId });
+    });
   }
 
   private async ensureOrganization(organizationId: string) {
@@ -124,8 +202,11 @@ export class MembershipsService {
   private async getMembershipOrThrow(
     organizationId: string,
     membershipId: string,
+    manager: EntityManager = this.membershipRepository.manager,
+    lockForUpdate = false,
   ) {
-    const membership = await this.membershipRepository.findOne({
+    const membership = await manager.findOne(UserOrganization, {
+      lock: lockForUpdate ? { mode: "pessimistic_write" } : undefined,
       relations: { role: true, user: true },
       where: { id: membershipId, organizationId },
     });
@@ -136,20 +217,32 @@ export class MembershipsService {
   private async resolveRoleId(
     organizationId: string,
     roleId: string | null | undefined,
+    manager: EntityManager = this.roleRepository.manager,
+  ) {
+    return (await this.resolveRole(organizationId, roleId, manager))?.id ?? null;
+  }
+
+  private async resolveRole(
+    organizationId: string,
+    roleId: string | null | undefined,
+    manager: EntityManager = this.roleRepository.manager,
   ) {
     if (roleId === null || roleId === undefined) return null;
-    const role = await this.roleRepository.findOne({
+    const role = await manager.findOne(Role, {
       where: { id: roleId },
     });
     if (!role || role.scope !== "organization" || role.organizationId !== organizationId) {
       throw new BadRequestException("角色不属于该组织");
     }
-    return role.id;
+    return role;
   }
 
-  private async resolveOrCreateUser(payload: MembershipPayload) {
+  private async resolveOrCreateUser(
+    payload: MembershipPayload,
+    manager: EntityManager = this.userRepository.manager,
+  ) {
     if (payload.userId) {
-      const user = await this.userRepository.findOne({
+      const user = await manager.findOne(User, {
         where: { id: requireText(payload.userId, "用户 ID") },
       });
       if (!user) throw new NotFoundException("用户不存在");
@@ -157,12 +250,13 @@ export class MembershipsService {
     }
 
     const email = normalizeEmail(payload.email);
-    const existing = await this.userRepository.findOne({ where: { email } });
+    const existing = await manager.findOne(User, { where: { email } });
     if (existing) return existing;
 
     const displayName =
       normalizeNullableText(payload.displayName) ?? email.split("@")[0] ?? email;
-    return this.userRepository.save(
+    return manager.save(
+      User,
       this.userRepository.create({
         displayName,
         email,
@@ -194,9 +288,58 @@ export class MembershipsService {
     }
     return groupsByMembership;
   }
+
+  private async revokeOrganizationTokensForMembership(
+    userId: string,
+    organizationId: string,
+    manager: EntityManager = this.integrationTokenRepository.manager,
+    _reason: "membership_disabled" | "membership_removed" | "role_changed",
+  ) {
+    await manager.update(
+      IntegrationToken,
+      {
+        organizationId,
+        ownerUserId: userId,
+        revokedAt: IsNull(),
+        scope: "organization",
+      },
+      { revokedAt: new Date() },
+    );
+  }
+
+  private async assertAnotherActiveOwner(
+    organizationId: string,
+    currentMembershipId: string,
+    manager: EntityManager = this.membershipRepository.manager,
+  ) {
+    const activeMemberships = await manager.find(UserOrganization, {
+      lock: { mode: "pessimistic_write" },
+      relations: { role: true },
+      where: { organizationId, status: "active" },
+    });
+    const hasAnotherOwner = activeMemberships.some(
+      (membership) =>
+        membership.id !== currentMembershipId && membership.role?.name === "owner",
+    );
+    if (!hasAnotherOwner) {
+      throw new BadRequestException("组织至少需要保留一个 Owner");
+    }
+  }
+}
+
+function requireMembershipPayload(
+  value: MembershipPayload | Partial<MembershipPayload>,
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
+  }
+  return value;
 }
 
 function requireText(value: string | undefined, label: string) {
+  if (value !== undefined && typeof value !== "string") {
+    throw new BadRequestException(`${label}格式不正确`);
+  }
   const text = value?.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
@@ -211,6 +354,9 @@ function normalizeEmail(value: string | undefined) {
 }
 
 function normalizeNullableText(value: string | null | undefined) {
+  if (value !== null && value !== undefined && typeof value !== "string") {
+    throw new BadRequestException("显示名称格式不正确");
+  }
   const text = value?.trim();
   return text || null;
 }
@@ -219,6 +365,40 @@ function requirePassword(value: string | undefined) {
   const password = requireText(value, "密码");
   if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
   return password;
+}
+
+function normalizeMembershipStatus(
+  value: string | null | undefined,
+): UserOrganizationStatus {
+  if (value === null || value === undefined) return "active";
+  if (value === "active" || value === "disabled" || value === "invited") {
+    return value;
+  }
+  throw new BadRequestException("组织成员状态无效");
+}
+
+function isActiveOwnerMembership(membership: UserOrganization) {
+  return isActiveOwnerState(membership.role, membership.status);
+}
+
+function isActiveOwnerState(
+  role: Role | null | undefined,
+  status: UserOrganizationStatus,
+) {
+  return status === "active" && role?.name === "owner";
+}
+
+function isUniqueConstraintError(error: unknown) {
+  const typed = error as {
+    code?: string;
+    driverError?: { code?: string; constraint?: string };
+  };
+  return typed.code === "23505" || typed.driverError?.code === "23505";
+}
+
+function getConstraintName(error: unknown) {
+  const typed = error as { constraint?: string; driverError?: { constraint?: string } };
+  return typed.constraint ?? typed.driverError?.constraint ?? null;
 }
 
 function toMembershipDto(

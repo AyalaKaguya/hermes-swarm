@@ -9,6 +9,75 @@ const INVITER_ID = "user-inviter";
 const ROLE_ID = "role-member";
 
 describe("InviteService", () => {
+  it("rejects malformed invite payloads with controlled errors", async () => {
+    const state = createInviteService();
+
+    await assert.rejects(
+      () =>
+        state.service.createBulkForOrganization(
+          ORGANIZATION_ID,
+          INVITER_ID,
+          null as any,
+        ),
+      { message: "请求内容无效" },
+    );
+    await assert.rejects(
+      () =>
+        state.service.createBulkForOrganization(
+          ORGANIZATION_ID,
+          INVITER_ID,
+          { emailIds: "member@example.com" } as any,
+        ),
+      { message: "邮箱列表无效" },
+    );
+    await assert.rejects(
+      () =>
+        state.service.createBulkForOrganization(
+          ORGANIZATION_ID,
+          INVITER_ID,
+          { emailIds: [42] } as any,
+        ),
+      { message: "邮箱格式不正确" },
+    );
+    await assert.rejects(
+      () =>
+        state.service.createBulkForOrganization(
+          ORGANIZATION_ID,
+          INVITER_ID,
+          { emailIds: ["member@example.com"], expiresIn: "soon" as any },
+        ),
+      { message: "邀请有效期无效" },
+    );
+    await assert.rejects(
+      () => state.service.accept(null as any),
+      { message: "请求内容无效" },
+    );
+    await assert.rejects(
+      () => state.service.accept({ action: "archive" } as any),
+      { message: "邀请操作无效" },
+    );
+  });
+
+  it("deduplicates normalized invite emails while reporting ignored originals", async () => {
+    const state = createInviteService();
+
+    const created = await state.service.createBulkForOrganization(
+      ORGANIZATION_ID,
+      INVITER_ID,
+      {
+        emailIds: [" Member@Example.com ", "member@example.com"],
+        expiresIn: "3d",
+        roleId: ROLE_ID,
+      },
+    );
+
+    assert.equal(created.total, 1);
+    assert.equal(created.ignored, 1);
+    assert.equal(created.items[0].email, "member@example.com");
+    assert.equal(state.invites.length, 1);
+    assert.equal(state.sentEmails.length, 1);
+  });
+
   it("creates reusable public invite links and keeps counting accepted users", async () => {
     const state = createInviteService();
 
@@ -91,6 +160,54 @@ describe("InviteService", () => {
     assert.equal(state.memberships[0].userId, "user-member");
   });
 
+  it("keeps directed invite creation successful when invite notification fails", async () => {
+    const state = createInviteService({
+      failNotification: true,
+      users: [
+        userRecord({
+          email: "member@example.com",
+          id: "user-member",
+          passwordHash: hashPassword("current-password"),
+        }),
+      ],
+    });
+
+    const created = await state.service.createBulkForOrganization(
+      ORGANIZATION_ID,
+      INVITER_ID,
+      { emailIds: ["member@example.com"], expiresIn: "3d", roleId: ROLE_ID },
+    );
+
+    assert.equal(created.total, 1);
+    assert.equal(state.invites.length, 1);
+    assert.equal(state.sentEmails.length, 1);
+    assert.equal(state.notifications.length, 0);
+  });
+
+  it("keeps directed invite creation successful when invite email fails", async () => {
+    const state = createInviteService({
+      failEmailSend: true,
+      users: [
+        userRecord({
+          email: "member@example.com",
+          id: "user-member",
+          passwordHash: hashPassword("current-password"),
+        }),
+      ],
+    });
+
+    const created = await state.service.createBulkForOrganization(
+      ORGANIZATION_ID,
+      INVITER_ID,
+      { emailIds: ["member@example.com"], expiresIn: "3d", roleId: ROLE_ID },
+    );
+
+    assert.equal(created.total, 1);
+    assert.equal(state.invites.length, 1);
+    assert.equal(state.sentEmails.length, 0);
+    assert.equal(state.notifications.length, 1);
+  });
+
   it("requires password verification when a public link is used by an existing account", async () => {
     const state = createInviteService({
       users: [
@@ -129,9 +246,140 @@ describe("InviteService", () => {
     assert.equal(accepted.acceptedUserId, "user-existing");
     assert.equal(state.memberships.length, 1);
   });
+
+  it("rejects malformed public invite acceptance fields without creating rows", async () => {
+    const state = createInviteService();
+    const created = await state.service.createBulkForOrganization(
+      ORGANIZATION_ID,
+      INVITER_ID,
+      { emailIds: [], expiresIn: "3d", roleId: ROLE_ID },
+    );
+    const token = tokenFromLink(created.items[0].link);
+
+    await assert.rejects(
+      () =>
+        state.service.accept({
+          action: "accept",
+          displayName: 42 as any,
+          email: "external@example.com",
+          password: "password-123",
+          token,
+        }),
+      { message: "用户名称格式不正确" },
+    );
+    await assert.rejects(
+      () =>
+        state.service.accept({
+          action: "accept",
+          displayName: "External User",
+          email: "external@example.com",
+          password: 12345678 as any,
+          token,
+        }),
+      { message: "密码格式不正确" },
+    );
+
+    assert.equal(state.users.some((user) => user.email === "external@example.com"), false);
+    assert.equal(state.memberships.length, 0);
+    assert.equal(state.invites[0].acceptedCount, 0);
+  });
+
+  it("keeps invite acceptance successful when accepted notification fails", async () => {
+    const state = createInviteService({ failNotification: true });
+    const created = await state.service.createBulkForOrganization(
+      ORGANIZATION_ID,
+      INVITER_ID,
+      { emailIds: [], expiresIn: "3d", roleId: ROLE_ID },
+    );
+    const token = tokenFromLink(created.items[0].link);
+
+    const accepted = await state.service.accept({
+      action: "accept",
+      displayName: "External User",
+      email: "external@example.com",
+      password: "password-123",
+      token,
+    });
+
+    assert.equal(accepted.acceptedCount, 1);
+    assert.equal(state.memberships.length, 1);
+    assert.equal(state.notifications.length, 0);
+  });
+
+  it("does not close or resend already accepted directed invites", async () => {
+    const state = createInviteService({
+      users: [
+        userRecord({
+          email: "member@example.com",
+          id: "user-member",
+          passwordHash: hashPassword("current-password"),
+        }),
+      ],
+    });
+    const created = await state.service.createBulkForOrganization(
+      ORGANIZATION_ID,
+      INVITER_ID,
+      { emailIds: ["member@example.com"], expiresIn: "3d", roleId: ROLE_ID },
+    );
+    const inviteId = created.items[0].id;
+    const token = tokenFromLink(created.items[0].link);
+
+    const accepted = await state.service.accept({
+      action: "accept",
+      email: "member@example.com",
+      token,
+    });
+
+    assert.equal(accepted.status, "accepted");
+    await assert.rejects(
+      () => state.service.deleteForOrganization(ORGANIZATION_ID, inviteId),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.resendForOrganization(
+          ORGANIZATION_ID,
+          INVITER_ID,
+          inviteId,
+        ),
+      BadRequestException,
+    );
+    assert.equal(state.invites[0].status, "accepted");
+    assert.equal(state.invites[0].closedAt, null);
+    assert.equal(state.memberships.length, 1);
+  });
+
+  it("rolls back user and membership creation when invite acceptance update fails", async () => {
+    const state = createInviteService({ failTransactionalInviteSave: true });
+    const created = await state.service.createBulkForOrganization(
+      ORGANIZATION_ID,
+      INVITER_ID,
+      { emailIds: [], expiresIn: "3d", roleId: ROLE_ID },
+    );
+    const token = tokenFromLink(created.items[0].link);
+
+    await assert.rejects(() =>
+      state.service.accept({
+        action: "accept",
+        displayName: "Rollback User",
+        email: "rollback@example.com",
+        password: "password-123",
+        token,
+      }),
+    );
+
+    assert.equal(state.users.some((user) => user.email === "rollback@example.com"), false);
+    assert.equal(state.memberships.length, 0);
+    assert.equal(state.notifications.length, 0);
+    assert.equal(state.invites[0].acceptedCount, 0);
+    assert.equal(state.invites[0].acceptedUserId, null);
+  });
 });
 
 function createInviteService(options: {
+  failEmailSend?: boolean;
+  failNotification?: boolean;
+  failTransactionalInviteSave?: boolean;
   users?: ReturnType<typeof userRecord>[];
 } = {}) {
   const invites: any[] = [];
@@ -231,6 +479,77 @@ function createInviteService(options: {
         invites.push(value);
       }
       return value;
+    },
+    manager: {
+      async transaction(callback: (manager: any) => Promise<unknown>) {
+        const snapshots = {
+          invites: cloneRows(invites),
+          memberships: cloneRows(memberships),
+          users: cloneRows(users),
+        };
+        try {
+          return await callback({
+            async findOne(target: { name?: string }, { where }: any) {
+              if (target.name === "Invite") {
+                return (
+                  invites.find((invite) =>
+                    Object.entries(where).every(
+                      ([key, value]) => invite[key] === value,
+                    ),
+                  ) ?? null
+                );
+              }
+              if (target.name === "User") {
+                return (
+                  users.find((user) =>
+                    Object.entries(where).every(
+                      ([key, value]) => user[key] === value,
+                    ),
+                  ) ?? null
+                );
+              }
+              if (target.name === "UserOrganization") {
+                return (
+                  memberships.find((membership) =>
+                    Object.entries(where).every(
+                      ([key, value]) => membership[key] === value,
+                    ),
+                  ) ?? null
+                );
+              }
+              return null;
+            },
+            async save(target: { name?: string }, value: any) {
+              if (target.name === "User") {
+                users.push(value);
+                return value;
+              }
+              if (target.name === "UserOrganization") {
+                memberships.push(value);
+                return value;
+              }
+              if (target.name === "Invite") {
+                if (options.failTransactionalInviteSave) {
+                  throw new Error("invite save failed");
+                }
+                const index = invites.findIndex((invite) => invite.id === value.id);
+                if (index >= 0) {
+                  invites[index] = value;
+                } else {
+                  invites.push(value);
+                }
+                return value;
+              }
+              return value;
+            },
+          });
+        } catch (error) {
+          replaceRows(invites, snapshots.invites);
+          replaceRows(memberships, snapshots.memberships);
+          replaceRows(users, snapshots.users);
+          throw error;
+        }
+      },
     },
   };
 
@@ -334,11 +653,17 @@ function createInviteService(options: {
     membershipRepository as any,
     {
       async send(payload: any) {
+        if (options.failEmailSend) {
+          throw new Error("email failed");
+        }
         sentEmails.push(payload);
       },
     } as any,
     {
       async createForUser(payload: any) {
+        if (options.failNotification) {
+          throw new Error("notification failed");
+        }
         notifications.push(payload);
       },
     } as any,
@@ -391,4 +716,12 @@ function tokenFromLink(link: string | null | undefined) {
   const token = new URL(link).searchParams.get("token");
   assert.ok(token);
   return token;
+}
+
+function cloneRows<T extends Record<string, unknown>>(rows: T[]) {
+  return rows.map((row) => ({ ...row }));
+}
+
+function replaceRows<T>(target: T[], rows: T[]) {
+  target.splice(0, target.length, ...rows);
 }

@@ -8,6 +8,8 @@
     "delete": "Delete",
     "edit": "Edit",
     "loading": "Loading...",
+    "name": "Name",
+    "operationFailed": "Operation failed",
     "processing": "Processing...",
     "refresh": "Refresh",
     "remove": "Remove",
@@ -20,12 +22,17 @@
     "english": "English",
     "saveFailed": "Failed to save language preference",
     "simplifiedChinese": "Simplified Chinese",
+    "switchLanguage": "Switch language",
     "traditionalChinese": "Traditional Chinese"
   },
   "theme": {
     "dark": "Dark",
     "light": "Light",
     "system": "System"
+  },
+  "metadata": {
+    "description": "AI-powered SaaS service platform.",
+    "title": "Hermes Swarm"
   },
   "user": {
     "logout": "Sign out",
@@ -62,14 +69,56 @@
     "unhandledRejection": "Async task failed"
   },
   "auth": {
-    "console": "Admin console",
+    "console": "AI-powered SaaS platform",
+    "backToSignIn": "Back to sign in",
     "email": "Email",
+    "forgotPassword": "Forgot password",
+    "forgotPasswordDescription": "Enter your email to receive a password reset link",
+    "forgotPasswordSuccess": "If the email exists, a reset link will be sent to it.",
+    "goToSignIn": "Go to sign in",
+    "confirmPassword": "Confirm password",
+    "newPassword": "New password",
     "noAdminAccess": "The current user does not have admin console access",
     "password": "Password",
     "passwordPlaceholder": "At least 8 characters",
+    "processing": "Processing...",
     "requestFailed": "Request failed",
+    "resetFailed": "Reset failed",
+    "resetPassword": "Reset password",
+    "resetPasswordDescription": "Set a new sign-in password",
+    "resetPasswordSuccess": "Password reset. Sign in with your new password.",
+    "sendFailed": "Send failed",
+    "sendResetLink": "Send reset link",
+    "sending": "Sending...",
     "signIn": "Sign in",
-    "subtitle": "Use an admin account to enter the workspace"
+    "signUp": "Sign up",
+    "signUpUnavailableDescription": "Self-service registration is not open yet. Use an invitation link or contact the platform operator.",
+    "subtitle": "Sign in to your workspace"
+  },
+  "invite": {
+    "decline": "Decline",
+    "declined": "Invitation declined",
+    "declinedDescription": "Invitation declined.",
+    "description": "Confirm the invitation link to join the organization",
+    "invalidOrExpired": "Invitation link is invalid or expired",
+    "invitedEmail": "Invited email",
+    "join": "Join organization",
+    "joined": "Joined organization",
+    "joinedDescription": "You have joined the organization. Sign in with this account.",
+    "missingParams": "Invitation link is missing required parameters",
+    "organizationDescription": "{organization} invites you to join the organization",
+    "title": "Organization invitation"
+  },
+  "onboarding": {
+    "adminEmail": "Admin email",
+    "adminName": "Admin name",
+    "adminPassword": "Admin password",
+    "createAndEnter": "Create and enter",
+    "description": "Create the admin account and default organization",
+    "firstSetup": "Initial setup",
+    "organizationName": "Organization name",
+    "organizationSlug": "Organization identifier",
+    "title": "Initialize"
   },
   "dialogs": {
     "deleteEmailTemplateDescription": "After deleting template \"{name}\", related emails can no longer use it.",

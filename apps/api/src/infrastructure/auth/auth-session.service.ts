@@ -6,8 +6,8 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { IntegrationToken } from "@hermes-swarm/core";
-import { Repository } from "typeorm";
+import { IntegrationToken, User } from "@hermes-swarm/core";
+import { IsNull, MoreThan, Repository } from "typeorm";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
   INTEGRATION_SESSION_PREFIX,
@@ -66,6 +66,8 @@ export class AuthSessionService {
   constructor(
     @InjectRepository(IntegrationToken)
     private readonly integrationTokenRepository: Repository<IntegrationToken>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {}
@@ -114,54 +116,68 @@ export class AuthSessionService {
 
     const refreshTokenHash = hashToken(refreshToken);
     const client = await this.redisService.getClient();
-    const sessionId = await client.get(this.refreshIndexKey(refreshTokenHash));
-    if (!sessionId) {
+    const lockKey = this.refreshLockKey(refreshTokenHash);
+    const lockAcquired = await client.set(lockKey, "1", {
+      EX: 10,
+      NX: true,
+    });
+    if (!lockAcquired) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
-    const record = await this.getSessionRecord(sessionId);
-    if (
-      !record ||
-      record.revokedAt ||
-      record.refreshTokenHash !== refreshTokenHash ||
-      new Date(record.expiresAt).getTime() <= Date.now()
-    ) {
-      await client.del(this.refreshIndexKey(refreshTokenHash));
-      throw new UnauthorizedException("登录已失效，请重新登录");
+    try {
+      const sessionId = await client.get(this.refreshIndexKey(refreshTokenHash));
+      if (!sessionId) {
+        throw new UnauthorizedException("登录已失效，请重新登录");
+      }
+
+      const record = await this.getSessionRecord(sessionId);
+      if (
+        !record ||
+        record.revokedAt ||
+        record.refreshTokenHash !== refreshTokenHash ||
+        isSessionExpired(record)
+      ) {
+        await client.del(this.refreshIndexKey(refreshTokenHash));
+        throw new UnauthorizedException("登录已失效，请重新登录");
+      }
+
+      const nextRefreshToken = createRefreshToken();
+      const nextHash = hashToken(nextRefreshToken);
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const expiresAt = new Date(
+        now.getTime() + this.refreshTokenTtlSeconds * 1000,
+      );
+      const device = parseDevice(context.userAgent ?? record.userAgent);
+      const nextRecord: AuthSessionRecord = {
+        ...record,
+        browser: device.browser,
+        deviceLabel: device.deviceLabel,
+        expiresAt: expiresAt.toISOString(),
+        ipAddress: context.ipAddress ?? record.ipAddress,
+        lastSeenAt: nowIso,
+        os: device.os,
+        refreshTokenHash: nextHash,
+        userAgent: context.userAgent ?? record.userAgent,
+      };
+
+      await Promise.all([
+        client.del(this.refreshIndexKey(refreshTokenHash)),
+        this.saveSession(nextRecord),
+        this.indexRefreshToken(nextHash, sessionId),
+        this.addUserSession(record.userId, sessionId),
+      ]);
+
+      return {
+        ...this.issueAccessToken(record.userId, sessionId),
+        refreshToken: nextRefreshToken,
+        sessionId,
+        userId: record.userId,
+      };
+    } finally {
+      await client.del(lockKey);
     }
-
-    const nextRefreshToken = createRefreshToken();
-    const nextHash = hashToken(nextRefreshToken);
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const expiresAt = new Date(
-      now.getTime() + this.refreshTokenTtlSeconds * 1000,
-    );
-    const device = parseDevice(context.userAgent ?? record.userAgent);
-    const nextRecord: AuthSessionRecord = {
-      ...record,
-      browser: device.browser,
-      deviceLabel: device.deviceLabel,
-      expiresAt: expiresAt.toISOString(),
-      ipAddress: context.ipAddress ?? record.ipAddress,
-      lastSeenAt: nowIso,
-      os: device.os,
-      refreshTokenHash: nextHash,
-      userAgent: context.userAgent ?? record.userAgent,
-    };
-
-    await Promise.all([
-      client.del(this.refreshIndexKey(refreshTokenHash)),
-      this.saveSession(nextRecord),
-      this.indexRefreshToken(nextHash, sessionId),
-      this.addUserSession(record.userId, sessionId),
-    ]);
-
-    return {
-      ...this.issueAccessToken(record.userId, sessionId),
-      refreshToken: nextRefreshToken,
-      sessionId,
-    };
   }
 
   async validateAccessToken(token: string | undefined) {
@@ -186,13 +202,16 @@ export class AuthSessionService {
     ) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
+    await this.ensureActiveUser(payload.userId);
 
-    record.lastSeenAt = new Date().toISOString();
-    await this.saveSession(record);
+    const touchedRecord = await this.touchSession(
+      payload.sessionId,
+      payload.userId,
+    );
 
     return {
       jti: payload.jti,
-      record,
+      record: touchedRecord,
       sessionId: payload.sessionId,
       tokenKind: "session",
       userId: payload.userId,
@@ -222,11 +241,10 @@ export class AuthSessionService {
 
     const client = await this.redisService.getClient();
     const key = this.realtimeTicketKey(hashToken(ticket));
-    const rawValue = await client.get(key);
+    const rawValue = await this.getAndDelete(client, key);
     if (!rawValue) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
-    await client.del(key);
 
     let ticketSession: RealtimeTicketSession;
     try {
@@ -244,9 +262,9 @@ export class AuthSessionService {
     ) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
+    await this.ensureActiveUser(ticketSession.userId);
 
-    record.lastSeenAt = new Date().toISOString();
-    await this.saveSession(record);
+    await this.touchSession(ticketSession.sessionId, ticketSession.userId);
     return ticketSession;
   }
 
@@ -265,8 +283,8 @@ export class AuthSessionService {
       .filter((record): record is AuthSessionRecord => Boolean(record))
       .sort(
         (left, right) =>
-          new Date(right.lastSeenAt).getTime() -
-          new Date(left.lastSeenAt).getTime(),
+          dateToSortableTime(right.lastSeenAt) -
+          dateToSortableTime(left.lastSeenAt),
       )
       .map((record) => ({
         browser: record.browser,
@@ -308,6 +326,15 @@ export class AuthSessionService {
       sessionIds
         .filter((sessionId) => sessionId !== currentSessionId)
         .map((sessionId) => this.revokeSession(sessionId, userId)),
+    );
+  }
+
+  async revokeUserSessions(userId: string) {
+    const sessionIds = await (
+      await this.redisService.getClient()
+    ).sMembers(this.userSessionsKey(userId));
+    await Promise.all(
+      sessionIds.map((sessionId) => this.revokeSession(sessionId, userId)),
     );
   }
 
@@ -397,9 +424,23 @@ export class AuthSessionService {
     ) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
+    await this.ensureActiveUser(record.ownerUserId);
 
-    record.lastUsedAt = new Date();
-    await this.integrationTokenRepository.save(record);
+    const lastUsedAt = new Date();
+    const updateResult = await this.integrationTokenRepository.update(
+      {
+        expiresAt: MoreThan(lastUsedAt),
+        id: record.id,
+        ownerUserId: record.ownerUserId,
+        revokedAt: IsNull(),
+        tokenHash: hashToken(token),
+      },
+      { lastUsedAt },
+    );
+    if ((updateResult.affected ?? 0) < 1) {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+    record.lastUsedAt = lastUsedAt;
 
     return {
       integrationToken: {
@@ -464,12 +505,57 @@ export class AuthSessionService {
     await client.expire(key, this.sessionHistoryTtlSeconds);
   }
 
+  private async touchSession(sessionId: string, userId: string) {
+    const latestRecord = await this.getSessionRecord(sessionId);
+    if (
+      !latestRecord ||
+      latestRecord.userId !== userId ||
+      latestRecord.revokedAt ||
+      isSessionExpired(latestRecord)
+    ) {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+
+    const touchedRecord = {
+      ...latestRecord,
+      lastSeenAt: new Date().toISOString(),
+    };
+    await this.saveSession(touchedRecord);
+    return touchedRecord;
+  }
+
+  private async ensureActiveUser(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user || user.status !== "active") {
+      throw new UnauthorizedException("用户不可用");
+    }
+  }
+
+  private async getAndDelete(
+    client: Awaited<ReturnType<RedisService["getClient"]>>,
+    key: string,
+  ) {
+    if ("getDel" in client && typeof client.getDel === "function") {
+      return client.getDel(key);
+    }
+
+    const rawValue = await client.get(key);
+    if (rawValue) {
+      await client.del(key);
+    }
+    return rawValue;
+  }
+
   private sessionKey(sessionId: string) {
     return `auth:session:${sessionId}`;
   }
 
   private refreshIndexKey(refreshTokenHash: string) {
     return `auth:refresh:${refreshTokenHash}`;
+  }
+
+  private refreshLockKey(refreshTokenHash: string) {
+    return `auth:refresh_lock:${refreshTokenHash}`;
   }
 
   private userSessionsKey(userId: string) {
@@ -502,7 +588,13 @@ export class AuthSessionService {
 }
 
 function isSessionExpired(record: Pick<AuthSessionRecord, "expiresAt">) {
-  return new Date(record.expiresAt).getTime() <= Date.now();
+  const expiresAt = new Date(record.expiresAt).getTime();
+  return !Number.isFinite(expiresAt) || expiresAt <= Date.now();
+}
+
+function dateToSortableTime(value: string) {
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
 }
 
 function createRefreshToken() {

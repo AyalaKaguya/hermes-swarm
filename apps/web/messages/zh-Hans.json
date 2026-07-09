@@ -8,6 +8,8 @@
     "delete": "删除",
     "edit": "编辑",
     "loading": "加载中...",
+    "name": "名称",
+    "operationFailed": "操作失败",
     "processing": "处理中...",
     "refresh": "刷新",
     "remove": "移除",
@@ -20,12 +22,17 @@
     "english": "English",
     "saveFailed": "语言偏好保存失败",
     "simplifiedChinese": "简体中文",
+    "switchLanguage": "切换语言",
     "traditionalChinese": "繁體中文"
   },
   "theme": {
     "dark": "深色",
     "light": "浅色",
     "system": "跟随系统"
+  },
+  "metadata": {
+    "description": "AI 驱动的 SaaS 服务平台。",
+    "title": "Hermes Swarm"
   },
   "user": {
     "logout": "退出账号",
@@ -62,14 +69,56 @@
     "unhandledRejection": "异步任务失败"
   },
   "auth": {
-    "console": "管理控制台",
+    "console": "AI 驱动的 SaaS 服务平台",
+    "backToSignIn": "返回登录",
     "email": "邮箱",
+    "forgotPassword": "忘记密码",
+    "forgotPasswordDescription": "输入邮箱以接收密码重置链接",
+    "forgotPasswordSuccess": "如果邮箱存在，重置链接将发送到该邮箱。",
+    "goToSignIn": "前往登录",
+    "confirmPassword": "确认密码",
+    "newPassword": "新密码",
     "noAdminAccess": "当前用户没有管理端访问权限",
     "password": "密码",
     "passwordPlaceholder": "至少 8 位",
+    "processing": "处理中...",
     "requestFailed": "请求失败",
+    "resetFailed": "重置失败",
+    "resetPassword": "重置密码",
+    "resetPasswordDescription": "设置新的登录密码",
+    "resetPasswordSuccess": "密码已重置，请使用新密码登录。",
+    "sendFailed": "发送失败",
+    "sendResetLink": "发送重置链接",
+    "sending": "发送中...",
     "signIn": "登录",
-    "subtitle": "使用管理员账号进入工作台"
+    "signUp": "注册",
+    "signUpUnavailableDescription": "当前暂未开放自助注册。请使用邀请链接，或联系平台运营人员。",
+    "subtitle": "登录你的工作台"
+  },
+  "invite": {
+    "decline": "拒绝",
+    "declined": "已拒绝邀请",
+    "declinedDescription": "已拒绝邀请。",
+    "description": "确认邀请链接后加入组织",
+    "invalidOrExpired": "邀请链接无效或已过期",
+    "invitedEmail": "受邀邮箱",
+    "join": "加入组织",
+    "joined": "已加入组织",
+    "joinedDescription": "已加入组织，请使用该账号登录。",
+    "missingParams": "邀请链接缺少必要参数",
+    "organizationDescription": "{organization} 邀请你加入组织",
+    "title": "组织邀请"
+  },
+  "onboarding": {
+    "adminEmail": "管理员邮箱",
+    "adminName": "管理员名称",
+    "adminPassword": "管理员密码",
+    "createAndEnter": "创建并进入",
+    "description": "创建管理员账号和默认组织",
+    "firstSetup": "首次设置",
+    "organizationName": "组织名称",
+    "organizationSlug": "组织标识",
+    "title": "初始化"
   },
   "dialogs": {
     "deleteEmailTemplateDescription": "删除模板「{name}」后，相关邮件将无法再使用该模板。",

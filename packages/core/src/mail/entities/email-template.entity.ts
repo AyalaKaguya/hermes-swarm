@@ -2,7 +2,18 @@ import { Column, Entity, Index } from "typeorm";
 import { OrganizationBaseEntity } from "../../identity/entities/organization-base.entity.js";
 
 @Entity({ name: "email_templates" })
-@Index(["organizationId", "name", "languageCode"], { unique: true })
+@Index("UQ_email_templates_platform_name_language", ["name", "languageCode"], {
+  unique: true,
+  where: "\"organization_id\" IS NULL",
+})
+@Index(
+  "UQ_email_templates_org_name_language",
+  ["organizationId", "name", "languageCode"],
+  {
+    unique: true,
+    where: "\"organization_id\" IS NOT NULL",
+  },
+)
 /**
  * Stores customizable email template content scoped globally or to one
  * organization.

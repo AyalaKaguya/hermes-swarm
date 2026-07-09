@@ -128,6 +128,26 @@ export class OrganizationIntegrationTokensController {
     );
   }
 
+  @Post()
+  @AccessOperation({
+    defaultRoles: ["owner", "admin"],
+    description: "允许当前用户创建当前组织作用域的集成 Token。",
+    label: "创建组织集成 Token",
+    operation: "create",
+    sortOrder: 20,
+  })
+  create(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
+    @Body() payload: Omit<CreateIntegrationTokenPayload, "organizationId" | "scope">,
+  ) {
+    return this.integrationTokensService.createForCurrentUserInOrganization(
+      authorization,
+      organizationId,
+      payload,
+    );
+  }
+
   @Delete(":tokenId")
   @AccessOperation({
     defaultRoles: ["owner", "admin"],
@@ -166,6 +186,24 @@ export class PlatformIntegrationTokensController {
     @Inject(IntegrationTokensService)
     private readonly integrationTokensService: IntegrationTokensService,
   ) {}
+
+  @Post()
+  @AccessOperation({
+    defaultRoles: ["platform-admin"],
+    description: "允许当前用户创建平台作用域的集成 Token。",
+    label: "创建平台集成 Token",
+    operation: "create",
+    sortOrder: 20,
+  })
+  create(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() payload: Omit<CreateIntegrationTokenPayload, "organizationId" | "scope">,
+  ) {
+    return this.integrationTokensService.createForCurrentUserInPlatform(
+      authorization,
+      payload,
+    );
+  }
 
   @Get()
   @AccessOperation({

@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Organization,
   OrganizationGroupMember,
+  IntegrationToken,
   Role,
   User,
   UserOrganization,
@@ -15,6 +16,7 @@ import { MembershipsService } from "./memberships.service.js";
     TypeOrmModule.forFeature([
       Organization,
       OrganizationGroupMember,
+      IntegrationToken,
       Role,
       User,
       UserOrganization,

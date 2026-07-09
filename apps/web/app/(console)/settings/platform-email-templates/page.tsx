@@ -263,7 +263,7 @@ function TemplateForm({
 
   return (
     <div className="grid gap-4">
-      <Field id="platform-template-name" label="模板名称">
+      <Field id="platform-template-name" label={tr("模板名称")}>
         <Input
           disabled={Boolean(initial?.isSystem)}
           id="platform-template-name"
@@ -272,7 +272,7 @@ function TemplateForm({
         />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="platform-template-language" label="语言编码">
+        <Field id="platform-template-language" label={tr("语言编码")}>
           <Input
             disabled={Boolean(initial?.isSystem)}
             id="platform-template-language"
@@ -280,7 +280,7 @@ function TemplateForm({
             value={languageCode}
           />
         </Field>
-        <Field id="platform-template-subject" label="邮件主题">
+        <Field id="platform-template-subject" label={tr("邮件主题")}>
           <Input
             id="platform-template-subject"
             onChange={(event) => setSubject(event.target.value)}
@@ -288,14 +288,14 @@ function TemplateForm({
           />
         </Field>
       </div>
-      <Field id="platform-template-description" label="说明">
+      <Field id="platform-template-description" label={tr("说明")}>
         <Input
           id="platform-template-description"
           onChange={(event) => setDescription(event.target.value)}
           value={description}
         />
       </Field>
-      <Field id="platform-template-hbs" label="模板内容">
+      <Field id="platform-template-hbs" label={tr("模板内容")}>
         <Textarea
           className="font-mono text-xs"
           id="platform-template-hbs"

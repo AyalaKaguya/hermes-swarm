@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 import { useModalLayer } from "@/components/ui/modal-layer"
+import { useTextTranslation } from "@/hooks/use-text-translation"
 
 function Dialog({
   ...props
@@ -61,6 +62,7 @@ function DialogContent({
   showCloseButton?: boolean
 }) {
   const modalLayer = useModalLayer()
+  const tr = useTextTranslation()
 
   return (
     <DialogPortal>
@@ -100,7 +102,7 @@ function DialogContent({
             >
               <XIcon
               />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">{tr("关闭")}</span>
             </Button>
           </DialogPrimitive.Close>
         )}
@@ -127,6 +129,8 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  const tr = useTextTranslation()
+
   return (
     <div
       data-slot="dialog-footer"
@@ -139,7 +143,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="outline">{tr("关闭")}</Button>
         </DialogPrimitive.Close>
       )}
     </div>

@@ -8,6 +8,8 @@
     "delete": "刪除",
     "edit": "編輯",
     "loading": "載入中...",
+    "name": "名稱",
+    "operationFailed": "操作失敗",
     "processing": "處理中...",
     "refresh": "重新整理",
     "remove": "移除",
@@ -20,12 +22,17 @@
     "english": "English",
     "saveFailed": "語言偏好儲存失敗",
     "simplifiedChinese": "簡體中文",
+    "switchLanguage": "切換語言",
     "traditionalChinese": "繁體中文"
   },
   "theme": {
     "dark": "深色",
     "light": "淺色",
     "system": "跟隨系統"
+  },
+  "metadata": {
+    "description": "AI 驅動的 SaaS 服務平台。",
+    "title": "Hermes Swarm"
   },
   "user": {
     "logout": "登出帳號",
@@ -62,14 +69,56 @@
     "unhandledRejection": "非同步任務失敗"
   },
   "auth": {
-    "console": "管理控制台",
+    "console": "AI 驅動的 SaaS 服務平台",
+    "backToSignIn": "返回登入",
     "email": "電子郵件",
+    "forgotPassword": "忘記密碼",
+    "forgotPasswordDescription": "輸入電子郵件以接收密碼重設連結",
+    "forgotPasswordSuccess": "如果電子郵件存在，重設連結將傳送到該信箱。",
+    "goToSignIn": "前往登入",
+    "confirmPassword": "確認密碼",
+    "newPassword": "新密碼",
     "noAdminAccess": "目前使用者沒有管理端存取權限",
     "password": "密碼",
     "passwordPlaceholder": "至少 8 位",
+    "processing": "處理中...",
     "requestFailed": "請求失敗",
+    "resetFailed": "重設失敗",
+    "resetPassword": "重設密碼",
+    "resetPasswordDescription": "設定新的登入密碼",
+    "resetPasswordSuccess": "密碼已重設，請使用新密碼登入。",
+    "sendFailed": "傳送失敗",
+    "sendResetLink": "傳送重設連結",
+    "sending": "傳送中...",
     "signIn": "登入",
-    "subtitle": "使用管理員帳號進入工作台"
+    "signUp": "註冊",
+    "signUpUnavailableDescription": "目前暫未開放自助註冊。請使用邀請連結，或聯絡平台營運人員。",
+    "subtitle": "登入你的工作台"
+  },
+  "invite": {
+    "decline": "拒絕",
+    "declined": "已拒絕邀請",
+    "declinedDescription": "已拒絕邀請。",
+    "description": "確認邀請連結後加入組織",
+    "invalidOrExpired": "邀請連結無效或已過期",
+    "invitedEmail": "受邀電子郵件",
+    "join": "加入組織",
+    "joined": "已加入組織",
+    "joinedDescription": "已加入組織，請使用該帳號登入。",
+    "missingParams": "邀請連結缺少必要參數",
+    "organizationDescription": "{organization} 邀請你加入組織",
+    "title": "組織邀請"
+  },
+  "onboarding": {
+    "adminEmail": "管理員信箱",
+    "adminName": "管理員名稱",
+    "adminPassword": "管理員密碼",
+    "createAndEnter": "建立並進入",
+    "description": "建立管理員帳號和預設組織",
+    "firstSetup": "首次設定",
+    "organizationName": "組織名稱",
+    "organizationSlug": "組織識別碼",
+    "title": "初始化"
   },
   "dialogs": {
     "deleteEmailTemplateDescription": "刪除範本「{name}」後，相關郵件將無法再使用該範本。",

@@ -345,7 +345,7 @@ export function PlatformMemberManagement({
         roles={roles}
       />
       <ConfirmActionDialog
-        confirmLabel="移除"
+        confirmLabel={tr("移除")}
         description={
           memberToRemove
             ? `${tr("将移除平台用户")} ${
@@ -362,7 +362,7 @@ export function PlatformMemberManagement({
         }}
         open={Boolean(memberToRemove)}
         pending={Boolean(memberToRemove && savingMemberId === memberToRemove.id)}
-        title="移除平台用户"
+        title={tr("移除平台用户")}
       />
     </Card>
   );

@@ -25,6 +25,7 @@ export type RealtimeEvent = {
 };
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const MAX_CLIENT_FRAME_BUFFER_BYTES = 1024 * 1024;
 
 @Injectable()
 export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -141,16 +142,21 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   private handleData(client: RealtimeClient, chunk: Buffer) {
-    const result = decodeFrames(Buffer.concat([client.buffer, chunk]));
+    const nextBuffer = Buffer.concat([client.buffer, chunk]);
+    if (nextBuffer.length > MAX_CLIENT_FRAME_BUFFER_BYTES) {
+      this.closeClient(client);
+      return;
+    }
+
+    const result = decodeFrames(nextBuffer);
     client.buffer = result.remaining;
     for (const frame of result.frames) {
       if (frame.opcode === 0x8) {
-        client.socket.end();
-        this.unregister(client);
+        this.closeClient(client);
         return;
       }
       if (frame.opcode === 0x9) {
-        client.socket.write(encodeFrame(frame.payload, 0xA));
+        if (!this.writeFrame(client, encodeFrame(frame.payload, 0xA))) return;
         continue;
       }
       if (frame.opcode !== 0x1) continue;
@@ -178,7 +184,47 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       sentAt: new Date().toISOString(),
       type: event.type,
     });
-    client.socket.write(encodeFrame(Buffer.from(payload, "utf8"), 0x1));
+    try {
+      this.writeFrame(client, encodeFrame(Buffer.from(payload, "utf8"), 0x1));
+    } catch (error) {
+      this.dropClientAfterWriteFailure(client, error);
+    }
+  }
+
+  private writeFrame(client: RealtimeClient, frame: Buffer) {
+    if (client.socket.destroyed) return false;
+    try {
+      client.socket.write(frame);
+      return true;
+    } catch (error) {
+      this.dropClientAfterWriteFailure(client, error);
+      return false;
+    }
+  }
+
+  private dropClientAfterWriteFailure(client: RealtimeClient, error: unknown) {
+    this.logger.warn(
+      `realtime send failed for client ${client.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    this.unregister(client);
+    client.socket.destroy();
+  }
+
+  private closeClient(client: RealtimeClient) {
+    this.unregister(client);
+    if (client.socket.destroyed) return;
+    try {
+      client.socket.end();
+    } catch (error) {
+      this.logger.warn(
+        `realtime close failed for client ${client.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      client.socket.destroy();
+    }
   }
 }
 

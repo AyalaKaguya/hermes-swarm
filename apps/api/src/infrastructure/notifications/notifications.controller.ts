@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from "@nestjs/common";
 import type { UserNotificationStatus } from "@hermes-swarm/core";
 import { NotificationsService } from "./notifications.service.js";
 
@@ -9,12 +20,12 @@ export class NotificationsController {
   @Get()
   list(
     @Headers("authorization") authorization: string | undefined,
-    @Query("status") status?: UserNotificationStatus,
-    @Query("take") take?: string,
+    @Query("status") status?: string | string[],
+    @Query("take") take?: string | string[],
   ) {
     return this.notificationsService.listForAuthorization(authorization, {
-      status: status === "read" || status === "unread" ? status : undefined,
-      take: take ? Number.parseInt(take, 10) : undefined,
+      status: parseNotificationStatus(status),
+      take: parseNotificationTake(take),
     });
   }
 
@@ -59,4 +70,22 @@ export class NotificationsController {
   ) {
     return this.notificationsService.dismiss(authorization, notificationId);
   }
+}
+
+function parseNotificationStatus(
+  value: string | string[] | undefined,
+): UserNotificationStatus | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (value === "read" || value === "unread") return value;
+  throw new BadRequestException("通知状态无效");
+}
+
+function parseNotificationTake(value: string | string[] | undefined) {
+  if (value === undefined || value === "") return undefined;
+  if (Array.isArray(value)) throw new BadRequestException("通知数量无效");
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    throw new BadRequestException("通知数量无效");
+  }
+  return parsed;
 }

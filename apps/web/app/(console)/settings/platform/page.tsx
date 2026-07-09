@@ -489,7 +489,7 @@ export default function PlatformPage() {
                     <SelectContent>
                       {LANGUAGE_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {tr(option.label)}
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -722,7 +722,7 @@ export default function PlatformPage() {
                 }
               />
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <Field htmlFor="platform-smtp-host" label="SMTP Host">
+                <Field htmlFor="platform-smtp-host" label={tr("SMTP 服务器")}>
                   <Input
                     disabled={!canManagePlatform}
                     id="platform-smtp-host"
@@ -937,7 +937,7 @@ export default function PlatformPage() {
         </TabsContent>
       </Tabs>
       <ConfirmActionDialog
-        confirmLabel="删除"
+        confirmLabel={tr("删除")}
         description={
           customSystemSettingToDelete
             ? `${tr("将删除平台自定义设置")} ${
@@ -956,7 +956,7 @@ export default function PlatformPage() {
         }}
         open={Boolean(customSystemSettingToDelete)}
         pending={savingCustomSetting}
-        title="删除平台设置"
+        title={tr("删除平台设置")}
       />
     </section>
   );

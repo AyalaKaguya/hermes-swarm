@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTextTranslation } from "@/hooks/use-text-translation";
 import { createRealtimeTicket, getRealtimeUrl } from "@/lib/admin-api";
 import {
   getAuthenticatedAdminSessionMarker,
@@ -49,6 +50,7 @@ export function useSourceConversation<
   sourceId: string | null;
   sourceType: string;
 }) {
+  const tr = useTextTranslation();
   const [messages, setMessages] = useState<TMessage[]>([]);
 
   const appendMessage = useCallback((message: TMessage) => {
@@ -82,7 +84,7 @@ export function useSourceConversation<
         .catch((error) => {
           if (!cancelled) {
             input.onError?.(
-              error instanceof Error ? error.message : "消息加载失败",
+              error instanceof Error ? error.message : tr("消息加载失败"),
             );
           }
         });
@@ -100,6 +102,7 @@ export function useSourceConversation<
     input.markRead,
     input.onError,
     input.sourceId,
+    tr,
   ]);
 
   useEffect(() => {

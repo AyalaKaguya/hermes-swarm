@@ -7,8 +7,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { ILike, Repository } from "typeorm";
-import { User } from "@hermes-swarm/core";
+import { ILike, IsNull, Repository } from "typeorm";
+import { IntegrationToken, User, type UserStatus } from "@hermes-swarm/core";
 import type {
   CreateUserPayload,
   SearchUsersQuery,
@@ -31,6 +31,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(IntegrationToken)
+    private readonly integrationTokenRepository: Repository<IntegrationToken>,
     @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
   ) {}
@@ -51,7 +53,8 @@ export class UsersService {
    */
   async search(authorization: string | undefined, query: SearchUsersQuery) {
     await this.requireSessionUserId(authorization);
-    const search = normalizeOptionalText(query.search);
+    const input = requirePayload(query);
+    const search = normalizeOptionalText(input.search);
     if (!search) return this.list(authorization);
 
     const pattern = `%${search}%`;
@@ -77,31 +80,40 @@ export class UsersService {
     payload: CreateUserPayload,
   ) {
     await this.requireSessionUserId(authorization);
-    const email = normalizeEmail(payload.email);
+    const input = requirePayload(payload);
+    const email = normalizeEmail(input.email);
     await this.assertUniqueEmail(email);
 
     const displayName =
-      normalizeOptionalText(payload.displayName) ?? email.split("@")[0] ?? email;
-    const passwordHash = payload.password
-      ? hashPassword(requirePassword(payload.password))
+      normalizeOptionalText(input.displayName) ?? email.split("@")[0] ?? email;
+    const passwordHash = input.password
+      ? hashPassword(requirePassword(input.password))
       : null;
 
     const user = this.userRepository.create({
-      avatarUrl: payload.imageUrl ?? null,
+      avatarUrl: normalizeNullableText(input.imageUrl),
       displayName,
       email,
-      firstName: normalizeNullableText(payload.firstName),
-      imageUrl: payload.imageUrl ?? null,
-      lastName: normalizeNullableText(payload.lastName),
-      mobile: normalizeNullableText(payload.mobile),
+      firstName: normalizeNullableText(input.firstName),
+      imageUrl: normalizeNullableText(input.imageUrl),
+      lastName: normalizeNullableText(input.lastName),
+      mobile: normalizeNullableText(input.mobile),
       nickname: displayName,
       passwordHash,
-      status: payload.status ?? "active",
+      status:
+        input.status === undefined ? "active" : normalizeUserStatus(input.status),
       type: "user",
-      username: normalizeNullableText(payload.username),
+      username: normalizeNullableText(input.username),
     });
 
-    return toUserDto(await this.userRepository.save(user));
+    try {
+      return toUserDto(await this.userRepository.save(user));
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("邮箱已被使用");
+      }
+      throw error;
+    }
   }
 
   /**
@@ -116,8 +128,9 @@ export class UsersService {
     if (currentUserId !== userId) {
       throw new ForbiddenException("只能更新自己的账号信息");
     }
+    const input = requirePayload(payload);
     const user = await this.getUserOrThrow(userId);
-    return this.applyUserPatch(user, payload);
+    return this.applyUserPatch(user, input);
   }
 
   /**
@@ -129,8 +142,9 @@ export class UsersService {
     payload: UpdateUserPayload,
   ) {
     await this.requireSessionUserId(authorization);
+    const input = requirePayload(payload);
     const user = await this.getUserOrThrow(userId);
-    return this.applyUserPatch(user, payload);
+    return this.applyUserPatch(user, input);
   }
 
   /**
@@ -139,7 +153,15 @@ export class UsersService {
   async deleteManaged(authorization: string | undefined, userId: string) {
     await this.requireSessionUserId(authorization);
     const user = await this.getUserOrThrow(userId);
-    await this.userRepository.softDelete({ id: user.id });
+    await this.userRepository.manager.transaction(async (manager) => {
+      await manager.update(
+        IntegrationToken,
+        { ownerUserId: user.id, revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+      await manager.softDelete(User, { id: user.id });
+    });
+    await this.authSessionService.revokeUserSessions(user.id);
   }
 
   /**
@@ -154,17 +176,26 @@ export class UsersService {
     if (currentUserId !== userId) {
       throw new ForbiddenException("只能更新自己的密码");
     }
+    const input = requirePayload(payload);
     const user = await this.getUserOrThrow(userId);
 
-    if (currentUserId === user.id && payload.currentPassword) {
-      if (!verifyPassword(payload.currentPassword, user.passwordHash)) {
+    if (user.passwordHash) {
+      const currentPassword = requireText(input.currentPassword, "当前密码");
+      if (!verifyPassword(currentPassword, user.passwordHash)) {
         throw new BadRequestException("当前密码不正确");
       }
     }
 
-    user.passwordHash = hashPassword(requirePassword(payload.password));
+    user.passwordHash = hashPassword(requirePassword(input.password));
     user.updatedAt = new Date();
-    return toUserDto(await this.userRepository.save(user));
+    try {
+      return toUserDto(await this.userRepository.save(user));
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("邮箱已被使用");
+      }
+      throw error;
+    }
   }
 
   /**
@@ -179,15 +210,17 @@ export class UsersService {
     if (currentUserId !== userId) {
       throw new ForbiddenException("只能更新自己的语言偏好");
     }
+    const input = requirePayload(payload);
     const user = await this.getUserOrThrow(userId);
     user.preferredLanguage = normalizePreferredLanguage(
-      payload.preferredLanguage,
+      input.preferredLanguage,
     );
     user.updatedAt = new Date();
     return toUserDto(await this.userRepository.save(user));
   }
 
   private async applyUserPatch(user: User, payload: UpdateUserPayload) {
+    const wasActive = user.status === "active";
     if (payload.email !== undefined) {
       const email = normalizeEmail(payload.email);
       if (email !== user.email) await this.assertUniqueEmail(email, user.id);
@@ -215,14 +248,38 @@ export class UsersService {
       user.username = normalizeNullableText(payload.username);
     }
     if (payload.status !== undefined) {
-      user.status = payload.status;
+      user.status = normalizeUserStatus(payload.status);
     }
     if (payload.password !== undefined) {
       user.passwordHash = hashPassword(requirePassword(payload.password));
     }
 
     user.updatedAt = new Date();
-    return toUserDto(await this.userRepository.save(user));
+    const shouldRevokeAccess = wasActive && user.status !== "active";
+    try {
+      const saved = await this.userRepository.manager.transaction(
+        async (manager) => {
+          const result = await manager.save(User, user);
+          if (shouldRevokeAccess) {
+            await manager.update(
+              IntegrationToken,
+              { ownerUserId: user.id, revokedAt: IsNull() },
+              { revokedAt: new Date() },
+            );
+          }
+          return result;
+        },
+      );
+      if (shouldRevokeAccess) {
+        await this.authSessionService.revokeUserSessions(user.id);
+      }
+      return toUserDto(saved);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("邮箱已被使用");
+      }
+      throw error;
+    }
   }
 
   private async requireSessionUserId(authorization: string | undefined) {
@@ -249,7 +306,14 @@ export class UsersService {
   }
 }
 
-function normalizeEmail(value: string | undefined) {
+function requirePayload<T extends object>(value: T): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
+  }
+  return value;
+}
+
+function normalizeEmail(value: unknown) {
   const email = requireText(value, "邮箱").toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new BadRequestException("邮箱格式不正确");
@@ -257,28 +321,38 @@ function normalizeEmail(value: string | undefined) {
   return email;
 }
 
-function requireText(value: string | undefined | null, label: string) {
-  const text = value?.trim();
+function requireText(value: unknown, label: string) {
+  if (value === undefined || value === null) {
+    throw new BadRequestException(`${label}不能为空`);
+  }
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${label}无效`);
+  }
+  const text = value.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }
 
-function normalizeOptionalText(value: string | undefined | null) {
-  const text = value?.trim();
+function normalizeOptionalText(value: unknown) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException("文本字段无效");
+  }
+  const text = value.trim();
   return text || null;
 }
 
-function normalizeNullableText(value: string | undefined | null) {
+function normalizeNullableText(value: unknown) {
   return value === null ? null : normalizeOptionalText(value);
 }
 
-function requirePassword(value: string | undefined) {
+function requirePassword(value: unknown) {
   const password = requireText(value, "密码");
   if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
   return password;
 }
 
-function normalizePreferredLanguage(value: string | undefined | null) {
+function normalizePreferredLanguage(value: unknown) {
   const language = requireText(value, "首选语言");
   switch (language) {
     case "en":
@@ -292,4 +366,14 @@ function normalizePreferredLanguage(value: string | undefined | null) {
     default:
       throw new BadRequestException("不支持的语言");
   }
+}
+
+function normalizeUserStatus(value: unknown): UserStatus {
+  if (value === "active" || value === "disabled") return value;
+  throw new BadRequestException("用户状态无效");
+}
+
+function isUniqueConstraintError(error: unknown) {
+  const typed = error as { code?: string; driverError?: { code?: string } };
+  return typed.code === "23505" || typed.driverError?.code === "23505";
 }
