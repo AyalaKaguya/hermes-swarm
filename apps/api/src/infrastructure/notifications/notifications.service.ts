@@ -15,7 +15,7 @@ import {
 } from "@hermes-swarm/core";
 import { In, IsNull, Repository } from "typeorm";
 import { AuthSessionService } from "../auth/auth-session.service.js";
-import { RealtimeService } from "../realtime/realtime.service.js";
+import { RealtimeEventBus } from "../realtime/realtime-event-bus.service.js";
 
 export type CreateUserNotificationInput = {
   actorUserId?: string | null;
@@ -40,8 +40,8 @@ export class NotificationsService {
     private readonly membershipRepository: Repository<UserOrganization>,
     @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
-    @Inject(RealtimeService)
-    private readonly realtimeService: RealtimeService,
+    @Inject(RealtimeEventBus)
+    private readonly realtimeEventBus: RealtimeEventBus,
   ) {}
 
   async createForUser(input: CreateUserNotificationInput) {
@@ -256,9 +256,17 @@ export class NotificationsService {
     dto: ReturnType<typeof toNotificationDto>,
   ) {
     try {
-      this.realtimeService.publishToUser(recipientUserId, {
-        type: "notification.created",
-        payload: dto,
+      void Promise.resolve(
+        this.realtimeEventBus.publishToUser(recipientUserId, {
+          type: "notification.created",
+          payload: dto,
+        }),
+      ).catch((error) => {
+        this.logger.warn(
+          `notification realtime publish failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       });
     } catch (error) {
       this.logger.warn(

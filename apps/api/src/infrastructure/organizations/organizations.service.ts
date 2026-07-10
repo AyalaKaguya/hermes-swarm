@@ -72,6 +72,7 @@ export class OrganizationsService {
     authorization: string | undefined,
     payload: CreateOrganizationPayload,
   ) {
+    requireObjectPayload(payload);
     const userId = await this.requireSessionUserId(authorization);
     const creationEnabled = await this.settingsService.getPlatformValue(
       PLATFORM_SETTING_KEYS.allowOrganizationCreation,
@@ -94,7 +95,7 @@ export class OrganizationsService {
           if (isDefault) {
             await manager.update(
               Organization,
-              { isDefault: true },
+              { deletedAt: IsNull(), isDefault: true },
               { isDefault: false },
             );
           }
@@ -163,6 +164,7 @@ export class OrganizationsService {
     organizationId: string,
     payload: UpdateOrganizationPayload,
   ) {
+    requireObjectPayload(payload);
     const organization = await this.getOrganizationOrThrow(organizationId);
     const nextIsDefault =
       payload.isDefault !== undefined
@@ -255,7 +257,7 @@ export class OrganizationsService {
           async (manager) => {
             await manager.update(
               Organization,
-              { isDefault: true },
+              { deletedAt: IsNull(), isDefault: true },
               { isDefault: false },
             );
             return manager.save(Organization, organization);
@@ -286,10 +288,10 @@ export class OrganizationsService {
     await this.organizationRepository.manager.transaction(async (manager) => {
       await manager.update(
         IntegrationToken,
-        { organizationId: organization.id },
-        { revokedAt },
+        { organizationId: organization.id, revokedAt: IsNull(), scope: "organization" },
+        { revokedAt, revokedReason: "organization_deleted" },
       );
-      await manager.delete(Organization, { id: organization.id });
+      await manager.softDelete(Organization, { id: organization.id });
     });
   }
 
@@ -307,6 +309,7 @@ export class OrganizationsService {
     organizationId: string,
     payload: OrganizationRolePayload,
   ) {
+    requireObjectPayload(payload);
     await this.getOrganizationOrThrow(organizationId);
     const displayName = requireText(
       payload.displayName ?? payload.name,
@@ -343,6 +346,7 @@ export class OrganizationsService {
     roleId: string,
     payload: Partial<OrganizationRolePayload>,
   ) {
+    requireObjectPayload(payload);
     const role = await this.getOrganizationRoleOrThrow(organizationId, roleId);
     if (payload.displayName !== undefined) {
       role.displayName = requireText(payload.displayName, "角色名称");
@@ -606,6 +610,12 @@ function requireText(value: unknown, label: string) {
   const text = value.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
+}
+
+function requireObjectPayload(value: unknown): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
+  }
 }
 
 function normalizeNullableText(value: unknown) {

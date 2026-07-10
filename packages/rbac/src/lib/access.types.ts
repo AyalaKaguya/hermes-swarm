@@ -43,12 +43,16 @@ export type AccessScopeResult = {
   targetUserId?: string | null;
 };
 
+export type AccessRequest = {
+  accessPrincipal?: AccessAuthSession;
+  headers?: Record<string, string | string[] | undefined>;
+  params?: Record<string, string | undefined>;
+  [key: string]: unknown;
+};
+
 export type AccessScopeContext = {
   definition: ResolvedAccessDefinition;
-  request: {
-    params?: Record<string, string | undefined>;
-    [key: string]: unknown;
-  };
+  request: AccessRequest;
 };
 
 export type AccessScopeResolver = {

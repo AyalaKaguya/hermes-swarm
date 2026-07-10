@@ -14,7 +14,11 @@ import { TypeOrmModule } from "@nestjs/typeorm";
           type: "postgres",
           url: configService.getOrThrow<string>("database.url"),
           autoLoadEntities: true,
-          synchronize: true, // dev only
+          // Development and isolated tests synchronize directly from entities.
+          // Production schema changes run before API replicas start.
+          synchronize: configService.getOrThrow<boolean>(
+            "database.synchronize",
+          ),
           cache: redisCacheEnabled
             ? {
                 alwaysEnabled: configService.getOrThrow<boolean>(

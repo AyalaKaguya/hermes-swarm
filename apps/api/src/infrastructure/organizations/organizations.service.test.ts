@@ -310,6 +310,38 @@ describe("OrganizationsService role protections", () => {
     );
   });
 
+  it("rejects non-object organization and role payloads before side effects", async () => {
+    const organization = organizationRecord();
+    const role = customRole();
+    const state = createService({ organization, role });
+
+    for (const payload of [null, []] as const) {
+      await assert.rejects(
+        () => state.service.create(undefined, payload as any),
+        BadRequestException,
+      );
+      await assert.rejects(
+        () =>
+          state.service.update(undefined, organization.id, payload as any),
+        BadRequestException,
+      );
+      await assert.rejects(
+        () => state.service.createRole(organization.id, payload as any),
+        BadRequestException,
+      );
+      await assert.rejects(
+        () => state.service.updateRole(organization.id, role.id, payload as any),
+        BadRequestException,
+      );
+    }
+
+    assert.equal(state.transactions, 0);
+    assert.equal(state.createdOrganizations.length, 0);
+    assert.equal(state.defaultOrganizationClearUpdates.length, 0);
+    assert.equal(state.savedOrganizations.length, 0);
+    assert.equal(state.savedRoles.length, 0);
+  });
+
   it("creates organization, default roles, and owner membership in one transaction", async () => {
     const state = createService({ role: customRole() });
 
@@ -509,10 +541,16 @@ describe("OrganizationsService role protections", () => {
     await state.service.delete(organization.id);
 
     assert.equal(state.revokedIntegrationTokenUpdates.length, 1);
-    assert.deepEqual(state.revokedIntegrationTokenUpdates[0].query, {
-      organizationId: organization.id,
-    });
+    assert.equal(
+      state.revokedIntegrationTokenUpdates[0].query.organizationId,
+      organization.id,
+    );
+    assert.equal(state.revokedIntegrationTokenUpdates[0].query.scope, "organization");
     assert.ok(state.revokedIntegrationTokenUpdates[0].value.revokedAt instanceof Date);
+    assert.equal(
+      state.revokedIntegrationTokenUpdates[0].value.revokedReason,
+      "organization_deleted",
+    );
     assert.deepEqual(state.deletedOrganizationQueries, [{ id: organization.id }]);
   });
 });
@@ -638,7 +676,7 @@ function createService(options: {
                   });
                 }
               },
-              async delete(target: { name?: string }, query: unknown) {
+              async softDelete(target: { name?: string }, query: unknown) {
                 if (target.name === "Organization") {
                   deletedOrganizationQueries.push(query);
                 }
@@ -876,6 +914,7 @@ function organizationRecord() {
     createdByUserId: ORG_USER_ID,
     currency: null,
     dateFormat: null,
+    deletedAt: null,
     id: ORGANIZATION_ID,
     imageUrl: null,
     isDefault: false,

@@ -1,5 +1,6 @@
 import {
   Column,
+  DeleteDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -19,7 +20,18 @@ import { BaseEntity } from "./base.entity.js";
 export type OrganizationStatus = "active" | "suspended";
 
 @Entity({ name: "organizations" })
-@Index(["slug"], { unique: true })
+@Index("UQ_organizations_active_slug", ["slug"], {
+  unique: true,
+  where: "deleted_at IS NULL",
+})
+@Index("UQ_organizations_active_subdomain", ["subdomain"], {
+  unique: true,
+  where: "deleted_at IS NULL",
+})
+@Index("UQ_organizations_single_default", ["isDefault"], {
+  unique: true,
+  where: "\"is_default\" = true AND deleted_at IS NULL",
+})
 /**
  * Represents an organization boundary in the admin backend.
  */
@@ -50,7 +62,7 @@ export class Organization extends BaseEntity {
   /**
    * Optional organization subdomain used by onboarding and host resolution.
    */
-  @Column({ type: "varchar", length: 80, nullable: true, unique: true })
+  @Column({ type: "varchar", length: 80, nullable: true })
   subdomain!: string | null;
 
   /**
@@ -157,6 +169,9 @@ export class Organization extends BaseEntity {
    */
   @Column({ name: "preferred_language", type: "varchar", length: 16, nullable: true })
   preferredLanguage!: string | null;
+
+  @DeleteDateColumn({ name: "deleted_at", type: "timestamptz", nullable: true })
+  deletedAt!: Date | null;
 
   @OneToMany("UserOrganization", "organization")
   memberships!: UserOrganization[];

@@ -33,6 +33,7 @@ import {
 } from "../infrastructure/auth/auth-session.js";
 import { AuthSessionService } from "../infrastructure/auth/auth-session.service.js";
 import { RedisService } from "../common/redis/redis.service.js";
+import { RealtimeEventBus } from "../infrastructure/realtime/realtime-event-bus.service.js";
 import { RealtimeService } from "../infrastructure/realtime/realtime.service.js";
 import { TicketsModule } from "../infrastructure/tickets/tickets.module.js";
 
@@ -57,6 +58,8 @@ const permissions = {
   createTicket: "ticket.conversation.create_organization:organization",
   handleTicket: "ticket.conversation.handle:organization",
   listTicket: "ticket.conversation.list_organization:organization",
+  listMessages: "ticket.conversation.list_messages:own",
+  sendMessage: "ticket.conversation.send_message:own",
 };
 
 const tokens = {
@@ -138,6 +141,11 @@ describe("Conversation capability e2e", { concurrency: false }, () => {
       .useValue({
         publishToUser() {},
         publishToUsers() {},
+      })
+      .overrideProvider(RealtimeEventBus)
+      .useValue({
+        publishToUser: async () => undefined,
+        publishToUsers: async () => undefined,
       })
       .compile();
 
@@ -429,6 +437,7 @@ async function seedDatabase(dataSource: DataSource) {
     ...rolePermission(rolePermissions, ids.conversationHandlerRole, [
       permissions.handleTicket,
       permissions.listTicket,
+      permissions.sendMessage,
     ]),
     ...rolePermission(rolePermissions, ids.conversationMentionedRole, [
       permissions.listTicket,
@@ -439,6 +448,8 @@ async function seedDatabase(dataSource: DataSource) {
     ...rolePermission(rolePermissions, ids.conversationRequesterRole, [
       permissions.createTicket,
       permissions.listTicket,
+      permissions.listMessages,
+      permissions.sendMessage,
     ]),
   ]);
 }

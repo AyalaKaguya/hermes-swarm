@@ -1,0 +1,72 @@
+import "reflect-metadata";
+import path from "node:path";
+import {
+  Conversation,
+  ConversationMessage,
+  ConversationParticipant,
+  CustomSmtp,
+  EmailLog,
+  EmailTemplate,
+  EmailVerification,
+  IntegrationToken,
+  Invite,
+  NotificationDestination,
+  Organization,
+  OrganizationContact,
+  OrganizationGroup,
+  OrganizationGroupMember,
+  OrganizationLanguage,
+  OrganizationSetting,
+  PasswordReset,
+  Permission,
+  PlatformMember,
+  PlatformSetting,
+  Role,
+  RolePermission,
+  Ticket,
+  TicketMessage,
+  User,
+  UserNotification,
+  UserOrganization,
+} from "@hermes-swarm/core";
+import { DataSource } from "typeorm";
+import { databaseRuntimeConfig } from "../config/runtime-config.js";
+
+const database = databaseRuntimeConfig();
+
+/** Release-only datasource. API instances never auto-apply migrations. */
+export default new DataSource({
+  type: "postgres",
+  url: database.url,
+  entities: [
+    Conversation,
+    ConversationMessage,
+    ConversationParticipant,
+    CustomSmtp,
+    EmailLog,
+    EmailTemplate,
+    EmailVerification,
+    IntegrationToken,
+    Invite,
+    NotificationDestination,
+    Organization,
+    OrganizationContact,
+    OrganizationGroup,
+    OrganizationGroupMember,
+    OrganizationLanguage,
+    OrganizationSetting,
+    PasswordReset,
+    Permission,
+    PlatformMember,
+    PlatformSetting,
+    Role,
+    RolePermission,
+    Ticket,
+    TicketMessage,
+    User,
+    UserNotification,
+    UserOrganization,
+  ],
+  migrations: [path.join(import.meta.dirname, "migrations", "*.{js,ts}")],
+  synchronize: false,
+});

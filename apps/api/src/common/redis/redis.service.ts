@@ -1,9 +1,14 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, type RedisClientType } from "redis";
 
 @Injectable()
-export class RedisService implements OnModuleDestroy {
+export class RedisService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private clientPromise: Promise<RedisClientType> | null = null;
 
@@ -14,6 +19,15 @@ export class RedisService implements OnModuleDestroy {
       this.clientPromise = this.connect();
     }
     return this.clientPromise;
+  }
+
+  async onApplicationBootstrap() {
+    const client = await this.getClient();
+    await client.ping();
+  }
+
+  async ping() {
+    return (await this.getClient()).ping();
   }
 
   async onModuleDestroy() {

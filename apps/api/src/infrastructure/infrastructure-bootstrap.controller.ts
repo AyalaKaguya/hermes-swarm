@@ -22,6 +22,7 @@ import { AuthService } from "./auth/auth.service.js";
 import type { OnboardingPayload } from "../common/admin-api.types.js";
 import { hashPassword } from "../common/security/password-hash.js";
 import { MailService } from "./mail/mail.service.js";
+import { PublicAccess } from "@hermes-swarm/rbac";
 import { SettingsService } from "./settings/settings.service.js";
 
 @Controller("admin")
@@ -47,6 +48,7 @@ export class InfrastructureBootstrapController {
   ) {}
 
   @Get("bootstrap")
+  @PublicAccess({ reason: "Bootstrap state is required before an administrator can log in." })
   async getPublicBootstrap() {
     const [organizationCount, userCount, organizations, systemSettings] =
       await Promise.all([
@@ -64,6 +66,7 @@ export class InfrastructureBootstrapController {
   }
 
   @Post("onboarding")
+  @PublicAccess({ reason: "Initial onboarding is only allowed before the first account exists." })
   async onboard(
     @Body() payload: OnboardingPayload,
     @Req() request: any,

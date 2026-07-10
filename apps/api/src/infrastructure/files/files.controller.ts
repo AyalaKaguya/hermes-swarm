@@ -22,6 +22,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { AccessOperation, AccessResource, PublicAccess } from "@hermes-swarm/rbac";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 
 type UploadedImage = {
@@ -73,10 +74,25 @@ export class UploadExceptionFilter implements ExceptionFilter {
 }
 
 @Controller("admin/files")
+@AccessResource({
+  entity: "file",
+  entityLabel: "文件",
+  entityOrder: 95,
+  purpose: "image_upload",
+  purposeLabel: "图片上传",
+  purposeOrder: 10,
+  scope: "own",
+})
 export class FilesController {
   constructor(private readonly authSessionService: AuthSessionService) {}
 
   @Post("upload")
+  @AccessOperation({
+    description: "上传当前账号可访问的图片资源。",
+    label: "上传图片",
+    operation: "upload",
+    sortOrder: 10,
+  })
   @UseFilters(UploadExceptionFilter)
   @UseInterceptors(
     FileInterceptor("file", { limits: { fileSize: MAX_IMAGE_SIZE } }),
@@ -137,6 +153,7 @@ export class FilesController {
   }
 
   @Get(":filename")
+  @PublicAccess({ reason: "Generated images are served by opaque filenames." })
   async read(@Param("filename") filename: string, @Res() response: any) {
     if (!STORED_IMAGE_FILENAME_PATTERN.test(filename)) {
       throw new NotFoundException();

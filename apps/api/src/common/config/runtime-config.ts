@@ -7,6 +7,7 @@ export const appRuntimeConfig = registerAs("app", () => ({
 }));
 
 export const databaseRuntimeConfig = registerAs("database", () => {
+  const environment = process.env.NODE_ENV ?? "development";
   const host = process.env.POSTGRES_HOST ?? "localhost";
   const port = parseInteger(process.env.POSTGRES_PORT, 5432);
   const user = process.env.POSTGRES_USER ?? "hermes";
@@ -15,9 +16,15 @@ export const databaseRuntimeConfig = registerAs("database", () => {
   return {
     database,
     host,
+    migrationsRun: parseBoolean(process.env.DATABASE_MIGRATIONS_RUN, false),
     password,
     port,
+    synchronize: parseBoolean(
+      process.env.DATABASE_SYNCHRONIZE,
+      environment !== "production",
+    ),
     url:
+      (environment === "test" ? process.env.POSTGRES_TEST_URL : undefined) ??
       process.env.POSTGRES_URL ??
       `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`,
     user,
@@ -78,6 +85,7 @@ export function getApiEnvFilePaths() {
 export function validateRuntimeConfig(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
+  const environment = String(config.NODE_ENV ?? "development");
   validatePort("API_PORT", config.API_PORT, { fallback: 3200 });
   validateUrl("POSTGRES_URL", config.POSTGRES_URL, "postgresql:");
   validateText("POSTGRES_HOST", config.POSTGRES_HOST, "localhost");
@@ -85,6 +93,26 @@ export function validateRuntimeConfig(
   validateText("POSTGRES_USER", config.POSTGRES_USER, "hermes");
   validateText("POSTGRES_PASSWORD", config.POSTGRES_PASSWORD, "hermes_dev_pwd");
   validateText("POSTGRES_DB", config.POSTGRES_DB, "hermes_dev");
+  validateUrl("POSTGRES_TEST_URL", config.POSTGRES_TEST_URL, "postgresql:");
+  validateBoolean("DATABASE_SYNCHRONIZE", config.DATABASE_SYNCHRONIZE);
+  validateBoolean("DATABASE_MIGRATIONS_RUN", config.DATABASE_MIGRATIONS_RUN);
+  if (
+    environment === "production" &&
+    parseBoolean(String(config.DATABASE_SYNCHRONIZE ?? "false"), false)
+  ) {
+    throw new Error("DATABASE_SYNCHRONIZE must be false in production");
+  }
+  if (
+    environment === "production" &&
+    parseBoolean(String(config.DATABASE_MIGRATIONS_RUN ?? "false"), false)
+  ) {
+    throw new Error(
+      "DATABASE_MIGRATIONS_RUN is not supported by API startup; run migrations before deploying",
+    );
+  }
+  if (environment === "test" && !config.POSTGRES_TEST_URL) {
+    throw new Error("POSTGRES_TEST_URL is required when NODE_ENV=test");
+  }
   validateUrl("REDIS_URL", config.REDIS_URL, "redis:");
   validateText("REDIS_HOST", config.REDIS_HOST, "localhost");
   validatePort("REDIS_PORT", config.REDIS_PORT, { fallback: 6379 });

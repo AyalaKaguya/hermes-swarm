@@ -7,11 +7,21 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import type { PermissionScope } from "@hermes-swarm/core";
+import { AccessOperation, AccessResource } from "./access.decorators.js";
 import { AccessCatalogService } from "./access-catalog.service.js";
 import type { AccessAuthSessionService } from "./access.types.js";
 import { ACCESS_AUTH_SESSION_SERVICE } from "./tokens.js";
 
 @Controller("admin/permissions")
+@AccessResource({
+  entity: "permission",
+  entityLabel: "权限",
+  entityOrder: 5,
+  purpose: "catalog",
+  purposeLabel: "权限目录",
+  purposeOrder: 10,
+  scope: "own",
+})
 export class PermissionsController {
   constructor(
     @Inject(ACCESS_AUTH_SESSION_SERVICE)
@@ -20,6 +30,12 @@ export class PermissionsController {
   ) {}
 
   @Get("catalog")
+  @AccessOperation({
+    description: "查看当前账号可配置的权限目录。",
+    label: "查看权限目录",
+    operation: "list",
+    sortOrder: 10,
+  })
   async catalog(
     @Headers("authorization") authorization: string | undefined,
     @Query("scope") scope?: PermissionScope,

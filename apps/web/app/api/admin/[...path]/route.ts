@@ -26,6 +26,7 @@ const PUBLIC_ADMIN_PATHS = new Set([
   "/onboarding",
 ]);
 
+const refreshJobs = new Map<string, Promise<WebSession>>();
 type HandlerContext = {
   params: Promise<{ path?: string[] }>;
 };
@@ -166,7 +167,20 @@ async function getUsableWebSession(request: NextRequest) {
   return refreshed ? { ...refreshed, changed: true } : null;
 }
 
-async function refreshWebSession(
+function refreshWebSession(session: WebSession, request: NextRequest): Promise<WebSession> {
+  const existing = refreshJobs.get(session.sessionId);
+  if (existing) return existing;
+
+  const job = refreshWebSessionUpstream(session, request).finally(() => {
+    if (refreshJobs.get(session.sessionId) === job) {
+      refreshJobs.delete(session.sessionId);
+    }
+  });
+  refreshJobs.set(session.sessionId, job);
+  return job;
+}
+
+async function refreshWebSessionUpstream(
   session: WebSession,
   request: NextRequest,
 ): Promise<WebSession> {

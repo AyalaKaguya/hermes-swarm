@@ -88,6 +88,25 @@ Health check:
 curl -sS http://localhost:3200/api/health
 ```
 
+## Database Schema Policy
+
+Development and isolated test databases use TypeORM `synchronize`; do not create
+a migration for ordinary development work. Set `DATABASE_SYNCHRONIZE=false` only
+when inspecting a stable local schema manually.
+
+Production never synchronizes schema during API startup. Before a production
+release, generate and review a migration from the stable development entities,
+then apply it once before starting API replicas:
+
+```bash
+pnpm --filter @hermes-swarm/api migration:generate -- src/common/database/migrations/<release-name>
+pnpm --filter @hermes-swarm/api migration:show
+pnpm --filter @hermes-swarm/api migration:run
+```
+
+`DATABASE_SYNCHRONIZE=true` and `DATABASE_MIGRATIONS_RUN=true` are both
+rejected when `NODE_ENV=production`.
+
 ## Browser And Screenshots
 
 Use the existing Playwright helper when both servers are running:

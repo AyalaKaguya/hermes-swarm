@@ -18,6 +18,7 @@ describe("TicketsService", () => {
   it("delegates ticket messages to the conversation capability", async () => {
     const savedTickets: any[] = [];
     const addParticipantCalls: any[] = [];
+    const initialMessageCalls: any[] = [];
     const sendMessageCalls: any[] = [];
     const publishSourceCalls: any[] = [];
     const ticketRepo: any = {
@@ -79,6 +80,38 @@ describe("TicketsService", () => {
       }),
       importMessagesIfEmpty: async () => ({ imported: 0 }),
       isParticipant: async () => false,
+      createMessageInTransaction: async (_manager: unknown, input: any) => {
+        initialMessageCalls.push(input);
+        addParticipantCalls.push({
+          conversationId: "conversation-1",
+          joinedReason: input.joinedReason,
+          userIds: [input.authorUserId],
+        });
+        return {
+          conversation: {
+            id: "conversation-1",
+            sourceId: input.source.sourceId,
+            sourceType: input.source.sourceType,
+            subject: input.source.subject,
+          },
+          message: {
+            attachments: input.message.attachments ?? [],
+            authorUser: null,
+            authorUserId: input.authorUserId,
+            body: input.message.body,
+            conversationId: "conversation-1",
+            createdAt: new Date("2026-07-06T00:01:00Z"),
+            id: "message-1",
+            kind: "message",
+            metadata: null,
+            sourceId: input.source.sourceId,
+            sourceType: input.source.sourceType,
+            updatedAt: new Date("2026-07-06T00:01:00Z"),
+          },
+        };
+      },
+      publishMessageAfterCommit: async () => undefined,
+      resolveMentionedUserIdsForSource: async () => [],
       publishSourceUpdated: async (...input: any[]) => {
         publishSourceCalls.push(input);
       },
@@ -131,15 +164,15 @@ describe("TicketsService", () => {
     assert.equal(result.firstMessage.ticketId, "ticket-1");
     assert.equal(savedTickets[0].conversationId, "conversation-1");
     assert.deepEqual(addParticipantCalls[0].userIds, ["requester"]);
-    assert.equal(sendMessageCalls[0].source.sourceType, "ticket");
-    assert.equal(sendMessageCalls[0].message.attachments[0].name, "shot.png");
+    assert.equal(initialMessageCalls[0].source.sourceType, "ticket");
+    assert.equal(initialMessageCalls[0].message.attachments[0].name, "shot.png");
 
     const reply = await service.sendMessage("Bearer token", "ticket-1", {
       body: "I joined the conversation",
     });
 
     assert.equal(reply.body, "I joined the conversation");
-    assert.equal(sendMessageCalls.length, 2);
+    assert.equal(sendMessageCalls.length, 1);
     assert.equal(publishSourceCalls.length, 1);
     assert.equal(publishSourceCalls[0][0].sourceId, "ticket-1");
   });

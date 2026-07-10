@@ -12,6 +12,7 @@ import {
   Res,
 } from "@nestjs/common";
 import type { LoginPayload } from "../../common/admin-api.types.js";
+import { PublicAccess } from "@hermes-swarm/rbac";
 import { AuthService } from "./auth.service.js";
 
 @Controller("admin/auth")
@@ -25,6 +26,7 @@ export class AuthController {
    * Starts an admin session with email and password credentials.
    */
   @Post("login")
+  @PublicAccess({ reason: "Credential validation is handled by AuthService." })
   login(
     @Body() payload: LoginPayload,
     @Req() request: any,
@@ -34,11 +36,13 @@ export class AuthController {
   }
 
   @Post("refresh")
+  @PublicAccess({ reason: "Refresh cookie validation is handled by AuthService." })
   refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
     return this.authService.refresh(request, response);
   }
 
   @Post("logout")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(
     @Headers("authorization") authorization: string | undefined,
@@ -48,11 +52,13 @@ export class AuthController {
   }
 
   @Get("sessions")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   sessions(@Headers("authorization") authorization?: string) {
     return this.authService.listSessions(authorization);
   }
 
   @Delete("sessions/:sessionId")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   @HttpCode(HttpStatus.NO_CONTENT)
   async revokeSession(
     @Headers("authorization") authorization: string | undefined,
@@ -62,6 +68,7 @@ export class AuthController {
   }
 
   @Delete("sessions/:sessionId/record")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteSessionRecord(
     @Headers("authorization") authorization: string | undefined,
@@ -71,12 +78,14 @@ export class AuthController {
   }
 
   @Delete("sessions")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   @HttpCode(HttpStatus.NO_CONTENT)
   async revokeOtherSessions(@Headers("authorization") authorization?: string) {
     await this.authService.revokeOtherSessions(authorization);
   }
 
   @Post("realtime-ticket")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   realtimeTicket(@Headers("authorization") authorization?: string) {
     return this.authService.createRealtimeTicket(authorization);
   }
@@ -85,6 +94,7 @@ export class AuthController {
    * Returns whether the supplied authorization header is still valid.
    */
   @Get("authenticated")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   authenticated(@Headers("authorization") authorization?: string) {
     return this.authService.authenticated(authorization);
   }
@@ -93,6 +103,7 @@ export class AuthController {
    * Returns the current admin principal and its authorization context.
    */
   @Get("me")
+  @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   me(@Headers("authorization") authorization?: string) {
     return this.authService.me(authorization);
   }

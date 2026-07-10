@@ -8,6 +8,10 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "pnpm nx run @hermes-swarm/rbac:build && tsc && node dist/main.js",
+    "migration:generate": "typeorm-ts-node-esm migration:generate -d src/common/database/migration-data-source.ts",
+    "migration:run": "typeorm-ts-node-esm migration:run -d src/common/database/migration-data-source.ts",
+    "migration:revert": "typeorm-ts-node-esm migration:revert -d src/common/database/migration-data-source.ts",
+    "migration:show": "typeorm-ts-node-esm migration:show -d src/common/database/migration-data-source.ts",
     "openapi:generate": "tsx src/openapi.generate.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
@@ -36,7 +40,8 @@
     "@nestjs/testing": "^11.1.27",
     "@types/node": "^22.0.0",
     "@types/supertest": "^7.2.0",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "ts-node": "^10.9.2"
   },
   "nx": {
     "targets": {

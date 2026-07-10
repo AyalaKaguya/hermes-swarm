@@ -10,6 +10,7 @@ import {
   CustomSmtp,
   EmailLog,
   EmailTemplate,
+  IntegrationToken,
   Invite,
   NotificationDestination,
   Organization,
@@ -105,6 +106,7 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
             CustomSmtp,
             EmailLog,
             EmailTemplate,
+            IntegrationToken,
             Invite,
             NotificationDestination,
             Organization,
@@ -128,6 +130,7 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
           synchronize: true,
         }),
         TypeOrmModule.forFeature([
+          IntegrationToken,
           Organization,
           OrganizationSetting,
           Permission,
@@ -233,7 +236,7 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
       .expect(({ body }) => {
         assert.deepEqual(
           body.map((item: { slug: string }) => item.slug),
-          ["hermes", "acme"],
+          ["acme", "hermes"],
         );
       });
 

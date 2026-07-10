@@ -19,6 +19,7 @@ import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import {
   AccessOperation,
   AccessResource,
+  PublicAccess,
 } from "@hermes-swarm/rbac";
 import { InviteService } from "./invite.service.js";
 
@@ -111,6 +112,7 @@ export class InviteController {
    * Public endpoint to validate an invite token.
    */
   @Post("invites/validate")
+  @PublicAccess({ reason: "Invite validation begins before the invitee has a session." })
   async validate(
     @Body("email") email?: string,
     @Body("token") token?: string,
@@ -122,6 +124,7 @@ export class InviteController {
    * Public endpoint to accept an invite and register the user.
    */
   @Post("invites/accept")
+  @PublicAccess({ reason: "An invite token authorizes acceptance before sign-in." })
   async accept(@Body() payload: AcceptInvitePayload) {
     return this.inviteService.accept(payload);
   }

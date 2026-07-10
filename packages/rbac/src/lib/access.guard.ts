@@ -1,5 +1,6 @@
 import {
   CanActivate,
+  ForbiddenException,
   ExecutionContext,
   Inject,
   Injectable,
@@ -10,6 +11,7 @@ import {
   ACCESS_OPERATION_METADATA,
   ACCESS_RESOURCE_METADATA,
   ACCESS_SCOPE_METADATA,
+  PUBLIC_ACCESS_METADATA,
   PERMISSION_RESOURCE_METADATA,
   REQUIRE_PERMISSION_METADATA,
 } from "./access.decorators.js";
@@ -38,8 +40,15 @@ export class AccessGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext) {
+    if (this.isPublic(context)) return true;
+
     const operation = this.getOperationMetadata(context);
-    if (!operation) return true;
+    if (!operation) {
+      if (this.isAdminRequest(context)) {
+        throw new ForbiddenException("受保护接口缺少 Access 元数据");
+      }
+      return true;
+    }
 
     const resource = this.getResourceMetadata(context);
     const fallbackDefinition = resolveAccessDefinition(resource, operation);
@@ -65,6 +74,8 @@ export class AccessGuard implements CanActivate {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
+    request.accessPrincipal = session;
+
     const scopeContext = await this.scopeService.resolve(
       definition,
       this.getScopeMetadata(context),
@@ -83,6 +94,27 @@ export class AccessGuard implements CanActivate {
     }
 
     return true;
+  }
+
+  private isAdminRequest(context: ExecutionContext) {
+    const request = context.switchToHttp().getRequest<{
+      originalUrl?: string;
+      url?: string;
+    }>();
+    const path = request.originalUrl ?? request.url ?? "";
+    return (
+      /(?:^|\/)api\/admin(?:\/|$)/.test(path) ||
+      /(?:^|\/)admin(?:\/|$)/.test(path)
+    );
+  }
+
+  private isPublic(context: ExecutionContext) {
+    return Boolean(
+      this.reflector.getAllAndOverride<{ reason: string } | undefined>(
+        PUBLIC_ACCESS_METADATA,
+        [context.getHandler(), context.getClass()],
+      ),
+    );
   }
 
   private getOperationMetadata(context: ExecutionContext) {

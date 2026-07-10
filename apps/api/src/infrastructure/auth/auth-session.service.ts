@@ -1,4 +1,10 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
 import {
   BadRequestException,
   Injectable,
@@ -6,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { IntegrationToken, User } from "@hermes-swarm/core";
+import { IntegrationToken, Organization, User } from "@hermes-swarm/core";
 import { IsNull, MoreThan, Repository } from "typeorm";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
@@ -68,6 +74,8 @@ export class AuthSessionService {
     private readonly integrationTokenRepository: Repository<IntegrationToken>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Organization)
+    private readonly organizationRepository: Repository<Organization>,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {}
@@ -117,17 +125,22 @@ export class AuthSessionService {
     const refreshTokenHash = hashToken(refreshToken);
     const client = await this.redisService.getClient();
     const lockKey = this.refreshLockKey(refreshTokenHash);
-    const lockAcquired = await client.set(lockKey, "1", {
-      EX: 10,
+    const lockOwner = randomUUID();
+    const lockAcquired = await client.set(lockKey, lockOwner, {
+      EX: REFRESH_LOCK_TTL_SECONDS,
       NX: true,
     });
     if (!lockAcquired) {
+      const rotated = await this.waitForRefreshRotation(client, refreshTokenHash);
+      if (rotated) return rotated;
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
     try {
       const sessionId = await client.get(this.refreshIndexKey(refreshTokenHash));
       if (!sessionId) {
+        const rotated = await this.getRefreshRotationResult(client, refreshTokenHash);
+        if (rotated) return rotated;
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
 
@@ -139,6 +152,8 @@ export class AuthSessionService {
         isSessionExpired(record)
       ) {
         await client.del(this.refreshIndexKey(refreshTokenHash));
+        const rotated = await this.getRefreshRotationResult(client, refreshTokenHash);
+        if (rotated) return rotated;
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
 
@@ -161,22 +176,24 @@ export class AuthSessionService {
         refreshTokenHash: nextHash,
         userAgent: context.userAgent ?? record.userAgent,
       };
-
-      await Promise.all([
-        client.del(this.refreshIndexKey(refreshTokenHash)),
-        this.saveSession(nextRecord),
-        this.indexRefreshToken(nextHash, sessionId),
-        this.addUserSession(record.userId, sessionId),
-      ]);
-
-      return {
+      const issued = {
         ...this.issueAccessToken(record.userId, sessionId),
         refreshToken: nextRefreshToken,
         sessionId,
         userId: record.userId,
       };
+
+      await Promise.all([
+        this.saveSession(nextRecord),
+        this.indexRefreshToken(nextHash, sessionId),
+        this.addUserSession(record.userId, sessionId),
+      ]);
+      await this.saveRefreshRotationResult(client, refreshTokenHash, issued);
+      await client.del(this.refreshIndexKey(refreshTokenHash));
+
+      return issued;
     } finally {
-      await client.del(lockKey);
+      await this.releaseRefreshLock(client, lockKey, lockOwner);
     }
   }
 
@@ -425,6 +442,7 @@ export class AuthSessionService {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
     await this.ensureActiveUser(record.ownerUserId);
+    await this.ensureActiveOrganization(record);
 
     const lastUsedAt = new Date();
     const updateResult = await this.integrationTokenRepository.update(
@@ -531,6 +549,66 @@ export class AuthSessionService {
     }
   }
 
+  private async ensureActiveOrganization(record: IntegrationToken) {
+    if (record.scope !== "organization") return;
+
+    const organization = record.organizationId
+      ? await this.organizationRepository.findOne({
+          where: { id: record.organizationId },
+        })
+      : null;
+    if (!organization || organization.status !== "active") {
+      throw new UnauthorizedException("组织不可用");
+    }
+  }
+
+  private async waitForRefreshRotation(
+    client: Awaited<ReturnType<RedisService["getClient"]>>,
+    refreshTokenHash: string,
+  ) {
+    const deadline = Date.now() + REFRESH_ROTATION_WAIT_MS;
+    do {
+      const rotated = await this.getRefreshRotationResult(client, refreshTokenHash);
+      if (rotated) return rotated;
+      await delay(REFRESH_ROTATION_POLL_MS);
+    } while (Date.now() < deadline);
+
+    return this.getRefreshRotationResult(client, refreshTokenHash);
+  }
+
+  private async getRefreshRotationResult(
+    client: Awaited<ReturnType<RedisService["getClient"]>>,
+    refreshTokenHash: string,
+  ) {
+    const value = await client.get(this.refreshRotationKey(refreshTokenHash));
+    return value ? decryptRefreshRotation(value, this.sessionSecret) : null;
+  }
+
+  private async saveRefreshRotationResult(
+    client: Awaited<ReturnType<RedisService["getClient"]>>,
+    refreshTokenHash: string,
+    issued: IssuedAuthSession & { userId: string },
+  ) {
+    await client.set(
+      this.refreshRotationKey(refreshTokenHash),
+      encryptRefreshRotation(issued, this.sessionSecret),
+      { EX: REFRESH_ROTATION_RESULT_TTL_SECONDS },
+    );
+  }
+
+  private async releaseRefreshLock(
+    client: Awaited<ReturnType<RedisService["getClient"]>>,
+    lockKey: string,
+    lockOwner: string,
+  ) {
+    await client.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0",
+      {
+        arguments: [lockOwner],
+        keys: [lockKey],
+      },
+    );
+  }
   private async getAndDelete(
     client: Awaited<ReturnType<RedisService["getClient"]>>,
     key: string,
@@ -556,6 +634,10 @@ export class AuthSessionService {
 
   private refreshLockKey(refreshTokenHash: string) {
     return `auth:refresh_lock:${refreshTokenHash}`;
+  }
+
+  private refreshRotationKey(refreshTokenHash: string) {
+    return `auth:refresh_rotation:${refreshTokenHash}`;
   }
 
   private userSessionsKey(userId: string) {
@@ -585,6 +667,69 @@ export class AuthSessionService {
   private get sessionSecret() {
     return this.configService.getOrThrow<string>("auth.sessionSecret");
   }
+}
+
+const REFRESH_LOCK_TTL_SECONDS = 10;
+const REFRESH_ROTATION_RESULT_TTL_SECONDS = 10;
+const REFRESH_ROTATION_WAIT_MS = 2_000;
+const REFRESH_ROTATION_POLL_MS = 50;
+
+type RefreshRotationResult = IssuedAuthSession & { userId: string };
+
+function encryptRefreshRotation(value: RefreshRotationResult, secret: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", createEncryptionKey(secret), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(value), "utf8"),
+    cipher.final(),
+  ]);
+  return JSON.stringify({
+    ciphertext: ciphertext.toString("base64url"),
+    iv: iv.toString("base64url"),
+    tag: cipher.getAuthTag().toString("base64url"),
+  });
+}
+
+function decryptRefreshRotation(value: string, secret: string): RefreshRotationResult | null {
+  try {
+    const payload = JSON.parse(value) as Partial<{
+      ciphertext: string;
+      iv: string;
+      tag: string;
+    }>;
+    if (!payload.ciphertext || !payload.iv || !payload.tag) return null;
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      createEncryptionKey(secret),
+      Buffer.from(payload.iv, "base64url"),
+    );
+    decipher.setAuthTag(Buffer.from(payload.tag, "base64url"));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(payload.ciphertext, "base64url")),
+      decipher.final(),
+    ]);
+    const issued = JSON.parse(plaintext.toString("utf8")) as Partial<RefreshRotationResult>;
+    if (
+      typeof issued.accessToken !== "string" ||
+      typeof issued.expiresAt !== "string" ||
+      typeof issued.refreshToken !== "string" ||
+      typeof issued.sessionId !== "string" ||
+      typeof issued.userId !== "string"
+    ) {
+      return null;
+    }
+    return issued as RefreshRotationResult;
+  } catch {
+    return null;
+  }
+}
+
+function createEncryptionKey(secret: string) {
+  return createHash("sha256").update(secret).digest();
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function isSessionExpired(record: Pick<AuthSessionRecord, "expiresAt">) {

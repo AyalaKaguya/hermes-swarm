@@ -5,6 +5,7 @@ import {
   ACCESS_OPERATION_METADATA,
   ACCESS_RESOURCE_METADATA,
   ACCESS_SCOPE_METADATA,
+  PUBLIC_ACCESS_METADATA,
 } from "./access.decorators.js";
 import { AccessGuard } from "./access.guard.js";
 import type {
@@ -75,6 +76,73 @@ describe("AccessGuard integration token narrowing", () => {
     );
   });
 
+
+  it("bypasses authentication only for explicit public handlers", async () => {
+    const guard = new AccessGuard(
+      {
+        get: () => undefined,
+        getAllAndOverride: (key: string) =>
+          key === PUBLIC_ACCESS_METADATA ? { reason: "test" } : undefined,
+      } as any,
+      {
+        validateAccessToken: async () => {
+          throw new Error("should not authenticate");
+        },
+      },
+      { getDefinition: () => null } as any,
+      { can: async () => false } as any,
+      { resolve: async () => ({}) } as any,
+    );
+
+    assert.equal(await guard.canActivate(createContext({})), true);
+  });
+
+  it("stores the validated principal on the request", async () => {
+    const request: Record<string, unknown> = {
+      headers: { authorization: "Bearer session-token" },
+      params: { organizationId: "org-1" },
+    };
+    const guard = createGuard({
+      integrationToken: {
+        id: "token-1",
+        organizationId: "org-1",
+        permissions: ["ticket.conversation.handle:organization"],
+        scope: "organization",
+      },
+    });
+
+    assert.equal(
+      await guard.canActivate({
+        getClass: () => function Controller() {},
+        getHandler: () => function handler() {},
+        switchToHttp: () => ({ getRequest: () => request }),
+      } as any),
+      true,
+    );
+    assert.equal((request.accessPrincipal as { userId?: string }).userId, "user-1");
+  });
+
+  it("rejects unannotated admin routes instead of silently allowing them", async () => {
+    const guard = new AccessGuard(
+      { get: () => undefined, getAllAndOverride: () => undefined } as any,
+      { validateAccessToken: async () => ({ userId: "user-1" }) },
+      { getDefinition: () => null } as any,
+      { can: async () => true } as any,
+      { resolve: async () => ({}) } as any,
+    );
+
+    await assert.rejects(
+      () =>
+        guard.canActivate({
+          getClass: () => function Controller() {},
+          getHandler: () => function handler() {},
+          switchToHttp: () => ({
+            getRequest: () => ({ originalUrl: "/api/admin/unannotated" }),
+          }),
+        } as any),
+      ForbiddenException,
+    );
+  });
   function createGuard(session: {
     integrationToken: {
       id: string;

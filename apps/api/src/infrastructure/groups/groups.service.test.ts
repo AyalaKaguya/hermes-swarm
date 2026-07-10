@@ -4,6 +4,58 @@ import { BadRequestException } from "@nestjs/common";
 import { GroupsService } from "./groups.service.js";
 
 describe("GroupsService member consistency", () => {
+  it("rejects malformed group create payload before persisting", async () => {
+    const state = createService({ memberships: [] });
+
+    await assert.rejects(
+      () => state.service.create("org-1", "user-1", null as never),
+      BadRequestException,
+    );
+
+    assert.equal(state.savedGroups.length, 0);
+  });
+
+  it("rejects non-string group text fields without throwing TypeError", async () => {
+    const state = createService({ memberships: [] });
+
+    await assert.rejects(
+      () =>
+        state.service.create("org-1", "user-1", {
+          displayName: 123 as never,
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.update("org-1", "group-1", {
+          color: { hex: "#fff" } as never,
+        }),
+      BadRequestException,
+    );
+
+    assert.equal(state.savedGroups.length, 0);
+  });
+
+  it("rejects malformed member replacement payload before deleting members", async () => {
+    const state = createService({ memberships: [] });
+
+    await assert.rejects(
+      () => state.service.replaceMembers("org-1", "group-1", null as never),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.replaceMembers("org-1", "group-1", {
+          membershipIds: [{ id: "membership-1" } as never],
+        }),
+      BadRequestException,
+    );
+
+    assert.equal(state.transactions, 0);
+    assert.equal(state.deletedGroupMemberQueries.length, 0);
+    assert.equal(state.savedGroupMembers.length, 0);
+  });
+
   it("maps concurrent group name uniqueness failures during create", async () => {
     const state = createService({
       failGroupSaveWithUniqueError: true,
@@ -119,6 +171,7 @@ function createService(options: {
   const deletedGroupMemberQueries: unknown[] = [];
   const deletedGroupQueries: unknown[] = [];
   const savedGroupMembers: any[] = [];
+  const savedGroups: any[] = [];
   let transactions = 0;
 
   const service = new GroupsService(
@@ -177,6 +230,7 @@ function createService(options: {
         if (options.failGroupSaveWithUniqueError) {
           throw { driverError: { code: "23505" } };
         }
+        savedGroups.push(group);
         return group;
       },
     } as any,
@@ -220,6 +274,7 @@ function createService(options: {
     },
     deletedGroupMemberQueries,
     deletedGroupQueries,
+    savedGroups,
     savedGroupMembers,
     service,
   };

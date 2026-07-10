@@ -66,6 +66,16 @@ export class TicketsController {
   }
 
   @Get("tickets/platform")
+  @AccessOperation({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "查看当前账号参与的平台工单。",
+    label: "查看平台工单",
+    operation: "list_platform",
+    purpose: "platform_conversation",
+    purposeLabel: "平台工单",
+    scope: "own",
+    sortOrder: 10,
+  })
   listPlatformTickets(
     @Headers("authorization") authorization: string | undefined,
     @Query("status") status?: string,
@@ -74,6 +84,16 @@ export class TicketsController {
   }
 
   @Post("tickets/platform")
+  @AccessOperation({
+    defaultRoles: ["owner", "admin", "member", "viewer"],
+    description: "向平台运营人员发起工单。",
+    label: "创建平台工单",
+    operation: "create_platform",
+    purpose: "platform_conversation",
+    purposeLabel: "平台工单",
+    scope: "own",
+    sortOrder: 20,
+  })
   createPlatformTicket(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: unknown,
@@ -81,36 +101,15 @@ export class TicketsController {
     return this.ticketsService.createPlatformTicket(authorization, payload);
   }
 
-  @Get("tickets/platform/handler-capability")
-  @AccessOperation({
-    defaultRoles: ["platform-admin"],
-    description: "允许查看和处理平台运营范围内的全部工单。",
-    entity: "ticket",
-    entityLabel: "工单",
-    label: "处理平台工单",
-    operation: "list_platform",
-    purpose: "platform_conversation",
-    purposeLabel: "平台工单",
-    scope: "platform",
-    sortOrder: 10,
-  })
-  platformHandlerCapability() {
-    return { ok: true };
-  }
-
-  @Get("organizations/:organizationId/tickets/handler-capability")
-  @AccessOperation({
-    defaultRoles: ["owner", "admin"],
-    description: "允许处理当前组织内成员提交的工单。",
-    label: "处理组织工单",
-    operation: "handle",
-    sortOrder: 30,
-  })
-  organizationHandlerCapability() {
-    return { ok: true };
-  }
 
   @Get("tickets/:ticketId")
+  @AccessOperation({
+    description: "查看当前账号有权访问的工单详情。",
+    label: "查看工单详情",
+    operation: "view",
+    scope: "own",
+    sortOrder: 40,
+  })
   getTicket(
     @Headers("authorization") authorization: string | undefined,
     @Param("ticketId") ticketId: string,
@@ -119,6 +118,13 @@ export class TicketsController {
   }
 
   @Get("tickets/:ticketId/messages")
+  @AccessOperation({
+    description: "查看当前账号有权访问的工单消息。",
+    label: "查看工单消息",
+    operation: "list_messages",
+    scope: "own",
+    sortOrder: 50,
+  })
   listMessages(
     @Headers("authorization") authorization: string | undefined,
     @Param("ticketId") ticketId: string,
@@ -127,6 +133,13 @@ export class TicketsController {
   }
 
   @Post("tickets/:ticketId/messages")
+  @AccessOperation({
+    description: "向当前账号有权访问的工单发送消息。",
+    label: "发送工单消息",
+    operation: "send_message",
+    scope: "own",
+    sortOrder: 60,
+  })
   sendMessage(
     @Headers("authorization") authorization: string | undefined,
     @Param("ticketId") ticketId: string,
@@ -136,6 +149,13 @@ export class TicketsController {
   }
 
   @Patch("tickets/:ticketId/close")
+  @AccessOperation({
+    description: "关闭当前账号有权处理的工单。",
+    label: "关闭工单",
+    operation: "close",
+    scope: "own",
+    sortOrder: 70,
+  })
   closeTicket(
     @Headers("authorization") authorization: string | undefined,
     @Param("ticketId") ticketId: string,
@@ -144,6 +164,13 @@ export class TicketsController {
   }
 
   @Patch("tickets/:ticketId/read")
+  @AccessOperation({
+    description: "标记当前账号有权访问的工单为已读。",
+    label: "标记工单已读",
+    operation: "mark_read",
+    scope: "own",
+    sortOrder: 80,
+  })
   markTicketRead(
     @Headers("authorization") authorization: string | undefined,
     @Param("ticketId") ticketId: string,

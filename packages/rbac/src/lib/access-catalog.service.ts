@@ -385,7 +385,9 @@ function resolveFallbackDefaultRoles(
   operation: AccessOperationMetadata,
 ): AccessDefaultRole[] {
   if (scope === "platform") return ["platform-admin"];
-  if (scope === "own") return ["admin", "member", "owner", "viewer"];
+  if (scope === "own") {
+    return ["platform-admin", "admin", "member", "owner", "viewer"];
+  }
   if (operation.isDangerous) return ["owner"];
   if (/^(list|view|get|read|search)/.test(operation.operation)) {
     return ["admin", "member", "owner", "viewer"];

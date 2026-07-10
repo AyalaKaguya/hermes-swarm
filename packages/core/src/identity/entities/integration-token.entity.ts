@@ -1,4 +1,5 @@
-import { Column, Entity, Index } from "typeorm";
+import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
+import type { Organization } from "./organization.entity.js";
 import { BaseEntity } from "./base.entity.js";
 
 export type IntegrationTokenScope = "organization" | "own" | "platform";
@@ -15,6 +16,10 @@ export class IntegrationToken extends BaseEntity {
 
   @Column({ name: "organization_id", type: "uuid", nullable: true })
   organizationId!: string | null;
+
+  @ManyToOne("Organization", { nullable: true, onDelete: "RESTRICT" })
+  @JoinColumn({ name: "organization_id" })
+  organization!: Organization | null;
 
   @Column({ type: "varchar", length: 160, nullable: true })
   note!: string | null;
@@ -36,4 +41,7 @@ export class IntegrationToken extends BaseEntity {
 
   @Column({ name: "revoked_at", type: "timestamptz", nullable: true })
   revokedAt!: Date | null;
+
+  @Column({ name: "revoked_reason", type: "varchar", length: 80, nullable: true })
+  revokedReason!: string | null;
 }

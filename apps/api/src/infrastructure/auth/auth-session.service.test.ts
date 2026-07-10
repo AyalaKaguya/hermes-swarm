@@ -9,8 +9,8 @@ import {
 import { AuthSessionService } from "./auth-session.service.js";
 
 describe("AuthSessionService Redis-backed sessions", () => {
-  it("rotates refresh tokens and rejects the old token", async () => {
-    const { service } = createService();
+  it("rotates refresh tokens and rejects the old token after the concurrency window", async () => {
+    const { redis, service } = createService();
     const created = await service.createSession("user-1", {
       ipAddress: "127.0.0.1",
       userAgent: chromeWindowsUserAgent,
@@ -23,6 +23,7 @@ describe("AuthSessionService Redis-backed sessions", () => {
 
     assert.equal(refreshed.sessionId, created.sessionId);
     assert.notEqual(refreshed.refreshToken, created.refreshToken);
+    await redis.del(redis.findKey("auth:refresh_rotation:"));
     await assert.rejects(
       () => service.refreshSession(created.refreshToken),
       UnauthorizedException,
@@ -32,23 +33,28 @@ describe("AuthSessionService Redis-backed sessions", () => {
     );
   });
 
-  it("allows only one concurrent refresh with the same refresh token", async () => {
+  it("returns the same rotation result to concurrent refresh requests", async () => {
     const { service } = createService();
     const created = await service.createSession("user-1");
 
-    const results = await Promise.allSettled([
-      service.refreshSession(created.refreshToken),
-      service.refreshSession(created.refreshToken),
-    ]);
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => service.refreshSession(created.refreshToken)),
+    );
 
-    assert.equal(
-      results.filter((result) => result.status === "fulfilled").length,
-      1,
-    );
-    assert.equal(
-      results.filter((result) => result.status === "rejected").length,
-      1,
-    );
+    assert.equal(new Set(results.map((result) => result.accessToken)).size, 1);
+    assert.equal(new Set(results.map((result) => result.refreshToken)).size, 1);
+    assert.equal(new Set(results.map((result) => result.sessionId)).size, 1);
+    await assert.doesNotReject(() => service.refreshSession(results[0]!.refreshToken));
+  });
+
+  it("does not reveal refresh rotation material in Redis plaintext", async () => {
+    const { redis, service } = createService();
+    const created = await service.createSession("user-1");
+    const refreshed = await service.refreshSession(created.refreshToken);
+    const rotation = redis.getRaw(redis.findKey("auth:refresh_rotation:"));
+
+    assert.equal(rotation.includes(refreshed.accessToken), false);
+    assert.equal(rotation.includes(refreshed.refreshToken), false);
   });
 
   it("does not let access-token validation overwrite a concurrently rotated refresh hash", async () => {
@@ -93,6 +99,96 @@ describe("AuthSessionService Redis-backed sessions", () => {
     );
   });
 
+  it("rejects organization integration tokens when the organization is disabled", async () => {
+    const token = createIntegrationToken(
+      "token-organization-1",
+      "user-1",
+      "test-session-secret",
+    );
+    const { service } = createService({
+      integrationTokenRepository: createIntegrationTokenRepository(
+        token,
+        "token-organization-1",
+        { organizationId: "organization-1", scope: "organization" },
+      ),
+      organizationRepository: {
+        findOne: async () => ({ id: "organization-1", status: "suspended" }),
+      },
+    });
+
+    await assert.rejects(
+      () => service.validateAccessToken(token),
+      UnauthorizedException,
+    );
+  });
+
+  it("rejects organization integration tokens when the organization is missing", async () => {
+    const token = createIntegrationToken(
+      "token-organization-missing",
+      "user-1",
+      "test-session-secret",
+    );
+    const { service } = createService({
+      integrationTokenRepository: createIntegrationTokenRepository(
+        token,
+        "token-organization-missing",
+        { organizationId: "organization-missing", scope: "organization" },
+      ),
+      organizationRepository: { findOne: async () => null },
+    });
+
+    await assert.rejects(
+      () => service.validateAccessToken(token),
+      UnauthorizedException,
+    );
+  });
+  it("accepts organization integration tokens for active organizations", async () => {
+    const token = createIntegrationToken(
+      "token-organization-2",
+      "user-1",
+      "test-session-secret",
+    );
+    const { service } = createService({
+      integrationTokenRepository: createIntegrationTokenRepository(
+        token,
+        "token-organization-2",
+        { organizationId: "organization-1", scope: "organization" },
+      ),
+      organizationRepository: {
+        findOne: async ({ where }: any) =>
+          where.id === "organization-1"
+            ? { id: "organization-1", status: "active" }
+            : null,
+      },
+    });
+
+    await assert.doesNotReject(() => service.validateAccessToken(token));
+  });
+
+  it("does not query organizations for non-organization integration tokens", async () => {
+    const token = createIntegrationToken(
+      "token-platform-1",
+      "user-1",
+      "test-session-secret",
+    );
+    let organizationQueries = 0;
+    const { service } = createService({
+      integrationTokenRepository: createIntegrationTokenRepository(
+        token,
+        "token-platform-1",
+        { organizationId: null, scope: "platform" },
+      ),
+      organizationRepository: {
+        findOne: async () => {
+          organizationQueries += 1;
+          return null;
+        },
+      },
+    });
+
+    await assert.doesNotReject(() => service.validateAccessToken(token));
+    assert.equal(organizationQueries, 0);
+  });
   it("does not let integration token validation overwrite a concurrent revocation", async () => {
     const token = createIntegrationToken("token-1", "user-1", "test-session-secret");
     const record = {
@@ -161,7 +257,10 @@ describe("AuthSessionService Redis-backed sessions", () => {
   });
 });
 
-function createService(options: { integrationTokenRepository?: unknown } = {}) {
+function createService(options: {
+  integrationTokenRepository?: unknown;
+  organizationRepository?: unknown;
+} = {}) {
   const redis = new FakeRedisClient();
   const users = new Map<string, { id: string; status: string }>([
     ["user-1", { id: "user-1", status: "active" }],
@@ -171,6 +270,7 @@ function createService(options: { integrationTokenRepository?: unknown } = {}) {
     {
       findOne: async ({ where }: any) => users.get(where.id) ?? null,
     } as any,
+    (options.organizationRepository ?? { findOne: async () => null }) as any,
     {
       getOrThrow: (key: string) => {
         const values: Record<string, unknown> = {
@@ -193,6 +293,33 @@ function createService(options: { integrationTokenRepository?: unknown } = {}) {
   return { redis, service, users };
 }
 
+function createIntegrationTokenRepository(
+  token: string,
+  id: string,
+  overrides: {
+    organizationId: string | null;
+    scope: "organization" | "own" | "platform";
+  },
+) {
+  const record = {
+    createdAt: new Date("2026-07-07T00:00:00Z"),
+    expiresAt: new Date(Date.now() + 60_000),
+    id,
+    lastUsedAt: null as Date | null,
+    note: "CI",
+    ownerUserId: "user-1",
+    permissions: [],
+    revokedAt: null as Date | null,
+    tokenHash: hashTokenForTest(token),
+    updatedAt: new Date("2026-07-07T00:00:00Z"),
+    ...overrides,
+  };
+
+  return {
+    findOne: async () => ({ ...record }),
+    update: async () => ({ affected: 1 }),
+  };
+}
 class FakeRedisClient {
   private readonly values = new Map<string, string>();
   private readonly setValues = new Map<string, Set<string>>();
@@ -252,6 +379,17 @@ class FakeRedisClient {
     return deleted;
   }
 
+  async eval(
+    _script: string,
+    options: { arguments: string[]; keys: string[] },
+  ) {
+    const [key] = options.keys;
+    const [owner] = options.arguments;
+    if (!key || this.values.get(key) !== owner) return 0;
+    this.values.delete(key);
+    return 1;
+  }
+
   async sAdd(key: string, member: string) {
     const set = this.setValues.get(key) ?? new Set<string>();
     set.add(member);
@@ -291,6 +429,12 @@ class FakeRedisClient {
 
   setRaw(key: string, value: string) {
     this.values.set(key, value);
+  }
+
+  getRaw(key: string) {
+    const value = this.values.get(key);
+    assert.ok(value, `Expected Redis key ${key}`);
+    return value;
   }
 }
 

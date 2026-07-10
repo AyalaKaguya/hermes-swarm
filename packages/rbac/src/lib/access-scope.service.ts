@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
 import type {
+  AccessRequest,
   AccessScopeMetadata,
   AccessScopeResult,
   ResolvedAccessDefinition,
@@ -13,7 +14,7 @@ export class AccessScopeService {
   async resolve(
     definition: ResolvedAccessDefinition,
     metadata: AccessScopeMetadata | undefined,
-    request: { params?: Record<string, string | undefined>; [key: string]: unknown },
+    request: AccessRequest,
   ): Promise<AccessScopeResult> {
     if (metadata?.resolver) {
       const resolver = this.moduleRef.get(metadata.resolver, { strict: false });
@@ -25,7 +26,10 @@ export class AccessScopeService {
 
     const defaultParam = scope === "own" ? "userId" : "organizationId";
     const param = metadata?.param ?? defaultParam;
-    const value = request.params?.[param] ?? null;
+    const value =
+      request.params?.[param] ??
+      (scope === "own" ? request.accessPrincipal?.userId : null) ??
+      null;
 
     return scope === "own"
       ? { targetUserId: value }

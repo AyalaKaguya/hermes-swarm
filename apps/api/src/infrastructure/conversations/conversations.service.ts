@@ -23,7 +23,7 @@ import {
   type FindOptionsWhere,
 } from "typeorm";
 import { NotificationsService } from "../notifications/notifications.service.js";
-import { RealtimeService } from "../realtime/realtime.service.js";
+import { RealtimeEventBus } from "../realtime/realtime-event-bus.service.js";
 import type {
   ConversationAccessResolver,
   ConversationMessageInput,
@@ -48,8 +48,8 @@ export class ConversationCapabilityService {
     private readonly membershipRepository: Repository<UserOrganization>,
     @Inject(NotificationsService)
     private readonly notificationsService: NotificationsService,
-    @Inject(RealtimeService)
-    private readonly realtimeService: RealtimeService,
+    @Inject(RealtimeEventBus)
+    private readonly realtimeEventBus: RealtimeEventBus,
   ) {}
 
   async ensureConversationForSource(source: ConversationSource) {
@@ -117,89 +117,134 @@ export class ConversationCapabilityService {
     if (!(await input.resolver.canWrite(input.authorUserId, input.source))) {
       throw new ForbiddenException("没有发送会话消息的权限");
     }
+    const mentionUserIds = await this.resolveMentionedUserIdsForSource({
+      authorUserId: input.authorUserId,
+      body: input.message.body,
+      resolver: input.resolver,
+      source: input.source,
+    });
+    let conversation!: Conversation;
+    let message!: ConversationMessage;
+    await this.conversationRepository.manager.transaction(async (manager) => {
+      ({ conversation, message } = await this.createMessageInTransaction(manager, {
+        authorUserId: input.authorUserId,
+        joinedReason: "reply",
+        mentionUserIds,
+        message: input.message,
+        source: input.source,
+      }));
+    });
+    await this.publishMessageAfterCommit({
+      authorUserId: input.authorUserId,
+      conversation,
+      mentionUserIds,
+      message,
+      resolver: input.resolver,
+      source: input.source,
+    });
+    return toConversationMessageDto(message, conversation);
+  }
 
-    const mentionUserIds = await this.resolveMentionedUserIds(
-      input.message.body,
+  async createMessageInTransaction(
+    manager: EntityManager,
+    input: {
+      authorUserId: string;
+      joinedReason: ConversationParticipantJoinedReason;
+      mentionUserIds?: string[];
+      message: ConversationMessageInput;
+      source: ConversationSource;
+    },
+  ) {
+    const conversation = await this.ensureConversationForSourceWithManager(
+      input.source,
+      manager,
+    );
+    await this.addParticipantsWithManager(manager, {
+      conversationId: conversation.id,
+      joinedReason: input.joinedReason,
+      userIds: [input.authorUserId],
+    });
+    await this.addParticipantsWithManager(manager, {
+      conversationId: conversation.id,
+      joinedReason: "mention",
+      userIds: input.mentionUserIds ?? [],
+    });
+    const message = await manager.save(
+      ConversationMessage,
+      this.messageRepository.create({
+        attachments: input.message.attachments ?? null,
+        authorUserId: input.authorUserId,
+        body: input.message.body,
+        conversationId: conversation.id,
+        kind: "message",
+        metadata: input.message.metadata ?? null,
+      }),
+    );
+    conversation.lastMessageAt = message.createdAt;
+    conversation.status = input.source.status ?? conversation.status;
+    return { conversation: await manager.save(Conversation, conversation), message };
+  }
+
+  async resolveMentionedUserIdsForSource(input: {
+    authorUserId: string;
+    body: string;
+    resolver: ConversationAccessResolver;
+    source: ConversationSource;
+  }) {
+    return this.resolveMentionedUserIds(
+      input.body,
       input.source,
       input.authorUserId,
       input.resolver,
     );
+  }
 
-    let conversation!: Conversation;
-    let message!: ConversationMessage;
-    await this.conversationRepository.manager.transaction(async (manager) => {
-      const conversationInTransaction =
-        await this.ensureConversationForSourceWithManager(input.source, manager);
-      await this.addParticipantsWithManager(manager, {
-        conversationId: conversationInTransaction.id,
-        joinedReason: "reply",
-        userIds: [input.authorUserId],
-      });
-      await this.addParticipantsWithManager(manager, {
-        conversationId: conversationInTransaction.id,
-        joinedReason: "mention",
-        userIds: mentionUserIds,
-      });
-
-      message = await manager.save(
-        ConversationMessage,
-        this.messageRepository.create({
-          attachments: input.message.attachments ?? null,
-          authorUserId: input.authorUserId,
-          body: input.message.body,
-          conversationId: conversationInTransaction.id,
-          kind: "message",
-          metadata: input.message.metadata ?? null,
-        }),
-      );
-
-      conversationInTransaction.lastMessageAt = message.createdAt;
-      conversationInTransaction.status =
-        input.source.status ?? conversationInTransaction.status;
-      conversation = await manager.save(Conversation, conversationInTransaction);
-    });
-    message.authorUser =
+  async publishMessageAfterCommit(input: {
+    authorUserId: string;
+    conversation: Conversation;
+    mentionUserIds: string[];
+    message: ConversationMessage;
+    resolver: ConversationAccessResolver;
+    source: ConversationSource;
+  }) {
+    input.message.authorUser =
       (await this.userRepository.findOne({ where: { id: input.authorUserId } })) ??
       null;
-
-    const participantIds = await this.findParticipantUserIds(conversation.id);
+    const participantIds = await this.findParticipantUserIds(input.conversation.id);
     const recipientIds = excludeUserIds(
       participantIds.filter((id) => id !== input.authorUserId),
-      mentionUserIds,
+      input.mentionUserIds,
     );
     await this.runNonCriticalSideEffect(
       "notify conversation participants",
       async () =>
-        this.notifyUsers(recipientIds, conversation, input.source, message, {
-          body: message.body,
-          title: `会话新消息：${conversation.subject}`,
+        this.notifyUsers(recipientIds, input.conversation, input.source, input.message, {
+          body: input.message.body,
+          title: `会话新消息：${input.conversation.subject}`,
         }, input.resolver),
     );
     await this.runNonCriticalSideEffect(
       "notify conversation mentions",
       async () =>
         this.notifyMentions(
-          mentionUserIds,
-          conversation,
+          input.mentionUserIds,
+          input.conversation,
           input.source,
-          message,
+          input.message,
           input.resolver,
         ),
     );
     await this.runNonCriticalSideEffect(
       "publish conversation message",
       async () => {
-        this.publishMessage(
-          [input.authorUserId, ...recipientIds, ...mentionUserIds],
-          conversation,
-          message,
+        await this.publishMessage(
+          [input.authorUserId, ...recipientIds, ...input.mentionUserIds],
+          input.conversation,
+          input.message,
         );
       },
     );
-
-    return toConversationMessageDto(message, conversation);
   }
-
   async addParticipants(input: {
     conversationId: string;
     joinedReason: ConversationParticipantJoinedReason;
@@ -313,7 +358,7 @@ export class ConversationCapabilityService {
     await this.runNonCriticalSideEffect(
       "publish conversation source update",
       async () => {
-        this.realtimeService.publishToUsers(recipients, {
+        await this.realtimeEventBus.publishToUsers(recipients, {
           type: "conversation.source.updated",
           payload: {
             conversation: toConversationDto(conversation),
@@ -499,12 +544,12 @@ export class ConversationCapabilityService {
     });
   }
 
-  private publishMessage(
+  private async publishMessage(
     userIds: string[],
     conversation: Conversation,
     message: ConversationMessage,
   ) {
-    this.realtimeService.publishToUsers(userIds, {
+    await this.realtimeEventBus.publishToUsers(userIds, {
       type: "conversation.message.created",
       payload: {
         conversation: toConversationDto(conversation),

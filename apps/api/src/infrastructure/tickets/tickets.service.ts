@@ -127,32 +127,14 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.requireOrganizationMember(session.userId, organizationId);
     await this.requireOrganizationTicketingEnabled(session.userId, organizationId);
     const input = parseTicketPayload(payload);
-    const now = new Date();
-    const ticket = await this.ticketRepository.save(
-      this.ticketRepository.create({
-        lastMessageAt: now,
-        organizationId,
-        participantUserIds: [session.userId],
-        requesterUserId: session.userId,
-        scope: "organization",
-        status: "open",
-        subject: input.subject,
-      }),
-    );
-    const conversation = await this.ensureTicketConversation(ticket, "creator");
-    const message = await this.conversationsService.sendMessage({
-      authorUserId: session.userId,
-      message: {
-        attachments: input.attachments,
-        body: input.body,
-      },
-      resolver: this.ticketConversationAccessResolver,
-      source: this.toConversationSource(ticket),
+    return this.createTicketWithFirstMessage({
+      attachments: input.attachments,
+      body: input.body,
+      organizationId,
+      requesterUserId: session.userId,
+      scope: "organization",
+      subject: input.subject,
     });
-    ticket.lastMessageAt = new Date(String(message.createdAt));
-    ticket.conversationId = conversation.id;
-    await this.ticketRepository.save(ticket);
-    return { ...toTicketDto(ticket), firstMessage: toTicketMessageDto(message) };
   }
 
   async listPlatformTickets(authorization: string | undefined, status?: string) {
@@ -200,31 +182,14 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     const session = await this.requireSession(authorization);
     await this.ensureCanSubmitPlatformTicket(session.userId);
     const input = parseTicketPayload(payload);
-    const now = new Date();
-    const ticket = await this.ticketRepository.save(
-      this.ticketRepository.create({
-        lastMessageAt: now,
-        participantUserIds: [session.userId],
-        requesterUserId: session.userId,
-        scope: "platform",
-        status: "open",
-        subject: input.subject,
-      }),
-    );
-    const conversation = await this.ensureTicketConversation(ticket, "creator");
-    const message = await this.conversationsService.sendMessage({
-      authorUserId: session.userId,
-      message: {
-        attachments: input.attachments,
-        body: input.body,
-      },
-      resolver: this.ticketConversationAccessResolver,
-      source: this.toConversationSource(ticket),
+    return this.createTicketWithFirstMessage({
+      attachments: input.attachments,
+      body: input.body,
+      organizationId: null,
+      requesterUserId: session.userId,
+      scope: "platform",
+      subject: input.subject,
     });
-    ticket.lastMessageAt = new Date(String(message.createdAt));
-    ticket.conversationId = conversation.id;
-    await this.ticketRepository.save(ticket);
-    return { ...toTicketDto(ticket), firstMessage: toTicketMessageDto(message) };
   }
 
   async getTicket(authorization: string | undefined, ticketId: string) {
@@ -388,6 +353,67 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     });
     if (!ticket) throw new NotFoundException("工单不存在");
     return ticket;
+  }
+
+  private async createTicketWithFirstMessage(input: {
+    attachments: ConversationMessageAttachment[] | null;
+    body: string;
+    organizationId: string | null;
+    requesterUserId: string;
+    scope: "organization" | "platform";
+    subject: string;
+  }) {
+    let ticket!: Ticket;
+    let mentionUserIds: string[] = [];
+    let conversation!: Awaited<ReturnType<ConversationCapabilityService["createMessageInTransaction"]>>["conversation"];
+    let message!: Awaited<ReturnType<ConversationCapabilityService["createMessageInTransaction"]>>["message"];
+    await this.ticketRepository.manager.transaction(async (manager) => {
+      ticket = await manager.save(
+        Ticket,
+        this.ticketRepository.create({
+          lastMessageAt: null,
+          organizationId: input.organizationId,
+          participantUserIds: [input.requesterUserId],
+          requesterUserId: input.requesterUserId,
+          scope: input.scope,
+          status: "open",
+          subject: input.subject,
+        }),
+      );
+      const source = this.toConversationSource(ticket);
+      mentionUserIds =
+        await this.conversationsService.resolveMentionedUserIdsForSource({
+          authorUserId: input.requesterUserId,
+          body: input.body,
+          resolver: this.ticketConversationAccessResolver,
+          source,
+        });
+      ({ conversation, message } = await this.conversationsService.createMessageInTransaction(
+        manager,
+        {
+          authorUserId: input.requesterUserId,
+          joinedReason: "creator",
+          mentionUserIds,
+          message: { attachments: input.attachments, body: input.body },
+          source,
+        },
+      ));
+      ticket.conversationId = conversation.id;
+      ticket.lastMessageAt = message.createdAt;
+      ticket = await manager.save(Ticket, ticket);
+    });
+    await this.conversationsService.publishMessageAfterCommit({
+      authorUserId: input.requesterUserId,
+      conversation,
+      mentionUserIds,
+      message,
+      resolver: this.ticketConversationAccessResolver,
+      source: this.toConversationSource(ticket),
+    });
+    return {
+      ...toTicketDto(ticket),
+      firstMessage: toTicketMessageDto(toConversationMessageDto(message, conversation)),
+    };
   }
 
   private async ensureTicketConversation(

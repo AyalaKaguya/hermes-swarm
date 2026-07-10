@@ -61,21 +61,22 @@ export class GroupsService {
     createdByUserId: string,
     payload: OrganizationGroupPayload,
   ) {
+    const input = requirePayloadObject(payload);
     await this.ensureOrganization(organizationId);
     const displayName = requireText(
-      payload.displayName ?? payload.name,
+      input.displayName ?? input.name,
       "用户组名称",
     );
-    const name = normalizeSlug(payload.name ?? displayName, "group");
+    const name = normalizeSlug(input.name ?? displayName, "group");
     await this.assertUniqueGroupName(organizationId, name);
 
     let group: OrganizationGroup;
     try {
       group = await this.groupRepository.save(
         this.groupRepository.create({
-          color: normalizeNullableText(payload.color),
+          color: normalizeNullableText(input.color),
           createdByUserId,
-          description: normalizeNullableText(payload.description),
+          description: normalizeNullableText(input.description),
           displayName,
           name,
           organizationId,
@@ -95,23 +96,24 @@ export class GroupsService {
     groupId: string,
     payload: Partial<OrganizationGroupPayload>,
   ) {
+    const input = requirePayloadObject(payload);
     const group = await this.getGroupOrThrow(organizationId, groupId);
 
-    if (payload.displayName !== undefined) {
-      group.displayName = requireText(payload.displayName, "用户组名称");
+    if (input.displayName !== undefined) {
+      group.displayName = requireText(input.displayName, "用户组名称");
     }
-    if (payload.name !== undefined) {
-      const name = normalizeSlug(payload.name, "group");
+    if (input.name !== undefined) {
+      const name = normalizeSlug(input.name, "group");
       if (name !== group.name) {
         await this.assertUniqueGroupName(organizationId, name, group.id);
       }
       group.name = name;
     }
-    if (payload.color !== undefined) {
-      group.color = normalizeNullableText(payload.color);
+    if (input.color !== undefined) {
+      group.color = normalizeNullableText(input.color);
     }
-    if (payload.description !== undefined) {
-      group.description = normalizeNullableText(payload.description);
+    if (input.description !== undefined) {
+      group.description = normalizeNullableText(input.description);
     }
 
     let saved: OrganizationGroup;
@@ -159,8 +161,9 @@ export class GroupsService {
     groupId: string,
     payload: ReplaceOrganizationGroupMembersPayload,
   ) {
+    const input = requirePayloadObject(payload);
     const group = await this.getGroupOrThrow(organizationId, groupId);
-    const membershipIds = normalizeUuidList(payload.membershipIds, "成员");
+    const membershipIds = normalizeUuidList(input.membershipIds, "成员");
 
     const memberships =
       membershipIds.length === 0
@@ -238,18 +241,34 @@ export class GroupsService {
   }
 }
 
+function requirePayloadObject<T extends object>(value: T) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
+  }
+  return value;
+}
+
 function requireText(value: string | undefined | null, label: string) {
+  if (value !== undefined && value !== null && typeof value !== "string") {
+    throw new BadRequestException(`${label}格式不正确`);
+  }
   const text = value?.trim();
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }
 
 function normalizeNullableText(value: string | null | undefined) {
+  if (value !== undefined && value !== null && typeof value !== "string") {
+    throw new BadRequestException("文本格式不正确");
+  }
   const text = value?.trim();
   return text || null;
 }
 
 function normalizeSlug(value: string | undefined, fallbackPrefix: string) {
+  if (value !== undefined && typeof value !== "string") {
+    throw new BadRequestException("用户组标识格式不正确");
+  }
   const slug = value
     ?.trim()
     .toLowerCase()
@@ -263,7 +282,13 @@ function normalizeUuidList(value: unknown, label: string) {
   if (!Array.isArray(value)) {
     throw new BadRequestException(`${label}列表格式无效`);
   }
-  return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
+  const normalized = value.map((item) => {
+    if (typeof item !== "string") {
+      throw new BadRequestException(`${label}列表格式无效`);
+    }
+    return item.trim();
+  });
+  return [...new Set(normalized.filter(Boolean))];
 }
 
 function isUniqueConstraintError(error: unknown) {

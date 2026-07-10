@@ -384,6 +384,7 @@ describe("IntegrationTokensService", () => {
     const authSessionService = new AuthSessionService(
       tokenRepository as any,
       { findOne: async () => ({ id: "user-1", status: "active" }) } as any,
+      { findOne: async () => ({ id: "org-1", status: "active" }) } as any,
       { getOrThrow: () => "test-secret" } as any,
       { getClient: async () => null } as any,
     );
@@ -425,6 +426,7 @@ describe("IntegrationTokensService", () => {
       {
         findOne: async () => ({ id: "user-1", status: "disabled" }),
       } as any,
+      { findOne: async () => null } as any,
       { getOrThrow: () => "test-secret" } as any,
       { getClient: async () => null } as any,
     );
