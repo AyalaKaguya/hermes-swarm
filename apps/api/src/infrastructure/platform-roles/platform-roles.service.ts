@@ -5,58 +5,50 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
-  IntegrationToken,
   Permission,
-  PlatformMember,
-  Role,
-  RolePermission,
+  PlatformRole,
+  PlatformRolePermission,
+  PlatformUserRole,
 } from "@hermes-swarm/core";
-import { In, IsNull, Repository, type EntityManager } from "typeorm";
+import { Repository } from "typeorm";
+import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import type { ReplaceRolePermissionsPayload } from "../../common/admin-api.types.js";
 import type { PlatformRolePayload } from "./platform-roles.controller.js";
 
 @Injectable()
 export class PlatformRolesService {
   constructor(
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
-    @InjectRepository(RolePermission)
-    private readonly rolePermissionRepository: Repository<RolePermission>,
-    @InjectRepository(Permission)
+    @InjectRepository(PlatformRole, PLATFORM_DATA_SOURCE)
+    private readonly roleRepository: Repository<PlatformRole>,
+    @InjectRepository(PlatformRolePermission, PLATFORM_DATA_SOURCE)
+    private readonly rolePermissionRepository: Repository<PlatformRolePermission>,
+    @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
     private readonly permissionRepository: Repository<Permission>,
   ) {}
 
   async list() {
     const roles = await this.roleRepository.find({
       order: { createdAt: "ASC" },
-      relations: { rolePermissions: true },
-      where: { organizationId: IsNull(), scope: "platform" },
+      relations: { rolePermissions: { permission: true } },
     });
     return roles.map(toRoleDto);
   }
 
   async create(payload: PlatformRolePayload) {
-    const input = requirePlatformRolePayload(payload);
-    const displayName = requireText(
-      input.displayName ?? input.name,
-      "角色名称",
-    );
-    const name = normalizeSlug(input.name ?? displayName, "platform-role");
+    const input = requirePayload(payload);
+    const label = requireText(input.displayName ?? input.name, "角色名称");
+    const name = normalizeSlug(input.name ?? label, "platform-role");
     await this.assertUniqueRoleName(name);
-
-    let role: Role;
     try {
-      role = await this.roleRepository.save(
-        this.roleRepository.create({
-          color: normalizeNullableText(input.color),
-          description: normalizeNullableText(input.description),
-          displayName,
-          isSystem: false,
-          label: displayName,
-          name,
-          organizationId: null,
-          scope: "platform",
-        }),
+      return toRoleDto(
+        await this.roleRepository.save(
+          this.roleRepository.create({
+            description: normalizeNullableText(input.description),
+            isSystem: false,
+            label,
+            name,
+          }),
+        ),
       );
     } catch (error) {
       if (isUniqueConstraintError(error)) {
@@ -64,36 +56,24 @@ export class PlatformRolesService {
       }
       throw error;
     }
-    return toRoleDto(role);
   }
 
   async update(roleId: string, payload: Partial<PlatformRolePayload>) {
-    const input = requirePlatformRolePayload(payload);
+    const input = requirePayload(payload);
     const role = await this.getRoleOrThrow(roleId);
     this.assertMutableRole(role);
     if (input.displayName !== undefined) {
-      role.displayName = requireText(input.displayName, "角色名称");
-      role.label = role.displayName;
+      role.label = requireText(input.displayName, "角色名称");
     }
     if (input.name !== undefined) {
       const name = normalizeSlug(input.name, "platform-role");
       if (name !== role.name) await this.assertUniqueRoleName(name, role.id);
       role.name = name;
     }
-    if (input.color !== undefined) {
-      role.color = normalizeNullableText(input.color);
-    }
     if (input.description !== undefined) {
       role.description = normalizeNullableText(input.description);
     }
-    try {
-      return toRoleDto(await this.roleRepository.save(role));
-    } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        throw new BadRequestException("角色标识已被使用");
-      }
-      throw error;
-    }
+    return toRoleDto(await this.roleRepository.save(role));
   }
 
   async replacePermissions(
@@ -102,181 +82,97 @@ export class PlatformRolesService {
   ) {
     const role = await this.getRoleOrThrow(roleId);
     this.assertMutableRole(role);
-    const permissions = requireReplaceRolePermissionsPayload(payload);
-
-    const nextPermissions = await Promise.all(
-      permissions
-        .filter((item) => item.enabled !== false)
-        .map((item) => this.getPermissionOrThrow(item.permission)),
+    const permissionKeys = requirePermissionKeys(payload);
+    const permissions = await Promise.all(
+      permissionKeys.map((key) => this.getPermissionOrThrow(key)),
     );
-
-    let saved: RolePermission[] = [];
-    await this.rolePermissionRepository.manager.transaction(async (manager) => {
-      await revokePlatformIntegrationTokensForRole(manager, role.id);
-      await manager.delete(RolePermission, { roleId: role.id });
-      const nextRows = nextPermissions.map(({ key, permission }) =>
+    return this.rolePermissionRepository.manager.transaction(async (manager) => {
+      await manager.delete(PlatformRolePermission, {
+        platformRoleId: role.id,
+      });
+      const rows = permissions.map((permission) =>
         this.rolePermissionRepository.create({
           enabled: true,
-          organizationId: null,
-          permission: key,
           permissionId: permission.id,
-          roleId: role.id,
+          platformRoleId: role.id,
         }),
       );
-      saved =
-        nextRows.length > 0
-          ? await manager.save(RolePermission, nextRows)
-          : [];
+      return rows.length ? manager.save(PlatformRolePermission, rows) : [];
     });
-    return saved;
   }
 
   async remove(roleId: string) {
     const role = await this.getRoleOrThrow(roleId);
-    this.assertDeletableRole(role);
+    this.assertMutableRole(role);
     await this.roleRepository.manager.transaction(async (manager) => {
-      await revokePlatformIntegrationTokensForRole(manager, role.id);
-      await manager.update(PlatformMember, { roleId: role.id }, { roleId: null });
-      await manager.delete(RolePermission, { roleId: role.id });
-      await manager.delete(Role, { id: role.id });
+      await manager.delete(PlatformUserRole, { platformRoleId: role.id });
+      await manager.delete(PlatformRolePermission, { platformRoleId: role.id });
+      await manager.delete(PlatformRole, { id: role.id });
     });
   }
 
   private async getRoleOrThrow(roleId: string) {
     const role = await this.roleRepository.findOne({
-      relations: { rolePermissions: true },
-      where: { id: roleId, organizationId: IsNull(), scope: "platform" },
+      relations: { rolePermissions: { permission: true } },
+      where: { id: roleId },
     });
     if (!role) throw new NotFoundException("平台角色不存在");
     return role;
   }
 
-  private assertMutableRole(role: Role) {
+  private assertMutableRole(role: PlatformRole) {
     if (role.isSystem || role.name === "platform-admin") {
-      throw new BadRequestException("系统平台角色不能修改");
-    }
-  }
-
-  private assertDeletableRole(role: Role) {
-    if (role.isSystem || role.name === "platform-admin") {
-      throw new BadRequestException("系统角色不能删除");
+      throw new BadRequestException("系统平台角色不能修改或删除");
     }
   }
 
   private async assertUniqueRoleName(name: string, exceptRoleId?: string) {
-    const existing = await this.roleRepository.findOne({
-      where: { name, organizationId: IsNull(), scope: "platform" },
-    });
+    const existing = await this.roleRepository.findOne({ where: { name } });
     if (existing && existing.id !== exceptRoleId) {
       throw new BadRequestException("角色标识已被使用");
     }
   }
 
-  private async getPermissionOrThrow(permissionKey: string | undefined) {
-    const key = requirePermissionCode(permissionKey);
+  private async getPermissionOrThrow(code: string) {
     const permission = await this.permissionRepository.findOne({
-      where: {
-        code: key,
-        scope: "platform",
-      },
+      where: { code, scope: "platform" },
     });
-    if (!permission) throw new BadRequestException("权限目录不存在");
-    return { key, permission };
+    if (!permission) throw new BadRequestException("平台权限目录不存在");
+    return permission;
   }
 }
 
-function requireText(value: unknown, label: string) {
-  if (typeof value !== "string") {
-    throw new BadRequestException(`${label}格式不正确`);
+function requirePayload(value: object | null | undefined) {
+  if (!value || Array.isArray(value)) {
+    throw new BadRequestException("请求内容无效");
   }
-  const text = value.trim();
+  return value as Partial<PlatformRolePayload>;
+}
+
+function requireText(value: unknown, label: string) {
+  const text = typeof value === "string" ? value.trim() : "";
   if (!text) throw new BadRequestException(`${label}不能为空`);
   return text;
 }
 
-function requirePlatformRolePayload(
-  value: PlatformRolePayload | Partial<PlatformRolePayload>,
-) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new BadRequestException("请求内容无效");
-  }
-  return value;
-}
-
 function normalizeNullableText(value: unknown) {
   if (value === null || value === undefined) return null;
-  if (typeof value !== "string") {
-    throw new BadRequestException("文本格式不正确");
-  }
-  const text = value.trim();
-  return text || null;
+  if (typeof value !== "string") throw new BadRequestException("文本格式不正确");
+  return value.trim() || null;
 }
 
-function normalizeSlug(value: unknown, fallbackPrefix: string) {
-  if (value !== undefined && typeof value !== "string") {
-    throw new BadRequestException("标识格式不正确");
-  }
-  const slug = value
-    ?.trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || `${fallbackPrefix}-${Date.now().toString(36)}`;
+function normalizeSlug(value: unknown, prefix: string) {
+  const slug = typeof value === "string"
+    ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+    : "";
+  return slug || `${prefix}-${Date.now().toString(36)}`;
 }
 
-function requirePermissionCode(permission: string | undefined) {
-  const value = requireText(permission, "权限");
-  return value;
-}
-
-function requireReplaceRolePermissionsPayload(
-  value: ReplaceRolePermissionsPayload,
-) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new BadRequestException("请求内容无效");
-  }
-  if (value.permissions === undefined || value.permissions === null) {
-    return [];
-  }
-  if (!Array.isArray(value.permissions)) {
-    throw new BadRequestException("权限列表格式不正确");
-  }
-
-  return value.permissions.map((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new BadRequestException("权限项格式不正确");
-    }
-    if (item.enabled !== undefined && typeof item.enabled !== "boolean") {
-      throw new BadRequestException("权限启用状态格式不正确");
-    }
-    if (item.enabled !== false) {
-      requirePermissionCode(item.permission);
-    }
-    return item;
-  });
-}
-
-async function revokePlatformIntegrationTokensForRole(
-  manager: EntityManager,
-  roleId: string,
-) {
-  const members = await manager.find(PlatformMember, {
-    select: { userId: true },
-    where: { roleId },
-  });
-  const userIds = [...new Set(members.map((member) => member.userId))];
-  if (userIds.length === 0) return;
-
-  await manager.update(
-    IntegrationToken,
-    {
-      organizationId: IsNull(),
-      ownerUserId: In(userIds),
-      revokedAt: IsNull(),
-      scope: "platform",
-    },
-    { revokedAt: new Date() },
-  );
+function requirePermissionKeys(payload: ReplaceRolePermissionsPayload) {
+  if (!payload || !Array.isArray(payload.permissions)) return [];
+  return payload.permissions
+    .filter((item) => item?.enabled !== false)
+    .map((item) => requireText(item.permission, "权限"));
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -284,23 +180,21 @@ function isUniqueConstraintError(error: unknown) {
   return typed.code === "23505" || typed.driverError?.code === "23505";
 }
 
-function toRoleDto(role: Role) {
+function toRoleDto(role: PlatformRole) {
   return {
-    color: role.color,
     description: role.description,
-    displayName: role.displayName ?? role.label,
+    displayName: role.label,
     id: role.id,
     isSystem: role.isSystem,
     label: role.label,
     name: role.name,
-    organizationId: role.organizationId,
-    permissions: role.rolePermissions?.map((permission) => ({
-      enabled: permission.enabled,
-      id: permission.id,
-        permission: permission.permission,
-        permissionId: permission.permissionId,
-        roleId: permission.roleId,
+    permissions: role.rolePermissions?.map((item) => ({
+      enabled: item.enabled,
+      id: item.id,
+      permission: item.permission?.code,
+      permissionId: item.permissionId,
+      roleId: item.platformRoleId,
     })) ?? [],
-    scope: role.scope,
+    scope: "platform" as const,
   };
 }

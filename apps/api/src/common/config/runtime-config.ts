@@ -13,20 +13,24 @@ export const databaseRuntimeConfig = registerAs("database", () => {
   const user = process.env.POSTGRES_USER ?? "hermes";
   const password = process.env.POSTGRES_PASSWORD ?? "hermes_dev_pwd";
   const database = process.env.POSTGRES_DB ?? "hermes_dev";
+  const fallbackUrl =
+    process.env.POSTGRES_URL ??
+    `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+  const testUrl = environment === "test" ? process.env.POSTGRES_TEST_URL : undefined;
+  const tenantUrl = testUrl ?? process.env.POSTGRES_TENANT_URL ?? fallbackUrl;
+  const platformUrl = testUrl ?? process.env.POSTGRES_PLATFORM_URL ?? fallbackUrl;
   return {
     database,
     host,
     migrationsRun: parseBoolean(process.env.DATABASE_MIGRATIONS_RUN, false),
     password,
     port,
-    synchronize: parseBoolean(
-      process.env.DATABASE_SYNCHRONIZE,
-      environment !== "production",
-    ),
-    url:
-      (environment === "test" ? process.env.POSTGRES_TEST_URL : undefined) ??
-      process.env.POSTGRES_URL ??
-      `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`,
+    synchronize: parseBoolean(process.env.DATABASE_SYNCHRONIZE, false),
+    strictRls: environment !== "test",
+    platformUrl,
+    tenantUrl,
+    // Backwards-compatible alias used by the migration datasource.
+    url: tenantUrl,
     user,
   };
 });
@@ -88,6 +92,8 @@ export function validateRuntimeConfig(
   const environment = String(config.NODE_ENV ?? "development");
   validatePort("API_PORT", config.API_PORT, { fallback: 3200 });
   validateUrl("POSTGRES_URL", config.POSTGRES_URL, "postgresql:");
+  validateUrl("POSTGRES_TENANT_URL", config.POSTGRES_TENANT_URL, "postgresql:");
+  validateUrl("POSTGRES_PLATFORM_URL", config.POSTGRES_PLATFORM_URL, "postgresql:");
   validateText("POSTGRES_HOST", config.POSTGRES_HOST, "localhost");
   validatePort("POSTGRES_PORT", config.POSTGRES_PORT, { fallback: 5432 });
   validateText("POSTGRES_USER", config.POSTGRES_USER, "hermes");
@@ -96,6 +102,14 @@ export function validateRuntimeConfig(
   validateUrl("POSTGRES_TEST_URL", config.POSTGRES_TEST_URL, "postgresql:");
   validateBoolean("DATABASE_SYNCHRONIZE", config.DATABASE_SYNCHRONIZE);
   validateBoolean("DATABASE_MIGRATIONS_RUN", config.DATABASE_MIGRATIONS_RUN);
+  validateBoolean("DATABASE_STRICT_RLS", config.DATABASE_STRICT_RLS);
+  if (
+    environment !== "test" &&
+    config.DATABASE_STRICT_RLS !== undefined &&
+    !parseBoolean(String(config.DATABASE_STRICT_RLS), true)
+  ) {
+    throw new Error("DATABASE_STRICT_RLS must remain enabled outside tests");
+  }
   if (
     environment === "production" &&
     parseBoolean(String(config.DATABASE_SYNCHRONIZE ?? "false"), false)
@@ -112,6 +126,30 @@ export function validateRuntimeConfig(
   }
   if (environment === "test" && !config.POSTGRES_TEST_URL) {
     throw new Error("POSTGRES_TEST_URL is required when NODE_ENV=test");
+  }
+  if (environment !== "test") {
+    if (!config.POSTGRES_TENANT_URL || !config.POSTGRES_PLATFORM_URL) {
+      throw new Error(
+        "POSTGRES_TENANT_URL and POSTGRES_PLATFORM_URL are required outside tests",
+      );
+    }
+    if (String(config.POSTGRES_TENANT_URL) === String(config.POSTGRES_PLATFORM_URL)) {
+      throw new Error(
+        "POSTGRES_TENANT_URL and POSTGRES_PLATFORM_URL must use separate database credentials",
+      );
+    }
+    const tenantUser = databaseUrlUsername(config.POSTGRES_TENANT_URL);
+    const platformUser = databaseUrlUsername(config.POSTGRES_PLATFORM_URL);
+    if (tenantUser !== "hermes_tenant_app") {
+      throw new Error(
+        "POSTGRES_TENANT_URL must authenticate as hermes_tenant_app",
+      );
+    }
+    if (!platformUser || platformUser === tenantUser) {
+      throw new Error(
+        "POSTGRES_PLATFORM_URL must use a database user distinct from hermes_tenant_app",
+      );
+    }
   }
   validateUrl("REDIS_URL", config.REDIS_URL, "redis:");
   validateText("REDIS_HOST", config.REDIS_HOST, "localhost");
@@ -252,5 +290,14 @@ function validateUrl(name: string, value: unknown, protocol: string) {
   }
   if (url.protocol !== protocol) {
     throw new Error(`${name} must use ${protocol}//`);
+  }
+}
+
+function databaseUrlUsername(value: unknown) {
+  if (typeof value !== "string" || !value) return "";
+  try {
+    return decodeURIComponent(new URL(value).username);
+  } catch {
+    return "";
   }
 }

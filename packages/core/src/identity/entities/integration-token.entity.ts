@@ -1,13 +1,20 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
+import { Check, Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
 import type { Organization } from "./organization.entity.js";
-import { BaseEntity } from "./base.entity.js";
+import type { Department } from "./department.entity.js";
+import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
-export type IntegrationTokenScope = "organization" | "own" | "platform";
+export type IntegrationTokenScope = "tenant" | "organization" | "department";
 
 @Entity({ name: "integration_tokens" })
 @Index("IDX_integration_tokens_owner", ["ownerUserId"])
 @Index("IDX_integration_tokens_hash", ["tokenHash"], { unique: true })
-export class IntegrationToken extends BaseEntity {
+@Check(
+  "CHK_integration_tokens_scope_columns",
+  "(scope = 'tenant' AND organization_id IS NULL AND department_id IS NULL) OR " +
+    "(scope = 'organization' AND organization_id IS NOT NULL AND department_id IS NULL) OR " +
+    "(scope = 'department' AND organization_id IS NOT NULL AND department_id IS NOT NULL)",
+)
+export class IntegrationToken extends TenantOwnedBaseEntity {
   @Column({ name: "owner_user_id", type: "uuid" })
   ownerUserId!: string;
 
@@ -20,6 +27,14 @@ export class IntegrationToken extends BaseEntity {
   @ManyToOne("Organization", { nullable: true, onDelete: "RESTRICT" })
   @JoinColumn({ name: "organization_id" })
   organization!: Organization | null;
+
+  @Column({ name: "department_id", type: "uuid", nullable: true })
+  @Index()
+  departmentId!: string | null;
+
+  @ManyToOne("Department", { nullable: true, onDelete: "RESTRICT" })
+  @JoinColumn({ name: "department_id" })
+  department!: Department | null;
 
   @Column({ type: "varchar", length: 160, nullable: true })
   note!: string | null;

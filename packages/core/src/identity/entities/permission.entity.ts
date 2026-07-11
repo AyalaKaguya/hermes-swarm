@@ -3,7 +3,12 @@ import type { RolePermission } from "./role-permission.entity.js";
 import { BaseEntity } from "./base.entity.js";
 
 export type PermissionAction = string;
-export type PermissionScope = "platform" | "organization" | "own";
+export type PermissionScope =
+  | "platform"
+  | "tenant"
+  | "organization"
+  | "department"
+  | "own";
 export type PermissionCatalogSource = "controller" | "manual" | "navigation";
 
 @Entity({ name: "permissions" })

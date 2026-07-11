@@ -21,8 +21,11 @@ import {
   OrganizationSetting,
   PasswordReset,
   Permission,
-  PlatformMember,
+  PlatformRole,
+  PlatformRolePermission,
   PlatformSetting,
+  PlatformUser,
+  PlatformUserRole,
   Role,
   RolePermission,
   User,
@@ -45,6 +48,7 @@ import { UsersController } from "../infrastructure/users/users.controller.js";
 import { UsersService } from "../infrastructure/users/users.service.js";
 import { AuthSessionService } from "../infrastructure/auth/auth-session.service.js";
 import { MailService } from "../infrastructure/mail/mail.service.js";
+import { PLATFORM_DATA_SOURCE } from "../common/database/database.constants.js";
 
 type Persona = "ordinary" | "orgScoped" | "platformAdmin";
 
@@ -66,12 +70,13 @@ const ids = {
   orgScopedUser: "00000000-0000-4000-8000-000000000102",
   platformRole: "00000000-0000-4000-8000-000000000301",
   platformUser: "00000000-0000-4000-8000-000000000101",
+  tenant: "00000000-0000-4000-8000-000000000001",
 };
 
 const tokenByPersona: Record<Persona, string> = {
   ordinary: token(ids.ordinaryUser),
   orgScoped: token(ids.orgScopedUser),
-  platformAdmin: token(ids.platformUser),
+  platformAdmin: token(ids.platformUser, "platform"),
 };
 
 @Injectable()
@@ -80,7 +85,10 @@ class E2EAuthSessionService {
     const payload = parseAuthSessionToken(value);
     if (!payload) throw new Error("Invalid auth token");
     return {
+      principalType: payload.principalType,
       sessionId: payload.sessionId,
+      tenantId: payload.tenantId,
+      tokenKind: "session" as const,
       userId: payload.userId,
     };
   }
@@ -117,8 +125,11 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
             OrganizationSetting,
             PasswordReset,
             Permission,
-            PlatformMember,
+            PlatformRole,
+            PlatformRolePermission,
             PlatformSetting,
+            PlatformUser,
+            PlatformUserRole,
             Role,
             RolePermission,
             User,
@@ -129,12 +140,28 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
           retryAttempts: 0,
           synchronize: true,
         }),
+        TypeOrmModule.forRoot({
+          name: PLATFORM_DATA_SOURCE,
+          type: "postgres",
+          url: e2eDatabaseUrl,
+          entities: [
+            Permission,
+            PlatformRole,
+            PlatformRolePermission,
+            PlatformUser,
+            PlatformUserRole,
+            Role,
+            RolePermission,
+          ],
+          cache: false,
+          retryAttempts: 0,
+          synchronize: false,
+        }),
         TypeOrmModule.forFeature([
           IntegrationToken,
           Organization,
           OrganizationSetting,
           Permission,
-          PlatformMember,
           PlatformSetting,
           Role,
           RolePermission,
@@ -143,6 +170,10 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
           OrganizationGroup,
           OrganizationGroupMember,
         ]),
+        TypeOrmModule.forFeature(
+          [PlatformRole, PlatformRolePermission, PlatformUser, PlatformUserRole],
+          PLATFORM_DATA_SOURCE,
+        ),
         RbacModule.register({
           authSessionService: E2EAuthSessionService,
           imports: [E2EAuthSessionModule],
@@ -500,18 +531,21 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
       .set(auth(tokenByPersona.platformAdmin))
       .send({
         displayName: "Elevated Ordinary User",
+        email: "new-platform-user@hermes.local",
+        password: "platform-password",
         roleId: ids.platformRole,
-        userId: ids.ordinaryUser,
       })
       .expect(201)
       .expect(({ body }) => {
         assert.equal(body.displayName, "Elevated Ordinary User");
         assert.equal(body.roleId, ids.platformRole);
-        assert.equal(body.userId, ids.ordinaryUser);
+        assert.equal(body.email, "new-platform-user@hermes.local");
       });
 
     assert.equal(
-      await platformMemberRepository().count({ where: { userId: ids.ordinaryUser } }),
+      await platformUserRepository().count({
+        where: { email: "new-platform-user@hermes.local" },
+      }),
       1,
     );
   });
@@ -528,8 +562,8 @@ describe("API RBAC e2e with database", { concurrency: false }, () => {
     return dataSource.getRepository(OrganizationSetting);
   }
 
-  function platformMemberRepository() {
-    return dataSource.getRepository(PlatformMember);
+  function platformUserRepository() {
+    return dataSource.getRepository(PlatformUser);
   }
 
   function platformSettingRepository() {
@@ -554,13 +588,16 @@ async function seedDatabase(dataSource: DataSource) {
   const organizations = dataSource.getRepository(Organization);
   const roles = dataSource.getRepository(Role);
   const memberships = dataSource.getRepository(UserOrganization);
-  const platformMembers = dataSource.getRepository(PlatformMember);
+  const platformUsers = dataSource.getRepository(PlatformUser);
+  const platformRoles = dataSource.getRepository(PlatformRole);
+  const platformUserRoles = dataSource.getRepository(PlatformUserRole);
+  const platformRolePermissions = dataSource.getRepository(PlatformRolePermission);
+  const permissionRepository = dataSource.getRepository(Permission);
   const rolePermissions = dataSource.getRepository(RolePermission);
   const platformSettings = dataSource.getRepository(PlatformSetting);
   const groups = dataSource.getRepository(OrganizationGroup);
 
   await users.save([
-    user(users, ids.platformUser, "admin@hermes.local", "Platform Admin"),
     user(users, ids.orgScopedUser, "member@hermes.local", "Org Scoped User"),
     user(users, ids.ordinaryUser, "ordinary@hermes.local", "Ordinary User"),
     user(users, ids.acmeUser, "member@acme.local", "Acme Member"),
@@ -572,7 +609,6 @@ async function seedDatabase(dataSource: DataSource) {
   ]);
 
   await roles.save([
-    role(roles, ids.platformRole, "platform-admin", "Platform Admin", "platform", null),
     role(roles, ids.orgScopedRole, "member", "Member", "organization", ids.hermesOrg),
     role(roles, ids.ordinaryRole, "viewer", "Viewer", "organization", ids.hermesOrg),
     role(roles, ids.acmeRole, "member", "Member", "organization", ids.acmeOrg),
@@ -589,13 +625,60 @@ async function seedDatabase(dataSource: DataSource) {
     group(groups, ids.acmeGroup, ids.acmeOrg, "Acme Operators", "acme-operators"),
   ]);
 
-  await platformMembers.save(
-    platformMembers.create({
-      displayName: "Platform Admin",
-      roleId: ids.platformRole,
-      status: "active",
-      userId: ids.platformUser,
+  await platformRoles.save(
+    platformRoles.create({
+      description: "Platform administrator",
+      id: ids.platformRole,
+      isSystem: true,
+      label: "Platform Admin",
+      name: "platform-admin",
     }),
+  );
+  await platformUsers.save(
+    platformUsers.create({
+      displayName: "Platform Admin",
+      email: "admin@hermes.local",
+      id: ids.platformUser,
+      passwordHash: null,
+      preferredLanguage: "zh-CN",
+      status: "active",
+    }),
+  );
+  await platformUserRoles.save(
+    platformUserRoles.create({
+      platformRoleId: ids.platformRole,
+      platformUserId: ids.platformUser,
+    }),
+  );
+
+  const platformPermissionCodes = [
+    "organization.platform_organization.list:platform",
+    "organization.platform_organization.create:platform",
+    "setting.platform_config.save:platform",
+    "user.platform_member.create:platform",
+    "user.platform_member.list:platform",
+    "user.platform_user.search:platform",
+  ];
+  const platformPermissions = await permissionRepository.save(
+    platformPermissionCodes.map((code) =>
+      permissionRepository.create({
+        action: "access",
+        code,
+        defaultRoles: ["platform-admin"],
+        entity: code.split(".")[0] ?? "platform",
+        scope: "platform",
+        source: "manual",
+      }),
+    ),
+  );
+  await platformRolePermissions.save(
+    platformPermissions.map((permission) =>
+      platformRolePermissions.create({
+        enabled: true,
+        permissionId: permission.id,
+        platformRoleId: ids.platformRole,
+      }),
+    ),
   );
 
   await platformSettings.save(
@@ -608,16 +691,6 @@ async function seedDatabase(dataSource: DataSource) {
   );
 
   await rolePermissions.save([
-    ...permissions(rolePermissions, ids.platformRole, null, [
-      "organization.platform_organization.list:platform",
-      "organization.platform_organization.create:platform",
-      "organization.profile.view:organization",
-      "setting.platform_config.save:platform",
-      "user.platform_member.create:platform",
-      "user.platform_member.list:platform",
-      "user.platform_user.search:platform",
-      "user.self_profile.update_profile:own",
-    ]),
     ...permissions(rolePermissions, ids.orgScopedRole, ids.hermesOrg, [
       "group.organization_group.list:organization",
       "group.organization_group.replace_members:organization",
@@ -786,10 +859,12 @@ function auth(tokenValue: string) {
   return { Authorization: `Bearer ${tokenValue}` };
 }
 
-function token(userId: string) {
+function token(userId: string, principalType: "platform" | "tenant" = "tenant") {
   return createAuthSessionToken({
     jti: `jti-${userId}`,
+    principalType,
     sessionId: `session-${userId}`,
+    tenantId: principalType === "platform" ? null : ids.tenant,
     userId,
   });
 }

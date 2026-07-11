@@ -10,11 +10,15 @@ import { NotificationDestinationsService } from "./notification-destinations.ser
 import { NotificationsController } from "./notifications.controller.js";
 import { NotificationsService } from "./notifications.service.js";
 import { AuthModule } from "../auth/auth.module.js";
+import { DepartmentsModule } from "../departments/departments.module.js";
 import { RealtimeModule } from "../realtime/realtime.module.js";
+import { DatabaseModule } from "../../common/database/database.module.js";
 
 @Module({
   imports: [
     AuthModule,
+    DatabaseModule,
+    DepartmentsModule,
     RealtimeModule,
     TypeOrmModule.forFeature([
       NotificationDestination,

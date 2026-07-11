@@ -7,6 +7,7 @@ import { InviteService } from "./invite.service.js";
 const ORGANIZATION_ID = "org-1";
 const INVITER_ID = "user-inviter";
 const ROLE_ID = "role-member";
+const TENANT_ID = "tenant-1";
 
 describe("InviteService", () => {
   it("rejects malformed invite payloads with controlled errors", async () => {
@@ -407,6 +408,48 @@ function createInviteService(options: {
     name: "member",
     organizationId: ORGANIZATION_ID,
     scope: "organization",
+    tenantId: TENANT_ID,
+  };
+
+  for (const user of users) user.tenantId = TENANT_ID;
+
+  const transactionManager = {
+    async query() {},
+    async findOne(target: { name?: string }, { where }: any) {
+      if (target.name === "Invite") {
+        return invites.find((row) =>
+          Object.entries(where).every(([key, value]) => row[key] === value),
+        ) ?? null;
+      }
+      if (target.name === "User") {
+        return users.find((row) =>
+          Object.entries(where).every(([key, value]) => row[key] === value),
+        ) ?? null;
+      }
+      if (target.name === "UserOrganization") {
+        return memberships.find((row) =>
+          Object.entries(where).every(([key, value]) => row[key] === value),
+        ) ?? null;
+      }
+      return null;
+    },
+    async save(target: { name?: string }, value: any) {
+      if (target.name === "User") {
+        users.push(value);
+        return value;
+      }
+      if (target.name === "UserOrganization") {
+        memberships.push(value);
+        return value;
+      }
+      if (target.name === "Invite") {
+        if (options.failTransactionalInviteSave) throw new Error("invite save failed");
+        const index = invites.findIndex((invite) => invite.id === value.id);
+        if (index >= 0) invites[index] = value;
+        else invites.push(value);
+      }
+      return value;
+    },
   };
 
   const inviteRepository = {
@@ -488,61 +531,7 @@ function createInviteService(options: {
           users: cloneRows(users),
         };
         try {
-          return await callback({
-            async findOne(target: { name?: string }, { where }: any) {
-              if (target.name === "Invite") {
-                return (
-                  invites.find((invite) =>
-                    Object.entries(where).every(
-                      ([key, value]) => invite[key] === value,
-                    ),
-                  ) ?? null
-                );
-              }
-              if (target.name === "User") {
-                return (
-                  users.find((user) =>
-                    Object.entries(where).every(
-                      ([key, value]) => user[key] === value,
-                    ),
-                  ) ?? null
-                );
-              }
-              if (target.name === "UserOrganization") {
-                return (
-                  memberships.find((membership) =>
-                    Object.entries(where).every(
-                      ([key, value]) => membership[key] === value,
-                    ),
-                  ) ?? null
-                );
-              }
-              return null;
-            },
-            async save(target: { name?: string }, value: any) {
-              if (target.name === "User") {
-                users.push(value);
-                return value;
-              }
-              if (target.name === "UserOrganization") {
-                memberships.push(value);
-                return value;
-              }
-              if (target.name === "Invite") {
-                if (options.failTransactionalInviteSave) {
-                  throw new Error("invite save failed");
-                }
-                const index = invites.findIndex((invite) => invite.id === value.id);
-                if (index >= 0) {
-                  invites[index] = value;
-                } else {
-                  invites.push(value);
-                }
-                return value;
-              }
-              return value;
-            },
-          });
+          return await callback(transactionManager);
         } catch (error) {
           replaceRows(invites, snapshots.invites);
           replaceRows(memberships, snapshots.memberships);
@@ -633,15 +622,14 @@ function createInviteService(options: {
     },
   };
 
-  const service = new InviteService(
-    inviteRepository as any,
-    userRepository as any,
-    {
+  const organizationRepository = {
       async findOne({ where }: any) {
-        return where.id === organization.id ? organization : null;
+        return where.id === organization.id && where.tenantId === TENANT_ID
+          ? { ...organization, tenantId: TENANT_ID }
+          : null;
       },
-    } as any,
-    {
+    } as any;
+  const roleRepository = {
       async findOne({ where }: any) {
         return where.id === role.id &&
           where.organizationId === role.organizationId &&
@@ -649,8 +637,34 @@ function createInviteService(options: {
           ? role
           : null;
       },
-    } as any,
-    membershipRepository as any,
+    } as any;
+  let activeContext: any = null;
+  const baseContext = { manager: transactionManager, tenantId: TENANT_ID };
+  const tenantContext = {
+    current(required = true) {
+      if (activeContext) return activeContext;
+      return required ? baseContext : null;
+    },
+    repository(target: { name?: string }) {
+      if (target.name === "Invite") return inviteRepository;
+      if (target.name === "User") return userRepository;
+      if (target.name === "Organization") return organizationRepository;
+      if (target.name === "Role") return roleRepository;
+      return membershipRepository;
+    },
+    run(context: any, work: () => unknown) {
+      activeContext = context;
+      return Promise.resolve(work()).finally(() => {
+        activeContext = null;
+      });
+    },
+  } as any;
+  const dataSource = {
+    transaction: inviteRepository.manager.transaction,
+  } as any;
+  const service = new InviteService(
+    dataSource,
+    tenantContext,
     {
       async send(payload: any) {
         if (options.failEmailSend) {
@@ -704,6 +718,7 @@ function userRecord(input: {
     passwordHash: input.passwordHash ?? hashPassword("password-123"),
     preferredLanguage: "zh-CN",
     status: "active",
+    tenantId: TENANT_ID,
     timeZone: null,
     type: "user",
     updatedAt: new Date("2026-01-01T00:00:00Z"),

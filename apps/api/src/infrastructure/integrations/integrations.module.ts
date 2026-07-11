@@ -1,19 +1,23 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  Department,
   IntegrationToken,
   Organization,
   Permission,
-  PlatformMember,
   RolePermission,
   User,
+  UserDepartment,
+  UserDepartmentRole,
   UserOrganization,
+  UserOrganizationRole,
+  UserTenantRole,
 } from "@hermes-swarm/core";
 import { AuthModule } from "../auth/auth.module.js";
 import {
+  DepartmentIntegrationTokensController,
   IntegrationTokensController,
   OrganizationIntegrationTokensController,
-  PlatformIntegrationTokensController,
 } from "./integration-tokens.controller.js";
 import { IntegrationTokensService } from "./integration-tokens.service.js";
 
@@ -21,19 +25,23 @@ import { IntegrationTokensService } from "./integration-tokens.service.js";
   imports: [
     AuthModule,
     TypeOrmModule.forFeature([
+      Department,
       IntegrationToken,
       Organization,
       Permission,
-      PlatformMember,
       RolePermission,
       User,
+      UserDepartment,
+      UserDepartmentRole,
       UserOrganization,
+      UserOrganizationRole,
+      UserTenantRole,
     ]),
   ],
   controllers: [
+    DepartmentIntegrationTokensController,
     IntegrationTokensController,
     OrganizationIntegrationTokensController,
-    PlatformIntegrationTokensController,
   ],
   providers: [IntegrationTokensService],
 })

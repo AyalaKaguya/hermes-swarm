@@ -7,6 +7,8 @@ import {
 } from "@hermes-swarm/rbac-api";
 import {
   Permission,
+  PlatformRole,
+  PlatformRolePermission,
   Role,
   RolePermission,
   type PermissionScope,
@@ -24,17 +26,22 @@ import type {
   AccessResourceMetadata,
   ResolvedAccessDefinition,
 } from "./access.types.js";
+import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 const SCOPE_LABELS: Record<PermissionScope, string> = {
+  department: "部门",
   organization: "组织",
   own: "个人",
   platform: "平台",
+  tenant: "租户",
 };
 
 const SCOPE_ORDER: Record<PermissionScope, number> = {
   platform: 0,
-  organization: 1,
-  own: 2,
+  tenant: 1,
+  organization: 2,
+  department: 3,
+  own: 4,
 };
 
 @Injectable()
@@ -44,12 +51,16 @@ export class AccessCatalogService implements OnModuleInit {
 
   constructor(
     private readonly discoveryService: DiscoveryService,
-    @InjectRepository(Permission)
+    @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
     private readonly permissionRepository: Repository<Permission>,
-    @InjectRepository(Role)
+    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
     private readonly roleRepository: Repository<Role>,
-    @InjectRepository(RolePermission)
+    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
     private readonly rolePermissionRepository: Repository<RolePermission>,
+    @InjectRepository(PlatformRole, PLATFORM_DATA_SOURCE)
+    private readonly platformRoleRepository: Repository<PlatformRole>,
+    @InjectRepository(PlatformRolePermission, PLATFORM_DATA_SOURCE)
+    private readonly platformRolePermissionRepository: Repository<PlatformRolePermission>,
   ) {}
 
   async onModuleInit() {
@@ -231,6 +242,7 @@ export class AccessCatalogService implements OnModuleInit {
     }
 
     await this.backfillMissingDefaultRolePermissions();
+    await this.backfillPlatformDefaultRolePermissions();
   }
 
   private async pruneStaleCatalogPermissions(activeCodes: string[]) {
@@ -269,8 +281,10 @@ export class AccessCatalogService implements OnModuleInit {
     for (const role of roles) {
       const rolePermissions = permissions.filter((permission) => {
         if (!permission.defaultRoles?.includes(role.name)) return false;
-        if (role.scope === "platform") return true;
-        return permission.scope === "organization" || permission.scope === "own";
+        if (role.scope === "tenant") {
+          return permission.scope === "tenant" || permission.scope === "own";
+        }
+        return permission.scope === role.scope || permission.scope === "own";
       });
 
       for (const permission of rolePermissions) {
@@ -282,10 +296,12 @@ export class AccessCatalogService implements OnModuleInit {
         missingRows.push(
           this.rolePermissionRepository.create({
             enabled: true,
+            departmentId: role.departmentId,
             organizationId: role.organizationId,
             permission: permissionCode,
             permissionId: permission.id,
             roleId: role.id,
+            tenantId: role.tenantId,
           }),
         );
       }
@@ -294,6 +310,35 @@ export class AccessCatalogService implements OnModuleInit {
     if (missingRows.length > 0) {
       await this.rolePermissionRepository.save(missingRows);
     }
+  }
+
+  private async backfillPlatformDefaultRolePermissions() {
+    const roles = await this.platformRoleRepository.find({
+      where: { isSystem: true },
+    });
+    if (roles.length === 0) return;
+    const permissions = await this.permissionRepository.find({
+      where: { scope: "platform" },
+    });
+    const existing = await this.platformRolePermissionRepository.find({
+      where: { platformRoleId: In(roles.map((role) => role.id)) },
+    });
+    const keys = new Set(
+      existing.map((item) => `${item.platformRoleId}:${item.permissionId}`),
+    );
+    const rows = roles.flatMap((role) =>
+      permissions
+        .filter((permission) => permission.defaultRoles?.includes(role.name))
+        .filter((permission) => !keys.has(`${role.id}:${permission.id}`))
+        .map((permission) =>
+          this.platformRolePermissionRepository.create({
+            enabled: true,
+            permissionId: permission.id,
+            platformRoleId: role.id,
+          }),
+        ),
+    );
+    if (rows.length) await this.platformRolePermissionRepository.save(rows);
   }
 }
 
@@ -385,6 +430,12 @@ function resolveFallbackDefaultRoles(
   operation: AccessOperationMetadata,
 ): AccessDefaultRole[] {
   if (scope === "platform") return ["platform-admin"];
+  if (scope === "tenant") return ["owner", "admin"];
+  if (scope === "department") {
+    return operation.isDangerous
+      ? ["department-manager"]
+      : ["department-manager", "member", "viewer"];
+  }
   if (scope === "own") {
     return ["platform-admin", "admin", "member", "owner", "viewer"];
   }

@@ -6,8 +6,7 @@ import { TicketsService } from "./tickets.service.js";
 
 const ORG_HANDLE_PERMISSION = "ticket.conversation.handle:organization";
 const ORG_HANDLING_FEATURE = FEATURE_SETTING_KEYS.ticketingHandling;
-const PLATFORM_HANDLE_PERMISSION =
-  "ticket.platform_conversation.list_platform:platform";
+const TENANT_HANDLE_PERMISSION = "ticket.tenant_conversation.handle:tenant";
 
 const settingsServiceMock = {
   getOrganizationValue: async () => "true",
@@ -143,6 +142,7 @@ describe("TicketsService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "s1",
+          tenantId: "tenant-1",
           userId: "requester",
         }),
       } as any,
@@ -163,6 +163,7 @@ describe("TicketsService", () => {
     assert.equal(result.conversationId, "conversation-1");
     assert.equal(result.firstMessage.ticketId, "ticket-1");
     assert.equal(savedTickets[0].conversationId, "conversation-1");
+    assert.equal(savedTickets[0].tenantId, "tenant-1");
     assert.deepEqual(addParticipantCalls[0].userIds, ["requester"]);
     assert.equal(initialMessageCalls[0].source.sourceType, "ticket");
     assert.equal(initialMessageCalls[0].message.attachments[0].name, "shot.png");
@@ -193,6 +194,7 @@ describe("TicketsService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "s1",
+          tenantId: "tenant-1",
           userId: "requester",
         }),
       } as any,
@@ -202,7 +204,7 @@ describe("TicketsService", () => {
     );
 
     await assert.rejects(
-      () => service.listPlatformTickets("Bearer token", "unknown"),
+      () => service.listTenantTickets("Bearer token", "unknown"),
       BadRequestException,
     );
     assert.equal(archiveQueried, false);
@@ -234,6 +236,7 @@ describe("TicketsService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "s1",
+          tenantId: "tenant-1",
           userId: "requester",
         }),
       } as any,
@@ -325,6 +328,7 @@ describe("TicketsService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "s1",
+          tenantId: "tenant-1",
           userId: "requester",
         }),
       } as any,
@@ -382,6 +386,7 @@ describe("TicketsService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "s1",
+          tenantId: "tenant-1",
           userId: "requester",
         }),
       } as any,
@@ -401,18 +406,13 @@ describe("TicketsService", () => {
     assert.equal(sendMessageCalled, false);
   });
 
-  it("uses platform ticket handling permission instead of any platform membership", async () => {
-    const platformMemberRepo = {
-      findOne: async () => ({
-        roleId: "limited-platform-role",
-        status: "active",
-        userId: "operator",
-      }),
+  it("requires a tenant role with the tenant ticket handling permission", async () => {
+    const tenantRoleRepo = {
+      find: async () => [{ roleId: "limited-tenant-role" }],
     };
     const rolePermissionRepo = {
       findOne: async ({ where }: any) =>
-        where.roleId === "limited-platform-role" &&
-        where.permission === PLATFORM_HANDLE_PERMISSION
+        where.roleId && where.permission === TENANT_HANDLE_PERMISSION
           ? null
           : null,
     };
@@ -422,17 +422,19 @@ describe("TicketsService", () => {
         findOne: async () => ({
           id: "ticket-1",
           requesterUserId: "other",
-          scope: "platform",
+          scope: "tenant",
           status: "open",
+          tenantId: "tenant-1",
         }),
       } as any,
       { find: async () => [] } as any,
       {} as any,
-      platformMemberRepo as any,
+      tenantRoleRepo as any,
       rolePermissionRepo as any,
       {
         validateAccessToken: async () => ({
           sessionId: "s1",
+          tenantId: "tenant-1",
           userId: "operator",
         }),
       } as any,
@@ -487,6 +489,7 @@ describe("TicketsService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "s1",
+          tenantId: "tenant-1",
           userId: "handler",
         }),
       } as any,
@@ -540,7 +543,7 @@ describe("TicketsService", () => {
       settingsServiceMock as any,
     );
 
-    const result = await service.archiveExpiredTickets();
+    const result = await service.archiveExpiredTickets("tenant-1");
 
     assert.equal(result.archived, 1);
     assert.deepEqual(calls[0][0], "set");
@@ -553,6 +556,13 @@ describe("TicketsService", () => {
     assert.match(
       calls.map((call) => call[1]).join(" "),
       /requester_closed_at <= :threshold/,
+    );
+    assert.ok(
+      calls.some(
+        (call) =>
+          call[1] === "tenant_id = :tenantId" &&
+          call[2]?.tenantId === "tenant-1",
+      ),
     );
   });
 });

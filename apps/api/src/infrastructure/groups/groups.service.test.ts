@@ -104,9 +104,9 @@ describe("GroupsService member consistency", () => {
       membershipIds: ["membership-1"],
     });
 
-    assert.equal(state.transactions, 1);
+    assert.equal(state.transactions, 0);
     assert.deepEqual(state.deletedGroupMemberQueries, [
-      { groupId: "group-1", organizationId: "org-1" },
+      { groupId: "group-1", organizationId: "org-1", tenantId: "tenant-1" },
     ]);
     assert.equal(state.savedGroupMembers.length, 1);
     assert.equal(state.savedGroupMembers[0].membershipId, "membership-1");
@@ -120,9 +120,9 @@ describe("GroupsService member consistency", () => {
       membershipIds: [],
     });
 
-    assert.equal(state.transactions, 1);
+    assert.equal(state.transactions, 0);
     assert.deepEqual(state.deletedGroupMemberQueries, [
-      { groupId: "group-1", organizationId: "org-1" },
+      { groupId: "group-1", organizationId: "org-1", tenantId: "tenant-1" },
     ]);
     assert.equal(state.savedGroupMembers.length, 0);
   });
@@ -148,12 +148,12 @@ describe("GroupsService member consistency", () => {
 
     await state.service.remove("org-1", "group-1");
 
-    assert.equal(state.transactions, 1);
+    assert.equal(state.transactions, 0);
     assert.deepEqual(state.deletedGroupMemberQueries, [
-      { groupId: "group-1", organizationId: "org-1" },
+      { groupId: "group-1", organizationId: "org-1", tenantId: "tenant-1" },
     ]);
     assert.deepEqual(state.deletedGroupQueries, [
-      { id: "group-1", organizationId: "org-1" },
+      { id: "group-1", organizationId: "org-1", tenantId: "tenant-1" },
     ]);
   });
 });
@@ -174,13 +174,12 @@ function createService(options: {
   const savedGroups: any[] = [];
   let transactions = 0;
 
-  const service = new GroupsService(
-    {
+  const organizationRepository = {
       async findOne({ where }: any) {
         return where.id === "org-1" ? { id: "org-1", name: "Hermes" } : null;
       },
-    } as any,
-    {
+    } as any;
+  const groupRepository = {
       create(value: any) {
         return {
           color: null,
@@ -189,24 +188,6 @@ function createService(options: {
           updatedAt: new Date("2026-07-01T00:00:00Z"),
           ...value,
         };
-      },
-      manager: {
-        async transaction(callback: (manager: any) => Promise<unknown>) {
-          transactions += 1;
-          return callback({
-            async delete(target: { name?: string }, query: unknown) {
-              if (target.name === "OrganizationGroupMember") {
-                deletedGroupMemberQueries.push(query);
-              } else {
-                deletedGroupQueries.push(query);
-              }
-            },
-            async save(_target: unknown, values: any[]) {
-              savedGroupMembers.push(...values);
-              return values;
-            },
-          });
-        },
       },
       async findOne({ where }: any) {
         if (where.name === "support" && where.organizationId === "org-1") {
@@ -233,8 +214,8 @@ function createService(options: {
         savedGroups.push(group);
         return group;
       },
-    } as any,
-    {
+    } as any;
+  const groupMemberRepository = {
       create(value: any) {
         return value;
       },
@@ -244,29 +225,36 @@ function createService(options: {
       async find() {
         return [];
       },
-      manager: {
-        async transaction(callback: (manager: any) => Promise<unknown>) {
-          transactions += 1;
-          return callback({
-            async delete(_target: unknown, query: unknown) {
-              deletedGroupMemberQueries.push(query);
-            },
-            async save(_target: unknown, values: any[]) {
-              savedGroupMembers.push(...values);
-              return values;
-            },
-          });
-        },
-      },
-    } as any,
-    {
+    } as any;
+  const membershipRepository = {
       async find({ where }: any) {
         return options.memberships.filter(
           (membership) => membership.organizationId === where.organizationId,
         );
       },
-    } as any,
-  );
+    } as any;
+  const manager = {
+    async delete(target: { name?: string }, query: unknown) {
+      if (target.name === "OrganizationGroupMember") {
+        deletedGroupMemberQueries.push(query);
+      } else {
+        deletedGroupQueries.push(query);
+      }
+    },
+    async save(_target: unknown, values: any[]) {
+      savedGroupMembers.push(...values);
+      return values;
+    },
+  };
+  const service = new GroupsService({
+    current: () => ({ manager, tenantId: "tenant-1" }),
+    repository: (target: { name?: string }) => {
+      if (target.name === "Organization") return organizationRepository;
+      if (target.name === "OrganizationGroup") return groupRepository;
+      if (target.name === "OrganizationGroupMember") return groupMemberRepository;
+      return membershipRepository;
+    },
+  } as any);
 
   return {
     get transactions() {

@@ -43,22 +43,41 @@ export function parseAuthSessionToken(
     ) as Partial<AuthSessionTokenPayload>;
     if (
       !payload.userId ||
+      !isPrincipalType(payload.principalType) ||
       !payload.sessionId ||
       !payload.jti ||
       !payload.exp ||
-      payload.exp < Math.floor(Date.now() / 1000)
+      payload.exp < Math.floor(Date.now() / 1000) ||
+      !hasValidTenantContext(payload.principalType, payload.tenantId)
     ) {
       return null;
     }
     return {
       exp: payload.exp,
       jti: payload.jti,
+      principalType: payload.principalType,
       sessionId: payload.sessionId,
+      tenantId: payload.tenantId ?? null,
       userId: payload.userId,
     };
   } catch {
     return null;
   }
+}
+
+function hasValidTenantContext(
+  principalType: AuthSessionTokenPayload["principalType"],
+  tenantId: unknown,
+) {
+  return principalType === "platform"
+    ? tenantId === null
+    : typeof tenantId === "string" && tenantId.length > 0;
+}
+
+function isPrincipalType(
+  value: unknown,
+): value is AuthSessionTokenPayload["principalType"] {
+  return value === "integration" || value === "platform" || value === "tenant";
 }
 
 function sign(encodedPayload: string, secret?: string) {

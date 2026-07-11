@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   Inject,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
@@ -16,12 +17,14 @@ import {
   REQUIRE_PERMISSION_METADATA,
 } from "./access.decorators.js";
 import { AccessCatalogService, resolveAccessDefinition } from "./access-catalog.service.js";
+import { AccessAuditService } from "./access-audit.service.js";
 import { createAccessDeniedException } from "./access-denied.js";
 import { AccessScopeService } from "./access-scope.service.js";
 import { AccessService } from "./access-service.js";
 import type {
   AccessAuthSessionService,
   AccessOperationMetadata,
+  AccessRequest,
   AccessResourceMetadata,
   AccessScopeMetadata,
   ResolvedAccessDefinition,
@@ -37,6 +40,8 @@ export class AccessGuard implements CanActivate {
     private readonly catalogService: AccessCatalogService,
     private readonly accessService: AccessService,
     private readonly scopeService: AccessScopeService,
+    @Optional()
+    private readonly auditService?: AccessAuditService,
   ) {}
 
   async canActivate(context: ExecutionContext) {
@@ -57,11 +62,7 @@ export class AccessGuard implements CanActivate {
     const definition =
       this.catalogService.getDefinition(fallbackDefinition.id) ??
       fallbackDefinition;
-    const request = context.switchToHttp().getRequest<{
-      headers?: Record<string, string | string[] | undefined>;
-      params?: Record<string, string | undefined>;
-      [key: string]: unknown;
-    }>();
+    const request = context.switchToHttp().getRequest<AccessRequest>();
 
     let session: Awaited<
       ReturnType<AccessAuthSessionService["validateAccessToken"]>
@@ -75,22 +76,42 @@ export class AccessGuard implements CanActivate {
     }
 
     request.accessPrincipal = session;
-
-    const scopeContext = await this.scopeService.resolve(
-      definition,
-      this.getScopeMetadata(context),
-      request,
-    );
-    const allowed = await this.accessService.can(
-      session.userId,
-      definition,
-      scopeContext,
-    );
-    if (!allowed || !integrationTokenAllows(session, definition, scopeContext)) {
-      throw createAccessDeniedException(
+    request.accessAudit = { definition, scope: { tenantId: session.tenantId } };
+    let scopeContext;
+    try {
+      scopeContext = await this.scopeService.resolve(
+        definition,
+        this.getScopeMetadata(context),
+        request,
+      );
+      request.accessAudit.scope = scopeContext;
+    } catch (error) {
+      await this.auditService?.recordRequest(request, "error", { error });
+      throw error;
+    }
+    const accessContext = {
+      ...scopeContext,
+      principalType: session.principalType,
+      tenantId: session.tenantId,
+    };
+    let allowed: boolean;
+    try {
+      allowed = await this.accessService.can(
+        session.userId,
+        definition,
+        accessContext,
+      );
+    } catch (error) {
+      await this.auditService?.recordRequest(request, "error", { error });
+      throw error;
+    }
+    if (!allowed || !integrationTokenAllows(session, definition, accessContext)) {
+      const error = createAccessDeniedException(
         definition,
         Boolean(this.catalogService.getDefinition(definition.id)),
       );
+      await this.auditService?.recordRequest(request, "denied", { error });
+      throw error;
     }
 
     return true;
@@ -160,15 +181,27 @@ export class AccessGuard implements CanActivate {
 function integrationTokenAllows(
   session: Awaited<ReturnType<AccessAuthSessionService["validateAccessToken"]>>,
   definition: ResolvedAccessDefinition,
-  scopeContext: { organizationId?: string | null; targetUserId?: string | null },
+  scopeContext: {
+    departmentId?: string | null;
+    organizationId?: string | null;
+    targetUserId?: string | null;
+    tenantId?: string | null;
+  },
 ) {
   const token = session.integrationToken;
   if (!token) return true;
+  if (token.tenantId !== (scopeContext.tenantId ?? null)) return false;
   if (token.scope !== definition.scope) return false;
   if (!token.permissions.includes(definition.id)) return false;
   if (
     token.scope === "organization" &&
     token.organizationId !== (scopeContext.organizationId ?? null)
+  ) {
+    return false;
+  }
+  if (
+    token.scope === "department" &&
+    token.departmentId !== (scopeContext.departmentId ?? null)
   ) {
     return false;
   }

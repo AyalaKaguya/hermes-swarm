@@ -39,10 +39,10 @@ import { useSourceConversation } from "@/hooks/use-source-conversation";
 import {
   closeTicket,
   createOrganizationTicket,
-  createPlatformTicket,
+  createTenantTicket,
   listOrganizationSettings,
   listOrganizationTickets,
-  listPlatformTickets,
+  listTenantTickets,
   listTicketMessages,
   markTicketRead,
   sendTicketMessage,
@@ -61,7 +61,7 @@ import {
   PLATFORM_SETTING_KEYS,
 } from "@hermes-swarm/core/settings/definitions";
 
-type TicketView = "organization" | "platform";
+type TicketView = "organization" | "tenant";
 type CreateDraft = {
   attachments: TicketMessageAttachment[];
   body: string;
@@ -73,8 +73,8 @@ const ORGANIZATION_TICKET_HANDLING_FEATURE_KEY =
   FEATURE_SETTING_KEYS.ticketingHandling;
 const ORGANIZATION_TICKET_HANDLE_PERMISSION =
   "ticket.conversation.handle:organization";
-const PLATFORM_TICKET_HANDLE_PERMISSION =
-  "ticket.platform_conversation.list_platform:platform";
+const TENANT_TICKET_HANDLE_PERMISSION =
+  "ticket.tenant_conversation.list_tenant:own";
 
 export default function TicketsPage() {
   const locale = useLocale();
@@ -93,7 +93,7 @@ export default function TicketsPage() {
     PLATFORM_SETTING_KEYS.ticketingVisible,
     true,
   );
-  const platformSubmissionEnabled = getPlatformBooleanSetting(
+  const tenantSubmissionEnabled = getPlatformBooleanSetting(
     snapshot?.systemSettings,
     PLATFORM_SETTING_KEYS.ticketingPlatformSubmissionEnabled,
     true,
@@ -101,21 +101,21 @@ export default function TicketsPage() {
   const hasOrganizationTicketHandlePermission = access.hasPermission(
     ORGANIZATION_TICKET_HANDLE_PERMISSION,
   );
-  const canHandlePlatformTickets = access.hasPermission(
-    PLATFORM_TICKET_HANDLE_PERMISSION,
+  const canHandleTenantTickets = access.hasPermission(
+    TENANT_TICKET_HANDLE_PERMISSION,
   );
   const canViewOrganizationTickets =
     ticketingVisible && access.hasPageAccess("tickets");
-  const canViewPlatformTickets =
+  const canViewTenantTickets =
     ticketingVisible &&
-    (access.hasPageAccess("tickets.platform") ||
-      canHandlePlatformTickets ||
+    (access.hasPageAccess("tickets.tenant") ||
+      canHandleTenantTickets ||
       Boolean(isAnyOrganizationOwner));
-  const canCreatePlatformTicket =
-    canViewPlatformTickets &&
-    (platformSubmissionEnabled ||
+  const canCreateTenantTicket =
+    canViewTenantTickets &&
+    (tenantSubmissionEnabled ||
       Boolean(isAnyOrganizationOwner) ||
-      canHandlePlatformTickets);
+      canHandleTenantTickets);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
@@ -179,10 +179,10 @@ export default function TicketsPage() {
   });
 
   useEffect(() => {
-    if (view === "organization" && !canViewOrganizationTickets && canViewPlatformTickets) {
-      setView("platform");
+    if (view === "organization" && !canViewOrganizationTickets && canViewTenantTickets) {
+      setView("tenant");
     }
-  }, [canViewOrganizationTickets, canViewPlatformTickets, view]);
+  }, [canViewOrganizationTickets, canViewTenantTickets, view]);
 
   const loadOrganizationFeatures = useCallback(async () => {
     const token = await getAuthenticatedAdminSessionMarker();
@@ -226,8 +226,8 @@ export default function TicketsPage() {
     setLoading(true);
     try {
       const nextTickets =
-        view === "platform"
-          ? await listPlatformTickets(token)
+        view === "tenant"
+          ? await listTenantTickets(token)
           : await listOrganizationTickets(token, organizationId as string);
       setTickets(nextTickets);
       setError(null);
@@ -270,7 +270,7 @@ export default function TicketsPage() {
       return;
     }
     if (view === "organization" && !canCreateOrganizationTicket) return;
-    if (view === "platform" && !canCreatePlatformTicket) return;
+    if (view === "tenant" && !canCreateTenantTicket) return;
 
     setSubmitting(true);
     setError(null);
@@ -282,8 +282,8 @@ export default function TicketsPage() {
         subject: draft.subject,
       };
       const ticket =
-        view === "platform"
-          ? await createPlatformTicket(token, payload)
+        view === "tenant"
+          ? await createTenantTicket(token, payload)
           : await createOrganizationTicket(
               token,
               organizationId as string,
@@ -392,7 +392,7 @@ export default function TicketsPage() {
     }
   }
 
-  if (!ticketingVisible || (!canViewOrganizationTickets && !canViewPlatformTickets)) {
+  if (!ticketingVisible || (!canViewOrganizationTickets && !canViewTenantTickets)) {
     return (
       <div className="mx-auto grid min-h-[50vh] max-w-md place-items-center px-4 text-center">
         <div className="grid gap-2">
@@ -406,9 +406,9 @@ export default function TicketsPage() {
   }
 
   const canCreateInCurrentView =
-    view === "platform" ? canCreatePlatformTicket : canCreateOrganizationTicket;
+    view === "tenant" ? canCreateTenantTicket : canCreateOrganizationTicket;
   const canHandleTicketsInCurrentView =
-    view === "platform" ? canHandlePlatformTickets : canHandleOrganizationTickets;
+    view === "tenant" ? canHandleTenantTickets : canHandleOrganizationTickets;
   const showSecondaryTicketPanel =
     canHandleTicketsInCurrentView || receivedTickets.length > 0;
   const secondaryTicketPanelTitle = canHandleTicketsInCurrentView
@@ -430,7 +430,7 @@ export default function TicketsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {(canViewOrganizationTickets || canViewPlatformTickets) && (
+          {(canViewOrganizationTickets || canViewTenantTickets) && (
             <Tabs
               onValueChange={(value) => setView(value as TicketView)}
               value={view}
@@ -439,8 +439,8 @@ export default function TicketsPage() {
                 {canViewOrganizationTickets && (
                   <TabsTrigger value="organization">{tr("组织")}</TabsTrigger>
                 )}
-                {canViewPlatformTickets && (
-                  <TabsTrigger value="platform">{tr("平台")}</TabsTrigger>
+                {canViewTenantTickets && (
+                  <TabsTrigger value="tenant">{tr("租户")}</TabsTrigger>
                 )}
               </TabsList>
             </Tabs>
@@ -481,9 +481,9 @@ export default function TicketsPage() {
           </div>
         )}
 
-      {view === "platform" && !platformSubmissionEnabled && !canCreatePlatformTicket && (
+      {view === "tenant" && !tenantSubmissionEnabled && !canCreateTenantTicket && (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          {tr("平台工单提交已关闭。")}
+          {tr("租户工单提交已关闭。")}
         </div>
       )}
 
@@ -512,7 +512,7 @@ export default function TicketsPage() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {view === "platform" ? tr("新建平台工单") : tr("新建组织工单")}
+              {view === "tenant" ? tr("新建租户工单") : tr("新建组织工单")}
             </DialogTitle>
             <DialogDescription>
               {tr("支持 Markdown、图片附件和 @邮箱 或 @用户名提及。")}
@@ -576,7 +576,7 @@ export default function TicketsPage() {
                 </DialogTitle>
                 <DialogDescription>
                   {selectedTicket
-                    ? `${view === "platform" ? tr("平台工单") : tr("组织工单")} · ${statusLabel(selectedTicket.status, tr)} · ${formatDate(selectedTicket.lastMessageAt ?? selectedTicket.createdAt, locale)}`
+                    ? `${view === "tenant" ? tr("租户工单") : tr("组织工单")} · ${statusLabel(selectedTicket.status, tr)} · ${formatDate(selectedTicket.lastMessageAt ?? selectedTicket.createdAt, locale)}`
                     : tr("工单会话")}
                 </DialogDescription>
               </div>
@@ -799,7 +799,11 @@ function TicketListPanel({
                     {formatDate(ticket.lastMessageAt ?? ticket.createdAt, locale)}
                   </span>
                   <span>
-                    {ticket.scope === "platform" ? tr("平台") : tr("组织")}
+                    {ticket.scope === "tenant"
+                      ? tr("租户")
+                      : ticket.scope === "department"
+                        ? tr("部门")
+                        : tr("组织")}
                   </span>
                 </div>
               </button>

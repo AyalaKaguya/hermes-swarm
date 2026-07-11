@@ -1,3 +1,4 @@
+sandbox_mode = "workspace-write"
 [mcp_servers.nx-mcp]
 command = "npx"
 args = [ "nx", "mcp" ]
@@ -8,3 +9,6 @@ multi_agent = true
 [agents.ci-monitor-subagent]
 description = "CI helper for /monitor-ci. Fetches CI status, retrieves fix details, or updates self-healing fixes. Executes one MCP tool call and returns the result."
 config_file = "agents/ci-monitor-subagent.toml"
+
+[sandbox_workspace_write]
+network_access = true

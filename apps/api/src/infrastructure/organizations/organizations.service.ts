@@ -1,24 +1,21 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
   IntegrationToken,
   Permission,
-  PlatformMember,
   Role,
   RolePermission,
   UserOrganization,
   type OrganizationStatus,
 } from "@hermes-swarm/core";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
-import { In, IsNull, Repository, type EntityManager } from "typeorm";
+import { In, IsNull, type EntityManager } from "typeorm";
 import type {
   CreateOrganizationPayload,
   ReplaceRolePermissionsPayload,
@@ -28,27 +25,12 @@ import { AuthSessionService } from "../auth/auth-session.service.js";
 import { MailService } from "../mail/mail.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import type { OrganizationRolePayload } from "./organizations.controller.js";
-
-const PLATFORM_ORGANIZATION_CONTROL_PERMISSIONS = [
-  "organization.platform_organization.create:platform",
-  "organization.platform_organization.delete:platform",
-];
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 @Injectable()
 export class OrganizationsService {
   constructor(
-    @InjectRepository(Organization)
-    private readonly organizationRepository: Repository<Organization>,
-    @InjectRepository(Permission)
-    private readonly permissionRepository: Repository<Permission>,
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
-    @InjectRepository(RolePermission)
-    private readonly rolePermissionRepository: Repository<RolePermission>,
-    @InjectRepository(PlatformMember)
-    private readonly platformMemberRepository: Repository<PlatformMember>,
-    @InjectRepository(UserOrganization)
-    private readonly membershipRepository: Repository<UserOrganization>,
+    private readonly tenantContext: TenantContextService,
     @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
     @Inject(SettingsService)
@@ -58,8 +40,9 @@ export class OrganizationsService {
   ) {}
 
   async list() {
-    const organizations = await this.organizationRepository.find({
+    const organizations = await this.organizations.find({
       order: { createdAt: "ASC" },
+      where: { tenantId: this.tenantId },
     });
     return organizations.map(toOrganizationDto);
   }
@@ -90,18 +73,17 @@ export class OrganizationsService {
 
     let organization: Organization;
     try {
-      organization = await this.organizationRepository.manager.transaction(
-        async (manager) => {
+      organization = await (async (manager) => {
           if (isDefault) {
             await manager.update(
               Organization,
-              { deletedAt: IsNull(), isDefault: true },
+              { deletedAt: IsNull(), isDefault: true, tenantId: this.tenantId },
               { isDefault: false },
             );
           }
           const organization = await manager.save(
             Organization,
-            this.organizationRepository.create({
+            this.organizations.create({
               banner: normalizeNullableText(payload.banner),
               brandColor: normalizeNullableText(payload.brandColor),
               clientFocus: normalizeNullableText(payload.clientFocus),
@@ -121,6 +103,7 @@ export class OrganizationsService {
               slug,
               status,
               subdomain: normalizeNullableText(payload.subdomain),
+              tenantId: this.tenantId,
               timeZone: normalizeNullableText(payload.timeZone),
               totalEmployees: normalizeOptionalInteger(payload.totalEmployees),
               website: normalizeNullableText(payload.website),
@@ -133,12 +116,13 @@ export class OrganizationsService {
           );
           await manager.save(
             UserOrganization,
-            this.membershipRepository.create({
+            this.memberships.create({
               displayName: null,
               joinedAt: new Date(),
               organizationId: organization.id,
               roleId: ownerRole.id,
               status: "active",
+              tenantId: this.tenantId,
               userId,
             }),
           );
@@ -147,8 +131,7 @@ export class OrganizationsService {
             manager,
           );
           return organization;
-        },
-      );
+        })(this.manager);
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException("组织标识或子域名已被使用");
@@ -174,12 +157,7 @@ export class OrganizationsService {
       payload.status !== undefined
         ? normalizeOrganizationStatus(payload.status)
         : undefined;
-    const updatesPlatformControls =
-      nextIsDefault !== undefined || nextStatus !== undefined;
-
-    if (updatesPlatformControls) {
-      await this.assertCanUpdatePlatformOrganizationControls(authorization);
-    }
+    void authorization;
 
     if (payload.name !== undefined) {
       organization.name = requireText(payload.name, "组织名称");
@@ -253,16 +231,14 @@ export class OrganizationsService {
 
     if (nextIsDefault === true) {
       try {
-        const saved = await this.organizationRepository.manager.transaction(
-          async (manager) => {
+        const saved = await (async (manager) => {
             await manager.update(
               Organization,
-              { deletedAt: IsNull(), isDefault: true },
+              { deletedAt: IsNull(), isDefault: true, tenantId: this.tenantId },
               { isDefault: false },
             );
             return manager.save(Organization, organization);
-          },
-        );
+          })(this.manager);
         return toOrganizationDto(saved);
       } catch (error) {
         if (isUniqueConstraintError(error)) {
@@ -273,7 +249,7 @@ export class OrganizationsService {
     }
 
     try {
-      return toOrganizationDto(await this.organizationRepository.save(organization));
+      return toOrganizationDto(await this.organizations.save(organization));
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException("组织标识或子域名已被使用");
@@ -285,22 +261,28 @@ export class OrganizationsService {
   async delete(organizationId: string) {
     const organization = await this.getOrganizationOrThrow(organizationId);
     const revokedAt = new Date();
-    await this.organizationRepository.manager.transaction(async (manager) => {
-      await manager.update(
-        IntegrationToken,
-        { organizationId: organization.id, revokedAt: IsNull(), scope: "organization" },
-        { revokedAt, revokedReason: "organization_deleted" },
-      );
-      await manager.softDelete(Organization, { id: organization.id });
+    await this.manager.update(
+      IntegrationToken,
+      {
+        organizationId: organization.id,
+        revokedAt: IsNull(),
+        scope: "organization",
+        tenantId: this.tenantId,
+      },
+      { revokedAt, revokedReason: "organization_deleted" },
+    );
+    await this.manager.softDelete(Organization, {
+      id: organization.id,
+      tenantId: this.tenantId,
     });
   }
 
   async listRoles(organizationId: string) {
     await this.getOrganizationOrThrow(organizationId);
-    const roles = await this.roleRepository.find({
+    const roles = await this.roles.find({
       order: { createdAt: "ASC" },
       relations: { rolePermissions: true },
-      where: { organizationId, scope: "organization" },
+      where: { organizationId, scope: "organization", tenantId: this.tenantId },
     });
     return roles.map(toRoleDto);
   }
@@ -320,8 +302,8 @@ export class OrganizationsService {
 
     let role: Role;
     try {
-      role = await this.roleRepository.save(
-        this.roleRepository.create({
+      role = await this.roles.save(
+        this.roles.create({
           color: normalizeNullableText(payload.color),
           description: normalizeNullableText(payload.description),
           displayName,
@@ -330,6 +312,7 @@ export class OrganizationsService {
           name,
           organizationId,
           scope: "organization",
+          tenantId: this.tenantId,
         }),
       );
     } catch (error) {
@@ -369,7 +352,7 @@ export class OrganizationsService {
       role.description = normalizeNullableText(payload.description);
     }
     try {
-      return toRoleDto(await this.roleRepository.save(role));
+      return toRoleDto(await this.roles.save(role));
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException("角色标识已被使用");
@@ -395,52 +378,63 @@ export class OrganizationsService {
     );
 
     let saved: RolePermission[] = [];
-    await this.rolePermissionRepository.manager.transaction(async (manager) => {
+    {
+      const manager = this.manager;
       await revokeOrganizationIntegrationTokensForRole(
         manager,
+        this.tenantId,
         organizationId,
         role.id,
       );
-      await manager.delete(RolePermission, { roleId: role.id });
+      await manager.delete(RolePermission, {
+        roleId: role.id,
+        tenantId: this.tenantId,
+      });
       const nextRows = records.map(({ key, permission }) =>
-        this.rolePermissionRepository.create({
+        this.rolePermissions.create({
           enabled: true,
           organizationId,
           permission: key,
           permissionId: permission.id,
           roleId: role.id,
+          tenantId: this.tenantId,
         }),
       );
       saved =
         nextRows.length > 0
           ? await manager.save(RolePermission, nextRows)
           : [];
-    });
+    }
     return saved;
   }
 
   async deleteRole(organizationId: string, roleId: string) {
     const role = await this.getOrganizationRoleOrThrow(organizationId, roleId);
     if (role.isSystem) throw new BadRequestException("系统角色不能删除");
-    await this.roleRepository.manager.transaction(async (manager) => {
+    {
+      const manager = this.manager;
       await revokeOrganizationIntegrationTokensForRole(
         manager,
+        this.tenantId,
         organizationId,
         role.id,
       );
       await manager.update(
         UserOrganization,
-        { organizationId, roleId: role.id },
+        { organizationId, roleId: role.id, tenantId: this.tenantId },
         { roleId: null },
       );
-      await manager.delete(RolePermission, { roleId: role.id });
-      await manager.delete(Role, { id: role.id });
-    });
+      await manager.delete(RolePermission, {
+        roleId: role.id,
+        tenantId: this.tenantId,
+      });
+      await manager.delete(Role, { id: role.id, tenantId: this.tenantId });
+    }
   }
 
   private async getOrganizationOrThrow(organizationId: string) {
-    const organization = await this.organizationRepository.findOne({
-      where: { id: organizationId },
+    const organization = await this.organizations.findOne({
+      where: { id: organizationId, tenantId: this.tenantId },
     });
     if (!organization) throw new NotFoundException("组织不存在");
     return organization;
@@ -450,8 +444,8 @@ export class OrganizationsService {
     slug: string,
     exceptOrganizationId?: string,
   ) {
-    const existing = await this.organizationRepository.findOne({
-      where: { slug },
+    const existing = await this.organizations.findOne({
+      where: { slug, tenantId: this.tenantId },
     });
     if (existing && existing.id !== exceptOrganizationId) {
       throw new BadRequestException("组织标识已被使用");
@@ -462,9 +456,14 @@ export class OrganizationsService {
     organizationId: string,
     roleId: string,
   ) {
-    const role = await this.roleRepository.findOne({
+    const role = await this.roles.findOne({
       relations: { rolePermissions: true },
-      where: { id: roleId, organizationId, scope: "organization" },
+      where: {
+        id: roleId,
+        organizationId,
+        scope: "organization",
+        tenantId: this.tenantId,
+      },
     });
     if (!role) throw new NotFoundException("角色不存在");
     return role;
@@ -475,8 +474,13 @@ export class OrganizationsService {
     name: string,
     exceptRoleId?: string,
   ) {
-    const existing = await this.roleRepository.findOne({
-      where: { name, organizationId, scope: "organization" },
+    const existing = await this.roles.findOne({
+      where: {
+        name,
+        organizationId,
+        scope: "organization",
+        tenantId: this.tenantId,
+      },
     });
     if (existing && existing.id !== exceptRoleId) {
       throw new BadRequestException("角色标识已被使用");
@@ -485,7 +489,7 @@ export class OrganizationsService {
 
   private async createDefaultOrganizationRoles(
     organizationId: string,
-    manager: EntityManager = this.roleRepository.manager,
+    manager: EntityManager = this.manager,
   ) {
     const roles = [
       {
@@ -517,12 +521,13 @@ export class OrganizationsService {
     const savedRoles = await manager.save(
       Role,
       roles.map((role) =>
-        this.roleRepository.create({
+        this.roles.create({
           ...role,
           isSystem: true,
           label: role.displayName,
           organizationId,
           scope: "organization",
+          tenantId: this.tenantId,
         }),
       ),
     );
@@ -536,12 +541,13 @@ export class OrganizationsService {
         permission.defaultRoles?.includes(role.name),
       );
       const rows = records.map((permission) =>
-        this.rolePermissionRepository.create({
+        this.rolePermissions.create({
           enabled: true,
           organizationId,
           permission: permission.code ?? "",
           permissionId: permission.id,
           roleId: role.id,
+          tenantId: this.tenantId,
         }),
       );
       if (rows.length > 0) {
@@ -558,7 +564,7 @@ export class OrganizationsService {
     const key = requirePermissionCode(permissionKey);
     const acceptedScopes =
       scope === "organization" ? ["organization", "own"] : [scope];
-    const permission = await this.permissionRepository.findOne({
+    const permission = await this.permissions.findOne({
       where: acceptedScopes.map((item) => ({
         code: key,
         scope: item as Permission["scope"],
@@ -566,30 +572,6 @@ export class OrganizationsService {
     });
     if (!permission) throw new BadRequestException("权限目录不存在");
     return { key, permission };
-  }
-
-  private async assertCanUpdatePlatformOrganizationControls(
-    authorization: string | undefined,
-  ) {
-    const userId = await this.requireSessionUserId(authorization);
-    const platformMembership = await this.platformMemberRepository.findOne({
-      where: { status: "active", userId },
-    });
-    if (!platformMembership?.roleId) {
-      throw new ForbiddenException("缺少平台组织管理权限");
-    }
-    const roleId = platformMembership.roleId;
-
-    const permission = await this.rolePermissionRepository.findOne({
-      where: PLATFORM_ORGANIZATION_CONTROL_PERMISSIONS.map((permission) => ({
-        enabled: true,
-        permission,
-        roleId,
-      })),
-    });
-    if (!permission) {
-      throw new ForbiddenException("缺少平台组织管理权限");
-    }
   }
 
   private async requireSessionUserId(authorization: string | undefined) {
@@ -600,6 +582,34 @@ export class OrganizationsService {
     } catch {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
+  }
+
+  private get tenantId() {
+    return this.tenantContext.current()!.tenantId;
+  }
+
+  private get manager() {
+    return this.tenantContext.current()!.manager;
+  }
+
+  private get organizations() {
+    return this.tenantContext.repository(Organization);
+  }
+
+  private get permissions() {
+    return this.tenantContext.repository(Permission);
+  }
+
+  private get roles() {
+    return this.tenantContext.repository(Role);
+  }
+
+  private get rolePermissions() {
+    return this.tenantContext.repository(RolePermission);
+  }
+
+  private get memberships() {
+    return this.tenantContext.repository(UserOrganization);
   }
 }
 
@@ -695,12 +705,13 @@ function requireReplaceRolePermissionsPayload(
 
 async function revokeOrganizationIntegrationTokensForRole(
   manager: EntityManager,
+  tenantId: string,
   organizationId: string,
   roleId: string,
 ) {
   const memberships = await manager.find(UserOrganization, {
     select: { userId: true },
-    where: { organizationId, roleId },
+    where: { organizationId, roleId, tenantId },
   });
   const userIds = [...new Set(memberships.map((membership) => membership.userId))];
   if (userIds.length === 0) return;
@@ -712,6 +723,7 @@ async function revokeOrganizationIntegrationTokensForRole(
       ownerUserId: In(userIds),
       revokedAt: IsNull(),
       scope: "organization",
+      tenantId,
     },
     { revokedAt: new Date() },
   );

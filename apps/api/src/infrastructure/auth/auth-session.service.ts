@@ -12,8 +12,22 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { IntegrationToken, Organization, User } from "@hermes-swarm/core";
-import { IsNull, MoreThan, Repository } from "typeorm";
+import {
+  IntegrationToken,
+  Department,
+  Organization,
+  PlatformUser,
+  User,
+} from "@hermes-swarm/core";
+import {
+  DataSource,
+  IsNull,
+  MoreThan,
+  Repository,
+  type EntityManager,
+} from "typeorm";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
   INTEGRATION_SESSION_PREFIX,
@@ -34,23 +48,29 @@ export type AuthSessionRecord = {
   ipAddress: string | null;
   lastSeenAt: string;
   os: string;
+  principalType: "platform" | "tenant";
   refreshTokenHash: string;
   revokedAt: string | null;
   sessionId: string;
+  tenantId: string | null;
   userAgent: string | null;
   userId: string;
 };
 
 export type ValidatedAuthSession = {
   integrationToken?: {
+    departmentId?: string | null;
     id: string;
     organizationId: string | null;
     permissions: string[];
     scope: IntegrationToken["scope"];
+    tenantId: string;
   } | null;
   jti: string;
+  principalType: "integration" | "platform" | "tenant";
   record: AuthSessionRecord;
   sessionId: string;
+  tenantId: string | null;
   tokenKind: "integration" | "session";
   userId: string;
 };
@@ -58,12 +78,15 @@ export type ValidatedAuthSession = {
 export type IssuedAuthSession = {
   accessToken: string;
   expiresAt: string;
+  principalType: "platform" | "tenant";
   refreshToken: string;
   sessionId: string;
+  tenantId: string | null;
 };
 
 export type RealtimeTicketSession = {
   sessionId: string;
+  tenantId: string;
   userId: string;
 };
 
@@ -74,13 +97,23 @@ export class AuthSessionService {
     private readonly integrationTokenRepository: Repository<IntegrationToken>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
+    private readonly platformUserRepository: Repository<PlatformUser>,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
+    private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {}
 
-  async createSession(userId: string, context: AuthRequestContext = {}) {
+  async createSession(
+    userId: string,
+    tenantId: string | null,
+    principalType: "platform" | "tenant" = "tenant",
+    context: AuthRequestContext = {},
+  ) {
+    assertPrincipalTenantContext(principalType, tenantId);
     const sessionId = randomUUID();
     const refreshToken = createRefreshToken();
     const now = new Date();
@@ -96,19 +129,21 @@ export class AuthSessionService {
       ipAddress: context.ipAddress ?? null,
       lastSeenAt: now.toISOString(),
       os: device.os,
+      principalType,
       refreshTokenHash: hashToken(refreshToken),
       revokedAt: null,
       sessionId,
+      tenantId,
       userAgent: context.userAgent ?? null,
       userId,
     };
 
     await this.saveSession(record);
-    await this.indexRefreshToken(record.refreshTokenHash, sessionId);
-    await this.addUserSession(userId, sessionId);
+    await this.indexRefreshToken(record.refreshTokenHash, tenantId, sessionId);
+    await this.addUserSession(tenantId, userId, sessionId);
 
     return {
-      ...this.issueAccessToken(userId, sessionId),
+      ...this.issueAccessToken(userId, tenantId, principalType, sessionId),
       refreshToken,
       sessionId,
     };
@@ -137,14 +172,17 @@ export class AuthSessionService {
     }
 
     try {
-      const sessionId = await client.get(this.refreshIndexKey(refreshTokenHash));
-      if (!sessionId) {
+      const refreshIndex = parseRefreshIndex(
+        await client.get(this.refreshIndexKey(refreshTokenHash)),
+      );
+      if (!refreshIndex) {
         const rotated = await this.getRefreshRotationResult(client, refreshTokenHash);
         if (rotated) return rotated;
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
 
-      const record = await this.getSessionRecord(sessionId);
+      const { sessionId, tenantId } = refreshIndex;
+      const record = await this.getSessionRecord(tenantId, sessionId);
       if (
         !record ||
         record.revokedAt ||
@@ -156,6 +194,11 @@ export class AuthSessionService {
         if (rotated) return rotated;
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
+      await this.ensureActivePrincipal(
+        record.userId,
+        record.tenantId,
+        record.principalType,
+      );
 
       const nextRefreshToken = createRefreshToken();
       const nextHash = hashToken(nextRefreshToken);
@@ -177,16 +220,22 @@ export class AuthSessionService {
         userAgent: context.userAgent ?? record.userAgent,
       };
       const issued = {
-        ...this.issueAccessToken(record.userId, sessionId),
+        ...this.issueAccessToken(
+          record.userId,
+          record.tenantId,
+          record.principalType,
+          sessionId,
+        ),
         refreshToken: nextRefreshToken,
         sessionId,
+        tenantId: record.tenantId,
         userId: record.userId,
       };
 
       await Promise.all([
         this.saveSession(nextRecord),
-        this.indexRefreshToken(nextHash, sessionId),
-        this.addUserSession(record.userId, sessionId),
+        this.indexRefreshToken(nextHash, record.tenantId, sessionId),
+        this.addUserSession(record.tenantId, record.userId, sessionId),
       ]);
       await this.saveRefreshRotationResult(client, refreshTokenHash, issued);
       await client.del(this.refreshIndexKey(refreshTokenHash));
@@ -210,26 +259,35 @@ export class AuthSessionService {
       return this.validateIntegrationToken(accessToken, payload);
     }
 
-    const record = await this.getSessionRecord(payload.sessionId);
+    const record = await this.getSessionRecord(payload.tenantId, payload.sessionId);
     if (
       !record ||
       record.userId !== payload.userId ||
+      record.tenantId !== payload.tenantId ||
+      record.principalType !== payload.principalType ||
       record.revokedAt ||
       isSessionExpired(record)
     ) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
-    await this.ensureActiveUser(payload.userId);
+    await this.ensureActivePrincipal(
+      payload.userId,
+      payload.tenantId,
+      payload.principalType,
+    );
 
     const touchedRecord = await this.touchSession(
       payload.sessionId,
+      payload.tenantId,
       payload.userId,
     );
 
     return {
       jti: payload.jti,
+      principalType: payload.principalType,
       record: touchedRecord,
       sessionId: payload.sessionId,
+      tenantId: payload.tenantId,
       tokenKind: "session",
       userId: payload.userId,
     } satisfies ValidatedAuthSession;
@@ -238,16 +296,18 @@ export class AuthSessionService {
   async createRealtimeTicket(session: RealtimeTicketSession) {
     const ticket = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 30_000).toISOString();
-    await (
-      await this.redisService.getClient()
-    ).set(
-      this.realtimeTicketKey(hashToken(ticket)),
-      JSON.stringify({
-        sessionId: session.sessionId,
-        userId: session.userId,
-      } satisfies RealtimeTicketSession),
-      { EX: 30 },
-    );
+    const client = await this.redisService.getClient();
+    const ticketHash = hashToken(ticket);
+    await Promise.all([
+      client.set(
+        this.realtimeTicketKey(session.tenantId, ticketHash),
+        JSON.stringify(session satisfies RealtimeTicketSession),
+        { EX: 30 },
+      ),
+      client.set(this.realtimeTicketIndexKey(ticketHash), session.tenantId, {
+        EX: 30,
+      }),
+    ]);
     return { expiresAt, ticket };
   }
 
@@ -257,7 +317,12 @@ export class AuthSessionService {
     }
 
     const client = await this.redisService.getClient();
-    const key = this.realtimeTicketKey(hashToken(ticket));
+    const indexKey = this.realtimeTicketIndexKey(hashToken(ticket));
+    const tenantId = await this.getAndDelete(client, indexKey);
+    if (!tenantId) {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
+    const key = this.realtimeTicketKey(tenantId, hashToken(ticket));
     const rawValue = await this.getAndDelete(client, key);
     if (!rawValue) {
       throw new UnauthorizedException("登录已失效，请重新登录");
@@ -270,30 +335,42 @@ export class AuthSessionService {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
-    const record = await this.getSessionRecord(ticketSession.sessionId);
+    const record = await this.getSessionRecord(
+      ticketSession.tenantId,
+      ticketSession.sessionId,
+    );
     if (
       !record ||
       record.userId !== ticketSession.userId ||
+      record.tenantId !== ticketSession.tenantId ||
       record.revokedAt ||
       isSessionExpired(record)
     ) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
-    await this.ensureActiveUser(ticketSession.userId);
+    await this.ensureActiveUser(ticketSession.userId, ticketSession.tenantId);
 
-    await this.touchSession(ticketSession.sessionId, ticketSession.userId);
+    await this.touchSession(
+      ticketSession.sessionId,
+      ticketSession.tenantId,
+      ticketSession.userId,
+    );
     return ticketSession;
   }
 
-  async listSessions(userId: string, currentSessionId: string) {
+  async listSessions(
+    tenantId: string | null,
+    userId: string,
+    currentSessionId: string,
+  ) {
     const client = await this.redisService.getClient();
-    const sessionIds = await client.sMembers(this.userSessionsKey(userId));
+    const sessionIds = await client.sMembers(this.userSessionsKey(tenantId, userId));
     const records = await Promise.all(
-      sessionIds.map((sessionId) => this.getSessionRecord(sessionId)),
+      sessionIds.map((sessionId) => this.getSessionRecord(tenantId, sessionId)),
     );
     const missingSessionIds = sessionIds.filter((_, index) => !records[index]);
     if (missingSessionIds.length > 0) {
-      await client.sRem(this.userSessionsKey(userId), missingSessionIds);
+      await client.sRem(this.userSessionsKey(tenantId, userId), missingSessionIds);
     }
 
     return records
@@ -318,8 +395,12 @@ export class AuthSessionService {
       }));
   }
 
-  async revokeSession(sessionId: string, expectedUserId?: string) {
-    const record = await this.getSessionRecord(sessionId);
+  async revokeSession(
+    tenantId: string | null,
+    sessionId: string,
+    expectedUserId?: string,
+  ) {
+    const record = await this.getSessionRecord(tenantId, sessionId);
     if (!record || (expectedUserId && record.userId !== expectedUserId)) {
       return;
     }
@@ -335,32 +416,42 @@ export class AuthSessionService {
     ]);
   }
 
-  async revokeOtherSessions(userId: string, currentSessionId: string) {
+  async revokeOtherSessions(
+    tenantId: string | null,
+    userId: string,
+    currentSessionId: string,
+  ) {
     const sessionIds = await (
       await this.redisService.getClient()
-    ).sMembers(this.userSessionsKey(userId));
+    ).sMembers(this.userSessionsKey(tenantId, userId));
     await Promise.all(
       sessionIds
         .filter((sessionId) => sessionId !== currentSessionId)
-        .map((sessionId) => this.revokeSession(sessionId, userId)),
+        .map((sessionId) => this.revokeSession(tenantId, sessionId, userId)),
     );
   }
 
-  async revokeUserSessions(userId: string) {
+  async revokeUserSessions(
+    tenantId: string,
+    userId: string,
+  ) {
     const sessionIds = await (
       await this.redisService.getClient()
-    ).sMembers(this.userSessionsKey(userId));
+    ).sMembers(this.userSessionsKey(tenantId, userId));
     await Promise.all(
-      sessionIds.map((sessionId) => this.revokeSession(sessionId, userId)),
+      sessionIds.map((sessionId) =>
+        this.revokeSession(tenantId, sessionId, userId),
+      ),
     );
   }
 
   async deleteSessionRecord(
+    tenantId: string | null,
     sessionId: string,
     expectedUserId: string,
     currentSessionId: string,
   ) {
-    const record = await this.getSessionRecord(sessionId);
+    const record = await this.getSessionRecord(tenantId, sessionId);
     if (!record || record.userId !== expectedUserId) return;
     if (record.sessionId === currentSessionId && !record.revokedAt) {
       throw new BadRequestException("不能删除当前活跃设备");
@@ -371,9 +462,12 @@ export class AuthSessionService {
 
     const client = await this.redisService.getClient();
     await Promise.all([
-      client.del(this.sessionKey(record.sessionId)),
+      client.del(this.sessionKey(record.tenantId, record.sessionId)),
       client.del(this.refreshIndexKey(record.refreshTokenHash)),
-      client.sRem(this.userSessionsKey(record.userId), record.sessionId),
+      client.sRem(
+        this.userSessionsKey(record.tenantId, record.userId),
+        record.sessionId,
+      ),
     ]);
   }
 
@@ -385,7 +479,7 @@ export class AuthSessionService {
     return {
       httpOnly: true,
       maxAge: this.refreshTokenTtlSeconds * 1000,
-      path: "/api/admin/auth",
+      path: "/api/admin",
       sameSite: "lax" as const,
       secure: this.configService.getOrThrow<boolean>(
         "auth.refreshCookieSecure",
@@ -400,7 +494,12 @@ export class AuthSessionService {
     };
   }
 
-  private issueAccessToken(userId: string, sessionId: string) {
+  private issueAccessToken(
+    userId: string,
+    tenantId: string | null,
+    principalType: "platform" | "tenant",
+    sessionId: string,
+  ) {
     const ttlSeconds = this.accessTokenTtlSeconds;
     const expiresAt = new Date(
       (Math.floor(Date.now() / 1000) + ttlSeconds) * 1000,
@@ -408,7 +507,9 @@ export class AuthSessionService {
     const accessToken = createAuthSessionToken(
       {
         jti: randomUUID(),
+        principalType,
         sessionId,
+        tenantId,
         userId,
       },
       {
@@ -416,56 +517,77 @@ export class AuthSessionService {
         ttlSeconds,
       },
     );
-    return { accessToken, expiresAt };
+    return { accessToken, expiresAt, principalType, tenantId };
   }
 
   private async validateIntegrationToken(
     token: string,
     payload: NonNullable<ReturnType<typeof parseAuthSessionToken>>,
   ) {
+    if (!payload.tenantId || payload.principalType !== "integration") {
+      throw new UnauthorizedException("登录已失效，请重新登录");
+    }
     const tokenId = payload.sessionId.slice(INTEGRATION_SESSION_PREFIX.length);
-    const record = tokenId
-      ? await this.integrationTokenRepository.findOne({
+    if (!tokenId) throw new UnauthorizedException("登录已失效，请重新登录");
+    const { record, tenantId } = await this.runInTenantContext(
+      payload.tenantId,
+      async (manager) => {
+        const repository = manager.getRepository(IntegrationToken);
+        const record = await repository.findOne({
           where: {
             id: tokenId,
             ownerUserId: payload.userId,
+            tenantId: payload.tenantId!,
             tokenHash: hashToken(token),
           },
-        })
-      : null;
+        });
+        if (
+          !record ||
+          record.revokedAt ||
+          record.expiresAt.getTime() <= Date.now()
+        ) {
+          throw new UnauthorizedException("登录已失效，请重新登录");
+        }
+        const tenantId = requireUserTenantId(
+          await this.ensureActiveUserWithManager(
+            manager,
+            record.ownerUserId,
+            payload.tenantId!,
+          ),
+        );
+        if (tenantId !== payload.tenantId) {
+          throw new UnauthorizedException("登录已失效，请重新登录");
+        }
+        await this.ensureActiveOrganizationWithManager(manager, record);
 
-    if (
-      !record ||
-      record.revokedAt ||
-      record.expiresAt.getTime() <= Date.now()
-    ) {
-      throw new UnauthorizedException("登录已失效，请重新登录");
-    }
-    await this.ensureActiveUser(record.ownerUserId);
-    await this.ensureActiveOrganization(record);
-
-    const lastUsedAt = new Date();
-    const updateResult = await this.integrationTokenRepository.update(
-      {
-        expiresAt: MoreThan(lastUsedAt),
-        id: record.id,
-        ownerUserId: record.ownerUserId,
-        revokedAt: IsNull(),
-        tokenHash: hashToken(token),
+        const lastUsedAt = new Date();
+        const updateResult = await repository.update(
+          {
+            expiresAt: MoreThan(lastUsedAt),
+            id: record.id,
+            ownerUserId: record.ownerUserId,
+            revokedAt: IsNull(),
+            tenantId,
+            tokenHash: hashToken(token),
+          },
+          { lastUsedAt },
+        );
+        if ((updateResult.affected ?? 0) < 1) {
+          throw new UnauthorizedException("登录已失效，请重新登录");
+        }
+        record.lastUsedAt = lastUsedAt;
+        return { record, tenantId };
       },
-      { lastUsedAt },
     );
-    if ((updateResult.affected ?? 0) < 1) {
-      throw new UnauthorizedException("登录已失效，请重新登录");
-    }
-    record.lastUsedAt = lastUsedAt;
 
     return {
       integrationToken: {
+        departmentId: record.departmentId,
         id: record.id,
         organizationId: record.organizationId,
         permissions: record.permissions ?? [],
         scope: record.scope,
+        tenantId,
       },
       jti: payload.jti,
       record: {
@@ -476,22 +598,26 @@ export class AuthSessionService {
         ipAddress: null,
         lastSeenAt: (record.lastUsedAt ?? record.updatedAt).toISOString(),
         os: "API",
+        principalType: "tenant",
         refreshTokenHash: "",
         revokedAt: null,
         sessionId: payload.sessionId,
+        tenantId,
         userAgent: null,
         userId: record.ownerUserId,
       },
       sessionId: payload.sessionId,
+      principalType: "integration",
+      tenantId,
       tokenKind: "integration",
       userId: record.ownerUserId,
     } satisfies ValidatedAuthSession;
   }
 
-  private async getSessionRecord(sessionId: string) {
+  private async getSessionRecord(tenantId: string | null, sessionId: string) {
     const rawValue = await (
       await this.redisService.getClient()
-    ).get(this.sessionKey(sessionId));
+    ).get(this.sessionKey(tenantId, sessionId));
     if (!rawValue) return null;
     try {
       return JSON.parse(rawValue) as AuthSessionRecord;
@@ -503,28 +629,44 @@ export class AuthSessionService {
   private async saveSession(record: AuthSessionRecord) {
     await (
       await this.redisService.getClient()
-    ).set(this.sessionKey(record.sessionId), JSON.stringify(record), {
+    ).set(this.sessionKey(record.tenantId, record.sessionId), JSON.stringify(record), {
       EX: this.sessionHistoryTtlSeconds,
     });
   }
 
-  private async indexRefreshToken(refreshTokenHash: string, sessionId: string) {
+  private async indexRefreshToken(
+    refreshTokenHash: string,
+    tenantId: string | null,
+    sessionId: string,
+  ) {
     await (
       await this.redisService.getClient()
-    ).set(this.refreshIndexKey(refreshTokenHash), sessionId, {
+    ).set(
+      this.refreshIndexKey(refreshTokenHash),
+      JSON.stringify({ sessionId, tenantId }),
+      {
       EX: this.refreshTokenTtlSeconds,
-    });
+      },
+    );
   }
 
-  private async addUserSession(userId: string, sessionId: string) {
+  private async addUserSession(
+    tenantId: string | null,
+    userId: string,
+    sessionId: string,
+  ) {
     const client = await this.redisService.getClient();
-    const key = this.userSessionsKey(userId);
+    const key = this.userSessionsKey(tenantId, userId);
     await client.sAdd(key, sessionId);
     await client.expire(key, this.sessionHistoryTtlSeconds);
   }
 
-  private async touchSession(sessionId: string, userId: string) {
-    const latestRecord = await this.getSessionRecord(sessionId);
+  private async touchSession(
+    sessionId: string,
+    tenantId: string | null,
+    userId: string,
+  ) {
+    const latestRecord = await this.getSessionRecord(tenantId, sessionId);
     if (
       !latestRecord ||
       latestRecord.userId !== userId ||
@@ -542,23 +684,111 @@ export class AuthSessionService {
     return touchedRecord;
   }
 
-  private async ensureActiveUser(userId: string) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+  private async ensureActiveUser(userId: string, tenantId: string) {
+    return this.runInTenantContext(tenantId, (manager) =>
+      this.ensureActiveUserWithManager(manager, userId, tenantId),
+    );
+  }
+
+  private async ensureActiveUserWithManager(
+    manager: EntityManager,
+    userId: string,
+    tenantId: string,
+  ) {
+    const user = await manager.getRepository(User).findOne({
+        relations: { tenant: true },
+        where: { id: userId, tenantId },
+      });
     if (!user || user.status !== "active") {
       throw new UnauthorizedException("用户不可用");
     }
+    if (requireUserTenantId(user) !== tenantId) {
+      throw new UnauthorizedException("用户不可用");
+    }
+    const tenant = (user as User & { tenant?: { status?: string } }).tenant;
+    if (!tenant || tenant.status !== "active") {
+      throw new UnauthorizedException("租户不可用");
+    }
+    return user;
+  }
+
+  private runInTenantContext<T>(
+    tenantId: string,
+    work: (manager: EntityManager) => Promise<T>,
+  ) {
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', 'tenant', true)",
+        [tenantId],
+      );
+      return this.tenantContext.run(
+        {
+          departmentId: null,
+          manager,
+          organizationId: null,
+          scopeLevel: "tenant",
+          tenantId,
+        },
+        () => work(manager),
+      );
+    });
+  }
+
+  private async ensureActivePlatformUser(platformUserId: string) {
+    const user = await this.platformUserRepository.findOne({
+      where: { id: platformUserId },
+    });
+    if (!user || user.status !== "active") {
+      throw new UnauthorizedException("平台账号不可用");
+    }
+    return user;
+  }
+
+  private ensureActivePrincipal(
+    userId: string,
+    tenantId: string | null,
+    principalType: "integration" | "platform" | "tenant",
+  ) {
+    if (principalType === "platform") {
+      if (tenantId !== null) throw new UnauthorizedException("平台会话无效");
+      return this.ensureActivePlatformUser(userId);
+    }
+    if (!tenantId) throw new UnauthorizedException("登录会话缺少租户上下文");
+    return this.ensureActiveUser(userId, tenantId);
   }
 
   private async ensureActiveOrganization(record: IntegrationToken) {
-    if (record.scope !== "organization") return;
+    if (record.scope !== "organization" && record.scope !== "department") return;
+    await this.runInTenantContext(record.tenantId, (manager) =>
+      this.ensureActiveOrganizationWithManager(manager, record),
+    );
+  }
 
+  private async ensureActiveOrganizationWithManager(
+    manager: EntityManager,
+    record: IntegrationToken,
+  ) {
+    if (record.scope !== "organization" && record.scope !== "department") return;
     const organization = record.organizationId
-      ? await this.organizationRepository.findOne({
-          where: { id: record.organizationId },
-        })
-      : null;
+        ? await manager.getRepository(Organization).findOne({
+            where: { id: record.organizationId, tenantId: record.tenantId },
+          })
+        : null;
     if (!organization || organization.status !== "active") {
       throw new UnauthorizedException("组织不可用");
+    }
+    if (record.scope === "department") {
+      const department = record.departmentId
+          ? await manager.getRepository(Department).findOne({
+              where: {
+                id: record.departmentId,
+                organizationId: organization.id,
+                status: "active",
+                tenantId: record.tenantId,
+              },
+            })
+          : null;
+      if (!department) throw new UnauthorizedException("部门不可用");
     }
   }
 
@@ -587,7 +817,7 @@ export class AuthSessionService {
   private async saveRefreshRotationResult(
     client: Awaited<ReturnType<RedisService["getClient"]>>,
     refreshTokenHash: string,
-    issued: IssuedAuthSession & { userId: string },
+    issued: RefreshRotationResult,
   ) {
     await client.set(
       this.refreshRotationKey(refreshTokenHash),
@@ -624,8 +854,8 @@ export class AuthSessionService {
     return rawValue;
   }
 
-  private sessionKey(sessionId: string) {
-    return `auth:session:${sessionId}`;
+  private sessionKey(tenantId: string | null, sessionId: string) {
+    return `auth:${tenantNamespace(tenantId)}:session:${sessionId}`;
   }
 
   private refreshIndexKey(refreshTokenHash: string) {
@@ -640,12 +870,16 @@ export class AuthSessionService {
     return `auth:refresh_rotation:${refreshTokenHash}`;
   }
 
-  private userSessionsKey(userId: string) {
-    return `auth:user_sessions:${userId}`;
+  private userSessionsKey(tenantId: string | null, userId: string) {
+    return `auth:${tenantNamespace(tenantId)}:user_sessions:${userId}`;
   }
 
-  private realtimeTicketKey(ticketHash: string) {
-    return `auth:realtime_ticket:${ticketHash}`;
+  private realtimeTicketKey(tenantId: string, ticketHash: string) {
+    return `auth:${tenantId}:realtime_ticket:${ticketHash}`;
+  }
+
+  private realtimeTicketIndexKey(ticketHash: string) {
+    return `auth:realtime_ticket_index:${ticketHash}`;
   }
 
   private get accessTokenTtlSeconds() {
@@ -669,12 +903,53 @@ export class AuthSessionService {
   }
 }
 
+function requireUserTenantId(user: User) {
+  const tenantId = (user as User & { tenantId?: string | null }).tenantId;
+  if (!tenantId) throw new UnauthorizedException("用户不可用");
+  return tenantId;
+}
+
+function tenantNamespace(tenantId: string | null) {
+  return tenantId ?? "platform";
+}
+
+function assertPrincipalTenantContext(
+  principalType: "platform" | "tenant",
+  tenantId: string | null,
+) {
+  if (
+    (principalType === "platform" && tenantId !== null) ||
+    (principalType === "tenant" && !tenantId)
+  ) {
+    throw new UnauthorizedException("登录会话租户上下文无效");
+  }
+}
+
+function parseRefreshIndex(value: string | null) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as {
+      sessionId?: unknown;
+      tenantId?: unknown;
+    };
+    return typeof parsed.sessionId === "string" &&
+      (typeof parsed.tenantId === "string" || parsed.tenantId === null)
+      ? { sessionId: parsed.sessionId, tenantId: parsed.tenantId }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const REFRESH_LOCK_TTL_SECONDS = 10;
 const REFRESH_ROTATION_RESULT_TTL_SECONDS = 10;
 const REFRESH_ROTATION_WAIT_MS = 2_000;
 const REFRESH_ROTATION_POLL_MS = 50;
 
-type RefreshRotationResult = IssuedAuthSession & { userId: string };
+type RefreshRotationResult = IssuedAuthSession & {
+  tenantId: string | null;
+  userId: string;
+};
 
 function encryptRefreshRotation(value: RefreshRotationResult, secret: string) {
   const iv = randomBytes(12);
@@ -712,8 +987,12 @@ function decryptRefreshRotation(value: string, secret: string): RefreshRotationR
     if (
       typeof issued.accessToken !== "string" ||
       typeof issued.expiresAt !== "string" ||
+      (issued.principalType !== "platform" && issued.principalType !== "tenant") ||
       typeof issued.refreshToken !== "string" ||
       typeof issued.sessionId !== "string" ||
+      (issued.principalType === "platform"
+        ? issued.tenantId !== null
+        : typeof issued.tenantId !== "string") ||
       typeof issued.userId !== "string"
     ) {
       return null;

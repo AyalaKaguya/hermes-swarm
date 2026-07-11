@@ -46,14 +46,14 @@ export class OrganizationsController {
    */
   @Get("organizations")
   @AccessOperation({
-    description: "查看平台内的组织列表。",
+    description: "查看当前租户内的组织目录。",
     entity: "organization",
     entityLabel: "组织",
     label: "查看组织列表",
     operation: "list",
-    purpose: "platform_organization",
-    purposeLabel: "平台组织",
-    scope: "platform",
+    purpose: "tenant_organization",
+    purposeLabel: "租户组织",
+    scope: "tenant",
     sortOrder: 10,
   })
   list() {
@@ -65,7 +65,7 @@ export class OrganizationsController {
    */
   @Get("organizations/:organizationId")
   @AccessOperation({
-    defaultRoles: ["owner", "admin", "member", "viewer", "platform-admin"],
+    defaultRoles: ["owner", "admin", "member", "viewer"],
     description: "查看组织的基础资料。",
     label: "查看组织资料",
     operation: "view",
@@ -87,9 +87,9 @@ export class OrganizationsController {
     entityLabel: "组织",
     label: "创建组织",
     operation: "create",
-    purpose: "platform_organization",
-    purposeLabel: "平台组织",
-    scope: "platform",
+    purpose: "tenant_organization",
+    purposeLabel: "租户组织",
+    scope: "tenant",
     sortOrder: 20,
   })
   create(
@@ -104,7 +104,7 @@ export class OrganizationsController {
    */
   @Patch("organizations/:organizationId")
   @AccessOperation({
-    defaultRoles: ["owner", "admin", "platform-admin"],
+    defaultRoles: ["owner", "admin"],
     description: "更新组织的基础资料。",
     label: "更新组织资料",
     operation: "update_basic",
@@ -127,15 +127,15 @@ export class OrganizationsController {
    */
   @Delete("organizations/:organizationId")
   @AccessOperation({
-    description: "删除平台中的组织。",
+    description: "删除当前租户中的组织。",
     entity: "organization",
     entityLabel: "组织",
     isDangerous: true,
     label: "删除组织",
     operation: "delete",
-    purpose: "platform_organization",
-    purposeLabel: "平台组织",
-    scope: "platform",
+    purpose: "tenant_organization",
+    purposeLabel: "租户组织",
+    scope: "tenant",
     sortOrder: 90,
   })
   delete(

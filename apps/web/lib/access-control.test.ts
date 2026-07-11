@@ -5,7 +5,7 @@ import type { RolePermission } from "./admin-api";
 import type { ResolvedSession } from "./session";
 
 const principal = (permissions: string[]): ResolvedSession =>
-  ({ permissions }) as ResolvedSession;
+  ({ permissions, principalType: "tenant" }) as ResolvedSession;
 
 const rolePermission = (
   permission: string,
@@ -37,19 +37,21 @@ const organizationPrincipal = (
     ],
     organization: { id: organizationId },
     permissions,
+    principalType: "tenant",
   }) as ResolvedSession;
 
 const platformPrincipal = (permissions: string[]): ResolvedSession =>
   ({
     permissions,
-    platformMembership: {
-      role: {
+    platformUser: {
+      roles: [{
+        name: "platform-admin",
         permissions: permissions.map((permission) =>
           rolePermission(permission, "role-platform", null),
         ),
-      },
-      status: "active",
+      }],
     },
+    principalType: "platform",
   }) as ResolvedSession;
 
 describe("web access control", () => {
@@ -101,19 +103,32 @@ describe("web access control", () => {
     );
   });
 
-  it("checks platform pages against the platform membership role", () => {
+  it("checks platform pages against PlatformUser role permissions", () => {
     assert.equal(
       hasPageAccess(
-        platformPrincipal(["page.settings.organizations.access:platform"]),
-        "settings.organizations",
+        platformPrincipal(["page.settings.platform.access:platform"]),
+        "settings.platform",
       ),
       true,
     );
     assert.equal(
       hasPageAccess(
-        organizationPrincipal(["page.settings.organizations.access:platform"]),
-        "settings.organizations",
+        organizationPrincipal(["page.settings.platform.access:platform"]),
+        "settings.platform",
       ),
+      false,
+    );
+  });
+
+  it("checks tenant pages without accepting platform principals", () => {
+    const permission = "page.settings.integrations.access:tenant";
+
+    assert.equal(
+      hasPageAccess(principal([permission]), "settings.integrations"),
+      true,
+    );
+    assert.equal(
+      hasPageAccess(platformPrincipal([permission]), "settings.integrations"),
       false,
     );
   });

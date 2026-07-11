@@ -12,7 +12,7 @@ import type { RolePermission } from "./role-permission.entity.js";
 import type { OrganizationSetting } from "../../settings/entities/organization-setting.entity.js";
 import type { User } from "./user.entity.js";
 import type { UserOrganization } from "./user-organization.entity.js";
-import { BaseEntity } from "./base.entity.js";
+import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 /**
  * Lifecycle status for organizations managed through the admin backend.
@@ -20,22 +20,23 @@ import { BaseEntity } from "./base.entity.js";
 export type OrganizationStatus = "active" | "suspended";
 
 @Entity({ name: "organizations" })
-@Index("UQ_organizations_active_slug", ["slug"], {
+@Index("UQ_organizations_tenant_identity", ["tenantId", "id"], { unique: true })
+@Index("UQ_organizations_active_slug", ["tenantId", "slug"], {
   unique: true,
   where: "deleted_at IS NULL",
 })
-@Index("UQ_organizations_active_subdomain", ["subdomain"], {
+@Index("UQ_organizations_active_subdomain", ["tenantId", "subdomain"], {
   unique: true,
   where: "deleted_at IS NULL",
 })
-@Index("UQ_organizations_single_default", ["isDefault"], {
+@Index("UQ_organizations_single_default", ["tenantId"], {
   unique: true,
   where: "\"is_default\" = true AND deleted_at IS NULL",
 })
 /**
  * Represents an organization boundary in the admin backend.
  */
-export class Organization extends BaseEntity {
+export class Organization extends TenantOwnedBaseEntity {
   /**
    * Display name shown in admin and organization selectors.
    */

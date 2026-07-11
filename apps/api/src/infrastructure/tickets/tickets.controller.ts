@@ -65,40 +65,40 @@ export class TicketsController {
     );
   }
 
-  @Get("tickets/platform")
+  @Get("tickets/tenant")
   @AccessOperation({
     defaultRoles: ["owner", "admin", "member", "viewer"],
-    description: "查看当前账号参与的平台工单。",
-    label: "查看平台工单",
-    operation: "list_platform",
-    purpose: "platform_conversation",
-    purposeLabel: "平台工单",
+    description: "查看当前账号参与的租户支持工单。",
+    label: "查看租户工单",
+    operation: "list_tenant",
+    purpose: "tenant_conversation",
+    purposeLabel: "租户工单",
     scope: "own",
     sortOrder: 10,
   })
-  listPlatformTickets(
+  listTenantTickets(
     @Headers("authorization") authorization: string | undefined,
     @Query("status") status?: string,
   ) {
-    return this.ticketsService.listPlatformTickets(authorization, status);
+    return this.ticketsService.listTenantTickets(authorization, status);
   }
 
-  @Post("tickets/platform")
+  @Post("tickets/tenant")
   @AccessOperation({
     defaultRoles: ["owner", "admin", "member", "viewer"],
-    description: "向平台运营人员发起工单。",
-    label: "创建平台工单",
-    operation: "create_platform",
-    purpose: "platform_conversation",
-    purposeLabel: "平台工单",
+    description: "向当前租户支持团队发起工单。",
+    label: "创建租户工单",
+    operation: "create_tenant",
+    purpose: "tenant_conversation",
+    purposeLabel: "租户工单",
     scope: "own",
     sortOrder: 20,
   })
-  createPlatformTicket(
+  createTenantTicket(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: unknown,
   ) {
-    return this.ticketsService.createPlatformTicket(authorization, payload);
+    return this.ticketsService.createTenantTicket(authorization, payload);
   }
 
 
@@ -178,20 +178,4 @@ export class TicketsController {
     return this.ticketsService.markTicketRead(authorization, ticketId);
   }
 
-  @Post("tickets/archive-expired")
-  @AccessOperation({
-    defaultRoles: ["platform-admin"],
-    description: "归档超过 7 天只有单方关闭的工单。",
-    entity: "ticket",
-    entityLabel: "工单",
-    label: "归档过期工单",
-    operation: "archive_expired",
-    purpose: "platform_conversation",
-    purposeLabel: "平台工单",
-    scope: "platform",
-    sortOrder: 90,
-  })
-  archiveExpiredTickets() {
-    return this.ticketsService.archiveExpiredTickets();
-  }
 }

@@ -13,10 +13,12 @@ import { NotificationsModule } from "../notifications/notifications.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { InviteController } from "./invite.controller.js";
 import { InviteService } from "./invite.service.js";
+import { DatabaseModule } from "../../common/database/database.module.js";
 
 @Module({
   imports: [
     AuthModule,
+    DatabaseModule,
     MailModule,
     NotificationsModule,
     SettingsModule,

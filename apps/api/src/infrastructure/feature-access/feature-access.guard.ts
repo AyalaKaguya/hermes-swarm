@@ -23,16 +23,17 @@ export class FeatureAccessGuard implements CanActivate {
     if (!featureKey) return true;
 
     const request = context.switchToHttp().getRequest<{
+      accessPrincipal?: { tenantId?: string | null };
       params?: Record<string, string | undefined>;
     }>();
     const organizationId = request.params?.organizationId;
-    if (!organizationId) {
-      throw new ForbiddenException("缺少组织上下文");
-    }
 
     const allowed = await this.featureAccessService.isFeatureEnabled(
-      organizationId,
       featureKey,
+      {
+        organizationId,
+        tenantId: request.accessPrincipal?.tenantId ?? undefined,
+      },
     );
     if (!allowed) {
       throw new ForbiddenException("功能未启用");

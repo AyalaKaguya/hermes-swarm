@@ -27,8 +27,9 @@ export function LoginPage() {
   const t = useTranslations();
   const { setLanguage } = useI18n();
   const requestFailedMessageRef = useRef(t("auth.requestFailed"));
-  const [email, setEmail] = useState("admin@hermes.local");
+  const [email, setEmail] = useState("owner@hermes.local");
   const [password, setPassword] = useState("admin123456");
+  const [tenantSlug, setTenantSlug] = useState("hermes-dev");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -69,7 +70,7 @@ export function LoginPage() {
     setSubmitting(true);
 
     try {
-      const response = await authLogin({ email, password });
+      const response = await authLogin({ email, password, tenantSlug });
       if (response.snapshot.permissions.length === 0) {
         setError(t("auth.noAdminAccess"));
         return;
@@ -109,12 +110,22 @@ export function LoginPage() {
         <CardContent>
           <form className="grid gap-3" onSubmit={submit}>
             <div className="grid gap-1.5">
+              <Label htmlFor="login-tenant">{t("auth.tenantSlug")}</Label>
+              <Input
+                autoComplete="organization"
+                id="login-tenant"
+                onChange={(event) => setTenantSlug(event.target.value.toLowerCase())}
+                placeholder={t("auth.tenantSlugPlaceholder")}
+                value={tenantSlug}
+              />
+            </div>
+            <div className="grid gap-1.5">
               <Label htmlFor="login-email">{t("auth.email")}</Label>
               <Input
                 autoComplete="email"
                 id="login-email"
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@hermes.local"
+                placeholder="owner@hermes.local"
                 type="email"
                 value={email}
               />
@@ -143,7 +154,7 @@ export function LoginPage() {
 
             <Button
               className="w-full"
-              disabled={loading || submitting || !email || !password}
+              disabled={loading || submitting || !tenantSlug || !email || !password}
               type="submit"
             >
               {t("auth.signIn")}
@@ -156,6 +167,9 @@ export function LoginPage() {
                 <Link href="/signup">{t("auth.signUp")}</Link>
               </Button>
             </div>
+            <Button asChild variant="link">
+              <Link href="/platform/login">{t("auth.platformSignIn")}</Link>
+            </Button>
           </form>
         </CardContent>
       </Card>

@@ -10,9 +10,11 @@ import {
 } from "@hermes-swarm/core";
 import { MembershipsController } from "./memberships.controller.js";
 import { MembershipsService } from "./memberships.service.js";
+import { DatabaseModule } from "../../common/database/database.module.js";
 
 @Module({
   imports: [
+    DatabaseModule,
     TypeOrmModule.forFeature([
       Organization,
       OrganizationGroupMember,

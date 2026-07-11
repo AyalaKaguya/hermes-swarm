@@ -4,6 +4,7 @@ import type { NextRequest, NextResponse } from "next/server";
 export type WebSession = {
   accessToken: string;
   expiresAt: string;
+  principalType?: "platform" | "tenant";
   refreshToken: string;
   sessionId: string;
 };
@@ -89,6 +90,10 @@ export function unsealWebSession(value: string): WebSession | null {
     return {
       accessToken: session.accessToken,
       expiresAt: session.expiresAt,
+      ...(session.principalType === "platform" ||
+      session.principalType === "tenant"
+        ? { principalType: session.principalType }
+        : {}),
       refreshToken: session.refreshToken,
       sessionId: session.sessionId,
     };

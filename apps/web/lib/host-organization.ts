@@ -7,6 +7,7 @@ export function resolveHostOrganizationIdFromPrincipal(
   principal: Principal,
   hostname: string,
 ) {
+  if (principal.principalType !== "tenant") return null;
   if (
     !getPrincipalBooleanSetting(
       principal,

@@ -81,6 +81,8 @@ export class PlatformMembersController {
 
 export type PlatformMemberPayload = {
   displayName?: string | null;
+  email?: string;
+  password?: string;
   roleId?: string | null;
   status?: "active" | "disabled";
   userId?: string;

@@ -6,12 +6,14 @@ import type {
 } from "@hermes-swarm/core";
 
 export type ConversationSource = {
+  departmentId?: string | null;
   organizationId?: string | null;
   scope: ConversationScope;
   sourceId: string;
   sourceType: string;
   status?: "archived" | "closed" | "open";
   subject: string;
+  tenantId: string;
 };
 
 export type ConversationNotificationPayload = {

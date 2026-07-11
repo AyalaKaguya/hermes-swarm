@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Put } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Put, Req } from "@nestjs/common";
 import type { SaveSettingsPayload } from "../../common/admin-api.types.js";
 import {
   AccessOperation,
@@ -45,6 +45,42 @@ export class SettingsController {
     return this.settingsService.savePlatformSettings(payload);
   }
 
+  @Get("tenant/settings")
+  @AccessOperation({
+    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    description: "查看当前租户配置项。",
+    label: "查看租户配置",
+    operation: "list",
+    purpose: "tenant_config",
+    purposeLabel: "租户配置",
+    scope: "tenant",
+    sortOrder: 10,
+  })
+  listTenantSettings(@Req() request: TenantSettingsRequest) {
+    return this.settingsService.listTenantSettings(requireTenantId(request));
+  }
+
+  @Put("tenant/settings")
+  @AccessOperation({
+    defaultRoles: ["tenant-owner", "tenant-admin"],
+    description: "更新当前租户配置项。",
+    label: "更新租户配置",
+    operation: "save",
+    purpose: "tenant_config",
+    purposeLabel: "租户配置",
+    scope: "tenant",
+    sortOrder: 20,
+  })
+  saveTenantSettings(
+    @Req() request: TenantSettingsRequest,
+    @Body() payload: SaveSettingsPayload,
+  ) {
+    return this.settingsService.saveTenantSettings(
+      requireTenantId(request),
+      payload,
+    );
+  }
+
   @Get("organizations/:organizationId/settings")
   @AccessOperation({
     description: "查看当前组织配置项。",
@@ -56,10 +92,12 @@ export class SettingsController {
     sortOrder: 10,
   })
   listOrganizationSettings(
+    @Req() request: TenantSettingsRequest,
     @Param("organizationId") organizationId: string,
   ) {
     return this.settingsService.listOrganizationSettingsForOrganization(
       organizationId,
+      requireTenantId(request),
     );
   }
 
@@ -74,12 +112,24 @@ export class SettingsController {
     sortOrder: 20,
   })
   saveOrganizationSettings(
+    @Req() request: TenantSettingsRequest,
     @Param("organizationId") organizationId: string,
     @Body() payload: SaveSettingsPayload,
   ) {
     return this.settingsService.saveOrganizationSettingsForOrganization(
       organizationId,
       payload,
+      requireTenantId(request),
     );
   }
+}
+
+type TenantSettingsRequest = {
+  accessPrincipal?: { tenantId?: string | null };
+};
+
+function requireTenantId(request: TenantSettingsRequest) {
+  const tenantId = request.accessPrincipal?.tenantId?.trim();
+  if (!tenantId) throw new Error("Tenant context was not established by the access guard.");
+  return tenantId;
 }

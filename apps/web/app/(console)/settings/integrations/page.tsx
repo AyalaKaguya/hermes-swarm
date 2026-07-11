@@ -134,6 +134,7 @@ export default function IntegrationsPage() {
     try {
       const created = await withAuthenticatedAdminSessionMarker((token) =>
         createIntegrationToken(token, userId, {
+          departmentId: selectedCapability.departmentId,
           expiresAt: draft.expiresAt ? new Date(draft.expiresAt).toISOString() : undefined,
           note: draft.note,
           organizationId: selectedCapability.organizationId,
@@ -189,7 +190,7 @@ export default function IntegrationsPage() {
           <div className="min-w-0">
             <CardTitle>{tr("集成")}</CardTitle>
             <CardDescription>
-              {tr("创建长期有效的个人集成 Token，并限制它可使用的作用范围和权限。")}
+              {tr("创建当前租户的集成 Token，并限制它可使用的租户、组织或部门范围。")}
             </CardDescription>
           </div>
           <Button

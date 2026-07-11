@@ -4,10 +4,123 @@ import {
   type SettingValueType,
 } from "@hermes-swarm/core/settings/definitions";
 import type { AuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
+import {
+  buildRequestScopeHeaders,
+  getActiveRequestScope,
+  getRequestScopeSignal,
+  type RequestScopeLevel,
+} from "@/lib/request-scope";
+
+export type { RequestScopeLevel } from "@/lib/request-scope";
 
 export type OrganizationStatus = "active" | "suspended";
-export type RequestScopeLevel = "organization" | "platform";
 export type UserStatus = "active" | "disabled";
+
+export type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  status: "provisioning" | "active" | "suspended" | "archived";
+};
+
+export type TenantApplicationStatus =
+  | "pending_email_verification"
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "cancelled";
+
+export type TenantApplication = {
+  createdAt: string;
+  emailVerifiedAt: string | null;
+  id: string;
+  ownerDisplayName: string;
+  ownerEmail: string;
+  requestedName: string;
+  requestedSlug: string;
+  requestedSubdomain: string | null;
+  reviewedAt: string | null;
+  reviewedByPlatformUserId: string | null;
+  reviewNote: string | null;
+  status: TenantApplicationStatus;
+  tenantId: string | null;
+  updatedAt: string;
+};
+
+export type TenantApplicationPayload = {
+  ownerDisplayName: string;
+  ownerEmail: string;
+  requestedName: string;
+  requestedSlug: string;
+  requestedSubdomain?: string | null;
+};
+
+export type TenantApplicationSubmission = {
+  applicationId: string;
+  cancellationToken?: string;
+  verificationToken?: string;
+};
+
+export type TenantApplicationApproval = {
+  application: TenantApplication;
+  organization: Organization;
+  ownerActivationToken?: string;
+  ownerUser: User;
+  tenant: Tenant;
+};
+
+export type Department = {
+  code: string | null;
+  description: string | null;
+  id: string;
+  name: string;
+  organizationId: string;
+  parentDepartmentId: string | null;
+  slug: string;
+  status: "active" | "disabled";
+  tenantId: string;
+};
+
+export type DepartmentMembership = {
+  department: Department;
+  departmentId: string;
+  id: string;
+  isDefault?: boolean;
+  joinedAt?: string | null;
+  membership?: OrganizationMembership;
+  membershipId?: string;
+  organizationId: string;
+  status: MembershipStatus;
+  tenantId: string;
+};
+
+export type DepartmentPayload = {
+  code?: string | null;
+  description?: string | null;
+  name: string;
+  parentDepartmentId?: string | null;
+  slug?: string;
+  status?: "active" | "disabled";
+};
+
+export type DepartmentDispatchType =
+  | "handoff"
+  | "escalation"
+  | "collaboration"
+  | "fallback";
+
+export type DepartmentDispatchRelation = {
+  id: string;
+  isEnabled: boolean;
+  policy: Record<string, unknown>;
+  priority: number;
+  sourceDepartment?: Department;
+  sourceDepartmentId: string;
+  targetDepartment?: Department;
+  targetDepartmentId: string;
+  tenantId: string;
+  type: DepartmentDispatchType;
+};
 
 export type Organization = {
   banner: string | null;
@@ -101,7 +214,7 @@ export type UserNotification = {
 };
 
 export type TicketStatus = "archived" | "closed" | "open";
-export type TicketScope = "organization" | "platform";
+export type TicketScope = "tenant" | "organization" | "department";
 
 export type Ticket = {
   archivedAt: string | null;
@@ -154,6 +267,7 @@ export type TicketMessage = {
 
 export type User = {
   id: string;
+  tenantId?: string | null;
   displayName: string;
   email: string;
   firstName: string | null;
@@ -182,7 +296,7 @@ export type Role = {
   name: string;
   organizationId: string | null;
   permissions?: RolePermission[];
-  scope?: "organization" | "platform";
+  scope?: "platform" | "tenant" | "organization" | "department";
 };
 
 export type RolePermission = {
@@ -193,7 +307,12 @@ export type RolePermission = {
   organizationId: string | null;
 };
 
-export type PermissionScope = "organization" | "own" | "platform";
+export type PermissionScope =
+  | "platform"
+  | "tenant"
+  | "organization"
+  | "department"
+  | "own";
 
 export type PermissionCatalogOperation = {
   description?: string | null;
@@ -277,6 +396,15 @@ export type PlatformMemberPayload = {
   roleId?: string | null;
   status?: "active" | "disabled";
   userId?: string;
+};
+
+export type PlatformUser = {
+  displayName: string;
+  email: string;
+  id: string;
+  preferredLanguage?: string;
+  roles: Role[];
+  status: "active" | "disabled";
 };
 
 export type RolePayload = {
@@ -397,39 +525,68 @@ export type CurrentUser = {
   memberships?: OrganizationMembership[];
   organization: Organization | null;
   permissions: string[];
-  platformMembership?: PlatformMember | null;
+  platformUser?: PlatformUser | null;
+  principalType: "platform" | "tenant";
   role: Role | null;
   user: User;
 };
 
-export type PrincipalSession = {
+export type PrincipalDefaultScope = {
+  departmentId?: string | null;
+  level: RequestScopeLevel;
+  organizationId?: string | null;
+};
+
+export type TenantPrincipalSession = {
+  allowedScopes?: RequestScopeLevel[];
+  defaultScope?: PrincipalDefaultScope | null;
+  departmentMemberships?: DepartmentMembership[];
   isPlatformAdmin?: boolean;
   memberships: OrganizationMembership[];
   organization?: Organization | null;
   permissions: string[];
-  platformMembership: PlatformMember | null;
   role?: Role | null;
+  principalType: "tenant";
   systemSettings?: SystemSettingDto[];
+  tenant?: Tenant | null;
+  tenantId: string;
+  tenantRoles?: Role[];
   user: User;
 };
 
+export type PlatformPrincipalSession = {
+  platformUser: PlatformUser;
+  principalType: "platform";
+  systemSettings?: SystemSettingDto[];
+};
+
+export type PrincipalSession = TenantPrincipalSession | PlatformPrincipalSession;
+
 export type Snapshot = {
+  allowedScopes?: RequestScopeLevel[];
   currentUser: CurrentUser;
+  defaultScope?: PrincipalDefaultScope | null;
+  departmentMemberships?: DepartmentMembership[];
   isPlatformAdmin: boolean;
   memberships: OrganizationMembership[];
   organization: Organization | null;
   organizations: Organization[];
   permissions: string[];
-  platformMembership: PlatformMember | null;
+  platformUser?: PlatformUser | null;
+  principalType: "platform" | "tenant";
   role?: Role | null;
   rolePermissions: RolePermission[];
   roles: Role[];
   scope: {
-    level: RequestScopeLevel;
+    level: RequestScopeLevel | "platform";
+    departmentId?: string | null;
     organizationId: string | null;
   };
   settings: OrganizationSetting[];
   systemSettings: SystemSettingDto[];
+  tenant?: Tenant | null;
+  tenantId?: string | null;
+  tenantRoles?: Role[];
   user: User;
   users: User[];
 };
@@ -443,7 +600,13 @@ export type PublicBootstrap = {
 export type AuthLoginResponse = {
   expiresAt: string;
   sessionId: string;
-  snapshot: PrincipalSession;
+  snapshot: TenantPrincipalSession;
+};
+
+export type PlatformAuthLoginResponse = {
+  expiresAt: string;
+  sessionId: string;
+  snapshot: PlatformPrincipalSession;
 };
 
 export type AuthRefreshResponse = {
@@ -470,7 +633,7 @@ export type AuthSessionDevice = {
   sessionId: string;
 };
 
-export type IntegrationTokenScope = "organization" | "own" | "platform";
+export type IntegrationTokenScope = "tenant" | "organization" | "department";
 
 export type IntegrationTokenPermissionOption = {
   description: string | null;
@@ -488,6 +651,8 @@ export type IntegrationTokenPermissionOption = {
 };
 
 export type IntegrationTokenScopeCapability = {
+  departmentId: string | null;
+  departmentName: string | null;
   organizationId: string | null;
   organizationName: string | null;
   permissions: IntegrationTokenPermissionOption[];
@@ -500,6 +665,8 @@ export type IntegrationTokenCapabilities = {
 
 export type IntegrationToken = {
   createdAt: string;
+  departmentId: string | null;
+  departmentName?: string | null;
   expiresAt: string;
   id: string;
   isExpired: boolean;
@@ -515,6 +682,7 @@ export type IntegrationToken = {
   permissions: string[];
   revokedAt: string | null;
   scope: IntegrationTokenScope;
+  tenantId: string;
   tokenPrefix: string;
   updatedAt: string;
 };
@@ -534,6 +702,7 @@ export type OnboardingPayload = {
 export type LoginPayload = {
   email: string;
   password: string;
+  tenantSlug?: string;
 };
 
 export type FileUploadResponse = {
@@ -582,6 +751,11 @@ export async function fetchAdmin<T>(
   options?: {
     body?: unknown;
     method?: string;
+    scope?: {
+      departmentId?: string | null;
+      level: RequestScopeLevel;
+      organizationId?: string | null;
+    };
   },
 ): Promise<T> {
   const response = await sendAdminRequest(path, options);
@@ -593,14 +767,44 @@ async function sendAdminRequest(
   options?: {
     body?: unknown;
     method?: string;
+    scope?: {
+      departmentId?: string | null;
+      level: RequestScopeLevel;
+      organizationId?: string | null;
+    };
   },
 ) {
   const headers = new Headers();
+  const scopedRequest = shouldAttachRequestScope(path);
+  if (scopedRequest) {
+    const activeScope = getActiveRequestScope();
+    const requestScope = options?.scope
+      ? {
+          departmentId: options.scope.departmentId ?? null,
+          level: options.scope.level,
+          organizationId: options.scope.organizationId ?? null,
+          tenantId: activeScope?.tenantId ?? null,
+        }
+      : activeScope;
+    for (const [name, value] of Object.entries(
+      buildRequestScopeHeaders(requestScope),
+    )) {
+      headers.set(name, value);
+    }
+  }
   if (options?.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
 
   const controller = new AbortController();
+  const scopeSignal = getRequestScopeSignal();
+  const abortForScopeChange = () => controller.abort();
+  if (scopedRequest) {
+    if (scopeSignal.aborted) abortForScopeChange();
+    else {
+      scopeSignal.addEventListener("abort", abortForScopeChange, { once: true });
+    }
+  }
   const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
 
@@ -613,15 +817,37 @@ async function sendAdminRequest(
       signal: controller.signal,
     });
   } catch (error) {
+    if (scopedRequest && scopeSignal.aborted) {
+      throw new DOMException("Request scope changed", "AbortError");
+    }
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("请求超时，请确认 API 服务已启动");
     }
     throw error;
   } finally {
     window.clearTimeout(timeoutId);
+    scopeSignal.removeEventListener("abort", abortForScopeChange);
   }
 
   return response;
+}
+
+function shouldAttachRequestScope(path: string) {
+  if (path === "/platform" || path.startsWith("/platform/")) return false;
+  const publicPath = [
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/request-password",
+    "/auth/reset-password",
+    "/bootstrap",
+    "/invites/accept",
+    "/invites/validate",
+    "/onboarding",
+    "/platform/auth/login",
+    "/tenant-applications",
+  ].some((candidate) => path === candidate || path.startsWith(`${candidate}?`));
+  if (publicPath) return false;
+  return !/^\/tenant-applications\/[^/]+\/(?:verify|cancel)(?:\?|$)/.test(path);
 }
 
 async function parseAdminResponse<T>(response: Response): Promise<T> {
@@ -710,6 +936,82 @@ export function authLogin(payload: LoginPayload) {
   });
 }
 
+export function platformAuthLogin(payload: LoginPayload) {
+  return fetchAdmin<PlatformAuthLoginResponse>("/platform/auth/login", {
+    body: payload,
+    method: "POST",
+  });
+}
+
+export function submitTenantApplication(payload: TenantApplicationPayload) {
+  return fetchAdmin<TenantApplicationSubmission>("/tenant-applications", {
+    body: payload,
+    method: "POST",
+  });
+}
+
+export function verifyTenantApplication(
+  applicationId: string,
+  token: string,
+) {
+  return fetchAdmin<TenantApplication>(
+    `/tenant-applications/${applicationId}/verify`,
+    { body: { token }, method: "POST" },
+  );
+}
+
+export function cancelTenantApplication(applicationId: string, token: string) {
+  return fetchAdmin<TenantApplication>(
+    `/tenant-applications/${applicationId}/cancel`,
+    { body: { token }, method: "POST" },
+  );
+}
+
+export function listTenantApplications(
+  session: AuthenticatedAdminSessionMarker,
+) {
+  return fetchAdmin<TenantApplication[]>("/platform/tenant-applications", {});
+}
+
+export function listPlatformTenants(
+  session: AuthenticatedAdminSessionMarker,
+) {
+  return fetchAdmin<Tenant[]>("/platform/tenants", {});
+}
+
+export function updatePlatformTenantStatus(
+  session: AuthenticatedAdminSessionMarker,
+  tenantId: string,
+  status: "active" | "archived" | "suspended",
+) {
+  return fetchAdmin<Tenant>(`/platform/tenants/${tenantId}/status`, {
+    body: { status },
+    method: "PATCH",
+  });
+}
+
+export function approveTenantApplication(
+  session: AuthenticatedAdminSessionMarker,
+  applicationId: string,
+  payload: { note?: string | null; organizationName?: string },
+) {
+  return fetchAdmin<TenantApplicationApproval>(
+    `/platform/tenant-applications/${applicationId}/approve`,
+    { body: payload, method: "POST" },
+  );
+}
+
+export function rejectTenantApplication(
+  session: AuthenticatedAdminSessionMarker,
+  applicationId: string,
+  payload: { note?: string | null },
+) {
+  return fetchAdmin<TenantApplication>(
+    `/platform/tenant-applications/${applicationId}/reject`,
+    { body: payload, method: "POST" },
+  );
+}
+
 export function onboard(payload: OnboardingPayload) {
   return fetchAdmin<AuthLoginResponse>("/onboarding", {
     body: payload,
@@ -794,6 +1096,7 @@ export function createIntegrationToken(
   session: AuthenticatedAdminSessionMarker,
   userId: string,
   payload: {
+    departmentId?: string | null;
     expiresAt?: string;
     note?: string | null;
     organizationId?: string | null;
@@ -839,17 +1142,56 @@ export function revokeOrganizationIntegrationToken(
   );
 }
 
-export function listPlatformIntegrationTokens(session: AuthenticatedAdminSessionMarker) {
-  return fetchAdmin<IntegrationToken[]>("/platform/integration-tokens", {
-  });
+export function createOrganizationIntegrationToken(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  payload: {
+    expiresAt?: string;
+    note?: string | null;
+    permissions: string[];
+  },
+) {
+  return fetchAdmin<CreatedIntegrationToken>(
+    `/organizations/${organizationId}/integration-tokens`,
+    { body: payload, method: "POST" },
+  );
 }
 
-export function revokePlatformIntegrationToken(
+export function listDepartmentIntegrationTokens(
   session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
+) {
+  return fetchAdmin<IntegrationToken[]>(
+    `/organizations/${organizationId}/departments/${departmentId}/integration-tokens`,
+    {},
+  );
+}
+
+export function createDepartmentIntegrationToken(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
+  payload: {
+    expiresAt?: string;
+    note?: string | null;
+    permissions: string[];
+  },
+) {
+  return fetchAdmin<CreatedIntegrationToken>(
+    `/organizations/${organizationId}/departments/${departmentId}/integration-tokens`,
+    { body: payload, method: "POST" },
+  );
+}
+
+export function revokeDepartmentIntegrationToken(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
   integrationTokenId: string,
 ) {
   return fetchAdmin<void>(
-    `/platform/integration-tokens/${integrationTokenId}`,
+    `/organizations/${organizationId}/departments/${departmentId}/integration-tokens/${integrationTokenId}`,
     { method: "DELETE" },
   );
 }
@@ -967,7 +1309,9 @@ export type SmtpConfig = {
 export type EmailTemplateDto = {
   description: string | null;
   hbs: string;
+  hasPlatformDefault: boolean;
   id: string;
+  inherited: boolean;
   isSystem: boolean;
   languageCode: string;
   mjml: string | null;
@@ -1074,11 +1418,11 @@ export function updateManagedUser(session: AuthenticatedAdminSessionMarker, user
   roleId?: string | null;
   status?: UserStatus;
 }) {
-  return fetchAdmin<User>(`/users/platform/${userId}`, { body: payload, method: "PATCH" });
+  return fetchAdmin<User>(`/users/tenant/${userId}`, { body: payload, method: "PATCH" });
 }
 
 export function deleteManagedUser(session: AuthenticatedAdminSessionMarker, userId: string) {
-  return fetchAdmin<void>(`/users/platform/${userId}`, {
+  return fetchAdmin<void>(`/users/tenant/${userId}`, {
     method: "DELETE",
   });
 }
@@ -1091,6 +1435,7 @@ export function listEmailTemplates(session: AuthenticatedAdminSessionMarker, org
 }
 
 export function createEmailTemplate(session: AuthenticatedAdminSessionMarker, organizationId: string, payload: {
+  description?: string | null;
   hbs: string;
   languageCode: string;
   mjml?: string | null;
@@ -1104,6 +1449,7 @@ export function createEmailTemplate(session: AuthenticatedAdminSessionMarker, or
 }
 
 export function updateEmailTemplate(session: AuthenticatedAdminSessionMarker, organizationId: string, templateId: string, payload: Partial<{
+  description: string | null;
   hbs: string;
   languageCode: string;
   mjml: string | null;
@@ -1121,6 +1467,20 @@ export function deleteEmailTemplate(session: AuthenticatedAdminSessionMarker, or
     `/organizations/${organizationId}/mail/templates/${templateId}`,
     { method: "DELETE" },
   );
+}
+
+export function previewEmailTemplate(
+  session: AuthenticatedAdminSessionMarker,
+  payload: { hbs: string; subject?: string | null },
+  organizationId?: string,
+) {
+  const path = organizationId
+    ? `/organizations/${organizationId}/mail/templates/preview`
+    : "/platform/mail/templates/preview";
+  return fetchAdmin<{ html: string; subject: string }>(path, {
+    body: payload,
+    method: "POST",
+  });
 }
 
 export function listPlatformEmailTemplates(session: AuthenticatedAdminSessionMarker) {
@@ -1192,6 +1552,149 @@ export function saveSystemSettings(
 
 export function listOrganizations(session: AuthenticatedAdminSessionMarker) {
   return fetchAdmin<Organization[]>("/organizations", {});
+}
+
+export function updateTenant(
+  session: AuthenticatedAdminSessionMarker,
+  payload: Partial<Pick<Tenant, "name">>,
+) {
+  return fetchAdmin<Tenant>("/tenant", { body: payload, method: "PATCH" });
+}
+
+export function listDepartments(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+) {
+  return fetchAdmin<Department[]>(
+    `/organizations/${organizationId}/departments`,
+    { scope: { level: "organization", organizationId } },
+  );
+}
+
+export function createDepartment(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  payload: DepartmentPayload,
+) {
+  return fetchAdmin<Department>(
+    `/organizations/${organizationId}/departments`,
+    {
+      body: payload,
+      method: "POST",
+      scope: { level: "organization", organizationId },
+    },
+  );
+}
+
+export function updateDepartment(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
+  payload: Partial<DepartmentPayload>,
+) {
+  return fetchAdmin<Department>(
+    `/organizations/${organizationId}/departments/${departmentId}`,
+    {
+      body: payload,
+      method: "PATCH",
+      scope: { level: "organization", organizationId },
+    },
+  );
+}
+
+export function listDepartmentMembers(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
+) {
+  return fetchAdmin<DepartmentMembership[]>(
+    `/organizations/${organizationId}/departments/${departmentId}/members`,
+    {
+      scope: { level: "organization", organizationId },
+    },
+  );
+}
+
+export function createDepartmentMember(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
+  payload: { isDefault?: boolean; membershipId: string },
+) {
+  return fetchAdmin<DepartmentMembership>(
+    `/organizations/${organizationId}/departments/${departmentId}/members`,
+    {
+      body: payload,
+      method: "POST",
+      scope: { level: "organization", organizationId },
+    },
+  );
+}
+
+export function removeDepartmentMember(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
+  departmentMembershipId: string,
+) {
+  return fetchAdmin<void>(
+    `/organizations/${organizationId}/departments/${departmentId}/members/${departmentMembershipId}`,
+    {
+      method: "DELETE",
+      scope: { level: "organization", organizationId },
+    },
+  );
+}
+
+export function listDepartmentDispatchRelations(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  departmentId: string,
+) {
+  return fetchAdmin<DepartmentDispatchRelation[]>(
+    `/organizations/${organizationId}/departments/${departmentId}/dispatch-relations`,
+    {
+      scope: { level: "organization", organizationId },
+    },
+  );
+}
+
+export function createDepartmentDispatchRelation(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  payload: {
+    isEnabled?: boolean;
+    policy?: Record<string, unknown>;
+    priority?: number;
+    sourceDepartmentId: string;
+    targetDepartmentId: string;
+    type: DepartmentDispatchType;
+  },
+) {
+  const { sourceDepartmentId, ...body } = payload;
+  return fetchAdmin<DepartmentDispatchRelation>(
+    `/organizations/${organizationId}/departments/${sourceDepartmentId}/dispatch-relations`,
+    {
+      body,
+      method: "POST",
+      scope: { level: "organization", organizationId },
+    },
+  );
+}
+
+export function deleteDepartmentDispatchRelation(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+  sourceDepartmentId: string,
+  relationId: string,
+) {
+  return fetchAdmin<void>(
+    `/organizations/${organizationId}/departments/${sourceDepartmentId}/dispatch-relations/${relationId}`,
+    {
+      method: "DELETE",
+      scope: { level: "organization", organizationId },
+    },
+  );
 }
 
 export function getOrganization(session: AuthenticatedAdminSessionMarker, organizationId: string) {
@@ -1624,12 +2127,12 @@ export function createOrganizationTicket(
   );
 }
 
-export function listPlatformTickets(session: AuthenticatedAdminSessionMarker, status?: TicketStatus) {
+export function listTenantTickets(session: AuthenticatedAdminSessionMarker, status?: TicketStatus) {
   const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
-  return fetchAdmin<Ticket[]>(`/tickets/platform${suffix}`, {});
+  return fetchAdmin<Ticket[]>(`/tickets/tenant${suffix}`, {});
 }
 
-export function createPlatformTicket(
+export function createTenantTicket(
   session: AuthenticatedAdminSessionMarker,
   payload: {
     attachments?: TicketMessageAttachment[] | null;
@@ -1638,7 +2141,7 @@ export function createPlatformTicket(
   },
 ) {
   return fetchAdmin<Ticket & { firstMessage: TicketMessage }>(
-    "/tickets/platform",
+    "/tickets/tenant",
     { body: payload, method: "POST" },
   );
 }

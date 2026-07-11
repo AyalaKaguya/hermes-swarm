@@ -1,36 +1,44 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { EntityManager, Repository } from "typeorm";
 import {
   FEATURE_SETTING_DEFINITIONS,
   getFeatureSettingDefaultValue,
   maskSettingValue,
-  mergeEffectiveOrganizationSettings,
+  mergeEffectiveHierarchicalSettings,
+  mergeEffectiveTenantSettings,
   OrganizationSetting,
   PlatformSetting,
+  TenantSetting,
   PLATFORM_SETTING_DEFINITIONS,
   resolveSettingValueOptions,
   resolveSettingValueType,
-  type EffectiveOrganizationSetting,
   type SettingValueOption,
 } from "@hermes-swarm/core";
 import type { SaveSettingsPayload } from "../../common/admin-api.types.js";
 import { RedisService } from "../../common/redis/redis.service.js";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 import {
   normalizeSettingEntry,
   parseSettingsPayload,
 } from "./settings-value-normalizer.js";
+import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 
 @Injectable()
 export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
 
   constructor(
-    @InjectRepository(PlatformSetting)
+    @InjectRepository(PlatformSetting, PLATFORM_DATA_SOURCE)
     private readonly platformSettingRepository: Repository<PlatformSetting>,
     @InjectRepository(OrganizationSetting)
     private readonly organizationSettingRepository: Repository<OrganizationSetting>,
     private readonly redisService: RedisService,
+    @Optional()
+    @InjectRepository(TenantSetting)
+    private readonly tenantSettingRepository?: Repository<TenantSetting>,
+    @Optional()
+    private readonly tenantContext?: TenantContextService,
   ) {}
 
   async onModuleInit() {
@@ -41,18 +49,23 @@ export class SettingsService implements OnModuleInit {
 
   async listOrganizationSettingsForOrganization(
     organizationId: string,
-  ): Promise<EffectiveOrganizationSetting[]> {
-    const [organizationSettings, platformSettings] = await Promise.all([
-      this.organizationSettingRepository.find({
+    explicitTenantId?: string,
+  ) {
+    const tenantId = this.requireTenantId(explicitTenantId);
+    const [organizationSettings, tenantSettings, platformSettings] = await Promise.all([
+      this.organizationSettingsRepository.find({
         order: { name: "ASC" },
-        where: { organizationId },
+        where: { organizationId, tenantId },
       }),
+      this.findTenantSettings(tenantId),
       this.platformSettingRepository.find({ order: { name: "ASC" } }),
     ]);
 
-    return mergeEffectiveOrganizationSettings(
+    return mergeEffectiveHierarchicalSettings(
       organizationSettings,
+      tenantSettings,
       platformSettings,
+      tenantId,
       organizationId,
     );
   }
@@ -60,22 +73,51 @@ export class SettingsService implements OnModuleInit {
   async saveOrganizationSettingsForOrganization(
     organizationId: string,
     payload: SaveSettingsPayload,
+    explicitTenantId?: string,
   ) {
+    const tenantId = this.requireTenantId(explicitTenantId);
     const entries = parseSettingsPayload(payload);
-    const invalidations = await this.platformSettingRepository.manager.transaction(
-      async (manager) =>
-        this.saveOrganizationSettingsInTransaction(
-          manager,
-          organizationId,
-          entries,
-        ),
+    const platformSettings = await this.platformSettingRepository.find();
+    const invalidations = await this.runTenantTransaction((manager) =>
+      this.saveOrganizationSettingsInTransaction(
+        manager,
+        tenantId,
+        organizationId,
+        entries,
+        platformSettings,
+      ),
     );
 
     for (const invalidation of invalidations) {
       await this.applySettingsInvalidation(invalidation);
     }
 
-    return this.listOrganizationSettingsForOrganization(organizationId);
+    return this.listOrganizationSettingsForOrganization(organizationId, tenantId);
+  }
+
+  async listTenantSettings(tenantId: string) {
+    const [tenantSettings, platformSettings] = await Promise.all([
+      this.findTenantSettings(tenantId),
+      this.platformSettingRepository.find({ order: { name: "ASC" } }),
+    ]);
+    return mergeEffectiveTenantSettings(tenantSettings, platformSettings, tenantId);
+  }
+
+  async saveTenantSettings(tenantId: string, payload: SaveSettingsPayload) {
+    const entries = parseSettingsPayload(payload);
+    const platformSettings = await this.platformSettingRepository.find();
+    const invalidations = await this.runTenantTransaction((manager) =>
+      this.saveTenantSettingsInTransaction(
+        manager,
+        tenantId,
+        entries,
+        platformSettings,
+      ),
+    );
+    for (const invalidation of invalidations) {
+      await this.applySettingsInvalidation(invalidation);
+    }
+    return this.listTenantSettings(tenantId);
   }
 
   async listPlatformSettings() {
@@ -115,19 +157,39 @@ export class SettingsService implements OnModuleInit {
     organizationId: string,
     name: string,
     fallback: string | null = null,
+    explicitTenantId?: string,
   ) {
-    const cacheKey = this.organizationCacheKey(organizationId, name);
+    const tenantId = this.requireTenantId(explicitTenantId);
+    const cacheKey = this.organizationCacheKey(tenantId, organizationId, name);
     const cached = await this.getCache(cacheKey);
     if (cached !== null) return cached;
 
-    const setting = await this.organizationSettingRepository.findOne({
-      where: { name, organizationId },
+    const setting = await this.organizationSettingsRepository.findOne({
+      where: { name, organizationId, tenantId },
     });
     if (setting?.value !== null && setting?.value !== undefined) {
       await this.setCache(cacheKey, setting.value);
       return setting.value;
     }
 
+    return this.getTenantValue(tenantId, name, fallback);
+  }
+
+  async getTenantValue(
+    tenantId: string,
+    name: string,
+    fallback: string | null = null,
+  ) {
+    const cacheKey = this.tenantCacheKey(tenantId, name);
+    const cached = await this.getCache(cacheKey);
+    if (cached !== null) return cached;
+    const setting = this.tenantSettingsRepository
+      ? await this.tenantSettingsRepository.findOne({ where: { name, tenantId } })
+      : null;
+    if (setting?.value !== null && setting?.value !== undefined) {
+      await this.setCache(cacheKey, setting.value);
+      return setting.value;
+    }
     return this.getPlatformValue(name, fallback);
   }
 
@@ -137,7 +199,7 @@ export class SettingsService implements OnModuleInit {
       ...FEATURE_SETTING_DEFINITIONS.map((definition) => ({
         defaultValue: getFeatureSettingDefaultValue(definition),
         key: definition.key,
-        scope: definition.scope === "system" ? "platform" : "organization",
+        scope: definition.scope,
         valueOptions:
           "valueOptions" in definition ? definition.valueOptions : undefined,
         valueType: definition.valueType,
@@ -216,34 +278,36 @@ export class SettingsService implements OnModuleInit {
 
   private async saveOrganizationSettingsInTransaction(
     manager: EntityManager,
+    tenantId: string,
     organizationId: string,
     entries: ReturnType<typeof parseSettingsPayload>,
+    platformSettings: PlatformSetting[],
   ) {
     const organizationSettingRepository =
       manager.getRepository(OrganizationSetting);
-    const platformSettingRepository = manager.getRepository(PlatformSetting);
+    const platformByName = new Map(
+      platformSettings.map((setting) => [setting.name, setting]),
+    );
     const invalidations: AppliedSettingsInvalidation[] = [];
 
     for (const entry of entries) {
-      const [existing, platformSetting] = await Promise.all([
-        organizationSettingRepository.findOne({
-          where: { name: entry.name, organizationId },
-        }),
-        platformSettingRepository.findOne({
-          where: { name: entry.name },
-        }),
-      ]);
+      const existing = await organizationSettingRepository.findOne({
+        where: { name: entry.name, organizationId, tenantId },
+      });
+      const platformSetting = platformByName.get(entry.name) ?? null;
 
       if (entry.value === null || entry.value === undefined) {
         await organizationSettingRepository.delete({
           name: entry.name,
           organizationId,
+          tenantId,
         });
         invalidations.push({
-          cacheKey: this.organizationCacheKey(organizationId, entry.name),
+          cacheKey: this.organizationCacheKey(tenantId, organizationId, entry.name),
           name: entry.name,
           organizationId,
           scope: "organization",
+          tenantId,
           value: null,
         });
         continue;
@@ -258,6 +322,7 @@ export class SettingsService implements OnModuleInit {
         organizationSettingRepository.create({
           name: entry.name,
           organizationId,
+          tenantId,
         });
 
       setting.value = normalized.value;
@@ -266,14 +331,60 @@ export class SettingsService implements OnModuleInit {
 
       const persisted = await organizationSettingRepository.save(setting);
       invalidations.push({
-        cacheKey: this.organizationCacheKey(organizationId, entry.name),
+        cacheKey: this.organizationCacheKey(tenantId, organizationId, entry.name),
         name: entry.name,
         organizationId,
         scope: "organization",
+        tenantId,
         value: persisted.value,
       });
     }
 
+    return invalidations;
+  }
+
+  private async saveTenantSettingsInTransaction(
+    manager: EntityManager,
+    tenantId: string,
+    entries: ReturnType<typeof parseSettingsPayload>,
+    platformSettings: PlatformSetting[],
+  ) {
+    const tenantSettingRepository = manager.getRepository(TenantSetting);
+    const platformByName = new Map(
+      platformSettings.map((setting) => [setting.name, setting]),
+    );
+    const invalidations: AppliedSettingsInvalidation[] = [];
+    for (const entry of entries) {
+      const existing = await tenantSettingRepository.findOne({
+        where: { name: entry.name, tenantId },
+      });
+      const platformSetting = platformByName.get(entry.name) ?? null;
+      if (entry.value === null || entry.value === undefined) {
+        await tenantSettingRepository.delete({ name: entry.name, tenantId });
+        invalidations.push({
+          cacheKey: this.tenantCacheKey(tenantId, entry.name),
+          name: entry.name,
+          scope: "tenant",
+          tenantId,
+          value: null,
+        });
+        continue;
+      }
+      const normalized = normalizeSettingEntry(entry, [existing, platformSetting]);
+      const setting =
+        existing ?? tenantSettingRepository.create({ name: entry.name, tenantId });
+      setting.value = normalized.value;
+      setting.valueOptions = normalized.valueOptions;
+      setting.valueType = normalized.valueType;
+      const persisted = await tenantSettingRepository.save(setting);
+      invalidations.push({
+        cacheKey: this.tenantCacheKey(tenantId, entry.name),
+        name: entry.name,
+        scope: "tenant",
+        tenantId,
+        value: persisted.value,
+      });
+    }
     return invalidations;
   }
 
@@ -294,10 +405,20 @@ export class SettingsService implements OnModuleInit {
       return;
     }
 
+    if (invalidation.scope === "tenant") {
+      await this.publishSettingsInvalidation({
+        name: invalidation.name,
+        scope: "tenant",
+        tenantId: invalidation.tenantId,
+      });
+      return;
+    }
+
     await this.publishSettingsInvalidation({
       name: invalidation.name,
       organizationId: invalidation.organizationId,
       scope: "organization",
+      tenantId: invalidation.tenantId,
     });
   }
 
@@ -305,8 +426,59 @@ export class SettingsService implements OnModuleInit {
     return `settings:platform:${name}`;
   }
 
-  private organizationCacheKey(organizationId: string, name: string) {
-    return `settings:organization:${organizationId}:${name}`;
+  private tenantCacheKey(tenantId: string, name: string) {
+    return `settings:${tenantId}:tenant:${name}`;
+  }
+
+  private organizationCacheKey(
+    tenantId: string,
+    organizationId: string,
+    name: string,
+  ) {
+    return `settings:${tenantId}:organization:${organizationId}:${name}`;
+  }
+
+  private findTenantSettings(tenantId: string) {
+    return this.tenantSettingsRepository?.find({
+      order: { name: "ASC" },
+      where: { tenantId },
+    }) ?? Promise.resolve([]);
+  }
+
+  private requireTenantSettingRepository() {
+    if (!this.tenantSettingsRepository) {
+      throw new Error("TenantSetting repository is not configured");
+    }
+    return this.tenantSettingsRepository;
+  }
+
+  private get organizationSettingsRepository() {
+    return (
+      this.tenantContext?.current(false)?.manager.getRepository(OrganizationSetting) ??
+      this.organizationSettingRepository
+    );
+  }
+
+  private get tenantSettingsRepository() {
+    return (
+      this.tenantContext?.current(false)?.manager.getRepository(TenantSetting) ??
+      this.tenantSettingRepository
+    );
+  }
+
+  private runTenantTransaction<T>(work: (manager: EntityManager) => Promise<T>) {
+    const manager = this.tenantContext?.current(false)?.manager;
+    if (manager) return work(manager);
+    return (
+      this.tenantSettingRepository?.manager ?? this.organizationSettingRepository.manager
+    ).transaction(work);
+  }
+
+  private requireTenantId(explicitTenantId?: string) {
+    const tenantId =
+      explicitTenantId?.trim() ?? this.tenantContext?.current(false)?.tenantId;
+    if (!tenantId) throw new Error("Tenant context is required for settings");
+    return tenantId;
   }
 
   private async getCache(key: string) {
@@ -387,8 +559,14 @@ type SettingsInvalidationEvent =
     }
   | {
       name: string;
+      scope: "tenant";
+      tenantId: string;
+    }
+  | {
+      name: string;
       organizationId: string;
       scope: "organization";
+      tenantId: string;
     };
 
 type AppliedSettingsInvalidation =
@@ -401,8 +579,16 @@ type AppliedSettingsInvalidation =
   | {
       cacheKey: string;
       name: string;
+      scope: "tenant";
+      tenantId: string;
+      value: string | null;
+    }
+  | {
+      cacheKey: string;
+      name: string;
       organizationId: string;
       scope: "organization";
+      tenantId: string;
       value: string | null;
     };
 

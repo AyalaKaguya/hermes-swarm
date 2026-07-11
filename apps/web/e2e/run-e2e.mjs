@@ -55,9 +55,13 @@ const organization = {
 };
 
 const platformPermissions = [
+  "page.settings.platform.access:platform",
+];
+
+const tenantAdminPermissions = [
   "page.settings.account.access:own",
   "page.settings.sessions.access:own",
-  "page.settings.integrations.access:own",
+  "page.settings.integrations.access:tenant",
   "page.settings.organization.access:organization",
   "page.settings.custom-smtp.access:organization",
   "page.settings.email-templates.access:organization",
@@ -66,17 +70,13 @@ const platformPermissions = [
   "page.settings.groups.access:organization",
   "page.settings.roles.access:organization",
   "page.settings.organization-integrations.access:organization",
-  "page.settings.platform.access:platform",
-  "page.settings.organizations.access:platform",
-  "page.settings.platform-integrations.access:platform",
-  "organization.platform_organization.list:platform",
-  "organization.platform_organization.create:platform",
-  "organization.platform_organization.delete:platform",
+  "page.settings.organizations.access:tenant",
+  "organization.tenant_organization.list:tenant",
+  "organization.tenant_organization.create:tenant",
+  "organization.tenant_organization.delete:tenant",
   "organization.profile.view:organization",
   "integration_token.organization_integration.list:organization",
   "integration_token.organization_integration.revoke:organization",
-  "integration_token.platform_integration.list:platform",
-  "integration_token.platform_integration.revoke:platform",
   "setting.organization_config.list:organization",
   "user.organization_member.list:organization",
   "role.organization_role.list:organization",
@@ -84,7 +84,7 @@ const platformPermissions = [
 
 const orgScopedPermissions = [
   "page.settings.account.access:own",
-  "page.settings.integrations.access:own",
+  "page.settings.integrations.access:tenant",
   "page.settings.organization.access:organization",
   "page.settings.organization-integrations.access:organization",
   "organization.profile.view:organization",
@@ -97,6 +97,12 @@ const orgScopedPermissions = [
 const ordinaryPermissions = ["page.settings.account.access:own"];
 
 const personas = {
+  tenantAdmin: {
+    displayName: "Tenant Admin",
+    permissions: tenantAdminPermissions,
+    roleName: "tenant-admin",
+    scope: "tenant",
+  },
   platformAdmin: {
     displayName: "Admin User",
     permissions: platformPermissions,
@@ -124,7 +130,7 @@ const personas = {
 };
 
 function roleFor(personaName) {
-  const persona = personas[personaName] ?? personas.platformAdmin;
+  const persona = personas[personaName] ?? personas.tenantAdmin;
   return {
     id: `role-${persona.roleName}`,
     isSystem: persona.roleName === "platform-admin",
@@ -138,7 +144,7 @@ function roleFor(personaName) {
       permission,
       roleId: `role-${persona.roleName}`,
     })),
-    scope: persona.scope,
+    scope: persona.scope === "platform" ? "platform" : "organization",
   };
 }
 
@@ -174,19 +180,21 @@ const organizationMemberships = [
     joinedAt: "2026-01-01T00:00:00.000Z",
     organization,
     organizationId: organization.id,
-    role: roleFor("platformAdmin"),
-    roleId: "role-platform-admin",
+    role: roleFor("tenantAdmin"),
+    roleId: "role-tenant-admin",
     status: "active",
     user,
     userId: user.id,
   },
 ];
 
-const organizationRoles = [roleFor("platformAdmin"), roleFor("orgScopedUser")];
+const organizationRoles = [roleFor("tenantAdmin"), roleFor("orgScopedUser")];
 
 const personalIntegrationTokens = [
   {
     createdAt: "2026-07-07T00:00:00.000Z",
+    departmentId: null,
+    departmentName: null,
     expiresAt: "2026-08-07T00:00:00.000Z",
     id: "token-personal-org",
     isExpired: false,
@@ -199,6 +207,7 @@ const personalIntegrationTokens = [
     permissions: ["ticket.conversation.list_organization:organization"],
     revokedAt: null,
     scope: "organization",
+    tenantId: "tenant-hermes",
     tokenPrefix: "v1.personal",
     updatedAt: "2026-07-07T00:00:00.000Z",
   },
@@ -222,40 +231,40 @@ const organizationIntegrationTokens = [
   },
 ];
 
-const platformIntegrationTokens = [
-  {
-    ...personalIntegrationTokens[0],
-    id: "token-platform-managed",
-    note: "Platform managed token",
-    organizationId: null,
-    organizationName: null,
-    owner: {
-      avatarUrl: null,
-      displayName: "Platform Operator",
-      email: "platform@hermes.local",
-      id: "user-platform",
-      imageUrl: null,
-      username: "platform",
-    },
-    ownerUserId: "user-platform",
-    scope: "platform",
-    tokenPrefix: "v1.platform",
-  },
-];
-
 const authSession = {
   expiresAt: "2099-01-01T00:00:00.000Z",
   sessionId: "session-e2e",
 };
 
-function principal(personaName = "platformAdmin") {
-  const persona = personas[personaName] ?? personas.platformAdmin;
+function principal(personaName = "tenantAdmin") {
+  const persona = personas[personaName] ?? personas.tenantAdmin;
   const role = roleFor(personaName);
   const principalUser = {
     ...user,
     displayName: persona.displayName,
+    tenantId: "tenant-hermes",
   };
+  if (persona.scope === "platform") {
+    return {
+      platformUser: {
+        displayName: persona.displayName,
+        email: principalUser.email,
+        id: principalUser.id,
+        preferredLanguage: principalUser.preferredLanguage,
+        roles: [role],
+        status: "active",
+      },
+      principalType: "platform",
+      systemSettings,
+    };
+  }
   return {
+    allowedScopes: ["tenant", "organization"],
+    defaultScope: {
+      departmentId: null,
+      level: "organization",
+      organizationId: organization.id,
+    },
     memberships: [
       {
         displayName: persona.displayName,
@@ -274,24 +283,21 @@ function principal(personaName = "platformAdmin") {
     ],
     organization,
     permissions: persona.permissions,
-    platformMembership:
-      persona.scope === "platform"
-        ? {
-            displayName: persona.displayName,
-            id: `platform-member-${persona.roleName}`,
-            role,
-            roleId: role.id,
-            status: "active",
-            user: principalUser,
-            userId: principalUser.id,
-          }
-        : null,
+    principalType: "tenant",
     role,
     scope: {
-      level: persona.scope,
-      organizationId: persona.scope === "platform" ? null : organization.id,
+      level: "organization",
+      organizationId: organization.id,
     },
     systemSettings,
+    tenant: {
+      id: "tenant-hermes",
+      name: "Hermes Tenant",
+      slug: "hermes",
+      status: "active",
+    },
+    tenantId: "tenant-hermes",
+    tenantRoles: [role],
     user: principalUser,
   };
 }
@@ -381,7 +387,7 @@ const tests = [
     },
   },
   {
-    name: "platform admins can see organization management entry points",
+    name: "tenant admins can see organization management entry points",
     run: async ({ page }) => {
       organizations = [organization, { ...organizations[1] }];
       await installApiMocks(page, { onboardingRequired: false });
@@ -399,7 +405,10 @@ const tests = [
   {
     name: "organization creation settings live under platform default controls",
     run: async ({ page }) => {
-      await installApiMocks(page, { onboardingRequired: false });
+      await installApiMocks(page, {
+        onboardingRequired: false,
+        persona: "platformAdmin",
+      });
       await seedSession(page);
 
       await page.goto(`${baseUrl}/settings/platform?tab=defaults`);
@@ -417,7 +426,7 @@ const tests = [
     },
   },
   {
-    name: "integration management is split between personal organization and platform pages",
+    name: "integration management is split between tenant account and organization pages",
     run: async ({ page }) => {
       await installApiMocks(page, { onboardingRequired: false });
       await seedSession(page);
@@ -426,7 +435,6 @@ const tests = [
       await expectVisibleText(page, "Personal org token");
       await expectVisibleText(page, "创建 Token");
       await expectHiddenText(page, "组织集成");
-      await expectHiddenText(page, "平台集成");
       await expectHiddenText(page, "Organization managed token");
 
       await page.goto(`${baseUrl}/settings/organization-integrations`);
@@ -436,10 +444,7 @@ const tests = [
       await expectHiddenText(page, "创建 Token");
 
       await page.goto(`${baseUrl}/settings/platform-integrations`);
-      await expectVisibleText(page, "平台集成");
-      await expectVisibleText(page, "Platform managed token");
-      await expectVisibleText(page, "Platform Operator");
-      await expectHiddenText(page, "创建 Token");
+      await page.waitForURL("**/settings/platform");
     },
   },
   {
@@ -467,7 +472,7 @@ const tests = [
       await page.goto(`${baseUrl}/settings/organizations`);
 
       await expectVisibleText(page, "没有页面访问权限");
-      await expectVisibleText(page, "page.settings.organizations.access:platform");
+      await expectVisibleText(page, "page.settings.organizations.access:tenant");
       await expectHiddenText(page, "新建组织");
     },
   },
@@ -609,8 +614,8 @@ async function isServerReady() {
 }
 
 async function installApiMocks(page, options) {
-  const personaName = options.persona ?? "platformAdmin";
-  const persona = personas[personaName] ?? personas.platformAdmin;
+  const personaName = options.persona ?? "tenantAdmin";
+  const persona = personas[personaName] ?? personas.tenantAdmin;
   const can = (permission) => persona.permissions.includes(permission);
   await page.route("**/api/admin/**", async (route) => {
     const request = route.request();
@@ -666,6 +671,8 @@ async function installApiMocks(page, options) {
       await json(route, {
         scopes: [
           {
+            departmentId: null,
+            departmentName: null,
             organizationId: organization.id,
             organizationName: organization.name,
             permissions: [
@@ -708,15 +715,6 @@ async function installApiMocks(page, options) {
       return;
     }
 
-    if (method === "GET" && path === "/platform/integration-tokens") {
-      if (!can("integration_token.platform_integration.list:platform")) {
-        await forbidden(route);
-        return;
-      }
-      await json(route, platformIntegrationTokens);
-      return;
-    }
-
     if (method === "PATCH" && path === `/users/${user.id}`) {
       const body = await request.postDataJSON();
       Object.assign(user, body, { updatedAt: "2026-01-02T00:00:00.000Z" });
@@ -725,7 +723,7 @@ async function installApiMocks(page, options) {
     }
 
     if (method === "GET" && path === "/organizations") {
-      if (!can("organization.platform_organization.list:platform")) {
+      if (!can("organization.tenant_organization.list:tenant")) {
         await forbidden(route);
         return;
       }
@@ -734,7 +732,7 @@ async function installApiMocks(page, options) {
     }
 
     if (method === "POST" && path === "/organizations") {
-      if (!can("organization.platform_organization.create:platform")) {
+      if (!can("organization.tenant_organization.create:tenant")) {
         await forbidden(route);
         return;
       }

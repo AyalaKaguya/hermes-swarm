@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { EmailTemplatePreview } from "@/components/email-template-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -100,7 +101,11 @@ export default function EmailTemplatesPage() {
         organizationId,
         templateId,
       );
-      setMsg(tr("已删除"));
+      setMsg(
+        deleteTemplate?.hasPlatformDefault
+          ? tr("已恢复平台默认")
+          : tr("已删除"),
+      );
       setDeleteTemplate(null);
       await load();
     } catch (err) {
@@ -144,7 +149,7 @@ export default function EmailTemplatesPage() {
               {tr("添加模板")}
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
             <DialogHeader>
               <DialogTitle>{tr("创建邮件模板")}</DialogTitle>
             </DialogHeader>
@@ -202,6 +207,15 @@ export default function EmailTemplatesPage() {
                           {tr("系统模板")}
                         </Badge>
                       )}
+                      {t.inherited ? (
+                        <Badge className="text-xs" variant="outline">
+                          {tr("继承平台")}
+                        </Badge>
+                      ) : t.hasPlatformDefault ? (
+                        <Badge className="text-xs" variant="outline">
+                          {tr("组织覆盖")}
+                        </Badge>
+                      ) : null}
                       <Badge className="text-xs" variant="outline">
                         {t.languageCode}
                       </Badge>
@@ -226,7 +240,11 @@ export default function EmailTemplatesPage() {
                     </div>
                   )}
                   <div className="text-xs">
-                    {t.organizationId ? tr("组织模板") : tr("全局模板")}
+                    {t.inherited
+                      ? tr("当前使用平台默认内容")
+                      : t.hasPlatformDefault
+                        ? tr("当前使用组织覆盖内容")
+                        : tr("组织自定义模板")}
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-1">
@@ -238,10 +256,10 @@ export default function EmailTemplatesPage() {
                     size="xs"
                     variant="ghost"
                   >
-                    {tr("编辑")}
+                    {t.inherited ? tr("创建覆盖") : tr("编辑与预览")}
                   </Button>
                   <Button
-                    disabled={t.isSystem}
+                    disabled={t.inherited}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeleteTemplate(t);
@@ -249,7 +267,7 @@ export default function EmailTemplatesPage() {
                     size="xs"
                     variant="destructive"
                   >
-                    {tr("删除")}
+                    {t.hasPlatformDefault ? tr("恢复默认") : tr("删除")}
                   </Button>
                 </div>
               </div>
@@ -266,9 +284,11 @@ export default function EmailTemplatesPage() {
           }}
           open={true}
         >
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
             <DialogHeader>
-              <DialogTitle>{tr("编辑模板")}</DialogTitle>
+              <DialogTitle>
+                {editTemplate.inherited ? tr("创建组织覆盖") : tr("编辑模板")}
+              </DialogTitle>
             </DialogHeader>
             <EditTemplateForm
               organizationId={organizationId}
@@ -283,10 +303,16 @@ export default function EmailTemplatesPage() {
       )}
 
       <ConfirmActionDialog
-        confirmLabel={tr("删除")}
-        description={t("dialogs.deleteEmailTemplateDescription", {
-          name: deleteTemplate?.name ?? "",
-        })}
+        confirmLabel={
+          deleteTemplate?.hasPlatformDefault ? tr("恢复默认") : tr("删除")
+        }
+        description={
+          deleteTemplate?.hasPlatformDefault
+            ? tr("删除组织覆盖后，将重新使用对应语言的平台系统模板。")
+            : t("dialogs.deleteEmailTemplateDescription", {
+                name: deleteTemplate?.name ?? "",
+              })
+        }
         onConfirm={() => {
           if (deleteTemplate) void remove(deleteTemplate.id);
         }}
@@ -294,7 +320,11 @@ export default function EmailTemplatesPage() {
           if (!open) setDeleteTemplate(null);
         }}
         open={Boolean(deleteTemplate)}
-        title={tr("删除邮件模板")}
+        title={
+          deleteTemplate?.hasPlatformDefault
+            ? tr("恢复平台默认")
+            : tr("删除邮件模板")
+        }
       />
     </Card>
   );
@@ -317,10 +347,11 @@ function CreateTemplateForm({
   const [msg, setMsg] = useState("");
 
   async function submit() {
-    if (!name.trim() || !organizationId) return;
+    if (!name.trim()) return;
     setSaving(true);
     setMsg("");
     try {
+      if (!organizationId) throw new Error(tr("缺少组织 ID"));
       const token = await requireAuthenticatedAdminSessionMarker();
       await createEmailTemplate(
         token,
@@ -342,63 +373,74 @@ function CreateTemplateForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]">
+      <div className="grid content-start gap-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-2">
+            <Label>{tr("模板名称")}</Label>
+            <Input
+              onChange={(e) => setName(e.target.value)}
+              placeholder="welcome-user"
+              value={name}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label>{tr("语言")}</Label>
+            <Select onValueChange={setLanguageCode} value={languageCode}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zh-CN">{tr("简体中文")}</SelectItem>
+                <SelectItem value="zh-Hans">{tr("简体中文")}</SelectItem>
+                <SelectItem value="zh-Hant">{tr("繁體中文")}</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         <div className="grid gap-2">
-          <Label>{tr("模板名称")}</Label>
+          <Label>{tr("邮件主题")}</Label>
           <Input
-            onChange={(e) => setName(e.target.value)}
-            placeholder="welcome-user"
-            value={name}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder={tr("欢迎加入 {{organizationName}}")}
+            value={subject}
           />
         </div>
         <div className="grid gap-2">
-          <Label>{tr("语言")}</Label>
-          <Select onValueChange={setLanguageCode} value={languageCode}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="zh-CN">{tr("简体中文")}</SelectItem>
-              <SelectItem value="zh-Hans">{tr("简体中文")}</SelectItem>
-              <SelectItem value="zh-Hant">{tr("繁體中文")}</SelectItem>
-              <SelectItem value="en">English</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label>{tr("HBS 模板内容")}</Label>
+          <Textarea
+            className="font-mono text-xs"
+            onChange={(e) => setHbs(e.target.value)}
+            placeholder={tr("Handlebars 模板...")}
+            rows={9}
+            value={hbs}
+          />
         </div>
+        <div className="grid gap-2">
+          <Label>{tr("MJML (可选)")}</Label>
+          <Textarea
+            className="font-mono text-xs"
+            onChange={(e) => setMjml(e.target.value)}
+            placeholder={tr("MJML 标记...")}
+            rows={3}
+            value={mjml}
+          />
+        </div>
+        {msg && <div className="text-sm text-destructive">{msg}</div>}
+        <Button
+          disabled={saving || !name.trim() || !hbs.trim()}
+          onClick={() => void submit()}
+          type="button"
+        >
+          {saving ? tr("创建中...") : tr("创建模板")}
+        </Button>
       </div>
-      <div className="grid gap-2">
-        <Label>{tr("邮件主题")}</Label>
-        <Input
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder={tr("欢迎加入 {{orgName}}")}
-          value={subject}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label>{tr("HBS 模板内容")}</Label>
-        <Textarea
-          className="font-mono text-xs"
-          onChange={(e) => setHbs(e.target.value)}
-          placeholder={tr("Handlebars 模板...")}
-          rows={6}
-          value={hbs}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label>{tr("MJML (可选)")}</Label>
-        <Textarea
-          className="font-mono text-xs"
-          onChange={(e) => setMjml(e.target.value)}
-          placeholder={tr("MJML 标记...")}
-          rows={4}
-          value={mjml}
-        />
-      </div>
-      {msg && <div className="text-sm">{msg}</div>}
-      <Button disabled={saving || !name.trim() || !hbs.trim()} onClick={submit}>
-        {saving ? tr("创建中...") : tr("创建模板")}
-      </Button>
+      <EmailTemplatePreview
+        hbs={hbs}
+        organizationId={organizationId}
+        subject={subject}
+      />
     </div>
   );
 }
@@ -425,20 +467,21 @@ function EditTemplateForm({
     setSaving(true);
     setMsg("");
     try {
-      if (!organizationId) return;
+      if (!organizationId) throw new Error(tr("缺少组织 ID"));
       const token = await requireAuthenticatedAdminSessionMarker();
-      await updateEmailTemplate(
-        token,
-        organizationId,
-        template.id,
-        {
-          name: name.trim(),
-          languageCode,
-          subject: subject.trim() || null,
-          hbs: hbs.trim(),
-          mjml: mjml.trim() || null,
-        },
-      );
+      const payload = {
+        description: template.description,
+        name: name.trim(),
+        languageCode,
+        subject: subject.trim() || null,
+        hbs: hbs.trim(),
+        mjml: mjml.trim() || null,
+      };
+      if (template.inherited) {
+        await createEmailTemplate(token, organizationId, payload);
+      } else {
+        await updateEmailTemplate(token, organizationId, template.id, payload);
+      }
       onDone();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : tr("保存失败"));
@@ -448,12 +491,13 @@ function EditTemplateForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]">
+      <div className="grid content-start gap-4">
+        <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
           <Label>{tr("模板名称")}</Label>
           <Input
-            disabled={template.isSystem}
+            disabled={template.isSystem || template.hasPlatformDefault}
             onChange={(e) => setName(e.target.value)}
             value={name}
           />
@@ -461,7 +505,7 @@ function EditTemplateForm({
         <div className="grid gap-2">
           <Label>{tr("语言")}</Label>
           <Select
-            disabled={template.isSystem}
+            disabled={template.isSystem || template.hasPlatformDefault}
             onValueChange={setLanguageCode}
             value={languageCode}
           >
@@ -476,33 +520,43 @@ function EditTemplateForm({
             </SelectContent>
           </Select>
         </div>
-      </div>
-      <div className="grid gap-2">
+        </div>
+        <div className="grid gap-2">
         <Label>{tr("邮件主题")}</Label>
         <Input onChange={(e) => setSubject(e.target.value)} value={subject} />
-      </div>
-      <div className="grid gap-2">
+        </div>
+        <div className="grid gap-2">
         <Label>{tr("HBS 模板内容")}</Label>
         <Textarea
           className="font-mono text-xs"
           onChange={(e) => setHbs(e.target.value)}
-          rows={6}
+          rows={9}
           value={hbs}
         />
-      </div>
-      <div className="grid gap-2">
+        </div>
+        <div className="grid gap-2">
         <Label>{tr("MJML (可选)")}</Label>
         <Textarea
           className="font-mono text-xs"
           onChange={(e) => setMjml(e.target.value)}
-          rows={4}
+          rows={3}
           value={mjml}
         />
+        </div>
+        {msg && <div className="text-sm text-destructive">{msg}</div>}
+        <Button
+          disabled={saving || !hbs.trim()}
+          onClick={() => void submit()}
+          type="button"
+        >
+          {template.inherited ? tr("创建组织覆盖") : tr("保存")}
+        </Button>
       </div>
-      {msg && <div className="text-sm">{msg}</div>}
-      <Button disabled={saving} onClick={submit}>
-        {tr("保存")}
-      </Button>
+      <EmailTemplatePreview
+        hbs={hbs}
+        organizationId={organizationId}
+        subject={subject}
+      />
     </div>
   );
 }

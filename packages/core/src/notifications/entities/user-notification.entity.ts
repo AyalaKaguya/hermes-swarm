@@ -1,5 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { BaseEntity } from "../../identity/entities/base.entity.js";
+import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
+import type { Department } from "../../identity/entities/department.entity.js";
 import type { Organization } from "../../identity/entities/organization.entity.js";
 import type { User } from "../../identity/entities/user.entity.js";
 
@@ -7,8 +8,8 @@ export type UserNotificationStatus = "read" | "unread";
 export type UserNotificationKind = "info" | "success" | "warning" | "error";
 
 @Entity({ name: "user_notifications" })
-@Index(["recipientUserId", "status", "createdAt"])
-export class UserNotification extends BaseEntity {
+@Index(["tenantId", "recipientUserId", "status", "createdAt"])
+export class UserNotification extends TenantOwnedBaseEntity {
   @Column({ name: "recipient_user_id", type: "uuid" })
   @Index()
   recipientUserId!: string;
@@ -32,6 +33,14 @@ export class UserNotification extends BaseEntity {
   @ManyToOne("Organization", { nullable: true, onDelete: "CASCADE" })
   @JoinColumn({ name: "organization_id" })
   organization!: Organization | null;
+
+  @Column({ name: "department_id", type: "uuid", nullable: true })
+  @Index()
+  departmentId!: string | null;
+
+  @ManyToOne("Department", { nullable: true, onDelete: "RESTRICT" })
+  @JoinColumn({ name: "department_id" })
+  department!: Department | null;
 
   @Column({ type: "varchar", length: 24, default: "info" })
   kind!: UserNotificationKind;

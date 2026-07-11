@@ -63,7 +63,7 @@ describe("SettingsService consistency", () => {
             { name: "custom.flag", value: null },
             { name: "feature:email:enabled", value: "yes" },
           ],
-        }),
+        }, "tenant-1"),
       BadRequestException,
     );
 

@@ -202,6 +202,7 @@ describe("ConversationCapabilityService", () => {
       sourceType: "ticket",
       status: "open",
       subject: "Need help",
+      tenantId: "tenant-1",
     };
     const resolver: ConversationAccessResolver = {
       buildNotificationPayload: (input) =>
@@ -226,6 +227,7 @@ describe("ConversationCapabilityService", () => {
       participants.map((participant) => participant.userId).sort(),
       ["mentioned", "requester"],
     );
+    assert.equal(conversations[0]?.tenantId, "tenant-1");
     assert.deepEqual(notifications[0].userIds, ["mentioned"]);
     assert.equal(notifications[0].input.title, "提及通知");
     assert.deepEqual(realtimeEvents[0].userIds.sort(), [
@@ -265,6 +267,7 @@ describe("ConversationCapabilityService", () => {
       sourceType: "ticket",
       status: "open",
       subject: "Rollback test",
+      tenantId: "tenant-1",
     };
     const resolver: ConversationAccessResolver = {
       canRead: async () => true,
@@ -301,6 +304,7 @@ describe("ConversationCapabilityService", () => {
       sourceType: "ticket",
       status: "open",
       subject: "Side effects",
+      tenantId: "tenant-1",
     };
     const resolver: ConversationAccessResolver = {
       canRead: async () => true,
@@ -338,6 +342,7 @@ describe("ConversationCapabilityService", () => {
       sourceType: "ticket",
       status: "closed",
       subject: "Old subject",
+      tenantId: "tenant-1",
       updatedAt: new Date("2026-07-06T00:00:00Z"),
     };
     let firstLookup = true;
@@ -376,6 +381,7 @@ describe("ConversationCapabilityService", () => {
       sourceType: "ticket",
       status: "open",
       subject: "Current subject",
+      tenantId: "tenant-1",
     });
 
     assert.equal(result.id, "conversation-existing");
@@ -392,6 +398,7 @@ describe("ConversationCapabilityService", () => {
       sourceType: "ticket",
       status: "open",
       subject: "Idempotent participants",
+      tenantId: "tenant-1",
     };
     const resolver: ConversationAccessResolver = {
       canRead: async () => true,

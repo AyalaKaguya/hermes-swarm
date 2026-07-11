@@ -9,12 +9,14 @@ import {
 } from "@hermes-swarm/core";
 import { NotificationsModule } from "../notifications/notifications.module.js";
 import { RealtimeModule } from "../realtime/realtime.module.js";
+import { DatabaseModule } from "../../common/database/database.module.js";
 import { ConversationCapabilityService } from "./conversations.service.js";
 
 @Module({
   imports: [
     NotificationsModule,
     RealtimeModule,
+    DatabaseModule,
     TypeOrmModule.forFeature([
       Conversation,
       ConversationMessage,

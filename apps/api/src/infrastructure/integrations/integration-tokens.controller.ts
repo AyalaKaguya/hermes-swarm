@@ -22,10 +22,10 @@ import { IntegrationTokensService } from "./integration-tokens.service.js";
   entity: "integration_token",
   entityLabel: "集成 Token",
   entityOrder: 20,
-  purpose: "personal_integration",
-  purposeLabel: "个人集成",
+  purpose: "tenant_integration",
+  purposeLabel: "租户集成",
   purposeOrder: 10,
-  scope: "own",
+  scope: "tenant",
 })
 export class IntegrationTokensController {
   constructor(
@@ -63,7 +63,7 @@ export class IntegrationTokensController {
 
   @Post()
   @AccessOperation({
-    description: "创建一个最长 1 年有效的个人集成 Token。",
+    description: "创建一个最长 1 年有效的租户、组织或部门集成 Token。",
     label: "创建集成 Token",
     operation: "create",
     sortOrder: 30,
@@ -139,7 +139,11 @@ export class OrganizationIntegrationTokensController {
   create(
     @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
-    @Body() payload: Omit<CreateIntegrationTokenPayload, "organizationId" | "scope">,
+    @Body()
+    payload: Omit<
+      CreateIntegrationTokenPayload,
+      "departmentId" | "organizationId" | "scope"
+    >,
   ) {
     return this.integrationTokensService.createForCurrentUserInOrganization(
       authorization,
@@ -171,17 +175,19 @@ export class OrganizationIntegrationTokensController {
   }
 }
 
-@Controller("admin/platform/integration-tokens")
+@Controller(
+  "admin/organizations/:organizationId/departments/:departmentId/integration-tokens",
+)
 @AccessResource({
   entity: "integration_token",
   entityLabel: "集成 Token",
   entityOrder: 20,
-  purpose: "platform_integration",
-  purposeLabel: "平台集成",
+  purpose: "department_integration",
+  purposeLabel: "部门集成",
   purposeOrder: 30,
-  scope: "platform",
+  scope: "department",
 })
-export class PlatformIntegrationTokensController {
+export class DepartmentIntegrationTokensController {
   constructor(
     @Inject(IntegrationTokensService)
     private readonly integrationTokensService: IntegrationTokensService,
@@ -189,38 +195,54 @@ export class PlatformIntegrationTokensController {
 
   @Post()
   @AccessOperation({
-    defaultRoles: ["platform-admin"],
-    description: "允许当前用户创建平台作用域的集成 Token。",
-    label: "创建平台集成 Token",
+    defaultRoles: ["owner", "admin", "department-manager"],
+    description: "允许当前用户创建当前部门作用域的集成 Token。",
+    label: "创建部门集成 Token",
     operation: "create",
     sortOrder: 20,
   })
   create(
     @Headers("authorization") authorization: string | undefined,
-    @Body() payload: Omit<CreateIntegrationTokenPayload, "organizationId" | "scope">,
+    @Param("organizationId") organizationId: string,
+    @Param("departmentId") departmentId: string,
+    @Body()
+    payload: Omit<
+      CreateIntegrationTokenPayload,
+      "departmentId" | "organizationId" | "scope"
+    >,
   ) {
-    return this.integrationTokensService.createForCurrentUserInPlatform(
+    return this.integrationTokensService.createForCurrentUserInDepartment(
       authorization,
+      organizationId,
+      departmentId,
       payload,
     );
   }
 
   @Get()
   @AccessOperation({
-    defaultRoles: ["platform-admin"],
-    description: "查看所有用户创建的平台集成 Token。",
-    label: "查看平台集成 Token",
+    defaultRoles: ["owner", "admin", "department-manager"],
+    description: "查看当前部门内所有用户创建的部门集成 Token。",
+    label: "查看部门集成 Token",
     operation: "list",
     sortOrder: 10,
   })
-  list(@Headers("authorization") authorization: string | undefined) {
-    return this.integrationTokensService.listPlatform(authorization);
+  list(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
+    @Param("departmentId") departmentId: string,
+  ) {
+    return this.integrationTokensService.listDepartment(
+      authorization,
+      organizationId,
+      departmentId,
+    );
   }
 
   @Delete(":tokenId")
   @AccessOperation({
-    defaultRoles: ["platform-admin"],
-    description: "撤销用户创建的平台集成 Token。",
+    defaultRoles: ["owner", "admin", "department-manager"],
+    description: "撤销当前部门内用户创建的部门集成 Token。",
     isDangerous: true,
     label: "撤销平台集成 Token",
     operation: "revoke",
@@ -229,8 +251,15 @@ export class PlatformIntegrationTokensController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async revoke(
     @Headers("authorization") authorization: string | undefined,
+    @Param("organizationId") organizationId: string,
+    @Param("departmentId") departmentId: string,
     @Param("tokenId") tokenId: string,
   ) {
-    await this.integrationTokensService.revokePlatform(authorization, tokenId);
+    await this.integrationTokensService.revokeDepartment(
+      authorization,
+      organizationId,
+      departmentId,
+      tokenId,
+    );
   }
 }

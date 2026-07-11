@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { DatabaseModule } from "./common/database/database.module.js";
 import { DomainsModule } from "./domains/domains.module.js";
@@ -16,6 +17,7 @@ import { RedisModule } from "./common/redis/redis.module.js";
 import { RbacModule } from "@hermes-swarm/rbac";
 import { AuthModule } from "./infrastructure/auth/auth.module.js";
 import { AuthSessionService } from "./infrastructure/auth/auth-session.service.js";
+import { TenantTransactionInterceptor } from "./common/database/tenant-transaction.interceptor.js";
 
 @Module({
   imports: [
@@ -39,6 +41,12 @@ import { AuthSessionService } from "./infrastructure/auth/auth-session.service.j
     }),
     InfrastructureModule,
     DomainsModule,
+  ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantTransactionInterceptor,
+    },
   ],
 })
 export class AppModule {}

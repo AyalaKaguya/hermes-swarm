@@ -55,5 +55,11 @@ export class PermissionsController {
 }
 
 function isScope(value: string | undefined): value is PermissionScope {
-  return value === "platform" || value === "organization" || value === "own";
+  return (
+    value === "platform" ||
+    value === "tenant" ||
+    value === "organization" ||
+    value === "department" ||
+    value === "own"
+  );
 }

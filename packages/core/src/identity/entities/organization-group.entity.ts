@@ -2,11 +2,11 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from "typeorm
 import type { Organization } from "./organization.entity.js";
 import type { OrganizationGroupMember } from "./organization-group-member.entity.js";
 import type { User } from "./user.entity.js";
-import { BaseEntity } from "./base.entity.js";
+import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 @Entity({ name: "organization_groups" })
-@Index(["organizationId", "name"], { unique: true })
-export class OrganizationGroup extends BaseEntity {
+@Index(["tenantId", "organizationId", "name"], { unique: true })
+export class OrganizationGroup extends TenantOwnedBaseEntity {
   @Column({ name: "organization_id", type: "uuid" })
   @Index()
   organizationId!: string;

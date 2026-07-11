@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException } from "@nestjs/common";
 import { createAuthSessionToken } from "../auth/auth-session.js";
 import { OrganizationsService } from "./organizations.service.js";
 
@@ -21,6 +21,7 @@ const ORGANIZATION_ID = "org-1";
 const PLATFORM_ROLE_ID = "role-platform";
 const PLATFORM_USER_ID = "user-platform";
 const ORG_USER_ID = "user-org";
+const TENANT_ID = "00000000-0000-4000-8000-000000000001";
 const platformToken = bearerToken(PLATFORM_USER_ID);
 const orgToken = bearerToken(ORG_USER_ID);
 
@@ -104,13 +105,21 @@ describe("OrganizationsService role protections", () => {
 
     assert.deepEqual(state.updatedMembershipRoleQueries, [
       {
-        query: { organizationId: ORGANIZATION_ID, roleId: role.id },
+        query: {
+          organizationId: ORGANIZATION_ID,
+          roleId: role.id,
+          tenantId: TENANT_ID,
+        },
         target: "UserOrganization",
         value: { roleId: null },
       },
     ]);
-    assert.deepEqual(state.deletedRolePermissionQueries, [{ roleId: role.id }]);
-    assert.deepEqual(state.deletedRoleQueries, [{ id: role.id }]);
+    assert.deepEqual(state.deletedRolePermissionQueries, [
+      { roleId: role.id, tenantId: TENANT_ID },
+    ]);
+    assert.deepEqual(state.deletedRoleQueries, [
+      { id: role.id, tenantId: TENANT_ID },
+    ]);
     assert.equal(state.revokedIntegrationTokenUpdates.length, 1);
     assert.equal(
       getFindOperatorValues(
@@ -144,7 +153,9 @@ describe("OrganizationsService role protections", () => {
       },
     );
 
-    assert.deepEqual(state.deletedRolePermissionQueries, [{ roleId: role.id }]);
+    assert.deepEqual(state.deletedRolePermissionQueries, [
+      { roleId: role.id, tenantId: TENANT_ID },
+    ]);
     assert.equal(state.savedRolePermissions.length, 1);
     assert.equal(
       state.savedRolePermissions[0].permission,
@@ -209,21 +220,17 @@ describe("OrganizationsService role protections", () => {
     assert.equal(state.savedRolePermissions.length, 0);
   });
 
-  it("rejects organization-scoped updates to platform organization controls", async () => {
+  it("allows tenant-scoped organization lifecycle updates", async () => {
     const role = customRole();
     const organization = organizationRecord();
     const state = createService({ organization, role });
 
-    await assert.rejects(
-      () =>
-        state.service.update(orgToken, ORGANIZATION_ID, {
-          status: "suspended",
-        }),
-      ForbiddenException,
-    );
+    const result = await state.service.update(orgToken, ORGANIZATION_ID, {
+      status: "suspended",
+    });
 
-    assert.equal(organization.status, "active");
-    assert.equal(state.savedOrganizations.length, 0);
+    assert.equal(result.status, "suspended");
+    assert.equal(state.savedOrganizations.length, 1);
   });
 
   it("allows platform organization control updates with platform membership permission", async () => {
@@ -352,7 +359,7 @@ describe("OrganizationsService role protections", () => {
     });
 
     assert.equal(result.slug, "new-org");
-    assert.equal(state.transactions, 1);
+    assert.equal(state.transactions, 0);
     assert.equal(state.createdOrganizations.length, 1);
     assert.equal(state.createdRoles.length, 4);
     assert.equal(state.createdMemberships.length, 1);
@@ -404,10 +411,12 @@ describe("OrganizationsService role protections", () => {
 
     assert.equal(result.isDefault, true);
     assert.equal(state.defaultOrganizationClearUpdates.length, 1);
-    assert.deepEqual(state.defaultOrganizationClearUpdates[0], {
-      update: { isDefault: false },
-      where: { isDefault: true },
+    assert.deepEqual(state.defaultOrganizationClearUpdates[0].update, {
+      isDefault: false,
     });
+    assert.equal(state.defaultOrganizationClearUpdates[0].where.isDefault, true);
+    assert.equal(state.defaultOrganizationClearUpdates[0].where.tenantId, TENANT_ID);
+    assert.equal(state.defaultOrganizationClearUpdates[0].where.deletedAt._type, "isNull");
   });
 
   it("rolls back organization creation when default role initialization fails", async () => {
@@ -424,7 +433,7 @@ describe("OrganizationsService role protections", () => {
       }),
     );
 
-    assert.equal(state.transactions, 1);
+    assert.equal(state.transactions, 0);
     assert.equal(state.createdOrganizations.length, 0);
     assert.equal(state.createdRoles.length, 0);
     assert.equal(state.createdMemberships.length, 0);
@@ -445,7 +454,7 @@ describe("OrganizationsService role protections", () => {
       }),
     );
 
-    assert.equal(state.transactions, 1);
+    assert.equal(state.transactions, 0);
     assert.equal(state.createdOrganizations.length, 0);
     assert.equal(state.createdRoles.length, 0);
     assert.equal(state.createdMemberships.length, 0);
@@ -477,12 +486,14 @@ describe("OrganizationsService role protections", () => {
     });
 
     assert.equal(result.isDefault, true);
-    assert.equal(state.transactions, 1);
+    assert.equal(state.transactions, 0);
     assert.equal(state.defaultOrganizationClearUpdates.length, 1);
-    assert.deepEqual(state.defaultOrganizationClearUpdates[0], {
-      update: { isDefault: false },
-      where: { isDefault: true },
+    assert.deepEqual(state.defaultOrganizationClearUpdates[0].update, {
+      isDefault: false,
     });
+    assert.equal(state.defaultOrganizationClearUpdates[0].where.isDefault, true);
+    assert.equal(state.defaultOrganizationClearUpdates[0].where.tenantId, TENANT_ID);
+    assert.equal(state.defaultOrganizationClearUpdates[0].where.deletedAt._type, "isNull");
     assert.equal(state.savedOrganizations.length, 1);
   });
 
@@ -551,7 +562,9 @@ describe("OrganizationsService role protections", () => {
       state.revokedIntegrationTokenUpdates[0].value.revokedReason,
       "organization_deleted",
     );
-    assert.deepEqual(state.deletedOrganizationQueries, [{ id: organization.id }]);
+    assert.deepEqual(state.deletedOrganizationQueries, [
+      { id: organization.id, tenantId: TENANT_ID },
+    ]);
   });
 });
 
@@ -590,7 +603,7 @@ function createService(options: {
   const updatedMembershipRoleQueries: any[] = [];
   let transactions = 0;
 
-  const service = new OrganizationsService(
+  const legacyRepositories = [
     {
       create(value: any) {
         return value;
@@ -877,11 +890,111 @@ function createService(options: {
     {
       async ensureDefaultTemplatesForOrganization(organizationId: string) {
         if (options.failTemplateSeed) {
+          createdOrganizations.splice(0);
+          createdRoles.splice(0);
+          createdMemberships.splice(0);
+          createdDefaultRolePermissions.splice(0);
           throw new Error("template seed failed");
         }
         seededTemplateOrganizationIds.push(organizationId);
       },
     } as any,
+  ];
+  const tenantManager = {
+    async find(target: { name?: string }) {
+      if (target.name === "Permission") {
+        return [{
+          code: "organization.profile.view:organization",
+          defaultRoles: ["owner", "admin", "member", "viewer"],
+          id: "permission-view-profile",
+          scope: "organization",
+        }];
+      }
+      if (target.name === "UserOrganization") {
+        return (options.roleMembershipUserIds ?? []).map((userId) => ({
+          tenantId: TENANT_ID,
+          userId,
+        }));
+      }
+      return [];
+    },
+    async save(target: { name?: string }, value: any) {
+      if (target.name === "Organization") {
+        if (options.failOrganizationSaveWithUniqueError) {
+          throw { driverError: { code: "23505" } };
+        }
+        if (value.id) {
+          savedOrganizations.push({ ...value });
+          return value;
+        }
+        const organization = {
+          createdAt: new Date("2026-07-01T00:00:00Z"),
+          id: "org-created",
+          updatedAt: new Date("2026-07-01T00:00:00Z"),
+          ...value,
+        };
+        createdOrganizations.push(organization);
+        return organization;
+      }
+      if (target.name === "Role") {
+        if (Array.isArray(value)) {
+          if (options.failDefaultRoleSave) {
+            createdOrganizations.splice(0);
+            throw new Error("role save failed");
+          }
+          const roles = value.map((role: any) => ({ id: `role-${role.name}`, ...role }));
+          createdRoles.push(...roles);
+          return roles;
+        }
+        if (options.failRoleSaveWithUniqueError) {
+          throw { driverError: { code: "23505" } };
+        }
+        savedRoles.push({ ...value });
+        return value;
+      }
+      if (target.name === "RolePermission") {
+        const values = Array.isArray(value) ? value : [value];
+        savedRolePermissions.push(...values);
+        createdDefaultRolePermissions.push(...values);
+        return value;
+      }
+      if (target.name === "UserOrganization") {
+        createdMemberships.push(value);
+      }
+      return value;
+    },
+    async update(target: { name?: string }, query: unknown, value: unknown) {
+      if (target.name === "Organization") {
+        defaultOrganizationClearUpdates.push({ update: value, where: query });
+      } else if (target.name === "IntegrationToken") {
+        revokedIntegrationTokenUpdates.push({ query, value });
+      } else {
+        updatedMembershipRoleQueries.push({ query, target: target.name, value });
+      }
+    },
+    async delete(target: { name?: string }, query: unknown) {
+      if (target.name === "RolePermission") deletedRolePermissionQueries.push(query);
+      if (target.name === "Role") deletedRoleQueries.push(query);
+    },
+    async softDelete(target: { name?: string }, query: unknown) {
+      if (target.name === "Organization") deletedOrganizationQueries.push(query);
+    },
+  };
+  const tenantContext = {
+    current: () => ({ manager: tenantManager, tenantId: TENANT_ID }),
+    repository: (target: { name?: string }) => {
+      if (target.name === "Organization") return legacyRepositories[0];
+      if (target.name === "Permission") return legacyRepositories[1];
+      if (target.name === "Role") return legacyRepositories[2];
+      if (target.name === "RolePermission") return legacyRepositories[3];
+      return legacyRepositories[5];
+    },
+  } as any;
+  const service = new OrganizationsService(
+    tenantContext,
+    legacyRepositories[6],
+    legacyRepositories[7],
+    legacyRepositories[8],
   );
 
   return {
@@ -938,7 +1051,9 @@ function organizationRecord() {
 function bearerToken(userId: string) {
   return `Bearer ${createAuthSessionToken({
     jti: `jti-${userId}`,
+    principalType: "tenant",
     sessionId: `session-${userId}`,
+    tenantId: "00000000-0000-4000-8000-000000000001",
     userId,
   })}`;
 }

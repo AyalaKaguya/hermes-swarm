@@ -31,13 +31,20 @@ export function hasPageAccess(
   if (!principal) return false;
 
   if (definition.scope === "platform") {
-    return roleHasPermission(
-      principal.platformMembership?.role?.permissions,
-      definition.permission,
+    if (principal.principalType !== "platform") return false;
+    return (
+      principal.platformUser?.roles.some(
+        (role) =>
+          roleHasPermission(role.permissions, definition.permission) ||
+          definition.defaultRoles.includes(role.name),
+      ) ?? false
     );
   }
 
-  if (definition.scope === "own") {
+  if (definition.scope === "own" || definition.scope === "tenant") {
+    if (definition.scope === "tenant" && principal.principalType !== "tenant") {
+      return false;
+    }
     return hasPermission(principal, definition.permission);
   }
 
@@ -50,13 +57,7 @@ export function hasPageAccess(
       )
     : null;
 
-  return (
-    roleHasPermission(membership?.role?.permissions, definition.permission) ||
-    roleHasPermission(
-      principal.platformMembership?.role?.permissions,
-      definition.permission,
-    )
-  );
+  return roleHasPermission(membership?.role?.permissions, definition.permission);
 }
 
 function roleHasPermission(

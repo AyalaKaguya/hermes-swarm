@@ -1,6 +1,7 @@
 import type { DynamicModule, InjectionToken, ModuleMetadata } from "@nestjs/common";
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { AccessAuditInterceptor } from "./access-audit.interceptor.js";
 import { AccessGuard } from "./access.guard.js";
 import { AccessNestModule } from "./access-nest.module.js";
 import { PermissionsController } from "./permissions.controller.js";
@@ -26,6 +27,10 @@ export class RbacModule {
         {
           provide: APP_GUARD,
           useClass: AccessGuard,
+        },
+        {
+          provide: APP_INTERCEPTOR,
+          useExisting: AccessAuditInterceptor,
         },
       ],
       exports: [AccessNestModule],

@@ -3,11 +3,11 @@ import type { Organization } from "./organization.entity.js";
 import type { OrganizationGroup } from "./organization-group.entity.js";
 import type { User } from "./user.entity.js";
 import type { UserOrganization } from "./user-organization.entity.js";
-import { BaseEntity } from "./base.entity.js";
+import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 @Entity({ name: "organization_group_members" })
-@Index(["groupId", "membershipId"], { unique: true })
-export class OrganizationGroupMember extends BaseEntity {
+@Index(["tenantId", "groupId", "membershipId"], { unique: true })
+export class OrganizationGroupMember extends TenantOwnedBaseEntity {
   @Column({ name: "organization_id", type: "uuid" })
   @Index()
   organizationId!: string;

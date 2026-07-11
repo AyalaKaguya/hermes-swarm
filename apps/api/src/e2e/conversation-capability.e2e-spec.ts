@@ -16,7 +16,6 @@ import {
   OrganizationGroupMember,
   OrganizationSetting,
   Permission,
-  PlatformMember,
   PlatformSetting,
   Role,
   RolePermission,
@@ -52,6 +51,7 @@ const ids = {
   observerUser: "00000000-0000-4000-8000-000000000123",
   organization: "00000000-0000-4000-8000-000000000221",
   requesterUser: "00000000-0000-4000-8000-000000000124",
+  tenant: "00000000-0000-4000-8000-000000000002",
 };
 
 const permissions = {
@@ -75,7 +75,10 @@ class E2EAuthSessionService {
     const payload = parseAuthSessionToken(value);
     if (!payload) throw new Error("Invalid auth token");
     return {
+      principalType: payload.principalType,
       sessionId: payload.sessionId,
+      tenantId: payload.tenantId,
+      tokenKind: "session" as const,
       userId: payload.userId,
     };
   }
@@ -107,7 +110,6 @@ describe("Conversation capability e2e", { concurrency: false }, () => {
             OrganizationGroupMember,
             OrganizationSetting,
             Permission,
-            PlatformMember,
             PlatformSetting,
             Role,
             RolePermission,
@@ -555,7 +557,9 @@ function auth(tokenValue: string) {
 function token(userId: string) {
   return createAuthSessionToken({
     jti: `jti-${userId}`,
+    principalType: "tenant",
     sessionId: `session-${userId}`,
+    tenantId: ids.tenant,
     userId,
   });
 }

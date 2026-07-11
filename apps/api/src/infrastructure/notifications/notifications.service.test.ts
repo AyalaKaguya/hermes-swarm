@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { User, UserNotification, UserOrganization } from "@hermes-swarm/core";
 import { NotificationsService } from "./notifications.service.js";
 
 describe("NotificationsService", () => {
   it("normalizes notification list query limits before querying", async () => {
     const observedTakes: number[] = [];
-    const service = new NotificationsService(
+    const observedTenantIds: string[] = [];
+    const service = createNotificationsService(
       {
         find: async (options: any) => {
           observedTakes.push(options.take);
+          observedTenantIds.push(options.where.tenantId);
           return [];
         },
       } as any,
@@ -25,11 +28,12 @@ describe("NotificationsService", () => {
     await service.listForAuthorization("Bearer token", { take: 999 });
 
     assert.deepEqual(observedTakes, [50, 1, 100]);
+    assert.deepEqual(observedTenantIds, ["tenant-1", "tenant-1", "tenant-1"]);
   });
 
   it("rejects invalid notification list filters before querying", async () => {
     let queried = false;
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       {
         find: async () => {
           queried = true;
@@ -63,7 +67,7 @@ describe("NotificationsService", () => {
   it("lets a user send organization-scoped notifications to active co-members", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const published: any[] = [];
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {
         find: async () => [
@@ -99,10 +103,10 @@ describe("NotificationsService", () => {
     assert.equal(published[0].userId, "recipient");
   });
 
-  it("creates bulk notifications transactionally before publishing realtime events", async () => {
+  it("uses the current tenant transaction before publishing realtime events", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const published: any[] = [];
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {} as any,
@@ -118,7 +122,7 @@ describe("NotificationsService", () => {
     });
 
     assert.equal(result.length, 2);
-    assert.equal(notificationRepository.transactionCount, 1);
+    assert.equal(notificationRepository.transactionCount, 0);
     assert.deepEqual(
       notificationRepository.saved.map((item) => item.recipientUserId),
       ["user-1", "user-2"],
@@ -136,7 +140,7 @@ describe("NotificationsService", () => {
       },
     });
     const published: any[] = [];
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {} as any,
@@ -158,7 +162,7 @@ describe("NotificationsService", () => {
 
   it("rejects malformed bulk notification recipients before opening a transaction", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {} as any,
@@ -178,7 +182,7 @@ describe("NotificationsService", () => {
 
   it("rejects invalid notification kind before persistence", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {
@@ -201,7 +205,7 @@ describe("NotificationsService", () => {
 
   it("rejects notification fields that exceed persisted limits", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {} as any,
@@ -229,7 +233,7 @@ describe("NotificationsService", () => {
   });
 
   it("rejects organization notifications when a recipient is outside the organization", async () => {
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       {} as any,
       {
         find: async () => [
@@ -253,9 +257,30 @@ describe("NotificationsService", () => {
     );
   });
 
+  it("rejects recipients that are outside the active tenant", async () => {
+    const notificationRepository = createNotificationRepositoryHarness();
+    const service = createNotificationsService(
+      notificationRepository.repository,
+      {} as any,
+      {} as any,
+      {} as any,
+      { tenantId: "tenant-1", userIds: ["inside"] },
+    );
+
+    await assert.rejects(
+      () =>
+        service.createForUser({
+          recipientUserId: "other-tenant-user",
+          title: "Notice",
+        }),
+      BadRequestException,
+    );
+    assert.equal(notificationRepository.saved.length, 0);
+  });
+
   it("keeps saved notifications when realtime publish fails", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {} as any,
@@ -278,7 +303,7 @@ describe("NotificationsService", () => {
   it("publishes single notifications to the normalized recipient id", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const published: any[] = [];
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {} as any,
@@ -300,7 +325,7 @@ describe("NotificationsService", () => {
 
   it("does not mark dismissed notifications as read", async () => {
     let updateWhere: unknown;
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       {
         update: async (where: unknown) => {
           updateWhere = where;
@@ -320,11 +345,12 @@ describe("NotificationsService", () => {
       "dismissedAt",
       "recipientUserId",
       "status",
+      "tenantId",
     ]);
   });
 
   it("treats dismissed single notifications as not found", async () => {
-    const service = new NotificationsService(
+    const service = createNotificationsService(
       {
         findOne: async () => null,
       } as any,
@@ -345,6 +371,55 @@ describe("NotificationsService", () => {
     );
   });
 });
+
+function createNotificationsService(
+  notificationRepository: any,
+  membershipRepository: any,
+  authSessionService: any,
+  realtimeEventBus: any,
+  options: { tenantId?: string; userIds?: string[] } = {},
+) {
+  const tenantId = options.tenantId ?? "tenant-1";
+  const userRepository = {
+    find: async ({ where }: any) => {
+      const requested = where.id?._value ?? where.id?.value ?? [];
+      const allowed = options.userIds ?? requested;
+      return requested
+        .filter((id: string) => allowed.includes(id))
+        .map((id: string) => ({ id, status: "active", tenantId }));
+    },
+  };
+  const tenantContext = {
+    current: () => ({ tenantId }),
+    repository: (target: unknown) => {
+      if (target === UserNotification) return notificationRepository;
+      if (target === UserOrganization) return membershipRepository;
+      if (target === User) return userRepository;
+      throw new Error("Unexpected repository");
+    },
+  };
+  const sessionService = authSessionService?.validateAccessToken
+    ? {
+        ...authSessionService,
+        validateAccessToken: async (...args: any[]) => {
+          const session = await authSessionService.validateAccessToken(...args);
+          return { tenantId: session.tenantId ?? tenantId, ...session };
+        },
+      }
+    : authSessionService;
+  const eventBus = realtimeEventBus?.publishToUser
+    ? {
+        ...realtimeEventBus,
+        publishToUser: (_tenantId: string, userId: string, event: unknown) =>
+          realtimeEventBus.publishToUser(userId, event),
+      }
+    : realtimeEventBus;
+  return new NotificationsService(
+    tenantContext as any,
+    sessionService,
+    eventBus,
+  );
+}
 
 function createNotificationRepositoryHarness(overrides: Record<string, any> = {}) {
   const saved: any[] = [];

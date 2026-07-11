@@ -42,9 +42,6 @@ export default function OrganizationIntegrationsPage() {
         membership.status === "active",
     )?.role?.permissions,
     "integration_token.organization_integration.revoke:organization",
-  ) || hasScopedRolePermission(
-    snapshot?.platformMembership?.role?.permissions,
-    "integration_token.organization_integration.revoke:organization",
   );
   const organizationNames = useMemo(() => {
     const names = new Map<string, string>();

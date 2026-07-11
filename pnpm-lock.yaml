@@ -203,6 +203,9 @@ importers:
       '@nestjs/typeorm':
         specifier: ^11.0.0
         version: 11.0.2(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@1.0.0(babel-plugin-macros@3.1.0)(pg@8.21.0)(redis@5.12.1)(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.19.21)(typescript@6.0.3)))
+      rxjs:
+        specifier: ^7.8.1
+        version: 7.8.2
       typeorm:
         specifier: ^1.0.0
         version: 1.0.0(babel-plugin-macros@3.1.0)(pg@8.21.0)(redis@5.12.1)(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.19.21)(typescript@6.0.3))

@@ -1,5 +1,5 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { BaseEntity } from "../../identity/entities/base.entity.js";
+import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
 import type { User } from "../../identity/entities/user.entity.js";
 import type { Ticket } from "./ticket.entity.js";
 
@@ -14,8 +14,8 @@ export type TicketMessageAttachment = {
 };
 
 @Entity({ name: "ticket_messages" })
-@Index(["ticketId", "createdAt"])
-export class TicketMessage extends BaseEntity {
+@Index(["tenantId", "ticketId", "createdAt"])
+export class TicketMessage extends TenantOwnedBaseEntity {
   @Column({ name: "ticket_id", type: "uuid" })
   @Index()
   ticketId!: string;

@@ -10,9 +10,9 @@ import { FilesController } from "./files/files.controller.js";
 import { GroupsController } from "./groups/groups.controller.js";
 import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
 import {
+  DepartmentIntegrationTokensController,
   IntegrationTokensController,
   OrganizationIntegrationTokensController,
-  PlatformIntegrationTokensController,
 } from "./integrations/integration-tokens.controller.js";
 import { InviteController } from "./invite/invite.controller.js";
 import { MailController } from "./mail/mail.controller.js";
@@ -28,11 +28,16 @@ import { PlatformMembersController } from "./platform-members/platform-members.c
 import { PlatformRolesController } from "./platform-roles/platform-roles.controller.js";
 import { SettingsController } from "./settings/settings.controller.js";
 import { TicketsController } from "./tickets/tickets.controller.js";
+import {
+  TenantApplicationsController,
+  TenantsController,
+} from "./tenants/tenants.controller.js";
 import { UsersController } from "./users/users.controller.js";
 import { PermissionsController } from "@hermes-swarm/rbac";
 
 const ADMIN_CONTROLLERS = [
   AuthController,
+  DepartmentIntegrationTokensController,
   FilesController,
   GroupsController,
   InfrastructureBootstrapController,
@@ -45,12 +50,13 @@ const ADMIN_CONTROLLERS = [
   OrganizationIntegrationTokensController,
   OrganizationsController,
   PasswordResetController,
-  PlatformIntegrationTokensController,
   PlatformMailController,
   PlatformMembersController,
   PlatformRolesController,
   PermissionsController,
   SettingsController,
+  TenantApplicationsController,
+  TenantsController,
   TicketsController,
   UsersController,
 ] as const;

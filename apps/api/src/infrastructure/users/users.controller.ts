@@ -30,10 +30,10 @@ import { UsersService } from "./users.service.js";
   entity: "user",
   entityLabel: "用户",
   entityOrder: 10,
-  purpose: "platform_user",
-  purposeLabel: "平台用户",
+  purpose: "tenant_user",
+  purposeLabel: "租户用户",
   purposeOrder: 10,
-  scope: "platform",
+  scope: "tenant",
 })
 /**
  * Exposes migrated user management endpoints under the admin namespace.
@@ -49,7 +49,7 @@ export class UsersController {
    */
   @Get()
   @AccessOperation({
-    description: "查看平台用户列表。",
+    description: "查看当前租户的用户列表。",
     label: "查看用户列表",
     operation: "list",
     sortOrder: 10,
@@ -63,7 +63,7 @@ export class UsersController {
    */
   @Get("search")
   @AccessOperation({
-    description: "按邮箱、昵称或名称搜索平台用户。",
+    description: "按邮箱、昵称或名称搜索当前租户用户。",
     label: "搜索用户",
     operation: "search",
     sortOrder: 20,
@@ -80,7 +80,7 @@ export class UsersController {
    */
   @Post()
   @AccessOperation({
-    description: "创建新的平台用户账号。",
+    description: "在当前租户创建用户账号。",
     label: "创建用户",
     operation: "create",
     sortOrder: 30,
@@ -95,9 +95,9 @@ export class UsersController {
   /**
    * Updates a global user through platform user management.
    */
-  @Patch("platform/:userId")
+  @Patch("tenant/:userId")
   @AccessOperation({
-    description: "更新平台用户的基础资料和状态。",
+    description: "更新当前租户用户的基础资料和状态。",
     label: "更新用户",
     operation: "update_basic",
     sortOrder: 40,
@@ -113,9 +113,9 @@ export class UsersController {
   /**
    * Deletes a global user through platform user management.
    */
-  @Delete("platform/:userId")
+  @Delete("tenant/:userId")
   @AccessOperation({
-    description: "删除平台用户账号。",
+    description: "删除当前租户用户账号。",
     isDangerous: true,
     label: "删除用户",
     operation: "delete",

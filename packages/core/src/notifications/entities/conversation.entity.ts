@@ -1,14 +1,15 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { BaseEntity } from "../../identity/entities/base.entity.js";
+import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
+import type { Department } from "../../identity/entities/department.entity.js";
 import type { Organization } from "../../identity/entities/organization.entity.js";
 
-export type ConversationScope = "organization" | "platform";
+export type ConversationScope = "tenant" | "organization" | "department";
 export type ConversationStatus = "open" | "closed" | "archived";
 
 @Entity({ name: "conversations" })
-@Index(["sourceType", "sourceId"], { unique: true })
-@Index(["scope", "organizationId", "status", "updatedAt"])
-export class Conversation extends BaseEntity {
+@Index(["tenantId", "sourceType", "sourceId"], { unique: true })
+@Index(["tenantId", "scope", "organizationId", "departmentId", "status", "updatedAt"])
+export class Conversation extends TenantOwnedBaseEntity {
   @Column({ name: "source_type", type: "varchar", length: 80 })
   sourceType!: string;
 
@@ -25,6 +26,14 @@ export class Conversation extends BaseEntity {
   @ManyToOne("Organization", { nullable: true, onDelete: "CASCADE" })
   @JoinColumn({ name: "organization_id" })
   organization!: Organization | null;
+
+  @Column({ name: "department_id", type: "uuid", nullable: true })
+  @Index()
+  departmentId!: string | null;
+
+  @ManyToOne("Department", { nullable: true, onDelete: "RESTRICT" })
+  @JoinColumn({ name: "department_id" })
+  department!: Department | null;
 
   @Column({ type: "varchar", length: 240 })
   subject!: string;

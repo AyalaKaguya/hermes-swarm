@@ -35,10 +35,20 @@ export class AuthController {
     return this.authService.login(payload, request, response);
   }
 
+  @Post("platform/login")
+  @PublicAccess({ reason: "Platform credential validation is handled by AuthService." })
+  platformLogin(
+    @Body() payload: LoginPayload,
+    @Req() request: any,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    return this.authService.loginPlatform(payload, request, response);
+  }
+
   @Post("refresh")
   @PublicAccess({ reason: "Refresh cookie validation is handled by AuthService." })
   refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
-    return this.authService.refresh(request, response);
+    return this.authService.refresh(request, response, "tenant");
   }
 
   @Post("logout")
@@ -106,5 +116,42 @@ export class AuthController {
   @PublicAccess({ reason: "Current session validation is handled by AuthService." })
   me(@Headers("authorization") authorization?: string) {
     return this.authService.me(authorization);
+  }
+}
+
+@Controller("admin/platform/auth")
+export class PlatformAuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post("login")
+  @PublicAccess({ reason: "Platform credential validation is handled by AuthService." })
+  login(
+    @Body() payload: LoginPayload,
+    @Req() request: any,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    return this.authService.loginPlatform(payload, request, response);
+  }
+
+  @Post("refresh")
+  @PublicAccess({ reason: "Refresh cookie validation is handled by AuthService." })
+  refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
+    return this.authService.refresh(request, response, "platform");
+  }
+
+  @Post("logout")
+  @PublicAccess({ reason: "Current platform session validation is handled by AuthService." })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(
+    @Headers("authorization") authorization: string | undefined,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    await this.authService.logout(authorization, response);
+  }
+
+  @Get("me")
+  @PublicAccess({ reason: "Current platform session validation is handled by AuthService." })
+  me(@Headers("authorization") authorization?: string) {
+    return this.authService.platformMe(authorization);
   }
 }

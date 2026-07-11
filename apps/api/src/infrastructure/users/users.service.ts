@@ -6,8 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { ILike, IsNull, Repository } from "typeorm";
+import { ILike, IsNull } from "typeorm";
 import { IntegrationToken, User, type UserStatus } from "@hermes-swarm/core";
 import type {
   CreateUserPayload,
@@ -22,17 +21,15 @@ import {
   verifyPassword,
 } from "../../common/security/password-hash.js";
 import { toUserDto } from "./user-dto.js";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 @Injectable()
 /**
- * Implements global user-management operations.
+ * Implements tenant-local user-management operations.
  */
 export class UsersService {
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(IntegrationToken)
-    private readonly integrationTokenRepository: Repository<IntegrationToken>,
+    private readonly tenantContext: TenantContextService,
     @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
   ) {}
@@ -41,9 +38,10 @@ export class UsersService {
    * Lists users in the active organization after checking user view permission.
    */
   async list(authorization: string | undefined) {
-    await this.requireSessionUserId(authorization);
-    const users = await this.userRepository.find({
+    const session = await this.requireSession(authorization);
+    const users = await this.users.find({
       order: { createdAt: "DESC" },
+      where: { tenantId: session.tenantId },
     });
     return users.map(toUserDto);
   }
@@ -52,21 +50,21 @@ export class UsersService {
    * Searches organization users by profile, email, username, or mobile fields.
    */
   async search(authorization: string | undefined, query: SearchUsersQuery) {
-    await this.requireSessionUserId(authorization);
+    const session = await this.requireSession(authorization);
     const input = requirePayload(query);
     const search = normalizeOptionalText(input.search);
     if (!search) return this.list(authorization);
 
     const pattern = `%${search}%`;
-    const users = await this.userRepository.find({
+    const users = await this.users.find({
       order: { createdAt: "DESC" },
       take: 20,
       where: [
-        { email: ILike(pattern) },
-        { displayName: ILike(pattern) },
-        { nickname: ILike(pattern) },
-        { username: ILike(pattern) },
-        { mobile: ILike(pattern) },
+        { email: ILike(pattern), tenantId: session.tenantId },
+        { displayName: ILike(pattern), tenantId: session.tenantId },
+        { nickname: ILike(pattern), tenantId: session.tenantId },
+        { username: ILike(pattern), tenantId: session.tenantId },
+        { mobile: ILike(pattern), tenantId: session.tenantId },
       ],
     });
     return users.map(toUserDto);
@@ -79,7 +77,7 @@ export class UsersService {
     authorization: string | undefined,
     payload: CreateUserPayload,
   ) {
-    await this.requireSessionUserId(authorization);
+    const session = await this.requireSession(authorization);
     const input = requirePayload(payload);
     const email = normalizeEmail(input.email);
     await this.assertUniqueEmail(email);
@@ -90,7 +88,7 @@ export class UsersService {
       ? hashPassword(requirePassword(input.password))
       : null;
 
-    const user = this.userRepository.create({
+    const user = this.users.create({
       avatarUrl: normalizeNullableText(input.imageUrl),
       displayName,
       email,
@@ -103,11 +101,12 @@ export class UsersService {
       status:
         input.status === undefined ? "active" : normalizeUserStatus(input.status),
       type: "user",
+      tenantId: session.tenantId,
       username: normalizeNullableText(input.username),
     });
 
     try {
-      return toUserDto(await this.userRepository.save(user));
+      return toUserDto(await this.users.save(user));
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException("邮箱已被使用");
@@ -124,8 +123,8 @@ export class UsersService {
     userId: string,
     payload: UpdateUserPayload,
   ) {
-    const currentUserId = await this.requireSessionUserId(authorization);
-    if (currentUserId !== userId) {
+    const session = await this.requireSession(authorization);
+    if (session.userId !== userId) {
       throw new ForbiddenException("只能更新自己的账号信息");
     }
     const input = requirePayload(payload);
@@ -134,34 +133,33 @@ export class UsersService {
   }
 
   /**
-   * Updates mutable fields for a global user from platform administration.
+   * Updates mutable fields for a user in the current tenant.
    */
   async updateManaged(
     authorization: string | undefined,
     userId: string,
     payload: UpdateUserPayload,
   ) {
-    await this.requireSessionUserId(authorization);
+    await this.requireSession(authorization);
     const input = requirePayload(payload);
     const user = await this.getUserOrThrow(userId);
     return this.applyUserPatch(user, input);
   }
 
   /**
-   * Deletes a global user from platform administration.
+   * Deletes a user from the current tenant.
    */
   async deleteManaged(authorization: string | undefined, userId: string) {
-    await this.requireSessionUserId(authorization);
+    const session = await this.requireSession(authorization);
     const user = await this.getUserOrThrow(userId);
-    await this.userRepository.manager.transaction(async (manager) => {
-      await manager.update(
-        IntegrationToken,
-        { ownerUserId: user.id, revokedAt: IsNull() },
-        { revokedAt: new Date() },
-      );
-      await manager.softDelete(User, { id: user.id });
-    });
-    await this.authSessionService.revokeUserSessions(user.id);
+    const manager = this.tenantContext.current()!.manager;
+    await manager.update(
+      IntegrationToken,
+      { ownerUserId: user.id, revokedAt: IsNull(), tenantId: session.tenantId },
+      { revokedAt: new Date() },
+    );
+    await manager.softDelete(User, { id: user.id, tenantId: session.tenantId });
+    await this.authSessionService.revokeUserSessions(session.tenantId, user.id);
   }
 
   /**
@@ -172,8 +170,8 @@ export class UsersService {
     userId: string,
     payload: UpdateUserPasswordPayload,
   ) {
-    const currentUserId = await this.requireSessionUserId(authorization);
-    if (currentUserId !== userId) {
+    const session = await this.requireSession(authorization);
+    if (session.userId !== userId) {
       throw new ForbiddenException("只能更新自己的密码");
     }
     const input = requirePayload(payload);
@@ -189,7 +187,7 @@ export class UsersService {
     user.passwordHash = hashPassword(requirePassword(input.password));
     user.updatedAt = new Date();
     try {
-      return toUserDto(await this.userRepository.save(user));
+      return toUserDto(await this.users.save(user));
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException("邮箱已被使用");
@@ -206,8 +204,8 @@ export class UsersService {
     userId: string,
     payload: UpdatePreferredLanguagePayload,
   ) {
-    const currentUserId = await this.requireSessionUserId(authorization);
-    if (currentUserId !== userId) {
+    const session = await this.requireSession(authorization);
+    if (session.userId !== userId) {
       throw new ForbiddenException("只能更新自己的语言偏好");
     }
     const input = requirePayload(payload);
@@ -216,7 +214,7 @@ export class UsersService {
       input.preferredLanguage,
     );
     user.updatedAt = new Date();
-    return toUserDto(await this.userRepository.save(user));
+    return toUserDto(await this.users.save(user));
   }
 
   private async applyUserPatch(user: User, payload: UpdateUserPayload) {
@@ -257,21 +255,17 @@ export class UsersService {
     user.updatedAt = new Date();
     const shouldRevokeAccess = wasActive && user.status !== "active";
     try {
-      const saved = await this.userRepository.manager.transaction(
-        async (manager) => {
-          const result = await manager.save(User, user);
-          if (shouldRevokeAccess) {
-            await manager.update(
-              IntegrationToken,
-              { ownerUserId: user.id, revokedAt: IsNull() },
-              { revokedAt: new Date() },
-            );
-          }
-          return result;
-        },
-      );
+      const manager = this.tenantContext.current()!.manager;
+      const saved = await manager.save(User, user);
       if (shouldRevokeAccess) {
-        await this.authSessionService.revokeUserSessions(user.id);
+        await manager.update(
+          IntegrationToken,
+          { ownerUserId: user.id, revokedAt: IsNull(), tenantId: this.tenantId },
+          { revokedAt: new Date() },
+        );
+      }
+      if (shouldRevokeAccess) {
+        await this.authSessionService.revokeUserSessions(this.tenantId, user.id);
       }
       return toUserDto(saved);
     } catch (error) {
@@ -282,27 +276,41 @@ export class UsersService {
     }
   }
 
-  private async requireSessionUserId(authorization: string | undefined) {
+  private async requireSession(authorization: string | undefined) {
     const token = authorization?.replace(/^Bearer\s+/i, "").trim();
     try {
       const session = await this.authSessionService.validateAccessToken(token);
-      return session.userId;
+      const tenantId = session.tenantId?.trim();
+      if (!tenantId || tenantId !== this.tenantId) throw new Error();
+      return { tenantId, userId: session.userId };
     } catch {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
   }
 
   private async getUserOrThrow(userId: string) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const user = await this.users.findOne({
+      where: { id: userId, tenantId: this.tenantId },
+    });
     if (!user) throw new NotFoundException("用户不存在");
     return user;
   }
 
   private async assertUniqueEmail(email: string, exceptUserId?: string) {
-    const existing = await this.userRepository.findOne({ where: { email } });
+    const existing = await this.users.findOne({
+      where: { email, tenantId: this.tenantId },
+    });
     if (existing && existing.id !== exceptUserId) {
       throw new BadRequestException("邮箱已被使用");
     }
+  }
+
+  private get tenantId() {
+    return this.tenantContext.current()!.tenantId;
+  }
+
+  private get users() {
+    return this.tenantContext.repository(User);
   }
 }
 

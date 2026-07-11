@@ -4,14 +4,12 @@ import {
   Inject,
   Injectable,
   NotFoundException,
-  OnApplicationBootstrap,
-  OnModuleDestroy,
+  Optional,
   UnauthorizedException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   FEATURE_SETTING_KEYS,
-  PlatformMember,
   PLATFORM_SETTING_KEYS,
   RolePermission,
   Ticket,
@@ -19,6 +17,7 @@ import {
   type ConversationMessageAttachment,
   type TicketStatus,
   UserOrganization,
+  UserTenantRole,
 } from "@hermes-swarm/core";
 import { In, Repository, type EntityManager } from "typeorm";
 import { AuthSessionService } from "../auth/auth-session.service.js";
@@ -29,6 +28,11 @@ import {
 import type { ConversationSource } from "../conversations/conversation-access-resolver.js";
 import { SettingsService } from "../settings/settings.service.js";
 import { TicketConversationAccessResolver } from "./ticket-conversation-access.resolver.js";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import {
+  DepartmentDispatchResolverService,
+  type DepartmentDispatchResolution,
+} from "../departments/department-dispatch-resolver.service.js";
 
 const TICKET_SOURCE_TYPE = "ticket";
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
@@ -37,15 +41,13 @@ const ORGANIZATION_TICKET_HANDLING_FEATURE_KEY =
   FEATURE_SETTING_KEYS.ticketingHandling;
 const ORGANIZATION_TICKET_HANDLE_PERMISSION =
   "ticket.conversation.handle:organization";
-const PLATFORM_TICKET_HANDLE_PERMISSION =
-  "ticket.platform_conversation.list_platform:platform";
+const TENANT_TICKET_HANDLE_PERMISSION =
+  "ticket.tenant_conversation.handle:tenant";
 const MAX_TICKET_ATTACHMENTS = 6;
 const MAX_TICKET_ATTACHMENT_SIZE = 2 * 1024 * 1024;
 
 @Injectable()
-export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
-  private archiveTimer: NodeJS.Timeout | null = null;
-
+export class TicketsService {
   constructor(
     @InjectRepository(Ticket)
     private readonly ticketRepository: Repository<Ticket>,
@@ -53,8 +55,8 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly legacyMessageRepository: Repository<TicketMessage>,
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
-    @InjectRepository(PlatformMember)
-    private readonly platformMemberRepository: Repository<PlatformMember>,
+    @InjectRepository(UserTenantRole)
+    private readonly userTenantRoleRepository: Repository<UserTenantRole>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
     @Inject(AuthSessionService)
@@ -65,17 +67,13 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly ticketConversationAccessResolver: TicketConversationAccessResolver,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService,
+    @Optional()
+    @Inject(TenantContextService)
+    private readonly tenantContext?: TenantContextService,
+    @Optional()
+    @Inject(DepartmentDispatchResolverService)
+    private readonly departmentDispatchResolver?: DepartmentDispatchResolverService,
   ) {}
-
-  onApplicationBootstrap() {
-    this.archiveTimer = setInterval(() => {
-      void this.archiveExpiredTickets();
-    }, 60 * 60 * 1000);
-  }
-
-  onModuleDestroy() {
-    if (this.archiveTimer) clearInterval(this.archiveTimer);
-  }
 
   async listOrganizationTickets(
     authorization: string | undefined,
@@ -84,15 +82,18 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   ) {
     await this.requireTicketingVisible();
     const normalizedStatus = parseOptionalTicketStatus(status);
-    await this.archiveExpiredTickets();
     const session = await this.requireSession(authorization);
-    await this.requireOrganizationMember(session.userId, organizationId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    await this.archiveExpiredTickets(tenantId);
+    await this.requireOrganizationMember(tenantId, session.userId, organizationId);
     const canHandle = await this.canHandleOrganizationTickets(
       session.userId,
       organizationId,
+      tenantId,
     );
     const baseWhere = {
       organizationId,
+      tenantId,
       ...(normalizedStatus ? { status: normalizedStatus } : {}),
     };
     const participantTicketIds = canHandle
@@ -101,9 +102,10 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
           organizationId,
           scope: "organization",
           sourceType: TICKET_SOURCE_TYPE,
+          tenantId,
           userId: session.userId,
         });
-    const tickets = await this.ticketRepository.find({
+    const tickets = await this.ticketRepositoryForContext().find({
       order: { updatedAt: "DESC" },
       where: canHandle
         ? baseWhere
@@ -124,50 +126,97 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   ) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    await this.requireOrganizationMember(session.userId, organizationId);
-    await this.requireOrganizationTicketingEnabled(session.userId, organizationId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    await this.requireOrganizationMember(tenantId, session.userId, organizationId);
+    await this.requireOrganizationTicketingEnabled(
+      tenantId,
+      session.userId,
+      organizationId,
+    );
     const input = parseTicketPayload(payload);
+    let dispatch: DepartmentDispatchResolution | null = null;
+    if (input.departmentId) {
+      if (!this.departmentDispatchResolver) {
+        throw new BadRequestException("部门调度服务不可用");
+      }
+      dispatch = await this.departmentDispatchResolver.resolveTicketAssignment({
+        idempotencyKey: requireText(input.idempotencyKey, "调度幂等键"),
+        sourceDepartmentId: input.departmentId,
+        tenantId,
+      });
+    }
+    const routedTarget = dispatch?.targets[0];
     return this.createTicketWithFirstMessage({
       attachments: input.attachments,
       body: input.body,
-      organizationId,
+      departmentId: routedTarget?.departmentId ?? input.departmentId,
+      dispatch,
+      organizationId: routedTarget?.organizationId ?? organizationId,
+      tenantId,
       requesterUserId: session.userId,
-      scope: "organization",
+      scope: input.departmentId ? "department" : "organization",
       subject: input.subject,
     });
   }
 
-  async listPlatformTickets(authorization: string | undefined, status?: string) {
+  /** Resolves the route only; it never grants ticket or department access. */
+  async resolveTicketEscalationRoute(
+    tenantId: string,
+    ticketId: string,
+    idempotencyKey: string,
+    maxHops?: number,
+  ) {
+    const ticket = await this.findTicketOrThrow(this.requireTenantId(tenantId), ticketId);
+    if (!ticket.departmentId) {
+      throw new BadRequestException("工单没有部门作用域，无法升级");
+    }
+    if (!this.departmentDispatchResolver) {
+      throw new BadRequestException("部门调度服务不可用");
+    }
+    return this.departmentDispatchResolver.resolveEscalationRoute({
+      idempotencyKey,
+      maxHops,
+      sourceDepartmentId: ticket.departmentId,
+      tenantId,
+    });
+  }
+
+  async listTenantTickets(authorization: string | undefined, status?: string) {
     await this.requireTicketingVisible();
     const normalizedStatus = parseOptionalTicketStatus(status);
-    await this.archiveExpiredTickets();
     const session = await this.requireSession(authorization);
-    const canHandle = await this.canHandlePlatformTickets(session.userId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    await this.archiveExpiredTickets(tenantId);
+    const canHandle = await this.canHandleTenantTickets(tenantId, session.userId);
     const participantTicketIds = canHandle
       ? []
       : await this.conversationsService.listParticipantSourceIds({
-          scope: "platform",
+          scope: "tenant",
           sourceType: TICKET_SOURCE_TYPE,
+          tenantId,
           userId: session.userId,
         });
-    const tickets = await this.ticketRepository.find({
+    const tickets = await this.ticketRepositoryForContext().find({
       order: { updatedAt: "DESC" },
       where: canHandle
         ? {
-            scope: "platform",
+            scope: "tenant",
+            tenantId,
             ...(normalizedStatus ? { status: normalizedStatus } : {}),
           }
         : [
             {
               requesterUserId: session.userId,
-              scope: "platform",
+              scope: "tenant",
+              tenantId,
               ...(normalizedStatus ? { status: normalizedStatus } : {}),
             },
             ...(participantTicketIds.length > 0
               ? [
                   {
                     id: In(participantTicketIds),
-                    scope: "platform" as const,
+                    scope: "tenant" as const,
+                    tenantId,
                     ...(normalizedStatus ? { status: normalizedStatus } : {}),
                   },
                 ]
@@ -177,25 +226,28 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     return tickets.map(toTicketDto);
   }
 
-  async createPlatformTicket(authorization: string | undefined, payload: unknown) {
+  async createTenantTicket(authorization: string | undefined, payload: unknown) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    await this.ensureCanSubmitPlatformTicket(session.userId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    await this.ensureCanSubmitTenantTicket(tenantId, session.userId);
     const input = parseTicketPayload(payload);
     return this.createTicketWithFirstMessage({
       attachments: input.attachments,
       body: input.body,
       organizationId: null,
       requesterUserId: session.userId,
-      scope: "platform",
+      scope: "tenant",
       subject: input.subject,
+      tenantId,
     });
   }
 
   async getTicket(authorization: string | undefined, ticketId: string) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    const ticket = await this.findTicketOrThrow(ticketId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    const ticket = await this.findTicketOrThrow(tenantId, ticketId);
     await this.requireTicketAccess(session.userId, ticket);
     return toTicketDto(ticket);
   }
@@ -203,7 +255,8 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   async listMessages(authorization: string | undefined, ticketId: string) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    const ticket = await this.findTicketOrThrow(ticketId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    const ticket = await this.findTicketOrThrow(tenantId, ticketId);
     await this.requireTicketAccess(session.userId, ticket);
     await this.ensureTicketConversation(ticket, "migration");
     const messages = await this.conversationsService.listMessages({
@@ -221,7 +274,8 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   ) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    const ticket = await this.findTicketOrThrow(ticketId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    const ticket = await this.findTicketOrThrow(tenantId, ticketId);
     await this.requireTicketAccess(session.userId, ticket);
     if (ticket.status === "archived") {
       throw new BadRequestException("工单已归档");
@@ -237,12 +291,8 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
       resolver: this.ticketConversationAccessResolver,
       source: this.toConversationSource(ticket),
     });
-    const updatedTicket = await this.ticketRepository.manager.transaction(
-      async (manager) => {
-        const lockedTicket = await this.findTicketForUpdateOrThrow(
-          manager,
-          ticketId,
-        );
+    const updatedTicket = await this.withManager(async (manager) => {
+        const lockedTicket = await this.findTicketForUpdateOrThrow(manager, tenantId, ticketId);
         await this.requireTicketAccess(session.userId, lockedTicket);
         if (lockedTicket.status === "archived") {
           throw new BadRequestException("工单已归档");
@@ -256,8 +306,7 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
           lockedTicket.handlerClosedAt = null;
         }
         return manager.save(Ticket, lockedTicket);
-      },
-    );
+      });
     await this.conversationsService.publishSourceUpdated(
       this.toConversationSource(updatedTicket),
       toTicketDto(updatedTicket),
@@ -268,12 +317,9 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   async closeTicket(authorization: string | undefined, ticketId: string) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    const ticket = await this.ticketRepository.manager.transaction(
-      async (manager) => {
-        const lockedTicket = await this.findTicketForUpdateOrThrow(
-          manager,
-          ticketId,
-        );
+    const tenantId = this.requireTenantId(session.tenantId);
+    const ticket = await this.withManager(async (manager) => {
+        const lockedTicket = await this.findTicketForUpdateOrThrow(manager, tenantId, ticketId);
         await this.requireTicketAccess(session.userId, lockedTicket);
         if (lockedTicket.status === "archived") {
           throw new BadRequestException("工单已归档");
@@ -293,8 +339,7 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
           lockedTicket.archivedAt = null;
         }
         return manager.save(Ticket, lockedTicket);
-      },
-    );
+      });
     await this.conversationsService.publishSourceUpdated(
       this.toConversationSource(ticket),
       toTicketDto(ticket),
@@ -305,7 +350,8 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   async markTicketRead(authorization: string | undefined, ticketId: string) {
     await this.requireTicketingVisible();
     const session = await this.requireSession(authorization);
-    const ticket = await this.findTicketOrThrow(ticketId);
+    const tenantId = this.requireTenantId(session.tenantId);
+    const ticket = await this.findTicketOrThrow(tenantId, ticketId);
     await this.requireTicketAccess(session.userId, ticket);
     return this.conversationsService.markRead({
       resolver: this.ticketConversationAccessResolver,
@@ -314,14 +360,16 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     });
   }
 
-  async archiveExpiredTickets() {
+  async archiveExpiredTickets(tenantId: string) {
+    this.requireTenantId(tenantId);
     const threshold = new Date(Date.now() - ARCHIVE_AFTER_MS);
     const now = new Date();
-    const result = await this.ticketRepository
+    const result = await this.ticketRepositoryForContext()
       .createQueryBuilder()
       .update(Ticket)
       .set({ archivedAt: now, status: "archived" })
       .where("status = :status", { status: "closed" })
+      .andWhere("tenant_id = :tenantId", { tenantId })
       .andWhere("archived_at IS NULL")
       .andWhere(
         [
@@ -337,19 +385,22 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     return { archived: result.affected ?? 0 };
   }
 
-  private async findTicketOrThrow(ticketId: string) {
-    const ticket = await this.ticketRepository.findOne({ where: { id: ticketId } });
+  private async findTicketOrThrow(tenantId: string, ticketId: string) {
+    const ticket = await this.ticketRepositoryForContext().findOne({
+      where: { id: ticketId, tenantId },
+    });
     if (!ticket) throw new NotFoundException("工单不存在");
     return ticket;
   }
 
   private async findTicketForUpdateOrThrow(
     manager: EntityManager,
+    tenantId: string,
     ticketId: string,
   ) {
     const ticket = await manager.findOne(Ticket, {
       lock: { mode: "pessimistic_write" },
-      where: { id: ticketId },
+      where: { id: ticketId, tenantId },
     });
     if (!ticket) throw new NotFoundException("工单不存在");
     return ticket;
@@ -358,26 +409,31 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   private async createTicketWithFirstMessage(input: {
     attachments: ConversationMessageAttachment[] | null;
     body: string;
+    departmentId?: string | null;
+    dispatch?: DepartmentDispatchResolution | null;
     organizationId: string | null;
     requesterUserId: string;
-    scope: "organization" | "platform";
+    scope: "department" | "organization" | "tenant";
     subject: string;
+    tenantId: string;
   }) {
     let ticket!: Ticket;
     let mentionUserIds: string[] = [];
     let conversation!: Awaited<ReturnType<ConversationCapabilityService["createMessageInTransaction"]>>["conversation"];
     let message!: Awaited<ReturnType<ConversationCapabilityService["createMessageInTransaction"]>>["message"];
-    await this.ticketRepository.manager.transaction(async (manager) => {
+    await this.withManager(async (manager) => {
       ticket = await manager.save(
         Ticket,
-        this.ticketRepository.create({
+        this.ticketRepositoryForContext().create({
           lastMessageAt: null,
+          departmentId: input.departmentId ?? null,
           organizationId: input.organizationId,
           participantUserIds: [input.requesterUserId],
           requesterUserId: input.requesterUserId,
           scope: input.scope,
           status: "open",
           subject: input.subject,
+          tenantId: input.tenantId,
         }),
       );
       const source = this.toConversationSource(ticket);
@@ -412,6 +468,7 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     });
     return {
       ...toTicketDto(ticket),
+      ...(input.dispatch ? { dispatch: input.dispatch } : {}),
       firstMessage: toTicketMessageDto(toConversationMessageDto(message, conversation)),
     };
   }
@@ -425,12 +482,13 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     );
     if (ticket.conversationId !== conversation.id) {
       ticket.conversationId = conversation.id;
-      await this.ticketRepository.save(ticket);
+      await this.ticketRepositoryForContext().save(ticket);
     }
     await this.migrateLegacyMessages(ticket, conversation.id);
     await this.conversationsService.addParticipants({
       conversationId: conversation.id,
       joinedReason,
+      tenantId: ticket.tenantId,
       userIds: [
         ...new Set(
           [
@@ -445,12 +503,13 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async migrateLegacyMessages(ticket: Ticket, conversationId: string) {
-    const legacyMessages = await this.legacyMessageRepository.find({
+    const legacyMessages = await this.legacyMessageRepositoryForContext().find({
       order: { createdAt: "ASC" },
-      where: { ticketId: ticket.id },
+      where: { tenantId: ticket.tenantId, ticketId: ticket.id },
     });
     await this.conversationsService.importMessagesIfEmpty({
       conversationId,
+      tenantId: ticket.tenantId,
       messages: legacyMessages.map((message) => ({
         attachments: message.attachments,
         authorUserId: message.authorUserId,
@@ -465,12 +524,14 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private toConversationSource(ticket: Ticket): ConversationSource {
     return {
+      departmentId: ticket.departmentId,
       organizationId: ticket.organizationId,
       scope: ticket.scope,
       sourceId: ticket.id,
       sourceType: TICKET_SOURCE_TYPE,
       status: ticket.status,
       subject: ticket.subject,
+      tenantId: ticket.tenantId,
     };
   }
 
@@ -486,13 +547,18 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     ) {
       return;
     }
-    if (ticket.scope === "platform") {
-      await this.requirePlatformMember(userId);
+    if (ticket.scope === "tenant") {
+      if (await this.canHandleTenantTickets(ticket.tenantId, userId)) return;
+      throw new ForbiddenException("没有处理租户工单的权限");
       return;
     }
     if (
       ticket.organizationId &&
-      (await this.canHandleOrganizationTickets(userId, ticket.organizationId))
+      (await this.canHandleOrganizationTickets(
+        userId,
+        ticket.organizationId,
+        ticket.tenantId,
+      ))
     ) {
       return;
     }
@@ -509,17 +575,16 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
-  private async requireOrganizationMember(userId: string, organizationId: string) {
-    const membership = await this.membershipRepository.findOne({
-      where: { organizationId, status: "active", userId },
+  private async requireOrganizationMember(
+    tenantId: string,
+    userId: string,
+    organizationId: string,
+  ) {
+    const membership = await this.membershipRepositoryForContext().findOne({
+      where: { organizationId, status: "active", tenantId, userId },
     });
     if (!membership) throw new ForbiddenException("不是当前组织成员");
     return membership;
-  }
-
-  private async requirePlatformMember(userId: string) {
-    if (await this.canHandlePlatformTickets(userId)) return;
-    throw new ForbiddenException("没有处理平台工单的权限");
   }
 
   private async requireTicketingVisible() {
@@ -531,6 +596,7 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async requireOrganizationTicketingEnabled(
+    tenantId: string,
     userId: string,
     organizationId: string,
   ) {
@@ -539,25 +605,28 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
       ORGANIZATION_TICKETING_FEATURE_KEY,
       "true",
     );
-    if (value === "true" || (await this.isOrganizationOwner(userId, organizationId))) {
+    if (
+      value === "true" ||
+      (await this.isOrganizationOwner(tenantId, userId, organizationId))
+    ) {
       return;
     }
     throw new ForbiddenException("当前组织未启用工单功能");
   }
 
-  private async ensureCanSubmitPlatformTicket(userId: string) {
+  private async ensureCanSubmitTenantTicket(tenantId: string, userId: string) {
     const enabled = await this.getPlatformBooleanSetting(
       PLATFORM_SETTING_KEYS.ticketingPlatformSubmissionEnabled,
       true,
     );
     if (
       enabled ||
-      (await this.canHandlePlatformTickets(userId)) ||
-      (await this.isAnyOrganizationOwner(userId))
+      (await this.canHandleTenantTickets(tenantId, userId)) ||
+      (await this.isAnyOrganizationOwner(tenantId, userId))
     ) {
       return;
     }
-    throw new ForbiddenException("平台工单提交已关闭");
+    throw new ForbiddenException("租户工单提交已关闭");
   }
 
   private async getPlatformBooleanSetting(name: string, fallback: boolean) {
@@ -570,17 +639,22 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     return fallback;
   }
 
-  private async canHandleOrganizationTickets(userId: string, organizationId: string) {
+  private async canHandleOrganizationTickets(
+    userId: string,
+    organizationId: string,
+    tenantId: string,
+  ) {
     if (!(await this.isOrganizationTicketHandlingEnabled(organizationId))) {
       return false;
     }
-    const membership = await this.membershipRepository.findOne({
-      where: { organizationId, status: "active", userId },
+    const membership = await this.membershipRepositoryForContext().findOne({
+      where: { organizationId, status: "active", tenantId, userId },
     });
     return membership?.roleId
       ? this.roleHasPermission(
           membership.roleId,
           ORGANIZATION_TICKET_HANDLE_PERMISSION,
+          tenantId,
         )
       : false;
   }
@@ -594,41 +668,111 @@ export class TicketsService implements OnApplicationBootstrap, OnModuleDestroy {
     return value !== "false";
   }
 
-  private async isOrganizationOwner(userId: string, organizationId: string) {
-    const membership = await this.membershipRepository.findOne({
+  private async isOrganizationOwner(
+    tenantId: string,
+    userId: string,
+    organizationId: string,
+  ) {
+    const membership = await this.membershipRepositoryForContext().findOne({
       relations: { role: true },
-      where: { organizationId, status: "active", userId },
+      where: { organizationId, status: "active", tenantId, userId },
     });
     return membership?.role?.name === "owner";
   }
 
-  private async isAnyOrganizationOwner(userId: string) {
-    const memberships = await this.membershipRepository.find({
+  private async isAnyOrganizationOwner(tenantId: string, userId: string) {
+    const memberships = await this.membershipRepositoryForContext().find({
       relations: { role: true },
-      where: { status: "active", userId },
+      where: { status: "active", tenantId, userId },
     });
     return memberships.some((membership) => membership.role?.name === "owner");
   }
 
-  private async canHandlePlatformTickets(userId: string) {
-    const member = await this.platformMemberRepository.findOne({
-      where: { status: "active", userId },
+  private async canHandleTenantTickets(tenantId: string, userId: string) {
+    const assignments = await this.userTenantRoleRepositoryForContext().find({
+      where: { tenantId, userId },
     });
-    return member?.roleId
-      ? this.roleHasPermission(member.roleId, PLATFORM_TICKET_HANDLE_PERMISSION)
-      : false;
+    if (assignments.length === 0) return false;
+    return Boolean(
+      await this.rolePermissionRepositoryForContext().findOne({
+        where: {
+          enabled: true,
+          permission: TENANT_TICKET_HANDLE_PERMISSION,
+          roleId: In(assignments.map((assignment) => assignment.roleId)),
+          tenantId,
+        },
+      }),
+    );
   }
 
-  private async roleHasPermission(roleId: string, permission: string) {
+  private async roleHasPermission(
+    roleId: string,
+    permission: string,
+    tenantId: string,
+  ) {
     return Boolean(
-      await this.rolePermissionRepository.findOne({
+      await this.rolePermissionRepositoryForContext().findOne({
         where: {
           enabled: true,
           permission,
           roleId,
+          tenantId,
         },
       }),
     );
+  }
+
+  private requireTenantId(sessionTenantId: string | null | undefined) {
+    const tenantId = sessionTenantId?.trim();
+    if (!tenantId) throw new UnauthorizedException("登录会话缺少租户上下文");
+    const context = this.tenantContext?.current(false);
+    if (context && context.tenantId !== tenantId) {
+      throw new UnauthorizedException("登录会话与租户数据库上下文不一致");
+    }
+    return tenantId;
+  }
+
+  private managerForContext() {
+    return this.tenantContext?.current(false)?.manager ?? this.ticketRepository.manager;
+  }
+
+  private withManager<T>(work: (manager: EntityManager) => Promise<T>) {
+    const context = this.tenantContext?.current(false);
+    if (context) return work(context.manager);
+    const manager = this.ticketRepository.manager;
+    return typeof manager.transaction === "function"
+      ? manager.transaction(work)
+      : work(manager);
+  }
+
+  private ticketRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(Ticket)
+      : this.ticketRepository;
+  }
+
+  private legacyMessageRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(TicketMessage)
+      : this.legacyMessageRepository;
+  }
+
+  private membershipRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(UserOrganization)
+      : this.membershipRepository;
+  }
+
+  private rolePermissionRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(RolePermission)
+      : this.rolePermissionRepository;
+  }
+
+  private userTenantRoleRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(UserTenantRole)
+      : this.userTenantRoleRepository;
   }
 
 }
@@ -637,6 +781,8 @@ function parseTicketPayload(payload: unknown) {
   const value = assertObject(payload);
   return {
     ...parseMessagePayload(payload),
+    departmentId: optionalText(value.departmentId),
+    idempotencyKey: optionalText(value.idempotencyKey),
     subject: requireText(value.subject, "工单标题").slice(0, 240),
   };
 }
@@ -661,6 +807,11 @@ function requireText(value: unknown, label: string) {
     throw new BadRequestException(`${label}不能为空`);
   }
   return value.trim();
+}
+
+function optionalText(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  return requireText(value, "字段");
 }
 
 function parseAttachments(value: unknown): ConversationMessageAttachment[] | null {
@@ -710,6 +861,7 @@ function toTicketDto(ticket: Ticket) {
     assigneeUserId: ticket.assigneeUserId,
     conversationId: ticket.conversationId,
     createdAt: ticket.createdAt,
+    departmentId: ticket.departmentId,
     handlerClosedAt: ticket.handlerClosedAt,
     id: ticket.id,
     lastMessageAt: ticket.lastMessageAt,
@@ -720,6 +872,7 @@ function toTicketDto(ticket: Ticket) {
     scope: ticket.scope,
     status: ticket.status,
     subject: ticket.subject,
+    tenantId: ticket.tenantId,
     updatedAt: ticket.updatedAt,
   };
 }

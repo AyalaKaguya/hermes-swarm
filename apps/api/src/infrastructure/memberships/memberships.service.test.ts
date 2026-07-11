@@ -4,6 +4,7 @@ import { BadRequestException } from "@nestjs/common";
 import { MembershipsService } from "./memberships.service.js";
 
 const ORGANIZATION_ID = "org-1";
+const TENANT_ID = "tenant-1";
 const ROLE_ID = "role-member";
 const OWNER_ROLE_ID = "role-owner";
 
@@ -202,12 +203,14 @@ describe("MembershipsService consistency", () => {
       {
         membershipId: "membership-owner-1",
         organizationId: ORGANIZATION_ID,
+        tenantId: TENANT_ID,
       },
     ]);
     assert.deepEqual(state.deletedMembershipQueries, [
       {
         id: "membership-owner-1",
         organizationId: ORGANIZATION_ID,
+        tenantId: TENANT_ID,
       },
     ]);
   });
@@ -236,6 +239,7 @@ describe("MembershipsService consistency", () => {
           ownerUserId: "user-member",
           revokedAt: "IS_NULL",
           scope: "organization",
+          tenantId: TENANT_ID,
         },
         value: { revokedAt: "DATE" },
       },
@@ -264,6 +268,7 @@ describe("MembershipsService consistency", () => {
           ownerUserId: "user-member",
           revokedAt: "IS_NULL",
           scope: "organization",
+          tenantId: TENANT_ID,
         },
         value: { revokedAt: "DATE" },
       },
@@ -279,6 +284,7 @@ function createService(options: {
   users?: Array<ReturnType<typeof userRecord>>;
 } = {}) {
   const users = options.users ?? [];
+  const initialUserCount = users.length;
   const memberships: any[] = options.memberships ?? [];
   const deletedGroupMemberQueries: any[] = [];
   const deletedMembershipQueries: any[] = [];
@@ -374,7 +380,10 @@ function createService(options: {
             },
           };
         }
-        if (options.failMembershipSave) throw new Error("membership save failed");
+        if (options.failMembershipSave) {
+          users.splice(initialUserCount);
+          throw new Error("membership save failed");
+        }
         const membership = {
           id: `membership-${memberships.length + 1}`,
           ...value,
@@ -398,55 +407,40 @@ function createService(options: {
       return { affected: membership ? 1 : 0 };
     },
   };
-  const service = new MembershipsService(
-    {
-      manager: {
-        ...transactionManager,
-        async transaction(callback: (manager: any) => Promise<unknown>) {
-          const snapshots = {
-            memberships: memberships.map((membership) => ({ ...membership })),
-            users: users.map((user) => ({ ...user })),
-          };
-          try {
-            return await callback(transactionManager);
-          } catch (error) {
-            memberships.splice(
-              0,
-              memberships.length,
-              ...snapshots.memberships,
-            );
-            users.splice(0, users.length, ...snapshots.users);
-            throw error;
-          }
-        },
-      },
-      create(value: any) {
-        return value;
-      },
-    } as any,
-    {
-      create(value: any) {
-        return value;
-      },
-      manager: transactionManager,
-    } as any,
-    {
-      async findOne({ where }: any) {
-        return where.id === ORGANIZATION_ID ? { id: ORGANIZATION_ID } : null;
-      },
-    } as any,
-    {
-      async find() {
-        return [];
-      },
-    } as any,
-    {
-      manager: transactionManager,
-    } as any,
-    {
-      manager: transactionManager,
-    } as any,
-  );
+  const membershipRepository = {
+    create(value: any) {
+      return value;
+    },
+    async find() {
+      return memberships;
+    },
+  };
+  const userRepository = {
+    create(value: any) {
+      return value;
+    },
+  };
+  const organizationRepository = {
+    async findOne({ where }: any) {
+      return where.id === ORGANIZATION_ID && where.tenantId === TENANT_ID
+        ? { id: ORGANIZATION_ID, tenantId: TENANT_ID }
+        : null;
+    },
+  };
+  const groupMemberRepository = {
+    async find() {
+      return [];
+    },
+  };
+  const service = new MembershipsService({
+    current: () => ({ manager: transactionManager, tenantId: TENANT_ID }),
+    repository: (target: { name?: string }) => {
+      if (target.name === "UserOrganization") return membershipRepository;
+      if (target.name === "Organization") return organizationRepository;
+      if (target.name === "OrganizationGroupMember") return groupMemberRepository;
+      return userRepository;
+    },
+  } as any);
 
   return {
     deletedGroupMemberQueries,
@@ -476,6 +470,7 @@ function roleRecord(input: { id: string; name: string }) {
     name: input.name,
     organizationId: ORGANIZATION_ID,
     scope: "organization",
+    tenantId: TENANT_ID,
   };
 }
 
@@ -496,6 +491,7 @@ function membershipRecord(input: {
     role: input.role,
     roleId: input.roleId,
     status: input.status,
+    tenantId: TENANT_ID,
     user: userRecord({
       email: `${input.userId}@example.com`,
       id: input.userId,
@@ -521,6 +517,7 @@ function userRecord(input: { email: string; id: string }) {
     preferredLanguage: "zh-Hans",
     refreshToken: null,
     status: "active",
+    tenantId: TENANT_ID,
     thirdPartyId: null,
     timeZone: null,
     type: "user",

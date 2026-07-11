@@ -9,9 +9,30 @@ import {
 import { AuthSessionService } from "./auth-session.service.js";
 
 describe("AuthSessionService Redis-backed sessions", () => {
+  it("issues and validates a platform session without a tenant id", async () => {
+    const { platformUsers, service } = createService();
+    platformUsers.set("platform-user-1", {
+      id: "platform-user-1",
+      status: "active",
+    });
+    const created = await service.createSession(
+      "platform-user-1",
+      null,
+      "platform",
+    );
+
+    const validated = await service.validateAccessToken(created.accessToken);
+    const refreshed = await service.refreshSession(created.refreshToken);
+
+    assert.equal(validated.principalType, "platform");
+    assert.equal(validated.tenantId, null);
+    assert.equal(refreshed.principalType, "platform");
+    assert.equal(refreshed.tenantId, null);
+  });
+
   it("rotates refresh tokens and rejects the old token after the concurrency window", async () => {
     const { redis, service } = createService();
-    const created = await service.createSession("user-1", {
+    const created = await service.createSession("user-1", "tenant-1", "tenant", {
       ipAddress: "127.0.0.1",
       userAgent: chromeWindowsUserAgent,
     });
@@ -35,7 +56,7 @@ describe("AuthSessionService Redis-backed sessions", () => {
 
   it("returns the same rotation result to concurrent refresh requests", async () => {
     const { service } = createService();
-    const created = await service.createSession("user-1");
+    const created = await service.createSession("user-1", "tenant-1");
 
     const results = await Promise.all(
       Array.from({ length: 10 }, () => service.refreshSession(created.refreshToken)),
@@ -49,7 +70,7 @@ describe("AuthSessionService Redis-backed sessions", () => {
 
   it("does not reveal refresh rotation material in Redis plaintext", async () => {
     const { redis, service } = createService();
-    const created = await service.createSession("user-1");
+    const created = await service.createSession("user-1", "tenant-1");
     const refreshed = await service.refreshSession(created.refreshToken);
     const rotation = redis.getRaw(redis.findKey("auth:refresh_rotation:"));
 
@@ -59,7 +80,7 @@ describe("AuthSessionService Redis-backed sessions", () => {
 
   it("does not let access-token validation overwrite a concurrently rotated refresh hash", async () => {
     const { redis, service } = createService();
-    const created = await service.createSession("user-1");
+    const created = await service.createSession("user-1", "tenant-1");
 
     const pause = redis.pauseNextSessionGet();
     const validatePromise = service.validateAccessToken(created.accessToken);
@@ -76,8 +97,8 @@ describe("AuthSessionService Redis-backed sessions", () => {
 
   it("fails closed for malformed session expiration dates", async () => {
     const { redis, service } = createService();
-    const created = await service.createSession("user-1");
-    const sessionKey = redis.findKey("auth:session:");
+    const created = await service.createSession("user-1", "tenant-1");
+    const sessionKey = redis.findKey("auth:tenant-1:session:");
     const record = redis.getJsonRecord(sessionKey);
     record.expiresAt = "not-a-date";
     redis.setRaw(sessionKey, JSON.stringify(record));
@@ -90,8 +111,13 @@ describe("AuthSessionService Redis-backed sessions", () => {
 
   it("rejects existing access tokens after the user is disabled", async () => {
     const { service, users } = createService();
-    const created = await service.createSession("user-1");
-    users.set("user-1", { id: "user-1", status: "disabled" });
+    const created = await service.createSession("user-1", "tenant-1");
+    users.set("user-1", {
+      id: "user-1",
+      status: "disabled",
+      tenant: { status: "active" },
+      tenantId: "tenant-1",
+    });
 
     await assert.rejects(
       () => service.validateAccessToken(created.accessToken),
@@ -202,6 +228,7 @@ describe("AuthSessionService Redis-backed sessions", () => {
       permissions: ["page.home.access:own"],
       revokedAt: null as Date | null,
       scope: "own" as const,
+      tenantId: "tenant-1",
       tokenHash: hashTokenForTest(token),
       updatedAt: new Date("2026-07-07T00:00:00Z"),
     };
@@ -235,9 +262,10 @@ describe("AuthSessionService Redis-backed sessions", () => {
 
   it("consumes realtime tickets at most once under concurrent use", async () => {
     const { service } = createService();
-    const created = await service.createSession("user-1");
+    const created = await service.createSession("user-1", "tenant-1");
     const ticket = await service.createRealtimeTicket({
       sessionId: created.sessionId,
+      tenantId: "tenant-1",
       userId: "user-1",
     });
 
@@ -262,15 +290,55 @@ function createService(options: {
   organizationRepository?: unknown;
 } = {}) {
   const redis = new FakeRedisClient();
-  const users = new Map<string, { id: string; status: string }>([
-    ["user-1", { id: "user-1", status: "active" }],
+  const platformUsers = new Map<string, { id: string; status: string }>();
+  const users = new Map<
+    string,
+    {
+      id: string;
+      status: string;
+      tenant: { status: string };
+      tenantId: string;
+    }
+  >([
+    [
+      "user-1",
+      {
+        id: "user-1",
+        status: "active",
+        tenant: { status: "active" },
+        tenantId: "tenant-1",
+      },
+    ],
   ]);
   const service = new AuthSessionService(
     (options.integrationTokenRepository ?? { findOne: async () => null }) as any,
     {
       findOne: async ({ where }: any) => users.get(where.id) ?? null,
     } as any,
+    {
+      findOne: async ({ where }: any) => platformUsers.get(where.id) ?? null,
+    } as any,
     (options.organizationRepository ?? { findOne: async () => null }) as any,
+    {
+      transaction: async (work: any) =>
+        work({
+           getRepository: (target: { name?: string }) =>
+             target.name === "IntegrationToken"
+               ? (options.integrationTokenRepository ?? {
+                   findOne: async () => null,
+                   update: async () => ({ affected: 0 }),
+                 })
+               : target.name === "User"
+              ? {
+                  findOne: async ({ where }: any) => users.get(where.id) ?? null,
+                }
+              : target.name === "Organization"
+                ? (options.organizationRepository ?? { findOne: async () => null })
+                : { findOne: async () => null },
+          query: async () => [],
+        }),
+    } as any,
+    { run: (_context: unknown, work: () => unknown) => work() } as any,
     {
       getOrThrow: (key: string) => {
         const values: Record<string, unknown> = {
@@ -290,7 +358,7 @@ function createService(options: {
       getClient: async () => redis,
     } as any,
   );
-  return { redis, service, users };
+  return { platformUsers, redis, service, users };
 }
 
 function createIntegrationTokenRepository(
@@ -311,6 +379,7 @@ function createIntegrationTokenRepository(
     permissions: [],
     revokedAt: null as Date | null,
     tokenHash: hashTokenForTest(token),
+    tenantId: "tenant-1",
     updatedAt: new Date("2026-07-07T00:00:00Z"),
     ...overrides,
   };
@@ -342,7 +411,7 @@ class FakeRedisClient {
   }
 
   async get(key: string) {
-    if (key.startsWith("auth:session:") && this.pausedSessionGet) {
+    if (/^auth:[^:]+:session:/.test(key) && this.pausedSessionGet) {
       const paused = this.pausedSessionGet;
       this.pausedSessionGet = null;
       const value = this.values.get(key) ?? null;
@@ -451,7 +520,9 @@ function createIntegrationToken(tokenId: string, userId: string, secret: string)
   return createAuthSessionToken(
     {
       jti: randomUUID(),
+      principalType: "integration",
       sessionId: `${INTEGRATION_SESSION_PREFIX}${tokenId}`,
+      tenantId: "tenant-1",
       userId,
     },
     {

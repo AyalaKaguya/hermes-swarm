@@ -3,14 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
   OrganizationGroup,
   OrganizationGroupMember,
   UserOrganization,
 } from "@hermes-swarm/core";
-import { In, Repository } from "typeorm";
+import { In } from "typeorm";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 export type OrganizationGroupPayload = {
   color?: string | null;
@@ -25,22 +25,13 @@ export type ReplaceOrganizationGroupMembersPayload = {
 
 @Injectable()
 export class GroupsService {
-  constructor(
-    @InjectRepository(Organization)
-    private readonly organizationRepository: Repository<Organization>,
-    @InjectRepository(OrganizationGroup)
-    private readonly groupRepository: Repository<OrganizationGroup>,
-    @InjectRepository(OrganizationGroupMember)
-    private readonly groupMemberRepository: Repository<OrganizationGroupMember>,
-    @InjectRepository(UserOrganization)
-    private readonly membershipRepository: Repository<UserOrganization>,
-  ) {}
+  constructor(private readonly tenantContext: TenantContextService) {}
 
   async list(organizationId: string) {
     await this.ensureOrganization(organizationId);
-    const groups = await this.groupRepository.find({
+    const groups = await this.groups.find({
       order: { createdAt: "ASC" },
-      where: { organizationId },
+      where: { organizationId, tenantId: this.tenantId },
     });
     const memberCounts = await this.countMembers(groups.map((group) => group.id));
     return groups.map((group) =>
@@ -50,8 +41,8 @@ export class GroupsService {
 
   async get(organizationId: string, groupId: string) {
     const group = await this.getGroupOrThrow(organizationId, groupId);
-    const memberCount = await this.groupMemberRepository.count({
-      where: { groupId: group.id, organizationId },
+    const memberCount = await this.groupMembers.count({
+      where: { groupId: group.id, organizationId, tenantId: this.tenantId },
     });
     return toGroupDto(group, memberCount);
   }
@@ -72,14 +63,15 @@ export class GroupsService {
 
     let group: OrganizationGroup;
     try {
-      group = await this.groupRepository.save(
-        this.groupRepository.create({
+      group = await this.groups.save(
+        this.groups.create({
           color: normalizeNullableText(input.color),
           createdByUserId,
           description: normalizeNullableText(input.description),
           displayName,
           name,
           organizationId,
+          tenantId: this.tenantId,
         }),
       );
     } catch (error) {
@@ -118,40 +110,43 @@ export class GroupsService {
 
     let saved: OrganizationGroup;
     try {
-      saved = await this.groupRepository.save(group);
+      saved = await this.groups.save(group);
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException("用户组标识已被使用");
       }
       throw error;
     }
-    const memberCount = await this.groupMemberRepository.count({
-      where: { groupId: saved.id, organizationId },
+    const memberCount = await this.groupMembers.count({
+      where: { groupId: saved.id, organizationId, tenantId: this.tenantId },
     });
     return toGroupDto(saved, memberCount);
   }
 
   async remove(organizationId: string, groupId: string) {
     const group = await this.getGroupOrThrow(organizationId, groupId);
-    await this.groupRepository.manager.transaction(async (manager) => {
-      await manager.delete(OrganizationGroupMember, {
-        groupId: group.id,
-        organizationId,
-      });
-      await manager.delete(OrganizationGroup, { id: group.id, organizationId });
+    await this.manager.delete(OrganizationGroupMember, {
+      groupId: group.id,
+      organizationId,
+      tenantId: this.tenantId,
+    });
+    await this.manager.delete(OrganizationGroup, {
+      id: group.id,
+      organizationId,
+      tenantId: this.tenantId,
     });
   }
 
   async listMembers(organizationId: string, groupId: string) {
     await this.getGroupOrThrow(organizationId, groupId);
-    const members = await this.groupMemberRepository.find({
+    const members = await this.groupMembers.find({
       order: { createdAt: "ASC" },
       relations: {
         group: true,
         membership: { role: true, user: true },
         user: true,
       },
-      where: { groupId, organizationId },
+      where: { groupId, organizationId, tenantId: this.tenantId },
     });
     return members.map(toGroupMemberDto);
   }
@@ -168,46 +163,50 @@ export class GroupsService {
     const memberships =
       membershipIds.length === 0
         ? []
-        : await this.membershipRepository.find({
+        : await this.memberships.find({
             relations: { role: true, user: true },
-            where: { id: In(membershipIds), organizationId },
+            where: {
+              id: In(membershipIds),
+              organizationId,
+              tenantId: this.tenantId,
+            },
           });
     if (memberships.length !== membershipIds.length) {
       throw new BadRequestException("成员不属于当前组织");
     }
 
-    await this.groupMemberRepository.manager.transaction(async (manager) => {
-      await manager.delete(OrganizationGroupMember, {
-        groupId: group.id,
-        organizationId,
-      });
-      if (memberships.length > 0) {
-        await manager.save(
-          OrganizationGroupMember,
-          memberships.map((membership) =>
-            this.groupMemberRepository.create({
-              groupId: group.id,
-              membershipId: membership.id,
-              organizationId,
-              userId: membership.userId,
-            }),
-          ),
-        );
-      }
+    await this.manager.delete(OrganizationGroupMember, {
+      groupId: group.id,
+      organizationId,
+      tenantId: this.tenantId,
     });
+    if (memberships.length > 0) {
+      await this.manager.save(
+        OrganizationGroupMember,
+        memberships.map((membership) =>
+          this.groupMembers.create({
+            groupId: group.id,
+            membershipId: membership.id,
+            organizationId,
+            tenantId: this.tenantId,
+            userId: membership.userId,
+          }),
+        ),
+      );
+    }
     return this.listMembers(organizationId, group.id);
   }
 
   private async ensureOrganization(organizationId: string) {
-    const organization = await this.organizationRepository.findOne({
-      where: { id: organizationId },
+    const organization = await this.organizations.findOne({
+      where: { id: organizationId, tenantId: this.tenantId },
     });
     if (!organization) throw new NotFoundException("组织不存在");
   }
 
   private async getGroupOrThrow(organizationId: string, groupId: string) {
-    const group = await this.groupRepository.findOne({
-      where: { id: groupId, organizationId },
+    const group = await this.groups.findOne({
+      where: { id: groupId, organizationId, tenantId: this.tenantId },
     });
     if (!group) throw new NotFoundException("用户组不存在");
     return group;
@@ -218,8 +217,8 @@ export class GroupsService {
     name: string,
     exceptGroupId?: string,
   ) {
-    const existing = await this.groupRepository.findOne({
-      where: { name, organizationId },
+    const existing = await this.groups.findOne({
+      where: { name, organizationId, tenantId: this.tenantId },
     });
     if (existing && existing.id !== exceptGroupId) {
       throw new BadRequestException("用户组标识已被使用");
@@ -228,16 +227,41 @@ export class GroupsService {
 
   private async countMembers(groupIds: string[]) {
     if (groupIds.length === 0) return new Map<string, number>();
-    const rows = (await this.groupMemberRepository
+    const rows = (await this.groupMembers
       .createQueryBuilder("member")
       .select("member.groupId", "groupId")
       .addSelect("COUNT(member.id)", "count")
       .where("member.groupId IN (:...groupIds)", { groupIds })
+      .andWhere("member.tenantId = :tenantId", { tenantId: this.tenantId })
       .groupBy("member.groupId")
       .getRawMany()) as Array<{ count: string; groupId: string }>;
     return new Map(
       rows.map((row) => [row.groupId, Number.parseInt(row.count, 10) || 0]),
     );
+  }
+
+  private get tenantId() {
+    return this.tenantContext.current()!.tenantId;
+  }
+
+  private get manager() {
+    return this.tenantContext.current()!.manager;
+  }
+
+  private get organizations() {
+    return this.tenantContext.repository(Organization);
+  }
+
+  private get groups() {
+    return this.tenantContext.repository(OrganizationGroup);
+  }
+
+  private get groupMembers() {
+    return this.tenantContext.repository(OrganizationGroupMember);
+  }
+
+  private get memberships() {
+    return this.tenantContext.repository(UserOrganization);
   }
 }
 

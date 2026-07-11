@@ -1,4 +1,5 @@
 export * from "./lib/access-audit.interceptor.js";
+export * from "./lib/access-audit.service.js";
 export * from "./lib/access-catalog.service.js";
 export * from "./lib/access-denied.js";
 export * from "./lib/access-nest.module.js";

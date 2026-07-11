@@ -35,7 +35,9 @@ pnpm nx show project @hermes-swarm/web
 
 Known projects:
 
+- `@hermes-swarm/rbac-api`
 - `@hermes-swarm/core`
+- `@hermes-swarm/rbac`
 - `@hermes-swarm/api`
 - `@hermes-swarm/web`
 
@@ -57,7 +59,7 @@ pnpm nx show projects
 
 In a restricted runner, Nx may fail with plugin-worker connection errors. In a
 normal full-access shell, `pnpm nx show projects` has been verified to return the
-three projects above.
+five projects above.
 
 ## Services And Logs
 
@@ -90,18 +92,54 @@ curl -sS http://localhost:3200/api/health
 
 ## Database Schema Policy
 
-Development and isolated test databases use TypeORM `synchronize`; do not create
-a migration for ordinary development work. Set `DATABASE_SYNCHRONIZE=false` only
-when inspecting a stable local schema manually.
+All environments use reviewed TypeORM migrations. `DATABASE_SYNCHRONIZE` defaults
+to `false`; do not enable it for tenant-aware development because synchronize
+cannot create the required PostgreSQL roles, composite constraints, or RLS
+policies.
 
-Production never synchronizes schema during API startup. Before a production
-release, generate and review a migration from the stable development entities,
-then apply it once before starting API replicas:
+The API uses two database connections:
+
+- `POSTGRES_TENANT_URL` must authenticate as `hermes_tenant_app`, which is
+  created as `LOGIN NOBYPASSRLS`. The destructive Docker development bootstrap
+  assigns the `.env.example` development password; non-development environments
+  must provision a secret out-of-band before migration.
+- `POSTGRES_PLATFORM_URL` must use a different role with `BYPASSRLS` (or a
+  superuser only in local development) for audited control-plane operations.
+- `DATABASE_STRICT_RLS` is mandatory outside `NODE_ENV=test`; startup rejects
+  attempts to disable it, missing URLs, a tenant
+  username other than `hermes_tenant_app`, shared credentials, a bypass-capable
+  tenant role, or a platform role that cannot cross RLS.
+
+Run migrations with the privileged migration connection, not the tenant
+application role. Never point both application datasources at the migration
+owner in production.
+
+The current development model is intentionally destructive. To rebuild it from
+the tenant hierarchy baseline, stop the API, remove the development Postgres
+volume, start Postgres again, and run the migration before starting API replicas:
+
+```powershell
+docker compose -f devenv/docker-compose.yml down
+docker volume rm hermes_postgres_data
+docker compose -f devenv/docker-compose.yml up -d postgres redis
+pnpm nx run @hermes-swarm/api:migration:show
+pnpm nx run @hermes-swarm/api:migration:run
+$env:DEV_SEED_PLATFORM_ADMIN_PASSWORD='<至少 8 位>'
+$env:DEV_SEED_OWNER_PASSWORD='<至少 8 位>'
+pnpm nx run @hermes-swarm/api:seed:development
+```
+
+`devenv/postgres/init` only creates databases, extensions and the development
+tenant role. It must never create application tables; the migration is the sole
+schema source.
+
+For subsequent schema changes, generate and review a migration rather than
+changing the database manually:
 
 ```bash
-pnpm --filter @hermes-swarm/api migration:generate -- src/common/database/migrations/<release-name>
-pnpm --filter @hermes-swarm/api migration:show
-pnpm --filter @hermes-swarm/api migration:run
+pnpm nx run @hermes-swarm/api:migration:generate -- src/common/database/migrations/<release-name>
+pnpm nx run @hermes-swarm/api:migration:show
+pnpm nx run @hermes-swarm/api:migration:run
 ```
 
 `DATABASE_SYNCHRONIZE=true` and `DATABASE_MIGRATIONS_RUN=true` are both

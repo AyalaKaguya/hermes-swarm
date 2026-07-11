@@ -4,31 +4,48 @@ import { RealtimeEventBus } from "./realtime-event-bus.service.js";
 
 describe("RealtimeEventBus", () => {
   it("delivers locally and remotely once while ignoring its own Redis event", async () => {
-    const channelCallbacks = new Map<string, (message: string) => void>();
-    const published: string[] = [];
+    const channelCallbacks = new Map<
+      string,
+      Array<(message: string, channel: string) => void>
+    >();
+    const published: Array<{ channel: string; event: string }> = [];
     const redis = {
       duplicate: () => ({
         connect: async () => undefined,
         on: () => undefined,
         quit: async () => undefined,
-        subscribe: async (channel: string, callback: (message: string) => void) => {
-          channelCallbacks.set(channel, callback);
+        pSubscribe: async (
+          channel: string,
+          callback: (message: string, channel: string) => void,
+        ) => {
+          channelCallbacks.set(channel, [
+            ...(channelCallbacks.get(channel) ?? []),
+            callback,
+          ]);
         },
-        unsubscribe: async () => undefined,
+        pUnsubscribe: async () => undefined,
       }),
-      publish: async (_channel: string, event: string) => {
-        published.push(event);
+      publish: async (channel: string, event: string) => {
+        published.push({ channel, event });
       },
     };
     const localDeliveries: any[] = [];
     const remoteDeliveries: any[] = [];
     const local = new RealtimeEventBus(
       { getClient: async () => redis } as any,
-      { publishToUsers: (users: string[], event: unknown) => localDeliveries.push({ event, users }) } as any,
+      {
+        publishToUsers: (tenantId: string, users: string[], event: unknown) =>
+          localDeliveries.push({ event, tenantId, users }),
+      } as any,
+      { current: () => ({ tenantId: "tenant-1" }) } as any,
     );
     const remote = new RealtimeEventBus(
       { getClient: async () => redis } as any,
-      { publishToUsers: (users: string[], event: unknown) => remoteDeliveries.push({ event, users }) } as any,
+      {
+        publishToUsers: (tenantId: string, users: string[], event: unknown) =>
+          remoteDeliveries.push({ event, tenantId, users }),
+      } as any,
+      { current: () => ({ tenantId: "tenant-1" }) } as any,
     );
     await local.onApplicationBootstrap();
     await remote.onApplicationBootstrap();
@@ -40,11 +57,15 @@ describe("RealtimeEventBus", () => {
     assert.equal(localDeliveries.length, 1);
     assert.deepEqual(localDeliveries[0].users, ["user-1"]);
 
-    const callback = channelCallbacks.get("realtime.events.v1");
-    assert.ok(callback);
-    callback(published[0]!);
+    assert.equal(published[0]?.channel, "realtime.events.v1:tenant-1");
+    const callbacks = channelCallbacks.get("realtime.events.v1:*");
+    assert.equal(callbacks?.length, 2);
+    for (const callback of callbacks ?? []) {
+      callback(published[0]!.event, published[0]!.channel);
+    }
     assert.equal(localDeliveries.length, 1);
     assert.equal(remoteDeliveries.length, 1);
     assert.deepEqual(remoteDeliveries[0].users, ["user-1"]);
+    assert.equal(remoteDeliveries[0].tenantId, "tenant-1");
   });
 });

@@ -73,12 +73,41 @@ describe("page access definitions", () => {
     );
   });
 
-  it("keeps platform organization detail routes single-owned", () => {
+  it("keeps tenant organization detail routes single-owned", () => {
     assert.deepEqual(
       findPageAccessDefinitionsByPath("/settings/organizations/org-123").map(
         (definition) => definition.key,
       ),
       ["settings.organizations"],
+    );
+  });
+
+  it("uses tenant scope for account-created integration tokens", () => {
+    const definition = getPageAccessDefinition("settings.integrations");
+
+    assert.equal(definition?.scope, "tenant");
+    assert.equal(
+      definition?.permission,
+      "page.settings.integrations.access:tenant",
+    );
+    assert.equal(getPageAccessDefinition("settings.platform-integrations"), null);
+  });
+
+  it("defines explicit tenant and department settings ownership", () => {
+    const tenant = getPageAccessDefinition("settings.tenant");
+    const departments = getPageAccessDefinition(
+      "settings.organization.departments",
+    );
+
+    assert.equal(tenant?.scope, "tenant");
+    assert.equal(tenant?.href, "/settings/tenant");
+    assert.equal(departments?.scope, "organization");
+    assert.equal(departments?.href, "/settings/organization/departments");
+    assert.deepEqual(
+      findPageAccessDefinitionsByPath("/settings/organization/departments").map(
+        (definition) => definition.key,
+      ),
+      ["settings.organization.departments"],
     );
   });
 });

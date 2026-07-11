@@ -92,6 +92,21 @@ export class MailController {
     return this.mailService.createTemplate(organizationId, payload as never);
   }
 
+  @Post("templates/preview")
+  @AccessOperation({
+    description: "使用示例数据预览当前组织的邮件模板。",
+    label: "预览邮件模板",
+    operation: "preview",
+    purpose: "template",
+    purposeLabel: "邮件模板",
+    purposeOrder: 20,
+    sortOrder: 25,
+  })
+  @RequireFeature("feature:email:enabled")
+  previewTemplate(@Body() payload: unknown) {
+    return this.mailService.previewTemplate(payload as never);
+  }
+
   @Patch("templates/:templateId")
   @AccessOperation({
     description: "更新当前组织的邮件模板。",
@@ -165,5 +180,49 @@ export class MailController {
     @Body() payload: unknown,
   ) {
     return this.mailService.createLog(organizationId, payload as never);
+  }
+}
+
+@Controller("admin/tenant/mail")
+@AccessResource({
+  entity: "mail",
+  entityLabel: "邮件",
+  purpose: "tenant_mail",
+  purposeLabel: "租户邮件",
+  scope: "tenant",
+})
+export class TenantMailController {
+  constructor(private readonly mailService: MailService) {}
+
+  @Get("smtp")
+  @AccessOperation({ label: "查看租户 SMTP", operation: "view_smtp" })
+  getSmtp() { return this.mailService.getTenantSmtp(); }
+
+  @Put("smtp")
+  @AccessOperation({ isDangerous: true, label: "保存租户 SMTP", operation: "save_smtp" })
+  saveSmtp(@Body() payload: unknown) {
+    return this.mailService.saveTenantSmtp(payload as never);
+  }
+
+  @Get("templates")
+  @AccessOperation({ label: "查看租户邮件模板", operation: "list_templates" })
+  listTemplates() { return this.mailService.listTenantTemplates(); }
+
+  @Post("templates")
+  @AccessOperation({ label: "创建租户邮件模板", operation: "create_template" })
+  createTemplate(@Body() payload: unknown) {
+    return this.mailService.createTenantTemplate(payload as never);
+  }
+
+  @Patch("templates/:templateId")
+  @AccessOperation({ label: "更新租户邮件模板", operation: "update_template" })
+  updateTemplate(@Param("templateId") templateId: string, @Body() payload: unknown) {
+    return this.mailService.updateTenantTemplate(templateId, payload as never);
+  }
+
+  @Delete("templates/:templateId")
+  @AccessOperation({ isDangerous: true, label: "删除租户邮件模板", operation: "delete_template" })
+  deleteTemplate(@Param("templateId") templateId: string) {
+    return this.mailService.deleteTenantTemplate(templateId);
   }
 }

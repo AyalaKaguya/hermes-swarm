@@ -41,6 +41,8 @@ describe("AccessCatalogService catalog sync", () => {
         save: async () => [],
         create: (value: Record<string, unknown>) => ({ ...value }),
       } as any,
+      { find: async () => [] } as any,
+      { find: async () => [], create: (value: unknown) => value, save: async () => [] } as any,
     );
 
     await service.onModuleInit();

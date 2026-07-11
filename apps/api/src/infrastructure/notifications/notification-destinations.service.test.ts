@@ -6,7 +6,7 @@ import { NotificationDestinationsService } from "./notification-destinations.ser
 describe("NotificationDestinationsService", () => {
   it("normalizes supported destination options and drops unknown keys", async () => {
     const repository = createDestinationRepositoryHarness();
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
 
     const result = await service.create(" org-1 ", {
       name: " DingTalk ",
@@ -30,7 +30,7 @@ describe("NotificationDestinationsService", () => {
 
   it("rejects malformed destination payloads before saving", async () => {
     const repository = createDestinationRepositoryHarness();
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
 
     await assert.rejects(
       () => service.create("org-1", null),
@@ -74,7 +74,7 @@ describe("NotificationDestinationsService", () => {
       type: "dingtalk",
     });
     const repository = createDestinationRepositoryHarness([destination]);
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
 
     await assert.rejects(
       () =>
@@ -95,7 +95,7 @@ describe("NotificationDestinationsService", () => {
       type: "dingtalk",
     });
     const repository = createDestinationRepositoryHarness([destination]);
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
 
     const result = await service.update("org-1", "destination-1", {
       options: {
@@ -124,7 +124,7 @@ describe("NotificationDestinationsService", () => {
         organizationId: "org-2",
       }),
     ]);
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
 
     const list = await service.list("org-1");
     assert.deepEqual(
@@ -141,6 +141,23 @@ describe("NotificationDestinationsService", () => {
     ]);
   });
 
+  it("does not expose a destination from another tenant with the same organization id", async () => {
+    const repository = createDestinationRepositoryHarness([
+      createDestination({
+        id: "destination-other-tenant",
+        organizationId: "shared-org-id",
+        tenantId: "tenant-2",
+      }),
+    ]);
+    const service = createDestinationService(repository.repository, "tenant-1");
+
+    assert.deepEqual(await service.list("shared-org-id"), []);
+    await assert.rejects(
+      () => service.getOne("shared-org-id", "destination-other-tenant"),
+      NotFoundException,
+    );
+  });
+
   it("returns empty groups for non-Feishu destinations without external calls", async () => {
     const repository = createDestinationRepositoryHarness([
       createDestination({
@@ -149,7 +166,7 @@ describe("NotificationDestinationsService", () => {
         type: "dingtalk",
       }),
     ]);
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
 
     const result = await service.groups("org-1", "destination-1");
 
@@ -166,7 +183,7 @@ describe("NotificationDestinationsService", () => {
         type: "feishu",
       }),
     ]);
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
     globalThis.fetch = (async () =>
       ({
         json: async () => {
@@ -195,7 +212,7 @@ describe("NotificationDestinationsService", () => {
         type: "feishu",
       }),
     ]);
-    const service = new NotificationDestinationsService(repository.repository);
+    const service = createDestinationService(repository.repository);
     const responses = [
       {
         json: async () => ({
@@ -232,11 +249,17 @@ function createDestinationRepositoryHarness(initialItems: any[] = []) {
   const repository: any = {
     create: (value: any) => createDestination(value),
     find: async ({ where }: any) =>
-      items.filter((item) => item.organizationId === where.organizationId),
+      items.filter(
+        (item) =>
+          item.organizationId === where.organizationId &&
+          item.tenantId === where.tenantId,
+      ),
     findOne: async ({ where }: any) =>
       items.find(
         (item) =>
-          item.id === where.id && item.organizationId === where.organizationId,
+          item.id === where.id &&
+          item.organizationId === where.organizationId &&
+          item.tenantId === where.tenantId,
       ) ?? null,
     remove: async (destination: any) => {
       removed.push(destination);
@@ -258,12 +281,20 @@ function createDestinationRepositoryHarness(initialItems: any[] = []) {
   return { items, removed, repository, saved };
 }
 
+function createDestinationService(repository: any, tenantId = "tenant-1") {
+  return new NotificationDestinationsService({
+    current: () => ({ tenantId }),
+    repository: () => repository,
+  } as any);
+}
+
 function createDestination(overrides: Record<string, unknown> = {}) {
   return {
     id: "destination-1",
     name: "Destination",
     options: { url: "https://example.test/webhook" },
     organizationId: "org-1",
+    tenantId: "tenant-1",
     type: "dingtalk",
     ...overrides,
   };

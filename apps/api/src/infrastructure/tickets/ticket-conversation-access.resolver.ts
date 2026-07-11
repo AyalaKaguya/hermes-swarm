@@ -1,26 +1,26 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   FEATURE_SETTING_KEYS,
-  PlatformMember,
   RolePermission,
   Ticket,
   UserOrganization,
+  UserTenantRole,
 } from "@hermes-swarm/core";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import type {
   ConversationAccessResolver,
   ConversationSource,
 } from "../conversations/conversation-access-resolver.js";
 import { ConversationCapabilityService } from "../conversations/conversations.service.js";
 import { SettingsService } from "../settings/settings.service.js";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 const ORGANIZATION_TICKET_HANDLING_FEATURE_KEY =
   FEATURE_SETTING_KEYS.ticketingHandling;
 const ORGANIZATION_TICKET_HANDLE_PERMISSION =
   "ticket.conversation.handle:organization";
-const PLATFORM_TICKET_HANDLE_PERMISSION =
-  "ticket.platform_conversation.list_platform:platform";
+const TENANT_TICKET_HANDLE_PERMISSION = "ticket.tenant_conversation.handle:tenant";
 
 @Injectable()
 export class TicketConversationAccessResolver implements ConversationAccessResolver {
@@ -29,14 +29,16 @@ export class TicketConversationAccessResolver implements ConversationAccessResol
     private readonly ticketRepository: Repository<Ticket>,
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
-    @InjectRepository(PlatformMember)
-    private readonly platformMemberRepository: Repository<PlatformMember>,
+    @InjectRepository(UserTenantRole)
+    private readonly userTenantRoleRepository: Repository<UserTenantRole>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
     @Inject(ConversationCapabilityService)
     private readonly conversationsService: ConversationCapabilityService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService,
+    @Optional()
+    private readonly tenantContext?: TenantContextService,
   ) {}
 
   async canRead(userId: string, source: ConversationSource) {
@@ -50,9 +52,11 @@ export class TicketConversationAccessResolver implements ConversationAccessResol
     ) {
       return true;
     }
-    if (ticket.scope === "platform") return this.canHandlePlatformTickets(userId);
+    if (ticket.scope === "tenant") {
+      return this.canHandleTenantTickets(source.tenantId, userId);
+    }
     return ticket.organizationId
-      ? this.canHandleOrganizationTickets(userId, ticket.organizationId)
+      ? this.canHandleOrganizationTickets(source.tenantId, userId, ticket.organizationId)
       : false;
   }
 
@@ -74,20 +78,30 @@ export class TicketConversationAccessResolver implements ConversationAccessResol
 
   private findTicket(source: ConversationSource) {
     if (source.sourceType !== "ticket") return null;
-    return this.ticketRepository.findOne({ where: { id: source.sourceId } });
+    return this.repository(Ticket, this.ticketRepository).findOne({
+      where: { id: source.sourceId, tenantId: source.tenantId },
+    });
   }
 
-  private async canHandleOrganizationTickets(userId: string, organizationId: string) {
+  private async canHandleOrganizationTickets(
+    tenantId: string,
+    userId: string,
+    organizationId: string,
+  ) {
     if (!(await this.isOrganizationTicketHandlingEnabled(organizationId))) {
       return false;
     }
-    const membership = await this.membershipRepository.findOne({
-      where: { organizationId, status: "active", userId },
+    const membership = await this.repository(
+      UserOrganization,
+      this.membershipRepository,
+    ).findOne({
+      where: { organizationId, status: "active", tenantId, userId },
     });
     return membership?.roleId
       ? this.roleHasPermission(
           membership.roleId,
           ORGANIZATION_TICKET_HANDLE_PERMISSION,
+          tenantId,
         )
       : false;
   }
@@ -101,24 +115,43 @@ export class TicketConversationAccessResolver implements ConversationAccessResol
     return value !== "false";
   }
 
-  private async canHandlePlatformTickets(userId: string) {
-    const member = await this.platformMemberRepository.findOne({
-      where: { status: "active", userId },
+  private async canHandleTenantTickets(tenantId: string, userId: string) {
+    const assignments = await this.repository(
+      UserTenantRole,
+      this.userTenantRoleRepository,
+    ).find({
+      where: { tenantId, userId },
     });
-    return member?.roleId
-      ? this.roleHasPermission(member.roleId, PLATFORM_TICKET_HANDLE_PERMISSION)
-      : false;
+    if (assignments.length === 0) return false;
+    return Boolean(
+      await this.repository(RolePermission, this.rolePermissionRepository).findOne({
+        where: {
+          enabled: true,
+          permission: TENANT_TICKET_HANDLE_PERMISSION,
+          roleId: In(assignments.map((assignment) => assignment.roleId)),
+          tenantId,
+        },
+      }),
+    );
   }
 
-  private async roleHasPermission(roleId: string, permission: string) {
+  private async roleHasPermission(roleId: string, permission: string, tenantId: string) {
     return Boolean(
-      await this.rolePermissionRepository.findOne({
+      await this.repository(RolePermission, this.rolePermissionRepository).findOne({
         where: {
           enabled: true,
           permission,
           roleId,
+          tenantId,
         },
       }),
     );
+  }
+
+  private repository<Entity extends import("typeorm").ObjectLiteral>(
+    target: import("typeorm").EntityTarget<Entity>,
+    fallback: Repository<Entity>,
+  ) {
+    return this.tenantContext?.current(false)?.manager.getRepository(target) ?? fallback;
   }
 }

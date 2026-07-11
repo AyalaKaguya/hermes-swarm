@@ -13,6 +13,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppShell } from "@/components/app-shell";
+import { ScopeProvider, useRequestScope } from "@/components/scope-provider";
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import {
@@ -24,6 +25,13 @@ import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/
 import { hasPageAccess } from "@/lib/access-control";
 import { resolveHostOrganizationIdFromPrincipal } from "@/lib/host-organization";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
+import { resolvePrincipalRoute } from "@/lib/principal-route";
+import {
+  commitRequestScope,
+  getActiveRequestScope,
+  resolveInitialRequestScope,
+  storeRequestScope,
+} from "@/lib/request-scope";
 
 type AdminShellContextValue = {
   loading: boolean;
@@ -60,7 +68,23 @@ export function AdminShell({ children }: { children: ReactNode }) {
       }
       try {
         const principal = await fetchMe();
-        const data = createShellSnapshot(principal);
+        const redirectPath = resolvePrincipalRoute(
+          principal.principalType,
+          pathname,
+        );
+        if (redirectPath) {
+          router.replace(redirectPath);
+          return;
+        }
+        const initialScope =
+          principal.principalType === "tenant"
+            ? resolveInitialRequestScope(principal)
+            : null;
+        commitRequestScope(initialScope);
+        const data = createShellSnapshot(
+          principal,
+          initialScope?.organizationId ?? undefined,
+        );
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
         setLoadError(null);
@@ -85,7 +109,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [router],
+    [pathname, router],
   );
 
   useEffect(() => {
@@ -93,11 +117,22 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }, [loadSnapshot]);
 
   async function switchOrganization(organizationId: string) {
-    if (organizationId === snapshot?.organization?.id) {
+    const currentSnapshot = snapshot;
+    if (!currentSnapshot || currentSnapshot.principalType !== "tenant") {
       return;
     }
-    const principal = await fetchMe();
-    const result = createShellSnapshot(principal, organizationId);
+    const tenantId =
+      currentSnapshot.tenantId ?? currentSnapshot.user.tenantId ?? null;
+    const nextScope = commitRequestScope({
+      departmentId: null,
+      level: "organization",
+      organizationId,
+      tenantId,
+    });
+    if (nextScope) {
+      storeRequestScope(window.localStorage, currentSnapshot.user.id, nextScope);
+    }
+    const result = selectSnapshotOrganization(currentSnapshot, organizationId);
     setSnapshot(result);
     setResolvedSession(resolveSession(result));
     if (pathname.startsWith("/settings/organizations/")) {
@@ -153,9 +188,19 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const ticketAccess = buildTicketAccess(resolvedSession, snapshot);
 
   return (
-    <AppShell
+    <ScopeProvider principal={snapshot}>
+      <AppShell
       contentClassName={pathname.startsWith("/settings") ? "p-0" : undefined}
       currentOrganizationId={snapshot.organization?.id}
+      departmentMemberships={snapshot.departmentMemberships}
+      homeHref={
+        snapshot.principalType === "platform" ? "/platform/tenants" : "/home"
+      }
+      homeLabel={
+        snapshot.principalType === "platform"
+          ? t("platform.tenantApplications")
+          : undefined
+      }
       onOrganizationSwitch={switchOrganization}
       onUserUpdated={() => loadSnapshot({ showLoading: false })}
       organizationName={
@@ -164,13 +209,32 @@ export function AdminShell({ children }: { children: ReactNode }) {
       organizations={snapshot.organizations}
       platformName={platformName}
       navSections={navSections}
+      settingsHref={
+        snapshot.principalType === "platform"
+          ? "/platform/settings"
+          : "/settings/account"
+      }
       ticketAccess={ticketAccess}
+      tenant={snapshot.tenant}
       user={resolvedSession.user}
+      >
+        <AdminShellContext.Provider value={contextValue}>
+          <ScopeEpochBoundary>{children}</ScopeEpochBoundary>
+        </AdminShellContext.Provider>
+      </AppShell>
+    </ScopeProvider>
+  );
+}
+
+function ScopeEpochBoundary({ children }: { children: ReactNode }) {
+  const { scope } = useRequestScope();
+  return (
+    <div
+      className="contents"
+      key={`${scope?.scopeKey ?? "platform"}:${scope?.epoch ?? 0}`}
     >
-      <AdminShellContext.Provider value={contextValue}>
-        {children}
-      </AdminShellContext.Provider>
-    </AppShell>
+      {children}
+    </div>
   );
 }
 
@@ -192,10 +256,51 @@ function resolvePlatformName(
   );
 }
 
-function createShellSnapshot(
+export function createShellSnapshot(
   principal: Awaited<ReturnType<typeof fetchMe>>,
   preferredOrganizationId?: string,
 ): Snapshot {
+  if (principal.principalType === "platform") {
+    const roles = principal.platformUser.roles ?? [];
+    const permissions = resolvePlatformPermissions(roles);
+    const user = platformUserToDisplayUser(principal.platformUser);
+    const isPlatformAdmin =
+      roles.some((role) => role.name === "platform-admin") ||
+      hasPlatformManagementPermission(permissions);
+
+    return {
+      ...principal,
+      currentUser: {
+        isPlatformAdmin,
+        memberships: [],
+        organization: null,
+        permissions,
+        platformUser: principal.platformUser,
+        principalType: "platform",
+        role: roles[0] ?? null,
+        user,
+      },
+      departmentMemberships: [],
+      isPlatformAdmin,
+      memberships: [],
+      organization: null,
+      organizations: [],
+      permissions,
+      platformUser: principal.platformUser,
+      principalType: "platform",
+      role: roles[0] ?? null,
+      rolePermissions: roles.flatMap((role) => role.permissions ?? []),
+      roles,
+      scope: { departmentId: null, level: "platform", organizationId: null },
+      settings: [],
+      systemSettings: principal.systemSettings ?? [],
+      tenant: null,
+      tenantId: null,
+      user,
+      users: [],
+    };
+  }
+
   const memberships = principal.memberships ?? [];
   const organizations = memberships
     .map((membership) => membership.organization)
@@ -211,9 +316,10 @@ function createShellSnapshot(
     memberships[0] ??
     null;
   const organization = activeMembership?.organization ?? organizations[0] ?? null;
-  const role = activeMembership?.role ?? principal.platformMembership?.role ?? null;
-  const activePermissions = resolveActivePermissions(principal, activeMembership);
-  const isPlatformAdmin = hasPlatformManagementPermission(activePermissions);
+  const role = activeMembership?.role ?? principal.tenantRoles?.[0] ?? null;
+  const activePermissions = principal.permissions;
+  const isPlatformAdmin = false;
+  const activeScope = getActiveRequestScope();
 
   return {
     ...principal,
@@ -222,7 +328,8 @@ function createShellSnapshot(
       memberships,
       organization,
       permissions: activePermissions,
-      platformMembership: principal.platformMembership,
+      platformUser: null,
+      principalType: "tenant",
       role,
       user: principal.user,
     },
@@ -233,8 +340,10 @@ function createShellSnapshot(
     rolePermissions: role?.permissions ?? [],
     roles: role ? [role] : [],
     scope: {
-      level: organization ? "organization" : "platform",
-      organizationId: organization?.id ?? null,
+      departmentId: activeScope?.departmentId ?? null,
+      level: activeScope?.level ?? (organization ? "organization" : "platform"),
+      organizationId:
+        activeScope?.organizationId ?? organization?.id ?? null,
     },
     settings: [],
     systemSettings: principal.systemSettings ?? [],
@@ -243,6 +352,7 @@ function createShellSnapshot(
 }
 
 function resolveHostOrganizationId(principal: Awaited<ReturnType<typeof fetchMe>>) {
+  if (principal.principalType !== "tenant") return null;
   if (typeof window === "undefined") return null;
   return resolveHostOrganizationIdFromPrincipal(
     principal,
@@ -250,27 +360,68 @@ function resolveHostOrganizationId(principal: Awaited<ReturnType<typeof fetchMe>
   );
 }
 
-function resolveActivePermissions(
-  principal: Awaited<ReturnType<typeof fetchMe>>,
-  activeMembership: Awaited<ReturnType<typeof fetchMe>>["memberships"][number] | null,
-) {
-  const permissionSources = [
-    activeMembership?.role?.permissions,
-    principal.platformMembership?.role?.permissions,
-  ].filter((items): items is NonNullable<typeof items> => Array.isArray(items));
+function selectSnapshotOrganization(
+  snapshot: Snapshot,
+  organizationId: string,
+): Snapshot {
+  const activeMembership =
+    snapshot.memberships.find(
+      (membership) =>
+        membership.organizationId === organizationId &&
+        membership.status === "active",
+    ) ?? null;
+  if (!activeMembership?.organization) return snapshot;
+  const role = activeMembership.role ?? snapshot.tenantRoles?.[0] ?? null;
 
-  if (permissionSources.length === 0) {
-    return principal.permissions;
-  }
+  return {
+    ...snapshot,
+    currentUser: {
+      ...snapshot.currentUser,
+      organization: activeMembership.organization,
+      role,
+    },
+    organization: activeMembership.organization,
+    role,
+    rolePermissions: role?.permissions ?? [],
+    roles: role ? [role] : [],
+  };
+}
 
+function resolvePlatformPermissions(roles: Snapshot["roles"]) {
   return [
     ...new Set(
-      permissionSources
+      roles
+        .flatMap((role) => role.permissions ?? [])
         .flat()
         .filter((permission) => permission.enabled)
         .map((permission) => permission.permission),
     ),
   ];
+}
+
+function platformUserToDisplayUser(
+  platformUser: NonNullable<Snapshot["platformUser"]>,
+): Snapshot["user"] {
+  return {
+    avatarUrl: null,
+    createdAt: "",
+    displayName: platformUser.displayName,
+    email: platformUser.email,
+    emailVerified: true,
+    firstName: null,
+    id: platformUser.id,
+    imageUrl: null,
+    lastName: null,
+    mobile: null,
+    nickname: null,
+    preferredLanguage: platformUser.preferredLanguage ?? "zh-CN",
+    status: platformUser.status,
+    tenantId: null,
+    timeZone: null,
+    type: "user",
+    updatedAt: "",
+    username: null,
+  };
 }
 
 function hasPlatformManagementPermission(permissions: string[] | undefined) {
@@ -280,6 +431,30 @@ function hasPlatformManagementPermission(permissions: string[] | undefined) {
 }
 
 function buildMainNavSections(resolvedSession: ResolvedSession) {
+  if (resolvedSession.principalType === "platform") {
+    const items = PAGE_ACCESS_DEFINITIONS.filter(
+      (page) =>
+        page.section === "platform" &&
+        page.key !== "platform.tenants" &&
+        hasPageAccess(resolvedSession, page.key),
+    ).map((page) => ({
+      href: page.href,
+      icon: page.icon as any,
+      key: page.key,
+      label: page.label,
+    }));
+    return items.length > 0
+      ? [
+          {
+            items,
+            key: "platform",
+            label: "平台控制面",
+            order: 1,
+          },
+        ]
+      : [];
+  }
+
   const sections = new Map<
     string,
     {
@@ -334,9 +509,9 @@ function buildTicketAccess(
 
   const canOpenTickets =
     hasPageAccess(resolvedSession, "tickets") ||
-    hasPageAccess(resolvedSession, "tickets.platform") ||
+    hasPageAccess(resolvedSession, "tickets.tenant") ||
     resolvedSession.permissions.includes(
-      "ticket.platform_conversation.list_platform:platform",
+      "ticket.tenant_conversation.list_tenant:own",
     ) ||
     Boolean(
       snapshot.memberships?.some(

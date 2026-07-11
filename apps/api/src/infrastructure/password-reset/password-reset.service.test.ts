@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { PasswordReset, User } from "@hermes-swarm/core";
+import { PasswordReset, Tenant, User } from "@hermes-swarm/core";
 import { hashPassword, verifyPassword } from "../../common/security/password-hash.js";
 import { PasswordResetService } from "./password-reset.service.js";
+import { createPasswordResetToken } from "./password-reset-token.js";
 
 describe("PasswordResetService", () => {
   it("rejects malformed request and reset payloads with controlled errors", async () => {
@@ -46,6 +47,7 @@ describe("PasswordResetService", () => {
 
     const result = await state.service.requestReset({
       email: " admin@example.com ",
+      tenantSlug: "acme",
     });
 
     assert.deepEqual(result, { success: true });
@@ -53,7 +55,7 @@ describe("PasswordResetService", () => {
     assert.equal(state.passwordResets[0].email, "admin@example.com");
     assert.equal(state.sentEmails.length, 1);
     assert.equal(state.sentEmails[0].email, "admin@example.com");
-    assert.equal(state.sentEmails[0].organizationId, "org-1");
+    assert.equal(state.sentEmails[0].organizationId, null);
     assert.equal(state.sentEmails[0].templateName, "password-reset");
     assert.match(state.sentEmails[0].locals.resetLink, /\/reset-password\?/);
   });
@@ -61,7 +63,7 @@ describe("PasswordResetService", () => {
   it("resets password with a valid token and rejects mismatched confirmation", async () => {
     const user = userRecord({ email: "admin@example.com", id: "user-1" });
     const state = createPasswordResetService({ users: [user] });
-    await state.service.requestReset({ email: "admin@example.com" });
+    await state.service.requestReset({ email: "admin@example.com", tenantSlug: "acme" });
     const token = state.passwordResets[0].token;
 
     await assert.rejects(() =>
@@ -96,7 +98,7 @@ describe("PasswordResetService", () => {
   it("consumes a reset token at most once under concurrent reset requests", async () => {
     const user = userRecord({ email: "admin@example.com", id: "user-1" });
     const state = createPasswordResetService({ users: [user] });
-    await state.service.requestReset({ email: "admin@example.com" });
+    await state.service.requestReset({ email: "admin@example.com", tenantSlug: "acme" });
     const token = state.passwordResets[0].token;
 
     const results = await Promise.allSettled([
@@ -130,6 +132,39 @@ describe("PasswordResetService", () => {
     );
   });
 
+  it("activates a provisioning tenant atomically when its owner sets a password", async () => {
+    const user = userRecord({ email: "owner@example.com", id: "owner-1" });
+    const state = createPasswordResetService({
+      tenantStatus: "provisioning",
+      users: [user],
+    });
+    const token = createPasswordResetToken({
+      email: user.email,
+      tenantId: state.tenant.id,
+      userId: user.id,
+    });
+    state.passwordResets.push({
+      createdAt: new Date(),
+      email: user.email,
+      expired: false,
+      id: "activation-1",
+      tenantId: state.tenant.id,
+      token,
+    });
+
+    await state.service.resetPassword({
+      confirmPassword: "owner-password",
+      email: user.email,
+      password: "owner-password",
+      tenantSlug: "acme",
+      token,
+    });
+
+    assert.equal(state.tenant.status, "active");
+    assert.equal(verifyPassword("owner-password", user.passwordHash), true);
+    assert.equal(state.passwordResets.length, 0);
+  });
+
   it("rolls back password changes when reset token consumption fails", async () => {
     const user = userRecord({ email: "admin@example.com", id: "user-1" });
     const oldPasswordHash = user.passwordHash;
@@ -137,7 +172,7 @@ describe("PasswordResetService", () => {
       failResetDelete: true,
       users: [user],
     });
-    await state.service.requestReset({ email: "admin@example.com" });
+    await state.service.requestReset({ email: "admin@example.com", tenantSlug: "acme" });
     const token = state.passwordResets[0].token;
 
     await assert.rejects(() =>
@@ -159,15 +194,23 @@ function createPasswordResetService(options: {
   failResetDelete?: boolean;
   memberships?: Array<{ organizationId: string; userId: string }>;
   users?: ReturnType<typeof userRecord>[];
+  tenantStatus?: "active" | "provisioning";
 } = {}) {
   const passwordResets: any[] = [];
   const users = options.users ?? [];
   const memberships = options.memberships ?? [];
   const sentEmails: any[] = [];
   let transactionQueue = Promise.resolve();
-
-  const service = new PasswordResetService(
-    {
+  const tenantId = "tenant-1";
+  const tenant = {
+    id: tenantId,
+    slug: "acme",
+    status: options.tenantStatus ?? "active",
+    subdomain: "acme",
+  };
+  for (const user of users) user.tenantId = tenantId;
+  let currentContext: any = null;
+  const passwordResetRepository = {
       create(value: any) {
         return {
           createdAt: new Date(),
@@ -190,12 +233,8 @@ function createPasswordResetService(options: {
         passwordResets.push(record);
         return record;
       },
-      async delete(where: any) {
-        const index = passwordResets.findIndex((record) => record.id === where.id);
-        if (index >= 0) passwordResets.splice(index, 1);
-      },
-    } as any,
-    {
+    } as any;
+  const userRepository = {
       async findOne({ where }: any) {
         return (
           users.find((user) =>
@@ -203,8 +242,60 @@ function createPasswordResetService(options: {
           ) ?? null
         );
       },
-      manager: {
-        async transaction(callback: (manager: any) => Promise<unknown>) {
+      async save(user: any) {
+        return user;
+      },
+    } as any;
+  const manager = {
+    async query() {},
+    async findOne(target: unknown, { where }: any) {
+      if (target === PasswordReset) {
+        return (
+          passwordResets.find(
+            (record) =>
+              record.email === where.email &&
+              record.tenantId === where.tenantId &&
+              record.token === where.token &&
+              !record.expired,
+          ) ?? null
+        );
+      }
+      if (target === User) {
+        return (
+          users.find((user) =>
+            Object.entries(where).every(([key, value]) => user[key] === value),
+          ) ?? null
+        );
+      }
+      if (target === Tenant) return tenant;
+      return null;
+    },
+    async delete(_target: unknown, where: any) {
+      if (options.failResetDelete) throw new Error("delete failed");
+      const index = passwordResets.findIndex(
+        (record) => record.id === where.id && record.tenantId === where.tenantId,
+      );
+      if (index >= 0) {
+        passwordResets.splice(index, 1);
+        return { affected: 1 };
+      }
+      return { affected: 0 };
+    },
+    async save(_target: unknown, user: any) {
+      if (_target === Tenant) Object.assign(tenant, user);
+      return user;
+    },
+  };
+  const dataSource = {
+    getRepository(target: unknown) {
+      if (target !== Tenant) throw new Error("unexpected repository");
+      return {
+        async findOne() {
+          return tenant;
+        },
+      };
+    },
+    async transaction(callback: (manager: any) => Promise<unknown>) {
           const run = async () => {
             const userSnapshots = users.map((user) => ({
               emailVerified: user.emailVerified,
@@ -213,46 +304,7 @@ function createPasswordResetService(options: {
             }));
             const resetSnapshot = [...passwordResets];
             try {
-              return await callback({
-                async findOne(target: unknown, { where }: any) {
-                  if (target === PasswordReset) {
-                    return (
-                      passwordResets.find(
-                        (record) =>
-                          record.email === where.email &&
-                          record.token === where.token &&
-                          !record.expired,
-                      ) ?? null
-                    );
-                  }
-                  if (target === User) {
-                    return (
-                      users.find((user) =>
-                        Object.entries(where).every(
-                          ([key, value]) => user[key] === value,
-                        ),
-                      ) ?? null
-                    );
-                  }
-                  return null;
-                },
-                async delete(_target: unknown, where: any) {
-                  if (options.failResetDelete) {
-                    throw new Error("delete failed");
-                  }
-                  const index = passwordResets.findIndex(
-                    (record) => record.id === where.id,
-                  );
-                  if (index >= 0) {
-                    passwordResets.splice(index, 1);
-                    return { affected: 1 };
-                  }
-                  return { affected: 0 };
-                },
-                async save(_target: unknown, user: any) {
-                  return user;
-                },
-              });
+              return await callback(manager);
             } catch (error) {
               for (const snapshot of userSnapshots) {
                 const user = users.find((item) => item.id === snapshot.id);
@@ -272,16 +324,28 @@ function createPasswordResetService(options: {
           );
           return result;
         },
-      },
-      async save(user: any) {
-        return user;
-      },
-    } as any,
-    {
-      async findOne({ where }: any) {
-        return memberships.find((item) => item.userId === where.userId) ?? null;
-      },
-    } as any,
+  } as any;
+  const tenantContext = {
+    current(required = true) {
+      if (!currentContext && required) throw new Error("missing context");
+      return currentContext;
+    },
+    repository(target: unknown) {
+      if (target === PasswordReset) return passwordResetRepository;
+      if (target === User) return userRepository;
+      throw new Error("unexpected repository");
+    },
+    run(context: any, work: () => unknown) {
+      const previous = currentContext;
+      currentContext = context;
+      return Promise.resolve(work()).finally(() => {
+        currentContext = previous;
+      });
+    },
+  } as any;
+  const service = new PasswordResetService(
+    dataSource,
+    tenantContext,
     {
       async send(payload: any) {
         sentEmails.push(payload);
@@ -292,6 +356,7 @@ function createPasswordResetService(options: {
         return fallback;
       },
     } as any,
+    dataSource.getRepository(Tenant),
   );
 
   return {
@@ -299,6 +364,7 @@ function createPasswordResetService(options: {
     passwordResets,
     sentEmails,
     service,
+    tenant,
     users,
   };
 }
@@ -310,5 +376,6 @@ function userRecord(input: { email: string; id: string }) {
     emailVerified: false,
     id: input.id,
     passwordHash: hashPassword("old-password"),
+    preferredLanguage: "zh-Hans",
   };
 }

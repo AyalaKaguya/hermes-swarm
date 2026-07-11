@@ -73,7 +73,7 @@ export type FeatureSettingDefinition = {
   description: string;
   key: string;
   label: string;
-  scope: "organization" | "system";
+  scope: "organization" | "platform" | "tenant";
   valueOptions?: readonly SettingValueOption[];
   valueType: "boolean";
 };
@@ -349,28 +349,28 @@ export const FEATURE_SETTING_DEFINITIONS = [
     key: FEATURE_SETTING_KEYS.passwordReset,
     label: "密码重置",
     description: "允许用户通过邮件重置密码",
-    scope: "organization",
+    scope: "tenant",
     valueType: "boolean",
   },
   {
     key: FEATURE_SETTING_KEYS.organizationManagement,
     label: "组织管理",
     description: "启用组织级别的管理功能",
-    scope: "system",
+    scope: "tenant",
     valueType: "boolean",
   },
   {
     key: "system:maintenance:enabled",
     label: "维护模式",
     description: "开启后仅管理员可访问系统",
-    scope: "system",
+    scope: "platform",
     valueType: "boolean",
   },
   {
     key: "system:registration:open",
     label: "开放注册",
     description: "允许新用户自行注册",
-    scope: "system",
+    scope: "platform",
     valueType: "boolean",
   },
 ] as const satisfies readonly FeatureSettingDefinition[];

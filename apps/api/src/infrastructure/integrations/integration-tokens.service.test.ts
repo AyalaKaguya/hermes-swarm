@@ -1,1136 +1,519 @@
-import { createHash, randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
-import { IntegrationTokensService } from "./integration-tokens.service.js";
-import { AuthSessionService } from "../auth/auth-session.service.js";
 import {
-  INTEGRATION_SESSION_PREFIX,
-  createAuthSessionToken,
-} from "../auth/auth-session.js";
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
+import {
+  Department,
+  IntegrationToken,
+  Organization,
+  Permission,
+  RolePermission,
+  User,
+  UserDepartment,
+  UserDepartmentRole,
+  UserOrganization,
+  UserOrganizationRole,
+  UserTenantRole,
+} from "@hermes-swarm/core";
+import { IntegrationTokensService } from "./integration-tokens.service.js";
+
+const TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
 describe("IntegrationTokensService", () => {
-  it("rejects malformed integration token payloads before repository writes", async () => {
-    let saved = false;
-    const service = new IntegrationTokensService(
-      {
-        create: (value: any) => value,
-        save: async (value: any) => {
-          saved = true;
-          return value;
-        },
-      } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
+  it("exposes tenant, organization, and department capabilities from layered roles", async () => {
+    const state = createService();
 
-    await assert.rejects(
-      () => service.create("Bearer login-token", "user-1", null as any),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
-          permissions: "page.home.access:own",
-          scope: "own",
-        } as any),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
-          permissions: ["page.home.access:own", 42],
-          scope: "own",
-        } as any),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
-          expiresAt: {},
-          permissions: ["page.home.access:own"],
-          scope: "own",
-        } as any),
-      BadRequestException,
-    );
-
-    assert.equal(saved, false);
-  });
-
-  it("rejects overlong notes instead of silently truncating token metadata", async () => {
-    let saved = false;
-    const service = new IntegrationTokensService(
-      {
-        create: (value: any) => value,
-        save: async (value: any) => {
-          saved = true;
-          return value;
-        },
-      } as any,
-      {} as any,
-      {} as any,
-      {
-        find: async ({ where }: any) =>
-          where.scope === "own"
-            ? [
-                {
-                  code: "page.home.access:own",
-                  description: "Home access",
-                  isDangerous: false,
-                  operationLabel: "访问主页",
-                },
-              ]
-            : [],
-      } as any,
-      { findOne: async () => null } as any,
-      {
-        find: async () => [
-          {
-            enabled: true,
-            permission: "page.home.access:own",
-            roleId: "role-1",
-          },
-        ],
-        findOne: async () => null,
-      } as any,
-      {
-        find: async () => [
-          {
-            organizationId: "org-1",
-            roleId: "role-1",
-            status: "active",
-            userId: "user-1",
-          },
-        ],
-      } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
-          expiresAt: futureIso(),
-          note: "x".repeat(161),
-          permissions: ["page.home.access:own"],
-          scope: "own",
-        }),
-      BadRequestException,
-    );
-
-    assert.equal(saved, false);
-  });
-
-  it("rejects organization ids on non-organization token scopes", async () => {
-    let saved = false;
-    const service = new IntegrationTokensService(
-      {
-        create: (value: any) => value,
-        save: async (value: any) => {
-          saved = true;
-          return value;
-        },
-      } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
-          expiresAt: futureIso(),
-          organizationId: "org-1",
-          permissions: ["page.home.access:own"],
-          scope: "own",
-        }),
-      BadRequestException,
-    );
-
-    assert.equal(saved, false);
-  });
-
-  it("rejects organization-scoped token creation when the organization is unavailable", async () => {
-    let saved = false;
-    const service = new IntegrationTokensService(
-      {
-        create: (value: any) => value,
-        save: async (value: any) => {
-          saved = true;
-          return value;
-        },
-      } as any,
-      {} as any,
-      {
-        find: async () => [],
-        findOne: async ({ where }: any) =>
-          where.id === "org-suspended"
-            ? { id: "org-suspended", name: "Suspended", status: "suspended" }
-            : null,
-      } as any,
-      {
-        find: async ({ where }: any) =>
-          where.scope === "organization"
-            ? [
-                {
-                  code: "ticket.conversation.list_organization:organization",
-                  description: "List tickets",
-                  isDangerous: false,
-                  operationLabel: "查看组织工单",
-                },
-              ]
-            : [],
-      } as any,
-      { findOne: async () => null } as any,
-      {
-        findOne: async ({ where }: any) =>
-          where.permission ===
-            "integration_token.organization_integration.create:organization" &&
-          where.roleId === "role-1" &&
-          where.enabled
-            ? {
-                enabled: true,
-                permission:
-                  "integration_token.organization_integration.create:organization",
-                roleId: "role-1",
-              }
-            : null,
-        find: async () => [
-          {
-            enabled: true,
-            permission: "ticket.conversation.list_organization:organization",
-            roleId: "role-1",
-          },
-        ],
-      } as any,
-      {
-        find: async () => [
-          {
-            organization: { id: "org-suspended", name: "Suspended" },
-            organizationId: "org-suspended",
-            roleId: "role-1",
-            status: "active",
-            userId: "user-1",
-          },
-        ],
-      } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
-          expiresAt: futureIso(),
-          organizationId: "org-suspended",
-          permissions: ["ticket.conversation.list_organization:organization"],
-          scope: "organization",
-        }),
-      ForbiddenException,
-    );
-
-    assert.equal(saved, false);
-  });
-
-  it("creates a scoped token and validates it without a login session record", async () => {
-    let savedToken: any = null;
-    const tokenRepository = {
-      create: (value: any) => ({
-        createdAt: new Date("2026-07-07T00:00:00Z"),
-        updatedAt: new Date("2026-07-07T00:00:00Z"),
-        ...value,
-      }),
-      findOne: async ({ where }: any) =>
-        savedToken &&
-        where.id === savedToken.id &&
-        where.ownerUserId === savedToken.ownerUserId &&
-        (!where.tokenHash || where.tokenHash === savedToken.tokenHash)
-          ? savedToken
-          : null,
-      save: async (value: any) => {
-        savedToken = {
-          ...savedToken,
-          ...value,
-          createdAt: value.createdAt ?? savedToken?.createdAt ?? new Date(),
-          updatedAt: new Date(),
-        };
-        return savedToken;
-      },
-      update: async (_where: any, value: any) => {
-        savedToken = { ...savedToken, ...value, updatedAt: new Date() };
-        return { affected: savedToken ? 1 : 0 };
-      },
-    };
-    const service = new IntegrationTokensService(
-      tokenRepository as any,
-      { find: async () => [], findOne: async () => null } as any,
-      {
-        find: async () => [],
-        findOne: async ({ where }: any) =>
-          where.id === "org-1"
-            ? { id: "org-1", name: "Hermes", status: "active" }
-            : null,
-      } as any,
-      {
-        find: async ({ where }: any) =>
-          where.scope === "organization"
-            ? [
-                {
-                  code: "ticket.conversation.list_organization:organization",
-                  description: "List tickets",
-                  isDangerous: false,
-                  operationLabel: "查看组织工单",
-                },
-              ]
-            : [],
-      } as any,
-      { findOne: async () => null } as any,
-      {
-        findOne: async ({ where }: any) =>
-          where.permission ===
-            "integration_token.organization_integration.create:organization" &&
-          where.roleId === "role-1" &&
-          where.enabled
-            ? {
-                enabled: true,
-                permission:
-                  "integration_token.organization_integration.create:organization",
-                roleId: "role-1",
-              }
-            : null,
-        find: async () => [
-          {
-            enabled: true,
-            permission: "ticket.conversation.list_organization:organization",
-            roleId: "role-1",
-          },
-          {
-            enabled: true,
-            permission: "integration_token.organization_integration.create:organization",
-            roleId: "role-1",
-          },
-        ],
-      } as any,
-      {
-        find: async () => [
-          {
-            organization: { name: "Hermes" },
-            organizationId: "org-1",
-            roleId: "role-1",
-            status: "active",
-            userId: "user-1",
-          },
-        ],
-      } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    const created = await service.create("Bearer login-token", "user-1", {
-      expiresAt: futureIso(),
-      note: "CI",
-      organizationId: "org-1",
-      permissions: ["ticket.conversation.list_organization:organization"],
-      scope: "organization",
-    });
-
-    assert.equal(created.note, "CI");
-    assert.equal(created.scope, "organization");
-    assert.equal(created.organizationId, "org-1");
-    assert.ok(created.token);
-    assert.equal(savedToken.tokenHash.length, 64);
-
-    const authSessionService = new AuthSessionService(
-      tokenRepository as any,
-      { findOne: async () => ({ id: "user-1", status: "active" }) } as any,
-      { findOne: async () => ({ id: "org-1", status: "active" }) } as any,
-      { getOrThrow: () => "test-secret" } as any,
-      { getClient: async () => null } as any,
-    );
-    const validated = await authSessionService.validateAccessToken(created.token);
-
-    assert.equal(validated.tokenKind, "integration");
-    assert.equal(validated.userId, "user-1");
-    assert.deepEqual(validated.integrationToken?.permissions, [
-      "ticket.conversation.list_organization:organization",
-    ]);
-  });
-
-  it("rejects integration tokens after the owner user is disabled", async () => {
-    const record = {
-      createdAt: new Date("2026-07-07T00:00:00Z"),
-      expiresAt: futureDate(),
-      id: "token-1",
-      lastUsedAt: null,
-      note: "CI",
-      organizationId: null,
-      ownerUserId: "user-1",
-      permissions: ["page.home.access:own"],
-      revokedAt: null,
-      scope: "own",
-      tokenHash: "",
-      updatedAt: new Date("2026-07-07T00:00:00Z"),
-    };
-    const token = createIntegrationToken("token-1", "user-1", "test-secret");
-    record.tokenHash = hashTokenForTest(token);
-    const authSessionService = new AuthSessionService(
-      {
-        findOne: async ({ where }: any) =>
-          where.id === record.id &&
-          where.ownerUserId === record.ownerUserId &&
-          where.tokenHash === record.tokenHash
-            ? record
-            : null,
-      } as any,
-      {
-        findOne: async () => ({ id: "user-1", status: "disabled" }),
-      } as any,
-      { findOne: async () => null } as any,
-      { getOrThrow: () => "test-secret" } as any,
-      { getClient: async () => null } as any,
-    );
-
-    await assert.rejects(
-      () => authSessionService.validateAccessToken(token),
-      { message: "用户不可用" },
-    );
-  });
-
-  it("lists organization tokens with owner and organization metadata", async () => {
-    const service = new IntegrationTokensService(
-      {
-        find: async ({ where }: any) =>
-          where.organizationId === "org-1" && where.scope === "organization"
-            ? [
-                {
-                  createdAt: new Date("2026-07-07T00:00:00Z"),
-                  expiresAt: futureDate(),
-                  id: "token-1",
-                  lastUsedAt: null,
-                  note: "Deploy",
-                  organizationId: "org-1",
-                  ownerUserId: "user-2",
-                  permissions: ["ticket.conversation.list_organization:organization"],
-                  revokedAt: null,
-                  scope: "organization",
-                  tokenPrefix: "v1.prefix",
-                  updatedAt: new Date("2026-07-07T00:00:00Z"),
-                },
-              ]
-            : [],
-      } as any,
-      {
-        find: async () => [
-          {
-            avatarUrl: null,
-            displayName: "Operator",
-            email: "operator@hermes.local",
-            id: "user-2",
-            imageUrl: null,
-            username: "operator",
-          },
-        ],
-      } as any,
-      {
-        find: async () => [{ id: "org-1", name: "Hermes" }],
-      } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    const [token] = await service.listOrganization("Bearer login-token", "org-1");
-
-    assert.equal(token.organizationName, "Hermes");
-    assert.equal(token.owner?.displayName, "Operator");
-    assert.equal(token.ownerUserId, "user-2");
-  });
-
-  it("lists personal tokens with owner and organization metadata", async () => {
-    const service = new IntegrationTokensService(
-      {
-        find: async ({ where }: any) =>
-          where.ownerUserId === "user-1"
-            ? [
-                {
-                  createdAt: new Date("2026-07-07T00:00:00Z"),
-                  expiresAt: futureDate(),
-                  id: "token-own",
-                  lastUsedAt: null,
-                  note: "Personal",
-                  organizationId: null,
-                  ownerUserId: "user-1",
-                  permissions: ["page.home.access:own"],
-                  revokedAt: null,
-                  scope: "own",
-                  tokenPrefix: "v1.own",
-                  updatedAt: new Date("2026-07-07T00:00:00Z"),
-                },
-                {
-                  createdAt: new Date("2026-07-07T00:00:00Z"),
-                  expiresAt: futureDate(),
-                  id: "token-org",
-                  lastUsedAt: null,
-                  note: "Organization",
-                  organizationId: "org-1",
-                  ownerUserId: "user-1",
-                  permissions: ["ticket.conversation.list_organization:organization"],
-                  revokedAt: null,
-                  scope: "organization",
-                  tokenPrefix: "v1.org",
-                  updatedAt: new Date("2026-07-07T00:00:00Z"),
-                },
-              ]
-            : [],
-      } as any,
-      {
-        find: async () => [
-          {
-            avatarUrl: null,
-            displayName: "Owner",
-            email: "owner@hermes.local",
-            id: "user-1",
-            imageUrl: null,
-            username: "owner",
-          },
-        ],
-      } as any,
-      {
-        find: async () => [{ id: "org-1", name: "Hermes" }],
-      } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    const tokens = await service.list("Bearer login-token", "user-1");
-
-    assert.equal(tokens.length, 2);
-    assert.equal(tokens[0].owner?.email, "owner@hermes.local");
-    assert.equal(tokens[0].organizationName, null);
-    assert.equal(tokens[1].organizationName, "Hermes");
-  });
-
-  it("lists platform tokens with owner metadata and no organization", async () => {
-    const service = new IntegrationTokensService(
-      {
-        find: async ({ where }: any) =>
-          where.scope === "platform"
-            ? [
-                {
-                  createdAt: new Date("2026-07-07T00:00:00Z"),
-                  expiresAt: futureDate(),
-                  id: "token-platform",
-                  lastUsedAt: null,
-                  note: "Platform deploy",
-                  organizationId: null,
-                  ownerUserId: "user-3",
-                  permissions: ["organization.platform_organization.list:platform"],
-                  revokedAt: null,
-                  scope: "platform",
-                  tokenPrefix: "v1.platform",
-                  updatedAt: new Date("2026-07-07T00:00:00Z"),
-                },
-              ]
-            : [],
-      } as any,
-      {
-        find: async () => [
-          {
-            avatarUrl: null,
-            displayName: "Platform Operator",
-            email: "platform@hermes.local",
-            id: "user-3",
-            imageUrl: null,
-            username: "platform",
-          },
-        ],
-      } as any,
-      { find: async () => [] } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    const [token] = await service.listPlatform("Bearer login-token");
-
-    assert.equal(token.organizationId, null);
-    assert.equal(token.organizationName, null);
-    assert.equal(token.owner?.displayName, "Platform Operator");
-    assert.equal(token.scope, "platform");
-  });
-
-  it("revokes only organization tokens inside the requested organization", async () => {
-    const saved: any[] = [];
-    const service = new IntegrationTokensService(
-      {
-        findOne: async ({ where }: any) =>
-          where.id === "token-1" &&
-          where.organizationId === "org-1" &&
-          where.scope === "organization"
-            ? {
-                id: "token-1",
-                organizationId: "org-1",
-                revokedAt: null,
-                scope: "organization",
-              }
-            : null,
-        save: async (value: any) => {
-          saved.push(value);
-          return value;
-        },
-      } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    await service.revokeOrganization("Bearer login-token", "org-1", "token-1");
-
-    assert.equal(saved.length, 1);
-    assert.ok(saved[0].revokedAt instanceof Date);
-    await assert.rejects(
-      () => service.revokeOrganization("Bearer login-token", "org-2", "token-1"),
-      { message: "Token 不存在" },
-    );
-  });
-
-  it("revokes only platform tokens without an organization", async () => {
-    const saved: any[] = [];
-    let receivedWhere: any = null;
-    const service = new IntegrationTokensService(
-      {
-        findOne: async ({ where }: any) => {
-          receivedWhere = where;
-          return where.id === "token-platform" &&
-            where.scope === "platform" &&
-            where.organizationId
-            ? {
-                id: "token-platform",
-                organizationId: null,
-                revokedAt: null,
-                scope: "platform",
-              }
-            : null;
-        },
-        save: async (value: any) => {
-          saved.push(value);
-          return value;
-        },
-      } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    await service.revokePlatform("Bearer login-token", "token-platform");
-
-    assert.equal(saved.length, 1);
-    assert.equal(receivedWhere.scope, "platform");
-    assert.ok(receivedWhere.organizationId);
-    assert.ok(saved[0].revokedAt instanceof Date);
-    await assert.rejects(
-      () => service.revokePlatform("Bearer login-token", "token-org"),
-      { message: "Token 不存在" },
-    );
-  });
-
-  it("does not expose integration management permissions as token capabilities", async () => {
-    const service = new IntegrationTokensService(
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        find: async ({ where }: any) =>
-          where.scope === "organization"
-            ? [
-                {
-                  code: "ticket.conversation.list_organization:organization",
-                  description: "List tickets",
-                  entity: "ticket",
-                  entityLabel: "工单",
-                  entityOrder: 10,
-                  isDangerous: false,
-                  operation: "list_organization",
-                  operationLabel: "查看组织工单",
-                  operationOrder: 10,
-                  purpose: "conversation",
-                  purposeLabel: "会话",
-                  purposeOrder: 10,
-                },
-              ]
-            : [],
-      } as any,
-      { findOne: async () => null } as any,
-      {
-        findOne: async ({ where }: any) =>
-          where.permission ===
-            "integration_token.organization_integration.create:organization" &&
-          where.roleId === "role-1" &&
-          where.enabled
-            ? {
-                enabled: true,
-                permission:
-                  "integration_token.organization_integration.create:organization",
-                roleId: "role-1",
-              }
-            : null,
-        find: async () => [
-          {
-            enabled: true,
-            permission: "ticket.conversation.list_organization:organization",
-            roleId: "role-1",
-          },
-          {
-            enabled: true,
-            permission: "integration_token.organization_integration.create:organization",
-            roleId: "role-1",
-          },
-          {
-            enabled: true,
-            permission: "integration_token.organization_integration.revoke:organization",
-            roleId: "role-1",
-          },
-          {
-            enabled: true,
-            permission: "page.settings.organization-integrations.access:organization",
-            roleId: "role-1",
-          },
-        ],
-      } as any,
-      {
-        find: async () => [
-          {
-            organization: { name: "Hermes" },
-            organizationId: "org-1",
-            roleId: "role-1",
-            status: "active",
-            userId: "user-1",
-          },
-        ],
-      } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    const result = await service.capabilities("Bearer login-token", "user-1");
-    const organizationScope = result.scopes.find(
-      (scope) => scope.scope === "organization",
-    );
+    const result = await state.service.capabilities("Bearer session", "user-1");
 
     assert.deepEqual(
-      organizationScope?.permissions.map((permission) => permission.permission),
-      ["ticket.conversation.list_organization:organization"],
+      result.scopes.map((item) => ({
+        departmentId: item.departmentId,
+        organizationId: item.organizationId,
+        permissions: item.permissions.map((permission) => permission.permission),
+        scope: item.scope,
+      })),
+      [
+        {
+          departmentId: null,
+          organizationId: null,
+          permissions: ["tenant.settings.read:tenant"],
+          scope: "tenant",
+        },
+        {
+          departmentId: null,
+          organizationId: "org-1",
+          permissions: ["ticket.list:organization"],
+          scope: "organization",
+        },
+        {
+          departmentId: "dept-1",
+          organizationId: "org-1",
+          permissions: ["ticket.assign:department"],
+          scope: "department",
+        },
+      ],
     );
   });
 
-  it("rejects permissions outside the selected owned scope", async () => {
-    const service = new IntegrationTokensService(
-      { create: (value: any) => value, save: async (value: any) => value } as any,
-      { find: async () => [], findOne: async () => null } as any,
-      { find: async () => [] } as any,
-      { find: async () => [] } as any,
-      { findOne: async () => null } as any,
-      { find: async () => [], findOne: async () => null } as any,
-      {
-        find: async () => [
-          {
-            organization: { name: "Hermes" },
-            organizationId: "org-1",
-            roleId: "role-1",
-            status: "active",
-            userId: "user-1",
-          },
-        ],
-      } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
+  it("creates a tenant token with an immutable tenant binding", async () => {
+    const state = createService();
+
+    const result = await state.service.create("Bearer session", "user-1", {
+      expiresAt: futureIso(),
+      permissions: ["tenant.settings.read:tenant"],
+      scope: "tenant",
+    });
+
+    assert.equal(result.scope, "tenant");
+    assert.equal(result.tenantId, TENANT_ID);
+    assert.equal(result.organizationId, null);
+    assert.equal(result.departmentId, null);
+    assert.match(result.token, /^[^.]+\.[^.]+\.[^.]+$/);
+    assert.equal(state.records.IntegrationToken.length, 1);
+    assert.equal(state.records.IntegrationToken[0].tenantId, TENANT_ID);
+  });
+
+  it("creates a department token only for the matching organization department", async () => {
+    const state = createService();
+
+    const result = await state.service.create("Bearer session", "user-1", {
+      departmentId: "dept-1",
+      expiresAt: futureIso(),
+      organizationId: "org-1",
+      permissions: ["ticket.assign:department"],
+      scope: "department",
+    });
+
+    assert.equal(result.departmentId, "dept-1");
+    assert.equal(result.departmentName, "Support");
+    assert.equal(result.organizationId, "org-1");
 
     await assert.rejects(
       () =>
-        service.create("Bearer login-token", "user-1", {
-          expiresAt: futureIso(),
+        state.service.create("Bearer session", "user-1", {
+          departmentId: "dept-1",
+          organizationId: "org-other",
+          permissions: ["ticket.assign:department"],
+          scope: "department",
+        }),
+      ForbiddenException,
+    );
+  });
+
+  it("enforces scope column combinations", async () => {
+    const state = createService();
+
+    await assert.rejects(
+      () =>
+        state.service.create("Bearer session", "user-1", {
           organizationId: "org-1",
-          permissions: ["user.platform_user.delete:platform"],
+          permissions: ["tenant.settings.read:tenant"],
+          scope: "tenant",
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.create("Bearer session", "user-1", {
+          permissions: ["ticket.list:organization"],
           scope: "organization",
         }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.create("Bearer session", "user-1", {
+          organizationId: "org-1",
+          permissions: ["ticket.assign:department"],
+          scope: "department",
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.create("Bearer session", "user-1", {
+          permissions: ["tenant.settings.read:tenant"],
+          scope: "own" as never,
+        }),
+      BadRequestException,
+    );
+  });
+
+  it("rejects permission escalation", async () => {
+    const state = createService();
+    await assert.rejects(
+      () =>
+        state.service.create("Bearer session", "user-1", {
+          permissions: ["tenant.settings.write:tenant"],
+          scope: "tenant",
+        }),
+      ForbiddenException,
+    );
+    assert.equal(state.records.IntegrationToken.length, 0);
+  });
+
+  it("rejects malformed payloads before repository writes", async () => {
+    const state = createService();
+    await assert.rejects(
+      () => state.service.create("Bearer session", "user-1", null as never),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.create("Bearer session", "user-1", {
+          permissions: "tenant.settings.read:tenant" as never,
+          scope: "tenant",
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        state.service.create("Bearer session", "user-1", {
+          note: "x".repeat(161),
+          permissions: ["tenant.settings.read:tenant"],
+          scope: "tenant",
+        }),
+      BadRequestException,
+    );
+    assert.equal(state.records.IntegrationToken.length, 0);
+  });
+
+  it("rejects platform sessions, cross-tenant sessions, and integration tokens", async () => {
+    const platform = createService({
+      session: {
+        principalType: "platform",
+        sessionId: "platform-session",
+        tenantId: null,
+        tokenKind: "session",
+        userId: "platform-user-1",
+      },
+    });
+    await assert.rejects(
+      () => platform.service.list("Bearer session", "platform-user-1"),
+      ForbiddenException,
+    );
+
+    const crossTenant = createService({
+      session: tenantSession("00000000-0000-4000-8000-000000000002"),
+    });
+    await assert.rejects(
+      () => crossTenant.service.list("Bearer session", "user-1"),
+      ForbiddenException,
+    );
+
+    const integration = createService({
+      session: { ...tenantSession(TENANT_ID), tokenKind: "integration" },
+    });
+    await assert.rejects(
+      () => integration.service.list("Bearer token", "user-1"),
       ForbiddenException,
     );
   });
 
-  it("requires organization integration create permission for organization-scoped tokens", async () => {
-    const service = new IntegrationTokensService(
-      { create: (value: any) => value, save: async (value: any) => value } as any,
-      { find: async () => [] } as any,
-      { find: async () => [] } as any,
-      {
-        find: async ({ where }: any) =>
-          where.scope === "organization"
-            ? [
-                {
-                  code: "ticket.conversation.list_organization:organization",
-                  description: "List tickets",
-                  isDangerous: false,
-                  operationLabel: "查看组织工单",
-                },
-              ]
-            : [],
-      } as any,
-      { findOne: async () => null } as any,
-      {
-        findOne: async () => null,
-        find: async () => [
-          {
-            enabled: true,
-            permission: "ticket.conversation.list_organization:organization",
-            roleId: "role-1",
-          },
-        ],
-      } as any,
-      {
-        find: async () => [
-          {
-            organization: { name: "Hermes" },
-            organizationId: "org-1",
-            roleId: "role-1",
-            status: "active",
-            userId: "user-1",
-          },
-        ],
-      } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    const capabilities = await service.capabilities("Bearer login-token", "user-1");
-    assert.equal(
-      capabilities.scopes.some((scope) => scope.scope === "organization"),
-      false,
-    );
-
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
-          expiresAt: futureIso(),
+  it("lists and revokes only tokens inside the requested tenant scope", async () => {
+    const state = createService({
+      tokens: [
+        tokenRecord({ id: "tenant-token", scope: "tenant" }),
+        tokenRecord({
+          id: "org-token",
           organizationId: "org-1",
-          permissions: ["ticket.conversation.list_organization:organization"],
           scope: "organization",
         }),
-      ForbiddenException,
-    );
-  });
-
-  it("does not expose suspended organizations as token capability scopes", async () => {
-    const service = new IntegrationTokensService(
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        find: async ({ where }: any) =>
-          where.scope === "organization"
-            ? [
-                {
-                  code: "ticket.conversation.list_organization:organization",
-                  description: "List tickets",
-                  isDangerous: false,
-                  operationLabel: "查看组织工单",
-                },
-              ]
-            : [],
-      } as any,
-      { findOne: async () => null } as any,
-      {
-        findOne: async ({ where }: any) =>
-          where.permission ===
-            "integration_token.organization_integration.create:organization" &&
-          where.roleId === "role-1" &&
-          where.enabled
-            ? {
-                enabled: true,
-                permission:
-                  "integration_token.organization_integration.create:organization",
-                roleId: "role-1",
-              }
-            : null,
-        find: async () => [
-          {
-            enabled: true,
-            permission: "ticket.conversation.list_organization:organization",
-            roleId: "role-1",
-          },
-        ],
-      } as any,
-      {
-        find: async () => [
-          {
-            organization: {
-              id: "org-suspended",
-              name: "Suspended",
-              status: "suspended",
-            },
-            organizationId: "org-suspended",
-            roleId: "role-1",
-            status: "active",
-            userId: "user-1",
-          },
-        ],
-      } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
+        tokenRecord({
+          departmentId: "dept-1",
+          id: "dept-token",
+          organizationId: "org-1",
+          scope: "department",
         }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
+      ],
+    });
 
-    const capabilities = await service.capabilities("Bearer login-token", "user-1");
-
-    assert.equal(
-      capabilities.scopes.some((scope) => scope.scope === "organization"),
-      false,
+    const organizationTokens = await state.service.listOrganization(
+      "Bearer session",
+      "org-1",
     );
-  });
+    assert.deepEqual(organizationTokens.map((item) => item.id), ["org-token"]);
 
-  it("requires platform integration create permission for platform-scoped tokens", async () => {
-    const service = new IntegrationTokensService(
-      { create: (value: any) => value, save: async (value: any) => value } as any,
-      { find: async () => [], findOne: async () => null } as any,
-      { find: async () => [] } as any,
-      {
-        find: async ({ where }: any) =>
-          where.scope === "platform"
-            ? [
-                {
-                  code: "organization.platform_organization.list:platform",
-                  description: "List organizations",
-                  isDangerous: false,
-                  operationLabel: "查看组织列表",
-                },
-              ]
-            : [],
-      } as any,
-      {
-        findOne: async () => ({
-          roleId: "platform-role-1",
-          status: "active",
-          userId: "user-1",
-        }),
-      } as any,
-      {
-        findOne: async () => null,
-        find: async () => [
-          {
-            enabled: true,
-            permission: "organization.platform_organization.list:platform",
-            roleId: "platform-role-1",
-          },
-        ],
-      } as any,
-      { find: async () => [] } as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
+    const departmentTokens = await state.service.listDepartment(
+      "Bearer session",
+      "org-1",
+      "dept-1",
     );
+    assert.deepEqual(departmentTokens.map((item) => item.id), ["dept-token"]);
 
-    const capabilities = await service.capabilities("Bearer login-token", "user-1");
-    assert.equal(
-      capabilities.scopes.some((scope) => scope.scope === "platform"),
-      false,
+    await state.service.revokeDepartment(
+      "Bearer session",
+      "org-1",
+      "dept-1",
+      "dept-token",
     );
+    assert.ok(state.records.IntegrationToken[2].revokedAt instanceof Date);
 
     await assert.rejects(
       () =>
-        service.create("Bearer login-token", "user-1", {
-          expiresAt: futureIso(),
-          permissions: ["organization.platform_organization.list:platform"],
-          scope: "platform",
-        }),
-      ForbiddenException,
+        state.service.revokeDepartment(
+          "Bearer session",
+          "org-1",
+          "dept-other",
+          "dept-token",
+        ),
+      NotFoundException,
     );
   });
 
-  it("rejects integration tokens from managing integration tokens", async () => {
-    const service = new IntegrationTokensService(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          integrationToken: {
-            id: "token-1",
-            organizationId: null,
-            permissions: ["integration_token.personal_integration.create:own"],
-            scope: "own",
-          },
-          sessionId: "integration:token-1",
-          tokenKind: "integration",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
+  it("caps token expiry at one year", async () => {
+    const state = createService();
     await assert.rejects(
       () =>
-        service.create("Bearer integration-token", "user-1", {
-          expiresAt: futureIso(),
-          permissions: ["page.home.access:own"],
-          scope: "own",
-        }),
-      ForbiddenException,
-    );
-  });
-
-  it("caps integration token expiry at one year", async () => {
-    const service = new IntegrationTokensService(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {
-        validateAccessToken: async () => ({
-          sessionId: "session-1",
-          tokenKind: "session",
-          userId: "user-1",
-        }),
-      } as any,
-      { getOrThrow: () => "test-secret" } as any,
-    );
-
-    await assert.rejects(
-      () =>
-        service.create("Bearer login-token", "user-1", {
+        state.service.create("Bearer session", "user-1", {
           expiresAt: "2099-01-01T00:00:00Z",
-          permissions: ["page.home.access:own"],
-          scope: "own",
+          permissions: ["tenant.settings.read:tenant"],
+          scope: "tenant",
         }),
       BadRequestException,
     );
   });
 });
+
+type Session = {
+  principalType: "integration" | "platform" | "tenant";
+  sessionId: string;
+  tenantId: string | null;
+  tokenKind: "integration" | "session";
+  userId: string;
+};
+
+function createService(
+  options: { session?: Session; tokens?: any[] } = {},
+) {
+  const records: Record<string, any[]> = {
+    Department: [
+      {
+        id: "dept-1",
+        name: "Support",
+        organizationId: "org-1",
+        status: "active",
+        tenantId: TENANT_ID,
+      },
+    ],
+    IntegrationToken: options.tokens ?? [],
+    Organization: [
+      {
+        id: "org-1",
+        name: "Hermes",
+        status: "active",
+        tenantId: TENANT_ID,
+      },
+    ],
+    Permission: [
+      permissionRecord("tenant.settings.read:tenant", "tenant"),
+      permissionRecord("ticket.list:organization", "organization"),
+      permissionRecord("ticket.assign:department", "department"),
+    ],
+    RolePermission: [
+      rolePermission("tenant-role", "integration_token.tenant_integration.create:tenant"),
+      rolePermission("tenant-role", "tenant.settings.read:tenant"),
+      rolePermission(
+        "organization-role",
+        "integration_token.organization_integration.create:organization",
+      ),
+      rolePermission("organization-role", "ticket.list:organization"),
+      rolePermission(
+        "department-role",
+        "integration_token.department_integration.create:department",
+      ),
+      rolePermission("department-role", "ticket.assign:department"),
+    ],
+    User: [
+      {
+        avatarUrl: null,
+        displayName: "Owner",
+        email: "owner@example.com",
+        id: "user-1",
+        imageUrl: null,
+        tenantId: TENANT_ID,
+        username: "owner",
+      },
+    ],
+    UserDepartment: [
+      {
+        department: {
+          id: "dept-1",
+          name: "Support",
+          organizationId: "org-1",
+          status: "active",
+        },
+        departmentId: "dept-1",
+        id: "department-membership-1",
+        membershipId: "membership-1",
+        status: "active",
+        tenantId: TENANT_ID,
+      },
+    ],
+    UserDepartmentRole: [
+      {
+        roleId: "department-role",
+        tenantId: TENANT_ID,
+        userDepartmentId: "department-membership-1",
+      },
+    ],
+    UserOrganization: [
+      {
+        id: "membership-1",
+        organization: {
+          id: "org-1",
+          name: "Hermes",
+          status: "active",
+        },
+        organizationId: "org-1",
+        status: "active",
+        tenantId: TENANT_ID,
+        userId: "user-1",
+      },
+    ],
+    UserOrganizationRole: [
+      {
+        membershipId: "membership-1",
+        roleId: "organization-role",
+        tenantId: TENANT_ID,
+      },
+    ],
+    UserTenantRole: [
+      { roleId: "tenant-role", tenantId: TENANT_ID, userId: "user-1" },
+    ],
+  };
+  const targets = {
+    [Department.name]: Department,
+    [IntegrationToken.name]: IntegrationToken,
+    [Organization.name]: Organization,
+    [Permission.name]: Permission,
+    [RolePermission.name]: RolePermission,
+    [User.name]: User,
+    [UserDepartment.name]: UserDepartment,
+    [UserDepartmentRole.name]: UserDepartmentRole,
+    [UserOrganization.name]: UserOrganization,
+    [UserOrganizationRole.name]: UserOrganizationRole,
+    [UserTenantRole.name]: UserTenantRole,
+  };
+  const repositories = new Map(
+    Object.entries(targets).map(([name, target]) => [
+      target,
+      createRepository(records[name]),
+    ]),
+  );
+  const tenantContext = {
+    current: () => ({
+      departmentId: null,
+      manager: { getRepository: (target: unknown) => repositories.get(target) },
+      organizationId: null,
+      scopeLevel: "tenant",
+      tenantId: TENANT_ID,
+    }),
+    repository: (target: unknown) => repositories.get(target),
+  } as any;
+  const service = new IntegrationTokensService(
+    {
+      validateAccessToken: async () => options.session ?? tenantSession(TENANT_ID),
+    } as any,
+    { getOrThrow: () => "test-secret" } as any,
+    tenantContext,
+  );
+  return { records, service };
+}
+
+function createRepository(records: any[]) {
+  return {
+    create(value: any) {
+      return {
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        lastUsedAt: null,
+        revokedAt: null,
+        updatedAt: new Date("2026-01-01T00:00:00Z"),
+        ...value,
+      };
+    },
+    async find(options: any = {}) {
+      return records.filter((record) => matches(record, options.where ?? {}));
+    },
+    async findOne(options: any = {}) {
+      return records.find((record) => matches(record, options.where ?? {})) ?? null;
+    },
+    async save(value: any) {
+      const index = records.findIndex((record) => record.id === value.id);
+      if (index >= 0) records[index] = value;
+      else records.push(value);
+      return value;
+    },
+  };
+}
+
+function matches(record: any, where: any) {
+  if (Array.isArray(where)) return where.some((item) => matches(record, item));
+  return Object.entries(where).every(([key, expected]) => {
+    if (
+      expected &&
+      typeof expected === "object" &&
+      "_type" in (expected as Record<string, unknown>)
+    ) {
+      const operator = expected as { _type: string; _value: unknown[] };
+      return operator._type === "in" && operator._value.includes(record[key]);
+    }
+    return record[key] === expected;
+  });
+}
+
+function tenantSession(tenantId: string): Session {
+  return {
+    principalType: "tenant",
+    sessionId: "session-1",
+    tenantId,
+    tokenKind: "session",
+    userId: "user-1",
+  };
+}
+
+function permissionRecord(code: string, scope: string) {
+  return {
+    code,
+    description: code,
+    entity: "test",
+    entityLabel: "Test",
+    entityOrder: 1,
+    isDangerous: false,
+    operation: "read",
+    operationLabel: code,
+    operationOrder: 1,
+    purpose: "test",
+    purposeLabel: "Test",
+    purposeOrder: 1,
+    scope,
+  };
+}
+
+function rolePermission(roleId: string, permission: string) {
+  return { enabled: true, permission, roleId, tenantId: TENANT_ID };
+}
+
+function tokenRecord(overrides: Record<string, unknown>) {
+  return {
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    departmentId: null,
+    expiresAt: futureDate(),
+    lastUsedAt: null,
+    note: null,
+    organizationId: null,
+    ownerUserId: "user-1",
+    permissions: [],
+    revokedAt: null,
+    tenantId: TENANT_ID,
+    tokenPrefix: "prefix",
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+    ...overrides,
+  };
+}
 
 function futureDate(days = 30) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -1138,22 +521,4 @@ function futureDate(days = 30) {
 
 function futureIso(days = 30) {
   return futureDate(days).toISOString();
-}
-
-function createIntegrationToken(tokenId: string, userId: string, secret: string) {
-  return createAuthSessionToken(
-    {
-      jti: randomUUID(),
-      sessionId: `${INTEGRATION_SESSION_PREFIX}${tokenId}`,
-      userId,
-    },
-    {
-      secret,
-      ttlSeconds: 60 * 60,
-    },
-  );
-}
-
-function hashTokenForTest(token: string) {
-  return createHash("sha256").update(token).digest("hex");
 }

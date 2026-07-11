@@ -13,6 +13,7 @@
     "clean": "nx run-many --target=clean",
     "graph": "nx graph",
     "openapi:generate": "pnpm --filter @hermes-swarm/api openapi:generate",
+    "seed:development": "pnpm nx run @hermes-swarm/api:seed:development",
     "verify:refactor": "node scripts/verify-refactor.mjs"
   },
   "engines": {

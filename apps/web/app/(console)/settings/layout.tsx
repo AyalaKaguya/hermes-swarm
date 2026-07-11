@@ -47,11 +47,11 @@ export default function SettingsLayout({
   const currentPages = findPageAccessDefinitionsByPath(pathname);
   const canAccessCurrentPage =
     currentPages.length > 0 &&
-    currentPages.some((page) =>
-      access.hasPageAccess(page.key, {
-        organizationId: routeOrganizationId ?? snapshot?.organization?.id,
-      }),
-    );
+      currentPages.some((page) =>
+        access.hasPageAccess(page.key, {
+          organizationId: routeOrganizationId ?? snapshot?.organization?.id,
+        }),
+      );
 
   const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
     ...section,

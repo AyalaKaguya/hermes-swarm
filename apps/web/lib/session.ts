@@ -1,11 +1,11 @@
-import type { CurrentUser, PrincipalSession, Snapshot } from "./admin-api";
+import type { CurrentUser, Snapshot } from "./admin-api";
 
 export type UserSession = {
   expiresAt: string;
   sessionId: string;
 };
 
-export type ResolvedSession = CurrentUser | PrincipalSession;
+export type ResolvedSession = CurrentUser;
 
 const SESSION_KEY = "hermes-swarm.admin-session";
 
@@ -47,17 +47,8 @@ export function clearStoredSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
-export function resolveSession(snapshot: Snapshot | PrincipalSession): ResolvedSession {
-  if ("currentUser" in snapshot) {
-    return snapshot.currentUser;
-  }
-
-  const activeMembership = snapshot.memberships[0] ?? null;
-  return {
-    ...snapshot,
-    organization: snapshot.organization ?? activeMembership?.organization ?? null,
-    role: snapshot.role ?? snapshot.platformMembership?.role ?? activeMembership?.role ?? null,
-  };
+export function resolveSession(snapshot: Snapshot): ResolvedSession {
+  return snapshot.currentUser;
 }
 
 export function hasAnyManagementAccess(
@@ -70,8 +61,8 @@ export function hasAnyManagementAccess(
         resolvedSession.memberships?.some(
           (membership) => membership.role?.permissions?.some((item) => item.enabled),
         ) ||
-        resolvedSession.platformMembership?.role?.permissions?.some(
-          (item) => item.enabled,
+        resolvedSession.platformUser?.roles.some((role) =>
+          role.permissions?.some((item) => item.enabled),
         )),
   );
 }

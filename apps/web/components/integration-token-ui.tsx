@@ -99,13 +99,22 @@ export function CreateTokenDialog({
               ))}
             </select>
           </div>
-          {selectedCapability?.scope === "organization" && (
+          {(selectedCapability?.scope === "organization" ||
+            selectedCapability?.scope === "department") && (
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">{tr("所属组织")}</span>
+              <span className="text-muted-foreground">
+                {selectedCapability.scope === "department"
+                  ? tr("所属部门")
+                  : tr("所属组织")}
+              </span>
               <span className="ml-2 font-medium">
-                {selectedCapability.organizationName ??
-                  selectedCapability.organizationId ??
-                  tr("当前组织")}
+                {selectedCapability.scope === "department"
+                  ? selectedCapability.departmentName ??
+                    selectedCapability.departmentId ??
+                    tr("当前部门")
+                  : selectedCapability.organizationName ??
+                    selectedCapability.organizationId ??
+                    tr("当前组织")}
               </span>
             </div>
           )}
@@ -331,7 +340,11 @@ export function emptyIntegrationTokenDraft(
 }
 
 export function scopeCapabilityKey(capability: IntegrationTokenScopeCapability) {
-  return `${capability.scope}:${capability.organizationId ?? "none"}`;
+  return [
+    capability.scope,
+    capability.organizationId ?? "none",
+    capability.departmentId ?? "none",
+  ].join(":");
 }
 
 function capabilityToCatalog(
@@ -425,8 +438,10 @@ function formatScopeCapability(
   capability: IntegrationTokenScopeCapability,
   tr: (value: string | null | undefined) => string,
 ) {
-  if (capability.scope === "own") return tr("个人");
-  if (capability.scope === "platform") return tr("平台");
+  if (capability.scope === "tenant") return tr("租户");
+  if (capability.scope === "department") {
+    return `${tr("部门")} / ${capability.departmentName ?? capability.departmentId}`;
+  }
   return `${tr("组织")} / ${capability.organizationName ?? capability.organizationId}`;
 }
 
@@ -435,8 +450,10 @@ function formatTokenScope(
   organizationNames: Map<string, string>,
   tr: (value: string | null | undefined) => string,
 ) {
-  if (token.scope === "own") return tr("个人");
-  if (token.scope === "platform") return tr("平台");
+  if (token.scope === "tenant") return tr("租户");
+  if (token.scope === "department") {
+    return `${tr("部门")} / ${token.departmentName ?? token.departmentId ?? tr("当前部门")}`;
+  }
   const organizationLabel =
     token.organizationName ??
     (token.organizationId ? organizationNames.get(token.organizationId) ?? token.organizationId : null);

@@ -3,9 +3,10 @@ import { APP_GUARD } from "@nestjs/core";
 import { SettingsModule } from "../settings/settings.module.js";
 import { FeatureAccessGuard } from "./feature-access.guard.js";
 import { FeatureAccessService } from "./feature-access.service.js";
+import { DatabaseModule } from "../../common/database/database.module.js";
 
 @Module({
-  imports: [SettingsModule],
+  imports: [DatabaseModule, SettingsModule],
   providers: [
     FeatureAccessService,
     {

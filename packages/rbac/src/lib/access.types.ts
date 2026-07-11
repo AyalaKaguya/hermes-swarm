@@ -3,6 +3,7 @@ import type {
   PermissionCatalogSource,
   PermissionScope,
 } from "@hermes-swarm/core";
+import type { RequestScopeLevel } from "@hermes-swarm/rbac-api";
 
 export type AccessDefaultRole = string;
 
@@ -39,14 +40,24 @@ export type ResolvedAccessDefinition = AccessResourceMetadata & {
 };
 
 export type AccessScopeResult = {
+  departmentId?: string | null;
   organizationId?: string | null;
+  scopeLevel?: RequestScopeLevel;
+  tenantId?: string | null;
   targetUserId?: string | null;
 };
 
 export type AccessRequest = {
+  accessAudit?: {
+    definition: ResolvedAccessDefinition;
+    scope: AccessScopeResult;
+  };
   accessPrincipal?: AccessAuthSession;
   headers?: Record<string, string | string[] | undefined>;
   params?: Record<string, string | undefined>;
+  method?: string;
+  originalUrl?: string;
+  url?: string;
   [key: string]: unknown;
 };
 
@@ -62,17 +73,21 @@ export type AccessScopeResolver = {
 export type AccessScopeMetadata = {
   param?: string;
   resolver?: Type<AccessScopeResolver>;
-  scope?: PermissionScope;
+  scope?: PermissionScope | RequestScopeLevel;
 };
 
 export type AccessAuthSession = {
   integrationToken?: {
+    departmentId?: string | null;
     id: string;
     organizationId: string | null;
     permissions: string[];
     scope: PermissionScope;
+    tenantId: string;
   } | null;
+  principalType: "integration" | "platform" | "tenant";
   sessionId?: string;
+  tenantId: string | null;
   tokenKind?: "integration" | "session";
   userId: string;
 };
@@ -82,7 +97,11 @@ export type AccessAuthSessionService = {
 };
 
 export type AccessCheckContext = {
+  departmentId?: string | null;
   organizationId?: string | null;
+  principalType?: "integration" | "platform" | "tenant";
+  scopeLevel?: RequestScopeLevel;
+  tenantId?: string | null;
   targetUserId?: string | null;
 };
 

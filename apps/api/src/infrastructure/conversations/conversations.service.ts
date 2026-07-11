@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
@@ -30,6 +31,7 @@ import type {
   ConversationNotificationPayload,
   ConversationSource,
 } from "./conversation-access-resolver.js";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 @Injectable()
 export class ConversationCapabilityService {
@@ -50,12 +52,14 @@ export class ConversationCapabilityService {
     private readonly notificationsService: NotificationsService,
     @Inject(RealtimeEventBus)
     private readonly realtimeEventBus: RealtimeEventBus,
+    @Optional()
+    @Inject(TenantContextService)
+    private readonly tenantContext?: TenantContextService,
   ) {}
 
   async ensureConversationForSource(source: ConversationSource) {
-    return this.ensureConversationForSourceWithManager(
-      source,
-      this.conversationRepository.manager,
+    return this.withManager((manager) =>
+      this.ensureConversationForSourceWithManager(source, manager),
     );
   }
 
@@ -63,15 +67,21 @@ export class ConversationCapabilityService {
     source: ConversationSource,
     manager: EntityManager,
   ) {
+    this.requireSourceTenant(source);
     const existing = await manager.findOne(Conversation, {
-      where: { sourceId: source.sourceId, sourceType: source.sourceType },
+      where: {
+        sourceId: source.sourceId,
+        sourceType: source.sourceType,
+        tenantId: source.tenantId,
+      },
     });
     if (existing) return this.syncConversation(existing, source, manager);
 
     try {
       return await manager.save(
         Conversation,
-        this.conversationRepository.create({
+        this.conversationRepositoryForContext().create({
+          departmentId: source.departmentId ?? null,
           lastMessageAt: null,
           organizationId: source.organizationId ?? null,
           scope: source.scope,
@@ -79,12 +89,17 @@ export class ConversationCapabilityService {
           sourceType: source.sourceType,
           status: source.status ?? "open",
           subject: source.subject,
+          tenantId: source.tenantId,
         }),
       );
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;
       const concurrent = await manager.findOne(Conversation, {
-        where: { sourceId: source.sourceId, sourceType: source.sourceType },
+        where: {
+          sourceId: source.sourceId,
+          sourceType: source.sourceType,
+          tenantId: source.tenantId,
+        },
       });
       if (!concurrent) throw error;
       return this.syncConversation(concurrent, source, manager);
@@ -96,14 +111,16 @@ export class ConversationCapabilityService {
     source: ConversationSource;
     userId: string;
   }) {
+    this.requireSourceTenant(input.source);
+    this.requireSourceTenant(input.source);
     if (!(await input.resolver.canRead(input.userId, input.source))) {
       throw new ForbiddenException("没有访问该会话的权限");
     }
     const conversation = await this.ensureConversationForSource(input.source);
-    const messages = await this.messageRepository.find({
+    const messages = await this.messageRepositoryForContext().find({
       order: { createdAt: "ASC" },
       relations: { authorUser: true },
-      where: { conversationId: conversation.id },
+      where: { conversationId: conversation.id, tenantId: input.source.tenantId },
     });
     return messages.map((message) => toConversationMessageDto(message, conversation));
   }
@@ -114,6 +131,7 @@ export class ConversationCapabilityService {
     resolver: ConversationAccessResolver;
     source: ConversationSource;
   }) {
+    this.requireSourceTenant(input.source);
     if (!(await input.resolver.canWrite(input.authorUserId, input.source))) {
       throw new ForbiddenException("没有发送会话消息的权限");
     }
@@ -125,7 +143,7 @@ export class ConversationCapabilityService {
     });
     let conversation!: Conversation;
     let message!: ConversationMessage;
-    await this.conversationRepository.manager.transaction(async (manager) => {
+    await this.withManager(async (manager) => {
       ({ conversation, message } = await this.createMessageInTransaction(manager, {
         authorUserId: input.authorUserId,
         joinedReason: "reply",
@@ -155,6 +173,7 @@ export class ConversationCapabilityService {
       source: ConversationSource;
     },
   ) {
+    this.requireSourceTenant(input.source);
     const conversation = await this.ensureConversationForSourceWithManager(
       input.source,
       manager,
@@ -162,22 +181,25 @@ export class ConversationCapabilityService {
     await this.addParticipantsWithManager(manager, {
       conversationId: conversation.id,
       joinedReason: input.joinedReason,
+      tenantId: input.source.tenantId,
       userIds: [input.authorUserId],
     });
     await this.addParticipantsWithManager(manager, {
       conversationId: conversation.id,
       joinedReason: "mention",
+      tenantId: input.source.tenantId,
       userIds: input.mentionUserIds ?? [],
     });
     const message = await manager.save(
       ConversationMessage,
-      this.messageRepository.create({
+      this.messageRepositoryForContext().create({
         attachments: input.message.attachments ?? null,
         authorUserId: input.authorUserId,
         body: input.message.body,
         conversationId: conversation.id,
         kind: "message",
         metadata: input.message.metadata ?? null,
+        tenantId: input.source.tenantId,
       }),
     );
     conversation.lastMessageAt = message.createdAt;
@@ -207,10 +229,16 @@ export class ConversationCapabilityService {
     resolver: ConversationAccessResolver;
     source: ConversationSource;
   }) {
+    this.requireSourceTenant(input.source);
     input.message.authorUser =
-      (await this.userRepository.findOne({ where: { id: input.authorUserId } })) ??
+      (await this.userRepositoryForContext().findOne({
+        where: { id: input.authorUserId, tenantId: input.source.tenantId },
+      })) ??
       null;
-    const participantIds = await this.findParticipantUserIds(input.conversation.id);
+    const participantIds = await this.findParticipantUserIds(
+      input.source.tenantId,
+      input.conversation.id,
+    );
     const recipientIds = excludeUserIds(
       participantIds.filter((id) => id !== input.authorUserId),
       input.mentionUserIds,
@@ -248,9 +276,12 @@ export class ConversationCapabilityService {
   async addParticipants(input: {
     conversationId: string;
     joinedReason: ConversationParticipantJoinedReason;
+    tenantId: string;
     userIds: string[];
   }) {
-    await this.addParticipantsWithManager(this.participantRepository.manager, input);
+    await this.withManager((manager) =>
+      this.addParticipantsWithManager(manager, input),
+    );
   }
 
   private async addParticipantsWithManager(
@@ -258,23 +289,29 @@ export class ConversationCapabilityService {
     input: {
       conversationId: string;
       joinedReason: ConversationParticipantJoinedReason;
+      tenantId: string;
       userIds: string[];
     },
   ) {
     const userIds = [...new Set(input.userIds)].filter(Boolean);
     if (userIds.length === 0) return;
     const existing = await manager.find(ConversationParticipant, {
-      where: { conversationId: input.conversationId, userId: In(userIds) },
+      where: {
+        conversationId: input.conversationId,
+        tenantId: input.tenantId,
+        userId: In(userIds),
+      },
     });
     const existingIds = new Set(existing.map((item) => item.userId));
     const next = userIds
       .filter((userId) => !existingIds.has(userId))
       .map((userId) =>
-        this.participantRepository.create({
+        this.participantRepositoryForContext().create({
           conversationId: input.conversationId,
           joinedReason: input.joinedReason,
           lastReadAt: null,
           role: "participant",
+          tenantId: input.tenantId,
           userId,
         }),
       );
@@ -303,8 +340,12 @@ export class ConversationCapabilityService {
       input.source.sourceType,
       input.source.sourceId,
     );
-    await this.participantRepository.update(
-      { conversationId: conversation.id, userId: input.userId },
+    await this.participantRepositoryForContext().update(
+      {
+        conversationId: conversation.id,
+        tenantId: input.source.tenantId,
+        userId: input.userId,
+      },
       { lastReadAt: new Date() },
     );
     return { ok: true };
@@ -312,6 +353,7 @@ export class ConversationCapabilityService {
 
   async importMessagesIfEmpty(input: {
     conversationId: string;
+    tenantId: string;
     messages: Array<{
       attachments?: ConversationMessageAttachment[] | null;
       authorUserId?: string | null;
@@ -323,13 +365,13 @@ export class ConversationCapabilityService {
     }>;
   }) {
     if (input.messages.length === 0) return { imported: 0 };
-    const existingCount = await this.messageRepository.count({
-      where: { conversationId: input.conversationId },
+    const existingCount = await this.messageRepositoryForContext().count({
+      where: { conversationId: input.conversationId, tenantId: input.tenantId },
     });
     if (existingCount > 0) return { imported: 0 };
 
     const rows = input.messages.map((message) =>
-      this.messageRepository.create({
+      this.messageRepositoryForContext().create({
         attachments: message.attachments ?? null,
         authorUserId: message.authorUserId ?? null,
         body: message.body,
@@ -337,15 +379,16 @@ export class ConversationCapabilityService {
         createdAt: message.createdAt,
         kind: message.kind ?? "message",
         metadata: message.id ? { legacyTicketMessageId: message.id } : null,
+        tenantId: input.tenantId,
         updatedAt: message.updatedAt,
       }),
     );
-    await this.messageRepository.save(rows);
+    await this.messageRepositoryForContext().save(rows);
 
     const lastMessage = rows.at(-1);
     if (lastMessage) {
-      await this.conversationRepository.update(
-        { id: input.conversationId },
+      await this.conversationRepositoryForContext().update(
+        { id: input.conversationId, tenantId: input.tenantId },
         { lastMessageAt: lastMessage.createdAt },
       );
     }
@@ -353,8 +396,12 @@ export class ConversationCapabilityService {
   }
 
   async publishSourceUpdated(source: ConversationSource, payload: unknown) {
+    this.requireSourceTenant(source);
     const conversation = await this.ensureConversationForSource(source);
-    const recipients = await this.findParticipantUserIds(conversation.id);
+    const recipients = await this.findParticipantUserIds(
+      source.tenantId,
+      conversation.id,
+    );
     await this.runNonCriticalSideEffect(
       "publish conversation source update",
       async () => {
@@ -371,13 +418,18 @@ export class ConversationCapabilityService {
   }
 
   async isParticipant(source: ConversationSource, userId: string) {
-    const conversation = await this.conversationRepository.findOne({
-      where: { sourceId: source.sourceId, sourceType: source.sourceType },
+    this.requireSourceTenant(source);
+    const conversation = await this.conversationRepositoryForContext().findOne({
+      where: {
+        sourceId: source.sourceId,
+        sourceType: source.sourceType,
+        tenantId: source.tenantId,
+      },
     });
     if (!conversation) return false;
     return Boolean(
-      await this.participantRepository.findOne({
-        where: { conversationId: conversation.id, userId },
+      await this.participantRepositoryForContext().findOne({
+        where: { conversationId: conversation.id, tenantId: source.tenantId, userId },
       }),
     );
   }
@@ -386,16 +438,19 @@ export class ConversationCapabilityService {
     organizationId?: string | null;
     scope?: Conversation["scope"];
     sourceType: string;
+    tenantId: string;
     userId: string;
   }) {
-    const participants = await this.participantRepository.find({
-      where: { userId: input.userId },
+    this.requireTenantId(input.tenantId);
+    const participants = await this.participantRepositoryForContext().find({
+      where: { tenantId: input.tenantId, userId: input.userId },
     });
     if (participants.length === 0) return [];
 
     const where: FindOptionsWhere<Conversation> = {
       id: In(participants.map((participant) => participant.conversationId)),
       sourceType: input.sourceType,
+      tenantId: input.tenantId,
     };
     if (input.organizationId !== undefined) {
       where.organizationId = input.organizationId ?? IsNull();
@@ -403,13 +458,14 @@ export class ConversationCapabilityService {
     if (input.scope) {
       where.scope = input.scope;
     }
-    const conversations = await this.conversationRepository.find({ where });
+    const conversations = await this.conversationRepositoryForContext().find({ where });
     return conversations.map((conversation) => conversation.sourceId);
   }
 
-  async getConversationOrThrow(conversationId: string) {
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: conversationId },
+  async getConversationOrThrow(tenantId: string, conversationId: string) {
+    this.requireTenantId(tenantId);
+    const conversation = await this.conversationRepositoryForContext().findOne({
+      where: { id: conversationId, tenantId },
     });
     if (!conversation) throw new NotFoundException("会话不存在");
     return conversation;
@@ -418,8 +474,9 @@ export class ConversationCapabilityService {
   private async syncConversation(
     conversation: Conversation,
     source: ConversationSource,
-    manager: EntityManager = this.conversationRepository.manager,
+    manager: EntityManager = this.managerForContext(),
   ) {
+    this.requireSourceTenant(source);
     let changed = false;
     if (conversation.subject !== source.subject) {
       conversation.subject = source.subject;
@@ -431,6 +488,10 @@ export class ConversationCapabilityService {
     }
     if (conversation.organizationId !== (source.organizationId ?? null)) {
       conversation.organizationId = source.organizationId ?? null;
+      changed = true;
+    }
+    if (conversation.departmentId !== (source.departmentId ?? null)) {
+      conversation.departmentId = source.departmentId ?? null;
       changed = true;
     }
     return changed ? manager.save(Conversation, conversation) : conversation;
@@ -453,28 +514,33 @@ export class ConversationCapabilityService {
       ];
     }
 
-    const users = await this.userRepository.find({
-      where: [{ email: In(mentions) }, { username: In(mentions) }],
+    this.requireSourceTenant(source);
+    const users = await this.userRepositoryForContext().find({
+      where: [
+        { email: In(mentions), tenantId: source.tenantId },
+        { tenantId: source.tenantId, username: In(mentions) },
+      ],
     });
     const candidateIds = users
       .filter((user) => user.id !== authorUserId && user.status === "active")
       .map((user) => user.id);
     if (candidateIds.length === 0) return [];
-    if (source.scope === "platform") return candidateIds;
+    if (source.scope === "tenant") return candidateIds;
     if (!source.organizationId) return [];
-    const memberships = await this.membershipRepository.find({
+    const memberships = await this.membershipRepositoryForContext().find({
       where: {
         organizationId: source.organizationId,
         status: "active",
+        tenantId: source.tenantId,
         userId: In(candidateIds),
       },
     });
     return memberships.map((membership) => membership.userId);
   }
 
-  private async findParticipantUserIds(conversationId: string) {
-    const participants = await this.participantRepository.find({
-      where: { conversationId },
+  private async findParticipantUserIds(tenantId: string, conversationId: string) {
+    const participants = await this.participantRepositoryForContext().find({
+      where: { conversationId, tenantId },
     });
     return participants.map((participant) => participant.userId);
   }
@@ -558,6 +624,63 @@ export class ConversationCapabilityService {
     });
   }
 
+  private requireSourceTenant(source: ConversationSource) {
+    return this.requireTenantId(source.tenantId);
+  }
+
+  private requireTenantId(tenantId: string) {
+    const normalized = tenantId?.trim();
+    if (!normalized) throw new NotFoundException("会话不存在");
+    const context = this.tenantContext?.current(false);
+    if (context && context.tenantId !== normalized) {
+      throw new NotFoundException("会话不存在");
+    }
+    return normalized;
+  }
+
+  private managerForContext() {
+    return this.tenantContext?.current(false)?.manager ?? this.conversationRepository.manager;
+  }
+
+  private withManager<T>(work: (manager: EntityManager) => Promise<T>) {
+    const context = this.tenantContext?.current(false);
+    if (context) return work(context.manager);
+    const manager = this.conversationRepository.manager;
+    return typeof manager.transaction === "function"
+      ? manager.transaction(work)
+      : work(manager);
+  }
+
+  private conversationRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(Conversation)
+      : this.conversationRepository;
+  }
+
+  private messageRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(ConversationMessage)
+      : this.messageRepository;
+  }
+
+  private participantRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(ConversationParticipant)
+      : this.participantRepository;
+  }
+
+  private userRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(User)
+      : this.userRepository;
+  }
+
+  private membershipRepositoryForContext() {
+    return this.tenantContext?.current(false)
+      ? this.tenantContext.repository(UserOrganization)
+      : this.membershipRepository;
+  }
+
   private async runNonCriticalSideEffect(
     label: string,
     action: () => Promise<void> | void,
@@ -575,6 +698,7 @@ export class ConversationCapabilityService {
 function toConversationDto(conversation: Conversation) {
   return {
     createdAt: conversation.createdAt,
+    departmentId: conversation.departmentId,
     id: conversation.id,
     lastMessageAt: conversation.lastMessageAt,
     organizationId: conversation.organizationId,
@@ -583,6 +707,7 @@ function toConversationDto(conversation: Conversation) {
     sourceType: conversation.sourceType,
     status: conversation.status,
     subject: conversation.subject,
+    tenantId: conversation.tenantId,
     updatedAt: conversation.updatedAt,
   };
 }

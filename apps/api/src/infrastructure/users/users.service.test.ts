@@ -8,6 +8,7 @@ import {
 import { UsersService } from "./users.service.js";
 
 const USER_ID = "user-1";
+const TENANT_ID = "tenant-1";
 const token = "Bearer token";
 
 describe("UsersService uniqueness handling", () => {
@@ -141,11 +142,11 @@ describe("UsersService uniqueness handling", () => {
     assert.equal(state.users[0].status, "disabled");
     assert.deepEqual(state.revokedIntegrationTokenUpdates.map(stripDates), [
       {
-        query: { ownerUserId: USER_ID, revokedAt: "IS_NULL" },
+        query: { ownerUserId: USER_ID, revokedAt: "IS_NULL", tenantId: TENANT_ID },
         value: { revokedAt: "DATE" },
       },
     ]);
-    assert.deepEqual(state.revokedSessionUsers, [USER_ID]);
+    assert.deepEqual(state.revokedSessionUsers, [`${TENANT_ID}:${USER_ID}`]);
   });
 
   it("does not revoke sessions when disabling a user rolls back", async () => {
@@ -184,11 +185,11 @@ describe("UsersService uniqueness handling", () => {
     assert.deepEqual(state.softDeletedUsers, [USER_ID]);
     assert.deepEqual(state.revokedIntegrationTokenUpdates.map(stripDates), [
       {
-        query: { ownerUserId: USER_ID, revokedAt: "IS_NULL" },
+        query: { ownerUserId: USER_ID, revokedAt: "IS_NULL", tenantId: TENANT_ID },
         value: { revokedAt: "DATE" },
       },
     ]);
-    assert.deepEqual(state.revokedSessionUsers, [USER_ID]);
+    assert.deepEqual(state.revokedSessionUsers, [`${TENANT_ID}:${USER_ID}`]);
   });
 });
 
@@ -252,14 +253,17 @@ function createService(options: {
     },
     async update(target: any, query: any, value: any) {
       if (target.name === "IntegrationToken") {
+        if (options.failTransactionAfterTokenRevoke) {
+          const user = users.find((item) => item.id === USER_ID);
+          if (user) user.status = "active";
+          throw new Error("transaction failed");
+        }
         revokedIntegrationTokenUpdates.push({ query, value });
       }
       return { affected: 1 };
     },
   };
-  const service = new UsersService(
-    {
-      manager,
+  const userRepository = {
       create(value: any) {
         return {
           avatarUrl: null,
@@ -294,16 +298,21 @@ function createService(options: {
       async softDelete() {
         return { affected: 1 };
       },
+    } as any;
+  const service = new UsersService(
+    {
+      current: () => ({ manager, tenantId: TENANT_ID }),
+      repository: () => userRepository,
     } as any,
-    {} as any,
     {
       validateAccessToken: async () => ({
         sessionId: "session-1",
+        tenantId: TENANT_ID,
         tokenKind: "session",
         userId: USER_ID,
       }),
-      revokeUserSessions: async (userId: string) => {
-        revokedSessionUsers.push(userId);
+      revokeUserSessions: async (tenantId: string, userId: string) => {
+        revokedSessionUsers.push(`${tenantId}:${userId}`);
       },
     } as any,
   );
@@ -334,6 +343,7 @@ function userRecord(input: { email: string; id: string; passwordHash?: string | 
     preferredLanguage: "zh-Hans",
     refreshToken: null,
     status: "active",
+    tenantId: TENANT_ID,
     thirdPartyId: null,
     timeZone: null,
     type: "user",

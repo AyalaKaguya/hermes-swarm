@@ -12,7 +12,9 @@ import type {
 export type AuthSessionTokenPayload = {
   exp: number;
   jti: string;
+  principalType: "integration" | "platform" | "tenant";
   sessionId: string;
+  tenantId: string | null;
   userId: string;
 };
 
@@ -44,6 +46,7 @@ export type AuthSessionDeviceDto = {
 };
 
 export type CreateIntegrationTokenPayload = {
+  departmentId?: string | null;
   expiresAt?: string;
   note?: string | null;
   organizationId?: string | null;
@@ -57,6 +60,7 @@ export type CreateIntegrationTokenPayload = {
 export type LoginPayload = {
   email?: string;
   password?: string;
+  tenantSlug?: string;
 };
 
 /**
@@ -203,7 +207,7 @@ export type PermissionCatalogDto = {
       }>;
     }>;
     label: string;
-    scope: "platform" | "organization" | "own";
+    scope: "platform" | "tenant" | "organization" | "department" | "own";
   }>;
 };
 
@@ -277,6 +281,7 @@ export type InviteDto = {
  */
 export type RequestPasswordResetPayload = {
   email?: string;
+  tenantSlug?: string;
 };
 
 /**
@@ -286,5 +291,6 @@ export type ResetPasswordPayload = {
   email?: string;
   token?: string;
   password?: string;
+  tenantSlug?: string;
   confirmPassword?: string;
 };

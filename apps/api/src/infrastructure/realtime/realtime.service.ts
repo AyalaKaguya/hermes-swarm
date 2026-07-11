@@ -15,6 +15,7 @@ type RealtimeClient = {
   id: string;
   sessionId?: string;
   socket: Socket;
+  tenantId: string;
   userId: string;
 };
 
@@ -31,7 +32,7 @@ const MAX_CLIENT_FRAME_BUFFER_BYTES = 1024 * 1024;
 export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(RealtimeService.name);
   private readonly clients = new Map<string, RealtimeClient>();
-  private readonly clientsByUserId = new Map<string, Set<string>>();
+  private readonly clientsByTenantUser = new Map<string, Set<string>>();
   private server: { on: (event: string, listener: (...args: any[]) => void) => void } | null =
     null;
 
@@ -52,11 +53,13 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       client.socket.destroy();
     }
     this.clients.clear();
-    this.clientsByUserId.clear();
+    this.clientsByTenantUser.clear();
   }
 
-  publishToUser(userId: string, event: RealtimeEvent) {
-    const clientIds = this.clientsByUserId.get(userId);
+  publishToUser(tenantId: string, userId: string, event: RealtimeEvent) {
+    const clientIds = this.clientsByTenantUser.get(
+      recipientKey(tenantId, userId),
+    );
     if (!clientIds?.size) return;
     for (const clientId of clientIds) {
       const client = this.clients.get(clientId);
@@ -64,9 +67,9 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
     }
   }
 
-  publishToUsers(userIds: string[], event: RealtimeEvent) {
+  publishToUsers(tenantId: string, userIds: string[], event: RealtimeEvent) {
     for (const userId of new Set(userIds)) {
-      this.publishToUser(userId, event);
+      this.publishToUser(tenantId, userId, event);
     }
   }
 
@@ -89,6 +92,8 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       const session = ticket
         ? await this.authSessionService.consumeRealtimeTicket(ticket)
         : await this.authSessionService.validateAccessToken(token ?? undefined);
+      const tenantId = session.tenantId?.trim();
+      if (!tenantId) throw new Error("Tenant session required");
       const accept = createHash("sha1")
         .update(`${websocketKey}${WEBSOCKET_GUID}`)
         .digest("base64");
@@ -105,15 +110,20 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
 
       const client: RealtimeClient = {
         buffer: Buffer.alloc(0),
-        id: randomUUID(),
+        id: `${tenantId}:${randomUUID()}`,
         sessionId: session.sessionId,
         socket,
+        tenantId,
         userId: session.userId,
       };
       this.register(client);
       this.send(client, {
         type: "realtime.connected",
-        payload: { clientId: client.id, sessionId: client.sessionId },
+        payload: {
+          clientId: client.id,
+          sessionId: client.sessionId,
+          tenantId: client.tenantId,
+        },
       });
     } catch {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
@@ -123,9 +133,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
 
   private register(client: RealtimeClient) {
     this.clients.set(client.id, client);
-    const userClients = this.clientsByUserId.get(client.userId) ?? new Set<string>();
+    const key = recipientKey(client.tenantId, client.userId);
+    const userClients = this.clientsByTenantUser.get(key) ?? new Set<string>();
     userClients.add(client.id);
-    this.clientsByUserId.set(client.userId, userClients);
+    this.clientsByTenantUser.set(key, userClients);
 
     client.socket.on("data", (chunk) => this.handleData(client, chunk));
     client.socket.on("close", () => this.unregister(client));
@@ -134,10 +145,11 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
 
   private unregister(client: RealtimeClient) {
     this.clients.delete(client.id);
-    const userClients = this.clientsByUserId.get(client.userId);
+    const key = recipientKey(client.tenantId, client.userId);
+    const userClients = this.clientsByTenantUser.get(key);
     userClients?.delete(client.id);
     if (userClients && userClients.size === 0) {
-      this.clientsByUserId.delete(client.userId);
+      this.clientsByTenantUser.delete(key);
     }
   }
 
@@ -182,6 +194,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       id: event.id ?? randomUUID(),
       payload: event.payload ?? null,
       sentAt: new Date().toISOString(),
+      tenantId: client.tenantId,
       type: event.type,
     });
     try {
@@ -226,6 +239,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       client.socket.destroy();
     }
   }
+}
+
+function recipientKey(tenantId: string, userId: string) {
+  return `${tenantId}:${userId}`;
 }
 
 function extractBearerToken(value: string | string[] | undefined) {

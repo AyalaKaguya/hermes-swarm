@@ -3,9 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
 import { NotificationDestination } from "@hermes-swarm/core";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 type DestinationPayload = {
   name?: string;
@@ -78,13 +77,15 @@ const FEISHU_FETCH_TIMEOUT_MS = 8_000;
  */
 export class NotificationDestinationsService {
   constructor(
-    @InjectRepository(NotificationDestination)
-    private readonly destinationRepository: Repository<NotificationDestination>,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   async list(organizationId: string) {
-    const items = await this.destinationRepository.find({
-      where: { organizationId: requireText(organizationId, "组织") },
+    const items = await this.destinations.find({
+      where: {
+        organizationId: requireText(organizationId, "组织"),
+        tenantId: this.tenantId,
+      },
       order: { createdAt: "DESC" },
     });
     return items.map(toDestinationDto);
@@ -103,13 +104,14 @@ export class NotificationDestinationsService {
   async create(organizationId: string, input: unknown) {
     const payload = parsePayload(input);
     const destinationType = normalizeType(payload.type);
-    const destination = this.destinationRepository.create({
+    const destination = this.destinations.create({
       name: requireText(payload.name, "通知名称", 120),
       options: normalizeOptions(payload.options, destinationType),
       organizationId: requireText(organizationId, "组织"),
+      tenantId: this.tenantId,
       type: destinationType.type,
     });
-    return toDestinationDto(await this.destinationRepository.save(destination));
+    return toDestinationDto(await this.destinations.save(destination));
   }
 
   async update(
@@ -135,12 +137,12 @@ export class NotificationDestinationsService {
         nextType,
       );
     }
-    return toDestinationDto(await this.destinationRepository.save(destination));
+    return toDestinationDto(await this.destinations.save(destination));
   }
 
   async delete(organizationId: string, destinationId: string) {
     const destination = await this.getDestinationOrThrow(organizationId, destinationId);
-    await this.destinationRepository.remove(destination);
+    await this.destinations.remove(destination);
     return { id: destinationId };
   }
 
@@ -153,14 +155,23 @@ export class NotificationDestinationsService {
   }
 
   private async getDestinationOrThrow(organizationId: string, destinationId: string) {
-    const destination = await this.destinationRepository.findOne({
+    const destination = await this.destinations.findOne({
       where: {
         id: requireText(destinationId, "通知目的地"),
         organizationId: requireText(organizationId, "组织"),
+        tenantId: this.tenantId,
       },
     });
     if (!destination) throw new NotFoundException("通知目的地不存在");
     return destination;
+  }
+
+  private get tenantId() {
+    return this.tenantContext.current()!.tenantId;
+  }
+
+  private get destinations() {
+    return this.tenantContext.repository(NotificationDestination);
   }
 }
 
@@ -329,6 +340,7 @@ function toDestinationDto(destination: NotificationDestination) {
     name: destination.name,
     options: destination.options,
     organizationId: destination.organizationId,
+    tenantId: destination.tenantId,
     type: destination.type,
   };
 }

@@ -14,7 +14,7 @@ test("resolveSubdomainFromHost derives organization subdomain under configured r
   assert.equal(resolveSubdomainFromHost("127.0.0.1", "0.0.1"), null);
 });
 
-test("resolveHostOrganizationIdFromPrincipal respects platform subdomain routing settings", () => {
+test("resolveHostOrganizationIdFromPrincipal respects tenant subdomain routing settings", () => {
   const principal = {
     memberships: [
       {
@@ -32,6 +32,7 @@ test("resolveHostOrganizationIdFromPrincipal respects platform subdomain routing
         },
       },
     ],
+    principalType: "tenant",
     systemSettings: [
       {
         name: PLATFORM_SETTING_KEYS.subdomainRoutingEnabled,
@@ -71,6 +72,7 @@ test("resolveHostOrganizationIdFromPrincipal ignores host when routing is disabl
         },
       },
     ],
+    principalType: "tenant",
     systemSettings: [
       {
         name: PLATFORM_SETTING_KEYS.subdomainRoutingEnabled,

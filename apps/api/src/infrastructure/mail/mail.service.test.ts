@@ -31,7 +31,7 @@ describe("MailService templates", () => {
     );
   });
 
-  it("seeds platform and organization system templates and prefers organization templates for display", async () => {
+  it("seeds localized platform system templates and exposes them as organization fallbacks", async () => {
     const state = createMailService();
 
     await state.service.ensureDefaultPlatformTemplates();
@@ -39,21 +39,124 @@ describe("MailService templates", () => {
 
     const platformTemplates = await state.service.listTemplates(null);
     assert.deepEqual(
-      platformTemplates.map((template) => template.name).sort(),
-      ["organization-invite", "password-reset"],
+      platformTemplates.map((template) => [template.name, template.languageCode]),
+      [
+        ["organization-invite", "en"],
+        ["organization-invite", "zh-CN"],
+        ["password-reset", "en"],
+        ["password-reset", "zh-CN"],
+        ["tenant-application-verification", "en"],
+        ["tenant-application-verification", "zh-CN"],
+        ["tenant-owner-activation", "en"],
+        ["tenant-owner-activation", "zh-CN"],
+      ],
     );
     assert.ok(platformTemplates.every((template) => template.isSystem));
     assert.ok(platformTemplates.every((template) => template.organizationId === null));
 
     const organizationTemplates = await state.service.listTemplates("org-1");
     assert.deepEqual(
-      organizationTemplates.map((template) => template.name).sort(),
-      ["organization-invite", "password-reset"],
+      organizationTemplates.map((template) => [
+        template.name,
+        template.languageCode,
+        template.inherited,
+      ]),
+      [
+        ["organization-invite", "en", true],
+        ["organization-invite", "zh-CN", true],
+        ["password-reset", "en", true],
+        ["password-reset", "zh-CN", true],
+      ],
     );
     assert.ok(
       organizationTemplates.every(
-        (template) => template.organizationId === "org-1",
+        (template) => template.organizationId === null,
       ),
+    );
+  });
+
+  it("creates organization overrides without changing the platform template", async () => {
+    const state = createMailService();
+    await state.service.ensureDefaultPlatformTemplates();
+
+    await state.service.createTemplate("org-1", {
+      hbs: "<p>Organization copy</p>",
+      languageCode: "en",
+      name: "password-reset",
+      subject: "Organization subject",
+    });
+
+    const organizationTemplates = await state.service.listTemplates("org-1");
+    const override = organizationTemplates.find(
+      (template) =>
+        template.name === "password-reset" && template.languageCode === "en",
+    );
+    assert.equal(override?.organizationId, "org-1");
+    assert.equal(override?.hasPlatformDefault, true);
+    assert.equal(override?.inherited, false);
+    assert.equal(override?.isSystem, false);
+
+    const platformTemplates = await state.service.listTemplates(null);
+    assert.equal(
+      platformTemplates.find(
+        (template) =>
+          template.name === "password-reset" && template.languageCode === "en",
+      )?.subject,
+      "Reset your password",
+    );
+  });
+
+  it("keeps legacy organization copies isolated from platform templates", async () => {
+    const state = createMailService();
+    await state.service.ensureDefaultPlatformTemplates();
+    const platform = state.platformEmailTemplates.find(
+      (template) =>
+        template.name === "password-reset" && template.languageCode === "en",
+    );
+    state.emailTemplates.push(
+      {
+        ...platform,
+        id: "legacy-same",
+        organizationId: "org-1",
+        tenantId: "tenant-1",
+      },
+      emailTemplateRecord({
+        hbs: "<p>Customized</p>",
+        id: "legacy-edited",
+        languageCode: "zh-CN",
+        name: "password-reset",
+        organizationId: "org-1",
+        subject: "Customized",
+      }),
+    );
+
+    const templates = await state.service.listTemplates("org-1");
+    assert.equal(
+      state.emailTemplates.some((template) => template.id === "legacy-same"),
+      true,
+    );
+    assert.equal(
+      templates.find((template) => template.id === "legacy-edited")?.isSystem,
+      false,
+    );
+  });
+
+  it("renders subject and body previews with safe example variables", () => {
+    const state = createMailService();
+
+    const preview = state.service.previewTemplate({
+      hbs: "<p>Hello {{name}} from {{organizationName}}</p>",
+      subject: "Welcome {{name}}",
+    });
+
+    assert.equal(preview.subject, "Welcome Alex Chen");
+    assert.equal(
+      preview.html,
+      "<p>Hello Alex Chen from Hermes Organization</p>",
+    );
+    assert.throws(
+      () => state.service.previewTemplate({ hbs: "{{#if}}" }),
+      BadRequestException,
     );
   });
 
@@ -80,7 +183,7 @@ describe("MailService templates", () => {
     await assert.rejects(
       () =>
         state.service.updateTemplate(null, template.id, {
-          languageCode: "en",
+          languageCode: "fr",
         }),
       BadRequestException,
     );
@@ -92,7 +195,7 @@ describe("MailService templates", () => {
 
   it("resolves organization templates before platform fallback templates", async () => {
     const state = createEmailSendService();
-    state.emailTemplates.push(
+    state.platformEmailTemplates.push(
       emailTemplateRecord({
         hbs: "<p>platform-en</p>",
         id: "template-platform",
@@ -101,6 +204,8 @@ describe("MailService templates", () => {
         organizationId: null,
         subject: "Platform",
       }),
+    );
+    state.emailTemplates.push(
       emailTemplateRecord({
         hbs: "<p>org-zh</p>",
         id: "template-org",
@@ -115,6 +220,7 @@ describe("MailService templates", () => {
       "organization-invite",
       "zh-Hans",
       "org-1",
+      "tenant-1",
     );
     assert.equal(organizationTemplate.hbs, "<p>org-zh</p>");
 
@@ -122,6 +228,7 @@ describe("MailService templates", () => {
       "organization-invite",
       "zh-Hant",
       "org-1",
+      "tenant-1",
     );
     assert.equal(platformFallback.hbs, "<p>platform-en</p>");
   });
@@ -134,8 +241,19 @@ describe("MailService templates", () => {
     await state.service.ensureDefaultPlatformTemplates();
 
     assert.deepEqual(
-      state.emailTemplates.map((template) => template.name).sort(),
-      ["organization-invite", "password-reset"],
+      state.platformEmailTemplates
+        .map((template) => `${template.name}:${template.languageCode}`)
+        .sort(),
+      [
+        "organization-invite:en",
+        "organization-invite:zh-CN",
+        "password-reset:en",
+        "password-reset:zh-CN",
+        "tenant-application-verification:en",
+        "tenant-application-verification:zh-CN",
+        "tenant-owner-activation:en",
+        "tenant-owner-activation:zh-CN",
+      ],
     );
   });
 
@@ -179,19 +297,21 @@ describe("MailService templates", () => {
 describe("MailService SMTP resolution", () => {
   it("uses organization SMTP first and gates global SMTP behind public SMTP setting", async () => {
     const state = createEmailSendService({ publicSmtpEnabled: false });
-    state.smtpTemplates.push(
+    state.platformSmtpTemplates.push(
       smtpRecord({ host: "global.smtp.local", id: "smtp-global", organizationId: null }),
+    );
+    state.smtpTemplates.push(
       smtpRecord({ host: "org.smtp.local", id: "smtp-org", organizationId: "org-1" }),
     );
 
-    const organizationSmtp = await (state.service as any).findSmtpRecord("org-1");
+    const organizationSmtp = await (state.service as any).findSmtpRecord("tenant-1", "org-1");
     assert.equal(organizationSmtp.host, "org.smtp.local");
 
-    const disabledGlobal = await (state.service as any).findSmtpRecord(null);
+    const disabledGlobal = await (state.service as any).findSmtpRecord("tenant-1", null);
     assert.equal(disabledGlobal, null);
 
     state.publicSmtpEnabled = true;
-    const enabledGlobal = await (state.service as any).findSmtpRecord(null);
+    const enabledGlobal = await (state.service as any).findSmtpRecord("tenant-1", null);
     assert.equal(enabledGlobal.host, "global.smtp.local");
   });
 
@@ -503,7 +623,9 @@ function createMailService(
   } = {},
 ) {
   const emailTemplates: any[] = [];
+  const platformEmailTemplates: any[] = [];
   const smtpTemplates: any[] = [];
+  const platformSmtpTemplates: any[] = [];
   const emailLogs: any[] = [];
   let simulatedConcurrentInsert = false;
 
@@ -514,10 +636,18 @@ function createMailService(
         if (options.failTemplateSaveWithUniqueConstraint) {
           throw new QueryFailedError("INSERT", [], { code: "23505" } as any);
         }
+        return saveDefault(record);
+      },
+    }) as any,
+    createRepository(emailLogs) as any,
+    createRepository(platformEmailTemplates, {
+      async onSave(record, saveDefault) {
+        if (options.failTemplateSaveWithUniqueConstraint) {
+          throw new QueryFailedError("INSERT", [], { code: "23505" } as any);
+        }
         if (
           options.simulateConcurrentPlatformTemplateSeed &&
           !simulatedConcurrentInsert &&
-          record.organizationId === null &&
           record.name === "organization-invite"
         ) {
           simulatedConcurrentInsert = true;
@@ -527,12 +657,15 @@ function createMailService(
         return saveDefault(record);
       },
     }) as any,
-    createRepository(emailLogs) as any,
+    createRepository(platformSmtpTemplates) as any,
+    { current: () => ({ tenantId: "tenant-1" }) } as any,
   );
 
   return {
     emailLogs,
     emailTemplates,
+    platformEmailTemplates,
+    platformSmtpTemplates,
     service,
     smtpTemplates,
   };
@@ -540,7 +673,9 @@ function createMailService(
 
 function createEmailSendService(options: { publicSmtpEnabled?: boolean } = {}) {
   const emailTemplates: any[] = [];
+  const platformEmailTemplates: any[] = [];
   const smtpTemplates: any[] = [];
+  const platformSmtpTemplates: any[] = [];
   const emailLogs: any[] = [];
   const state = {
     publicSmtpEnabled: Boolean(options.publicSmtpEnabled),
@@ -549,16 +684,21 @@ function createEmailSendService(options: { publicSmtpEnabled?: boolean } = {}) {
     createRepository(smtpTemplates) as any,
     createRepository(emailTemplates) as any,
     createRepository(emailLogs) as any,
+    createRepository(platformEmailTemplates) as any,
+    createRepository(platformSmtpTemplates) as any,
     {
       async getPlatformValue() {
         return state.publicSmtpEnabled ? "true" : "false";
       },
     } as any,
+    { current: () => ({ tenantId: "tenant-1" }) } as any,
   );
 
   return {
     emailLogs,
     emailTemplates,
+    platformEmailTemplates,
+    platformSmtpTemplates,
     get publicSmtpEnabled() {
       return state.publicSmtpEnabled;
     },
@@ -621,8 +761,9 @@ function createRepository(
       }
       return matched;
     },
-    async findOne({ where }: any) {
-      const candidates = Array.isArray(where) ? where : [where];
+    async findOne({ where }: any = {}) {
+      const candidates =
+        where === undefined ? [{}] : Array.isArray(where) ? where : [where];
       return (
         records.find((record) =>
           candidates.some((candidate) => matchesWhere(record, candidate)),
@@ -666,6 +807,7 @@ function smtpRecord(input: {
     id: input.id,
     isValidated: true,
     organizationId: input.organizationId,
+    tenantId: "tenant-1",
     password: null,
     port: 587,
     secure: false,
@@ -690,6 +832,7 @@ function emailTemplateRecord(input: {
     mjml: null,
     name: input.name,
     organizationId: input.organizationId,
+    tenantId: "tenant-1",
     subject: input.subject,
   };
 }

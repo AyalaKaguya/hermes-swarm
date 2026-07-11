@@ -87,6 +87,9 @@ export default function AccountPage() {
 
     try {
       const me = await fetchMe(token);
+      if (me.principalType !== "tenant") {
+        throw new Error(tr("当前页面仅适用于租户账号"));
+      }
       setUser(me.user);
       setProfile(toProfileForm(me.user));
       setError(null);

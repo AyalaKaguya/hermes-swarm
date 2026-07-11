@@ -21,6 +21,22 @@ afterEach(() => {
 });
 
 describe("admin BFF refresh single-flight", () => {
+  it("uses the isolated platform refresh endpoint for platform sessions", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({ principalType: "platform" });
+    globalThis.fetch = async (input) => {
+      assert.equal(
+        String(input),
+        "http://localhost:3200/api/admin/platform/auth/refresh",
+      );
+      return refreshResponse(session);
+    };
+
+    const response = await sendRefreshRequest(session);
+
+    assert.equal(response.status, 200);
+  });
+
   it("shares one upstream refresh for concurrent explicit refresh requests", async () => {
     process.env.WEB_SESSION_SECRET = "test-secret";
     const session = createSession();

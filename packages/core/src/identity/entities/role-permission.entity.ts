@@ -1,12 +1,33 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
+import type { Department } from "./department.entity.js";
+import type { Organization } from "./organization.entity.js";
 import type { Permission } from "./permission.entity.js";
 import type { Role } from "./role.entity.js";
-import { OrganizationBaseEntity } from "./organization-base.entity.js";
+import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 @Entity({ name: "role_permissions" })
-@Index(["roleId", "permission"], { unique: true })
-@Index(["roleId", "permissionId"], { unique: true })
-export class RolePermission extends OrganizationBaseEntity {
+@Index(["tenantId", "roleId", "permission"], { unique: true })
+@Index(["tenantId", "roleId", "permissionId"], { unique: true })
+export class RolePermission extends TenantOwnedBaseEntity {
+  @Column({ name: "organization_id", type: "uuid", nullable: true })
+  @Index()
+  organizationId!: string | null;
+
+  @ManyToOne("Organization", "rolePermissions", {
+    nullable: true,
+    onDelete: "RESTRICT",
+  })
+  @JoinColumn({ name: "organization_id" })
+  organization!: Organization | null;
+
+  @Column({ name: "department_id", type: "uuid", nullable: true })
+  @Index()
+  departmentId!: string | null;
+
+  @ManyToOne("Department", { nullable: true, onDelete: "RESTRICT" })
+  @JoinColumn({ name: "department_id" })
+  department!: Department | null;
+
   @Column({ name: "role_id", type: "uuid" })
   @Index()
   roleId!: string;

@@ -60,6 +60,28 @@ describe("AccessGuard integration token narrowing", () => {
     );
   });
 
+  it("persists denied authorization decisions before throwing", async () => {
+    const audits: any[] = [];
+    const guard = createGuard(
+      {
+        integrationToken: {
+          id: "token-1",
+          organizationId: "org-1",
+          permissions: [],
+          scope: "organization",
+        },
+      },
+      { recordRequest: async (...args: any[]) => audits.push(args) },
+    );
+
+    await assert.rejects(
+      () => guard.canActivate(createContext({ organizationId: "org-1" })),
+      ForbiddenException,
+    );
+    assert.equal(audits.length, 1);
+    assert.equal(audits[0][1], "denied");
+  });
+
   it("denies organization tokens outside their selected organization", async () => {
     const guard = createGuard({
       integrationToken: {
@@ -150,7 +172,7 @@ describe("AccessGuard integration token narrowing", () => {
       permissions: string[];
       scope: "organization" | "own" | "platform";
     };
-  }) {
+  }, auditService?: { recordRequest: (...args: any[]) => Promise<unknown> }) {
     return new AccessGuard(
       {
         get: (key: string) =>
@@ -164,8 +186,13 @@ describe("AccessGuard integration token narrowing", () => {
       } as any,
       {
         validateAccessToken: async () => ({
-          ...session,
+          integrationToken: {
+            ...session.integrationToken,
+            tenantId: "tenant-1",
+          },
+          principalType: "integration",
           sessionId: `integration:${session.integrationToken.id}`,
+          tenantId: "tenant-1",
           tokenKind: "integration",
           userId: "user-1",
         }),
@@ -175,8 +202,10 @@ describe("AccessGuard integration token narrowing", () => {
       {
         resolve: async (_definition: unknown, _metadata: unknown, request: any) => ({
           organizationId: request.params?.organizationId ?? null,
+          tenantId: "tenant-1",
         }),
       } as any,
+      auditService as any,
     );
   }
 

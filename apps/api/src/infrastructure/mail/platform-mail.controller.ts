@@ -83,6 +83,17 @@ export class PlatformMailController {
     return this.mailService.createTemplate(null, payload as never);
   }
 
+  @Post("templates/preview")
+  @AccessOperation({
+    description: "使用示例数据预览平台邮件模板。",
+    label: "预览平台邮件模板",
+    operation: "preview",
+    sortOrder: 25,
+  })
+  previewTemplate(@Body() payload: unknown) {
+    return this.mailService.previewTemplate(payload as never);
+  }
+
   @Patch("templates/:templateId")
   @AccessOperation({
     description: "更新平台邮件模板。",

@@ -1,13 +1,14 @@
 import { Column, DeleteDateColumn, Entity, Index } from "typeorm";
+import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 export type UserStatus = "active" | "disabled";
 export type UserType = "service" | "user";
 export type PreferredLanguage = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
 
 @Entity({ name: "users" })
-export class User {
-  @Column({ type: "uuid", primary: true, default: () => "uuid_generate_v4()" })
-  id!: string;
+@Index("UQ_users_tenant_identity", ["tenantId", "id"], { unique: true })
+@Index("UQ_users_tenant_email", ["tenantId", "email"], { unique: true })
+export class User extends TenantOwnedBaseEntity {
 
   @Column({ type: "varchar", length: 24, default: "user" })
   type!: UserType;
@@ -25,7 +26,6 @@ export class User {
   lastName!: string | null;
 
   @Column({ type: "varchar", length: 160 })
-  @Index("IDX_users_email_unique", { unique: true })
   email!: string;
 
   @Column({ type: "varchar", length: 80, nullable: true })
@@ -61,12 +61,6 @@ export class User {
 
   @Column({ type: "varchar", length: 24, default: "active" })
   status!: UserStatus;
-
-  @Column({ name: "created_at", type: "timestamptz", default: () => "now()" })
-  createdAt!: Date;
-
-  @Column({ name: "updated_at", type: "timestamptz", default: () => "now()" })
-  updatedAt!: Date;
 
   @DeleteDateColumn({ name: "deleted_at", type: "timestamptz", nullable: true })
   deletedAt!: Date | null;

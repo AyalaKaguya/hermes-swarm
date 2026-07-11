@@ -4,30 +4,40 @@ import {
   IntegrationToken,
   Organization,
   OrganizationGroupMember,
-  PlatformMember,
+  PlatformUser,
+  Tenant,
   RolePermission,
   User,
   UserOrganization,
+  UserTenantRole,
+  UserDepartment,
+  UserDepartmentRole,
 } from "@hermes-swarm/core";
-import { AuthController } from "./auth.controller.js";
+import { AuthController, PlatformAuthController } from "./auth.controller.js";
 import { AuthSessionService } from "./auth-session.service.js";
 import { AuthService } from "./auth.service.js";
 import { SettingsModule } from "../settings/settings.module.js";
+import { DatabaseModule } from "../../common/database/database.module.js";
+import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 
 @Module({
   imports: [
     SettingsModule,
+    DatabaseModule,
     TypeOrmModule.forFeature([
       OrganizationGroupMember,
       IntegrationToken,
       Organization,
-      PlatformMember,
       RolePermission,
       User,
       UserOrganization,
+      UserTenantRole,
+      UserDepartment,
+      UserDepartmentRole,
     ]),
+    TypeOrmModule.forFeature([PlatformUser, Tenant], PLATFORM_DATA_SOURCE),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, PlatformAuthController],
   providers: [AuthService, AuthSessionService],
   exports: [AuthService, AuthSessionService],
 })

@@ -1,25 +1,42 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
-  PlatformMember,
+  PlatformRolePermission,
+  PlatformUserRole,
   RolePermission,
+  UserDepartment,
+  UserDepartmentRole,
   UserOrganization,
+  UserOrganizationRole,
+  UserTenantRole,
 } from "@hermes-swarm/core";
-import { Repository } from "typeorm";
+import { DataSource, In, Repository, type EntityManager } from "typeorm";
 import type {
   AccessCheckContext,
   ResolvedAccessDefinition,
 } from "./access.types.js";
+import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 @Injectable()
 export class AccessService {
   constructor(
-    @InjectRepository(PlatformMember)
-    private readonly platformMemberRepository: Repository<PlatformMember>,
+    @InjectRepository(PlatformUserRole, PLATFORM_DATA_SOURCE)
+    private readonly platformUserRoleRepository: Repository<PlatformUserRole>,
+    @InjectRepository(PlatformRolePermission, PLATFORM_DATA_SOURCE)
+    private readonly platformRolePermissionRepository: Repository<PlatformRolePermission>,
+    @InjectRepository(UserTenantRole)
+    private readonly tenantRoleRepository: Repository<UserTenantRole>,
     @InjectRepository(UserOrganization)
     private readonly membershipRepository: Repository<UserOrganization>,
+    @InjectRepository(UserOrganizationRole)
+    private readonly organizationRoleRepository: Repository<UserOrganizationRole>,
+    @InjectRepository(UserDepartment)
+    private readonly departmentMembershipRepository: Repository<UserDepartment>,
+    @InjectRepository(UserDepartmentRole)
+    private readonly departmentRoleRepository: Repository<UserDepartmentRole>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async can(
@@ -27,89 +44,191 @@ export class AccessService {
     definition: ResolvedAccessDefinition,
     context: AccessCheckContext = {},
   ) {
-    if (definition.scope === "own") {
-      if (!this.userOwnsTarget(userId, context.targetUserId ?? undefined)) {
-        return false;
-      }
-      const roleIds = await this.findOwnScopeRoleIds(userId);
-      return this.anyRoleAllows(roleIds, definition.id);
-    }
-
     if (definition.scope === "platform") {
-      const roleId = await this.findPlatformRoleId(userId);
-      return roleId ? this.roleAllows(roleId, definition.id) : false;
+      return context.principalType === "platform"
+        ? this.platformRoleAllows(userId, definition.id)
+        : false;
     }
+    if (context.principalType === "platform") return false;
 
-    const organizationRoleId = await this.findOrganizationRoleId(
-      userId,
-      context.organizationId ?? undefined,
-    );
-    if (
-      organizationRoleId &&
-      (await this.roleAllows(organizationRoleId, definition.id))
-    ) {
-      return true;
-    }
+    const tenantId = context.tenantId ?? undefined;
+    if (!tenantId) return false;
 
-    const platformRoleId = await this.findPlatformRoleId(userId);
-    return platformRoleId
-      ? this.roleAllows(platformRoleId, definition.id)
-      : false;
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', $2, true), set_config('app.organization_id', $3, true), set_config('app.department_id', $4, true)",
+        [
+          tenantId,
+          context.scopeLevel ?? scopeLevelForPermission(definition.scope),
+          context.organizationId ?? "",
+          context.departmentId ?? "",
+        ],
+      );
+      return this.canInTenant(userId, tenantId, definition, context, manager);
+    });
   }
 
-  private async roleAllows(roleId: string, permissionId: string) {
+  private async canInTenant(
+    userId: string,
+    tenantId: string,
+    definition: ResolvedAccessDefinition,
+    context: AccessCheckContext,
+    manager: EntityManager,
+  ) {
+
+    if (definition.scope === "own") {
+      if (context.targetUserId !== userId) return false;
+      return this.anyTenantRoleAllows(
+        tenantId,
+        await this.findTenantRoleIds(tenantId, userId, manager),
+        definition.id,
+        manager,
+      );
+    }
+
+    const roleIds = await this.findTenantRoleIds(tenantId, userId, manager);
+    if (definition.scope === "tenant") {
+      return this.anyTenantRoleAllows(tenantId, roleIds, definition.id, manager);
+    }
+
+    const membership = await this.findOrganizationMembership(
+      tenantId,
+      userId,
+      context.organizationId ?? undefined,
+      manager,
+    );
+    if (!membership) return false;
+    roleIds.push(...(await this.findOrganizationRoleIds(tenantId, membership, manager)));
+    if (definition.scope === "organization") {
+      return this.anyTenantRoleAllows(tenantId, roleIds, definition.id, manager);
+    }
+
+    const departmentMembership = await this.findDepartmentMembership(
+      tenantId,
+      membership.id,
+      context.departmentId ?? undefined,
+      manager,
+    );
+    if (!departmentMembership) return false;
+    roleIds.push(
+      ...(await this.findDepartmentRoleIds(
+        tenantId,
+        departmentMembership.id,
+        manager,
+      )),
+    );
+    return this.anyTenantRoleAllows(tenantId, roleIds, definition.id, manager);
+  }
+
+  private async platformRoleAllows(platformUserId: string, permission: string) {
+    const assignments = await this.platformUserRoleRepository.find({
+      where: { platformUserId },
+    });
+    if (assignments.length === 0) return false;
     return Boolean(
-      await this.rolePermissionRepository.findOne({
+      await this.platformRolePermissionRepository.findOne({
+        relations: { permission: true },
         where: {
           enabled: true,
-          permission: permissionId,
-          roleId,
+          permission: { code: permission },
+          platformRoleId: In(assignments.map((item) => item.platformRoleId)),
         },
       }),
     );
   }
 
-  private async anyRoleAllows(roleIds: string[], permissionId: string) {
-    for (const roleId of roleIds) {
-      if (await this.roleAllows(roleId, permissionId)) return true;
-    }
-    return false;
-  }
-
-  private async findPlatformRoleId(userId: string) {
-    const member = await this.platformMemberRepository.findOne({
-      where: { status: "active", userId },
+  private async findTenantRoleIds(
+    tenantId: string,
+    userId: string,
+    manager: EntityManager,
+  ) {
+    const assignments = await manager.getRepository(UserTenantRole).find({
+      relations: { role: true },
+      where: { tenantId, userId },
     });
-    return member?.roleId ?? null;
+    return assignments
+      .filter((item) => item.role?.scope === "tenant")
+      .map((item) => item.roleId);
   }
 
-  private async findOwnScopeRoleIds(userId: string) {
-    const roleIds = new Set<string>();
-    const platformRoleId = await this.findPlatformRoleId(userId);
-    if (platformRoleId) roleIds.add(platformRoleId);
-
-    const memberships = await this.membershipRepository.find({
-      where: { status: "active", userId },
-    });
-    for (const membership of memberships) {
-      if (membership.roleId) roleIds.add(membership.roleId);
-    }
-
-    return [...roleIds];
-  }
-
-  private async findOrganizationRoleId(
+  private async findOrganizationMembership(
+    tenantId: string,
     userId: string,
     organizationId: string | undefined,
+    manager: EntityManager,
   ) {
     if (!organizationId) return null;
-    const membership = await this.membershipRepository.findOne({
-      where: { organizationId, status: "active", userId },
+    return manager.getRepository(UserOrganization).findOne({
+      where: { organizationId, status: "active", tenantId, userId },
     });
-    return membership?.roleId ?? null;
   }
 
-  private userOwnsTarget(userId: string, targetUserId: string | undefined) {
-    return Boolean(targetUserId && targetUserId === userId);
+  private async findOrganizationRoleIds(
+    tenantId: string,
+    membership: UserOrganization,
+    manager: EntityManager,
+  ) {
+    const assignments = await manager.getRepository(UserOrganizationRole).find({
+      relations: { role: true },
+      where: { membershipId: membership.id, tenantId },
+    });
+    const roleIds = assignments
+      .filter((item) => item.role?.scope === "organization")
+      .map((item) => item.roleId);
+    // Transitional read until all existing membership.roleId rows are rewritten.
+    if (membership.roleId) roleIds.push(membership.roleId);
+    return roleIds;
   }
+
+  private async findDepartmentMembership(
+    tenantId: string,
+    membershipId: string,
+    departmentId: string | undefined,
+    manager: EntityManager,
+  ) {
+    if (!departmentId) return null;
+    return manager.getRepository(UserDepartment).findOne({
+      where: { departmentId, membershipId, status: "active", tenantId },
+    });
+  }
+
+  private async findDepartmentRoleIds(
+    tenantId: string,
+    userDepartmentId: string,
+    manager: EntityManager,
+  ) {
+    const assignments = await manager.getRepository(UserDepartmentRole).find({
+      relations: { role: true },
+      where: { tenantId, userDepartmentId },
+    });
+    return assignments
+      .filter((item) => item.role?.scope === "department")
+      .map((item) => item.roleId);
+  }
+
+  private async anyTenantRoleAllows(
+    tenantId: string,
+    roleIds: string[],
+    permission: string,
+    manager: EntityManager,
+  ) {
+    const uniqueRoleIds = [...new Set(roleIds)];
+    if (uniqueRoleIds.length === 0) return false;
+    return Boolean(
+      await manager.getRepository(RolePermission).findOne({
+        where: {
+          enabled: true,
+          permission,
+          roleId: In(uniqueRoleIds),
+          tenantId,
+        },
+      }),
+    );
+  }
+}
+
+function scopeLevelForPermission(scope: ResolvedAccessDefinition["scope"]) {
+  if (scope === "department") return "department";
+  if (scope === "organization") return "organization";
+  return "tenant";
 }

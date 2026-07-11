@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { EmailTemplatePreview } from "@/components/email-template-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +44,7 @@ export default function PlatformEmailTemplatesPage() {
   const [editing, setEditing] = useState<EmailTemplateDto | null>(null);
   const [deleting, setDeleting] = useState<EmailTemplateDto | null>(null);
   const [items, setItems] = useState<EmailTemplateDto[]>([]);
+  const [languageFilter, setLanguageFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -79,6 +81,12 @@ export default function PlatformEmailTemplatesPage() {
     }
   }
 
+  const availableLanguages = [...new Set(items.map((item) => item.languageCode))];
+  const filteredItems =
+    languageFilter === "all"
+      ? items
+      : items.filter((item) => item.languageCode === languageFilter);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm">
@@ -103,7 +111,7 @@ export default function PlatformEmailTemplatesPage() {
               {tr("添加模板")}
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
             <DialogHeader>
               <DialogTitle>{tr("创建平台邮件模板")}</DialogTitle>
             </DialogHeader>
@@ -125,13 +133,30 @@ export default function PlatformEmailTemplatesPage() {
             {error}
           </div>
         )}
+        {availableLanguages.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-medium text-muted-foreground">
+              {tr("语言")}
+            </span>
+            {["all", ...availableLanguages].map((language) => (
+              <Button
+                key={language}
+                onClick={() => setLanguageFilter(language)}
+                size="xs"
+                variant={languageFilter === language ? "secondary" : "ghost"}
+              >
+                {language === "all" ? tr("全部") : language}
+              </Button>
+            ))}
+          </div>
+        )}
         {items.length === 0 ? (
           <div className="rounded-md border bg-muted/30 px-3 py-8 text-center text-sm">
             {tr("暂无平台邮件模板")}
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {items.map((item) => (
+            {filteredItems.map((item) => (
               <div className="grid gap-3 rounded-md border p-3" key={item.id}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -162,7 +187,7 @@ export default function PlatformEmailTemplatesPage() {
                     size="sm"
                     variant="ghost"
                   >
-                    {tr("编辑")}
+                    {tr("编辑与预览")}
                   </Button>
                   <Button
                     disabled={item.isSystem}
@@ -186,7 +211,7 @@ export default function PlatformEmailTemplatesPage() {
           }}
           open={true}
         >
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
             <DialogHeader>
               <DialogTitle>{tr("编辑平台邮件模板")}</DialogTitle>
             </DialogHeader>
@@ -262,55 +287,59 @@ function TemplateForm({
   }
 
   return (
-    <div className="grid gap-4">
-      <Field id="platform-template-name" label={tr("模板名称")}>
-        <Input
-          disabled={Boolean(initial?.isSystem)}
-          id="platform-template-name"
-          onChange={(event) => setName(event.target.value)}
-          value={name}
-        />
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="platform-template-language" label={tr("语言编码")}>
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]">
+      <div className="grid content-start gap-4">
+        <Field id="platform-template-name" label={tr("模板名称")}>
           <Input
             disabled={Boolean(initial?.isSystem)}
-            id="platform-template-language"
-            onChange={(event) => setLanguageCode(event.target.value)}
-            value={languageCode}
+            id="platform-template-name"
+            onChange={(event) => setName(event.target.value)}
+            value={name}
           />
         </Field>
-        <Field id="platform-template-subject" label={tr("邮件主题")}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field id="platform-template-language" label={tr("语言编码")}>
+            <Input
+              disabled={Boolean(initial?.isSystem)}
+              id="platform-template-language"
+              onChange={(event) => setLanguageCode(event.target.value)}
+              value={languageCode}
+            />
+          </Field>
+          <Field id="platform-template-subject" label={tr("邮件主题")}>
+            <Input
+              id="platform-template-subject"
+              onChange={(event) => setSubject(event.target.value)}
+              value={subject}
+            />
+          </Field>
+        </div>
+        <Field id="platform-template-description" label={tr("说明")}>
           <Input
-            id="platform-template-subject"
-            onChange={(event) => setSubject(event.target.value)}
-            value={subject}
+            id="platform-template-description"
+            onChange={(event) => setDescription(event.target.value)}
+            value={description}
           />
         </Field>
+        <Field id="platform-template-hbs" label={tr("模板内容")}>
+          <Textarea
+            className="font-mono text-xs"
+            id="platform-template-hbs"
+            onChange={(event) => setHbs(event.target.value)}
+            rows={12}
+            value={hbs}
+          />
+        </Field>
+        {error && <div className="text-sm text-destructive">{error}</div>}
+        <Button
+          disabled={saving || !name.trim() || !languageCode.trim() || !hbs.trim()}
+          onClick={() => void submit()}
+          type="button"
+        >
+          {tr("保存")}
+        </Button>
       </div>
-      <Field id="platform-template-description" label={tr("说明")}>
-        <Input
-          id="platform-template-description"
-          onChange={(event) => setDescription(event.target.value)}
-          value={description}
-        />
-      </Field>
-      <Field id="platform-template-hbs" label={tr("模板内容")}>
-        <Textarea
-          className="font-mono text-xs"
-          id="platform-template-hbs"
-          onChange={(event) => setHbs(event.target.value)}
-          rows={9}
-          value={hbs}
-        />
-      </Field>
-      {error && <div className="text-sm text-destructive">{error}</div>}
-      <Button
-        disabled={saving || !name.trim() || !languageCode.trim() || !hbs.trim()}
-        onClick={submit}
-      >
-        {tr("保存")}
-      </Button>
+      <EmailTemplatePreview hbs={hbs} subject={subject} />
     </div>
   );
 }

@@ -24,6 +24,7 @@ const PUBLIC_ADMIN_PATHS = new Set([
   "/invites/accept",
   "/invites/validate",
   "/onboarding",
+  "/tenant-applications",
 ]);
 
 const refreshJobs = new Map<string, Promise<WebSession>>();
@@ -58,7 +59,11 @@ async function handleAdminRequest(
   const params = await context.params;
   const path = `/${params.path?.join("/") ?? ""}`;
 
-  if (path === "/auth/login" || path === "/onboarding") {
+  if (
+    path === "/auth/login" ||
+    path === "/onboarding" ||
+    path === "/platform/auth/login"
+  ) {
     return handleSessionStart(request, path);
   }
 
@@ -70,7 +75,7 @@ async function handleAdminRequest(
     return handleRefresh(request);
   }
 
-  if (PUBLIC_ADMIN_PATHS.has(path)) {
+  if (isPublicAdminPath(path)) {
     return toNextResponse(await forwardToNest(request, path, request.nextUrl.search));
   }
 
@@ -126,6 +131,13 @@ async function handleSessionStart(request: NextRequest, path: string) {
   setWebSessionCookie(response, {
     accessToken,
     expiresAt,
+    principalType:
+      detail?.snapshot &&
+      typeof detail.snapshot === "object" &&
+      "principalType" in detail.snapshot &&
+      detail.snapshot.principalType === "platform"
+        ? "platform"
+        : "tenant",
     refreshToken,
     sessionId,
   });
@@ -184,7 +196,11 @@ async function refreshWebSessionUpstream(
   session: WebSession,
   request: NextRequest,
 ): Promise<WebSession> {
-  const upstream = await fetch(`${getInternalBaseUrl()}/auth/refresh`, {
+  const refreshPath =
+    session.principalType === "platform"
+      ? "/platform/auth/refresh"
+      : "/auth/refresh";
+  const upstream = await fetch(`${getInternalBaseUrl()}${refreshPath}`, {
     headers: {
       cookie: `${REFRESH_COOKIE_NAME}=${encodeURIComponent(session.refreshToken)}`,
       ...(request.headers.get("user-agent")
@@ -207,7 +223,20 @@ async function refreshWebSessionUpstream(
   if (!accessToken || !expiresAt || !sessionId || !refreshToken) {
     throw new Error("Refresh response is missing session fields");
   }
-  return { accessToken, expiresAt, refreshToken, sessionId };
+  return {
+    accessToken,
+    expiresAt,
+    principalType: session.principalType ?? "tenant",
+    refreshToken,
+    sessionId,
+  };
+}
+
+function isPublicAdminPath(path: string) {
+  return (
+    PUBLIC_ADMIN_PATHS.has(path) ||
+    /^\/tenant-applications\/[^/]+\/(?:verify|cancel)$/.test(path)
+  );
 }
 
 async function forwardToNest(

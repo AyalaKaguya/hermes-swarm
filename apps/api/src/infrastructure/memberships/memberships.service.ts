@@ -3,7 +3,6 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
   OrganizationGroup,
@@ -14,34 +13,24 @@ import {
   UserOrganization,
   type UserOrganizationStatus,
 } from "@hermes-swarm/core";
-import { In, IsNull, Repository, type EntityManager } from "typeorm";
+import { In, IsNull, type EntityManager } from "typeorm";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { toUserDto } from "../users/user-dto.js";
 import type { MembershipPayload } from "./memberships.controller.js";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 @Injectable()
 export class MembershipsService {
   constructor(
-    @InjectRepository(UserOrganization)
-    private readonly membershipRepository: Repository<UserOrganization>,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(Organization)
-    private readonly organizationRepository: Repository<Organization>,
-    @InjectRepository(OrganizationGroupMember)
-    private readonly groupMemberRepository: Repository<OrganizationGroupMember>,
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
-    @InjectRepository(IntegrationToken)
-    private readonly integrationTokenRepository: Repository<IntegrationToken>,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   async list(organizationId: string) {
     await this.ensureOrganization(organizationId);
-    const memberships = await this.membershipRepository.find({
+    const memberships = await this.memberships.find({
       order: { createdAt: "ASC" },
       relations: { role: true, user: true },
-      where: { organizationId },
+      where: { organizationId, tenantId: this.tenantId },
     });
     const groupsByMembership = await this.loadGroupsByMembership(
       memberships.map((membership) => membership.id),
@@ -55,34 +44,32 @@ export class MembershipsService {
     const input = requireMembershipPayload(payload);
     await this.ensureOrganization(organizationId);
     try {
-      const membership = await this.membershipRepository.manager.transaction(
-        async (manager) => {
-          const user = await this.resolveOrCreateUser(input, manager);
-          const existing = await manager.findOne(UserOrganization, {
-            where: { organizationId, userId: user.id },
-          });
-          if (existing) throw new BadRequestException("用户已经在该组织中");
+      const manager = this.manager;
+      const user = await this.resolveOrCreateUser(input, manager);
+      const existing = await manager.findOne(UserOrganization, {
+        where: { organizationId, tenantId: this.tenantId, userId: user.id },
+      });
+      if (existing) throw new BadRequestException("用户已经在该组织中");
 
-          const roleId = await this.resolveRoleId(
-            organizationId,
-            input.roleId,
-            manager,
-          );
-          return manager.save(
-            UserOrganization,
-            this.membershipRepository.create({
-              displayName:
-                normalizeNullableText(input.displayName) ??
-                user.nickname ??
-                user.displayName,
-              joinedAt: new Date(),
-              organizationId,
-              roleId,
-              status: normalizeMembershipStatus(input.status),
-              userId: user.id,
-            }),
-          );
-        },
+      const roleId = await this.resolveRoleId(
+        organizationId,
+        input.roleId,
+        manager,
+      );
+      const membership = await manager.save(
+        UserOrganization,
+        this.memberships.create({
+          displayName:
+            normalizeNullableText(input.displayName) ??
+            user.nickname ??
+            user.displayName,
+          joinedAt: new Date(),
+          organizationId,
+          roleId,
+          status: normalizeMembershipStatus(input.status),
+          tenantId: this.tenantId,
+          userId: user.id,
+        }),
       );
       return toMembershipDto(membership);
     } catch (error) {
@@ -103,98 +90,99 @@ export class MembershipsService {
     payload: Partial<MembershipPayload>,
   ) {
     const input = requireMembershipPayload(payload);
-    await this.membershipRepository.manager.transaction(async (manager) => {
-      const membership = await this.getMembershipOrThrow(
+    const manager = this.manager;
+    const membership = await this.getMembershipOrThrow(
+      organizationId,
+      membershipId,
+      manager,
+      true,
+    );
+    const wasActiveOwner = isActiveOwnerMembership(membership);
+    const previousRoleId = membership.roleId;
+    let nextRole = membership.role;
+
+    if (input.displayName !== undefined) {
+      membership.displayName = normalizeNullableText(input.displayName);
+    }
+    if (input.roleId !== undefined) {
+      nextRole = await this.resolveRole(organizationId, input.roleId, manager);
+      membership.roleId = nextRole?.id ?? null;
+    }
+    if (input.status !== undefined) {
+      membership.status = normalizeMembershipStatus(input.status);
+    }
+
+    if (wasActiveOwner && !isActiveOwnerState(nextRole, membership.status)) {
+      await this.assertAnotherActiveOwner(
         organizationId,
-        membershipId,
+        membership.id,
         manager,
-        true,
       );
-      const wasActiveOwner = isActiveOwnerMembership(membership);
-      const previousRoleId = membership.roleId;
-      let nextRole = membership.role;
-
-      if (input.displayName !== undefined) {
-        membership.displayName = normalizeNullableText(input.displayName);
-      }
-      if (input.roleId !== undefined) {
-        nextRole = await this.resolveRole(
-          organizationId,
-          input.roleId,
-          manager,
-        );
-        membership.roleId = nextRole?.id ?? null;
-      }
-      if (input.status !== undefined) {
-        membership.status = normalizeMembershipStatus(input.status);
-      }
-
-      if (wasActiveOwner && !isActiveOwnerState(nextRole, membership.status)) {
-        await this.assertAnotherActiveOwner(
-          organizationId,
-          membership.id,
-          manager,
-        );
-      }
-      if (
-        input.roleId !== undefined ||
-        (input.status !== undefined && membership.status !== "active")
-      ) {
-        await this.revokeOrganizationTokensForMembership(
-          membership.userId,
-          organizationId,
-          manager,
-          previousRoleId !== membership.roleId ? "role_changed" : "membership_disabled",
-        );
-      }
-
-      await manager.update(
-        UserOrganization,
-        { id: membership.id, organizationId },
-        {
-          displayName: membership.displayName,
-          roleId: membership.roleId,
-          status: membership.status,
-        },
+    }
+    if (
+      input.roleId !== undefined ||
+      (input.status !== undefined && membership.status !== "active")
+    ) {
+      await this.revokeOrganizationTokensForMembership(
+        membership.userId,
+        organizationId,
+        manager,
+        previousRoleId !== membership.roleId
+          ? "role_changed"
+          : "membership_disabled",
       );
-    });
+    }
+
+    await manager.update(
+      UserOrganization,
+      { id: membership.id, organizationId, tenantId: this.tenantId },
+      {
+        displayName: membership.displayName,
+        roleId: membership.roleId,
+        status: membership.status,
+      },
+    );
     return toMembershipDto(
       await this.getMembershipOrThrow(organizationId, membershipId),
     );
   }
 
   async remove(organizationId: string, membershipId: string) {
-    await this.membershipRepository.manager.transaction(async (manager) => {
-      const membership = await this.getMembershipOrThrow(
+    const manager = this.manager;
+    const membership = await this.getMembershipOrThrow(
+      organizationId,
+      membershipId,
+      manager,
+      true,
+    );
+    if (isActiveOwnerMembership(membership)) {
+      await this.assertAnotherActiveOwner(
         organizationId,
-        membershipId,
+        membership.id,
         manager,
-        true,
       );
-      if (isActiveOwnerMembership(membership)) {
-        await this.assertAnotherActiveOwner(
-          organizationId,
-          membership.id,
-          manager,
-        );
-      }
-      await this.revokeOrganizationTokensForMembership(
-        membership.userId,
-        organizationId,
-        manager,
-        "membership_removed",
-      );
-      await manager.delete(OrganizationGroupMember, {
-        membershipId: membership.id,
-        organizationId,
-      });
-      await manager.delete(UserOrganization, { id: membership.id, organizationId });
+    }
+    await this.revokeOrganizationTokensForMembership(
+      membership.userId,
+      organizationId,
+      manager,
+      "membership_removed",
+    );
+    await manager.delete(OrganizationGroupMember, {
+      membershipId: membership.id,
+      organizationId,
+      tenantId: this.tenantId,
+    });
+    await manager.delete(UserOrganization, {
+      id: membership.id,
+      organizationId,
+      tenantId: this.tenantId,
     });
   }
 
   private async ensureOrganization(organizationId: string) {
-    const organization = await this.organizationRepository.findOne({
-      where: { id: organizationId },
+    const organization = await this.organizations.findOne({
+      where: { id: organizationId, tenantId: this.tenantId },
     });
     if (!organization) throw new NotFoundException("组织不存在");
   }
@@ -202,13 +190,13 @@ export class MembershipsService {
   private async getMembershipOrThrow(
     organizationId: string,
     membershipId: string,
-    manager: EntityManager = this.membershipRepository.manager,
+    manager: EntityManager = this.manager,
     lockForUpdate = false,
   ) {
     const membership = await manager.findOne(UserOrganization, {
       lock: lockForUpdate ? { mode: "pessimistic_write" } : undefined,
       relations: { role: true, user: true },
-      where: { id: membershipId, organizationId },
+      where: { id: membershipId, organizationId, tenantId: this.tenantId },
     });
     if (!membership) throw new NotFoundException("组织成员不存在");
     return membership;
@@ -217,7 +205,7 @@ export class MembershipsService {
   private async resolveRoleId(
     organizationId: string,
     roleId: string | null | undefined,
-    manager: EntityManager = this.roleRepository.manager,
+    manager: EntityManager = this.manager,
   ) {
     return (await this.resolveRole(organizationId, roleId, manager))?.id ?? null;
   }
@@ -225,11 +213,11 @@ export class MembershipsService {
   private async resolveRole(
     organizationId: string,
     roleId: string | null | undefined,
-    manager: EntityManager = this.roleRepository.manager,
+    manager: EntityManager = this.manager,
   ) {
     if (roleId === null || roleId === undefined) return null;
     const role = await manager.findOne(Role, {
-      where: { id: roleId },
+      where: { id: roleId, tenantId: this.tenantId },
     });
     if (!role || role.scope !== "organization" || role.organizationId !== organizationId) {
       throw new BadRequestException("角色不属于该组织");
@@ -239,25 +227,30 @@ export class MembershipsService {
 
   private async resolveOrCreateUser(
     payload: MembershipPayload,
-    manager: EntityManager = this.userRepository.manager,
+    manager: EntityManager = this.manager,
   ) {
     if (payload.userId) {
       const user = await manager.findOne(User, {
-        where: { id: requireText(payload.userId, "用户 ID") },
+        where: {
+          id: requireText(payload.userId, "用户 ID"),
+          tenantId: this.tenantId,
+        },
       });
       if (!user) throw new NotFoundException("用户不存在");
       return user;
     }
 
     const email = normalizeEmail(payload.email);
-    const existing = await manager.findOne(User, { where: { email } });
+    const existing = await manager.findOne(User, {
+      where: { email, tenantId: this.tenantId },
+    });
     if (existing) return existing;
 
     const displayName =
       normalizeNullableText(payload.displayName) ?? email.split("@")[0] ?? email;
     return manager.save(
       User,
-      this.userRepository.create({
+      this.users.create({
         displayName,
         email,
         nickname: displayName,
@@ -265,6 +258,7 @@ export class MembershipsService {
           ? hashPassword(requirePassword(payload.password))
           : null,
         status: "active",
+        tenantId: this.tenantId,
         type: "user",
       }),
     );
@@ -273,10 +267,10 @@ export class MembershipsService {
   private async loadGroupsByMembership(membershipIds: string[]) {
     if (membershipIds.length === 0) return new Map<string, OrganizationGroup[]>();
 
-    const rows = await this.groupMemberRepository.find({
+    const rows = await this.groupMembers.find({
       order: { createdAt: "ASC" },
       relations: { group: true },
-      where: { membershipId: In(membershipIds) },
+      where: { membershipId: In(membershipIds), tenantId: this.tenantId },
     });
     const groupsByMembership = new Map<string, OrganizationGroup[]>();
     for (const row of rows) {
@@ -292,7 +286,7 @@ export class MembershipsService {
   private async revokeOrganizationTokensForMembership(
     userId: string,
     organizationId: string,
-    manager: EntityManager = this.integrationTokenRepository.manager,
+    manager: EntityManager = this.manager,
     _reason: "membership_disabled" | "membership_removed" | "role_changed",
   ) {
     await manager.update(
@@ -302,6 +296,7 @@ export class MembershipsService {
         ownerUserId: userId,
         revokedAt: IsNull(),
         scope: "organization",
+        tenantId: this.tenantId,
       },
       { revokedAt: new Date() },
     );
@@ -310,12 +305,12 @@ export class MembershipsService {
   private async assertAnotherActiveOwner(
     organizationId: string,
     currentMembershipId: string,
-    manager: EntityManager = this.membershipRepository.manager,
+    manager: EntityManager = this.manager,
   ) {
     const activeMemberships = await manager.find(UserOrganization, {
       lock: { mode: "pessimistic_write" },
       relations: { role: true },
-      where: { organizationId, status: "active" },
+      where: { organizationId, status: "active", tenantId: this.tenantId },
     });
     const hasAnotherOwner = activeMemberships.some(
       (membership) =>
@@ -324,6 +319,30 @@ export class MembershipsService {
     if (!hasAnotherOwner) {
       throw new BadRequestException("组织至少需要保留一个 Owner");
     }
+  }
+
+  private get tenantId() {
+    return this.tenantContext.current()!.tenantId;
+  }
+
+  private get manager() {
+    return this.tenantContext.current()!.manager;
+  }
+
+  private get memberships() {
+    return this.tenantContext.repository(UserOrganization);
+  }
+
+  private get organizations() {
+    return this.tenantContext.repository(Organization);
+  }
+
+  private get groupMembers() {
+    return this.tenantContext.repository(OrganizationGroupMember);
+  }
+
+  private get users() {
+    return this.tenantContext.repository(User);
   }
 }
 
@@ -412,6 +431,7 @@ function toMembershipDto(
     id: membership.id,
     joinedAt: membership.joinedAt,
     organizationId: membership.organizationId,
+    tenantId: membership.tenantId,
     role: membership.role,
     roleId: membership.roleId,
     status: membership.status,

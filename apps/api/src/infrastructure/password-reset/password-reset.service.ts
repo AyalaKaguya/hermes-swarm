@@ -3,10 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { DataSource, MoreThan } from "typeorm";
+import type { Repository } from "typeorm";
 import { InjectRepository } from "@nestjs/typeorm";
-import jwt from "jsonwebtoken";
-import { MoreThan, Repository } from "typeorm";
-import { PasswordReset, User, UserOrganization } from "@hermes-swarm/core";
+import { PasswordReset, Tenant, User } from "@hermes-swarm/core";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import type {
   RequestPasswordResetPayload,
@@ -15,11 +15,12 @@ import type {
 import { hashPassword } from "../../common/security/password-hash.js";
 import { EmailSendService } from "../mail/email-send.service.js";
 import { SettingsService } from "../settings/settings.service.js";
-
-const PASSWORD_RESET_JWT_SECRET =
-  process.env.PASSWORD_RESET_JWT_SECRET ||
-  process.env.JWT_SECRET ||
-  "hermes-swarm-password-reset-secret";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import {
+  createPasswordResetToken,
+  verifyPasswordResetToken,
+} from "./password-reset-token.js";
+import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
 @Injectable()
@@ -29,65 +30,74 @@ const TEN_MINUTES_MS = 10 * 60 * 1000;
  */
 export class PasswordResetService {
   constructor(
-    @InjectRepository(PasswordReset)
-    private readonly passwordResetRepository: Repository<PasswordReset>,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(UserOrganization)
-    private readonly membershipRepository: Repository<UserOrganization>,
+    private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
     private readonly emailSendService: EmailSendService,
     private readonly settingsService: SettingsService,
+    @InjectRepository(Tenant, PLATFORM_DATA_SOURCE)
+    private readonly platformTenantRepository: Repository<Tenant>,
   ) {}
 
   /**
    * Creates a password-reset token for the account matching the provided
    * email and persists a PasswordReset record.
    */
-  async requestReset(payload: RequestPasswordResetPayload) {
+  async requestReset(
+    payload: RequestPasswordResetPayload & { tenantSlug?: string },
+    context: { host?: string; tenantSlug?: string } = {},
+  ) {
     const input = requirePayload(payload);
     const email = normalizeEmail(input.email);
-    const user = await this.userRepository.findOne({
-      where: { email },
-    });
+    const tenant = await this.resolveTenant(
+      input.tenantSlug ?? context.tenantSlug,
+      context.host,
+    );
 
-    if (!user) {
+    if (!tenant) {
       // Return success even when the user is not found to avoid email
       // enumeration attacks.
       return { success: true };
     }
 
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      PASSWORD_RESET_JWT_SECRET,
-      { expiresIn: "10m" },
-    );
+    return this.runInTenant(tenant.id, async () => {
+      const user = await this.tenantContext.repository(User).findOne({
+        where: { email, tenantId: tenant.id },
+      });
+      if (!user) return { success: true };
 
-    await this.passwordResetRepository.save(
-      this.passwordResetRepository.create({
+      const token = createPasswordResetToken({
         email: user.email,
-        token,
-      }),
-    );
-
-    const membership = await this.membershipRepository.findOne({
-      order: { createdAt: "ASC" },
-      where: { userId: user.id },
-    });
-    await this.emailSendService.send({
-      email: user.email,
-      organizationId: membership?.organizationId ?? null,
-      templateName: "password-reset",
-      locals: {
+        tenantId: tenant.id,
+        userId: user.id,
+      });
+      const resets = this.tenantContext.repository(PasswordReset);
+      await resets.save(
+        resets.create({ email: user.email, tenantId: tenant.id, token }),
+      );
+      await this.emailSendService.send({
         email: user.email,
-        expiresIn: "10 分钟",
-        resetLink: await this.buildPasswordResetLink(user.email, token),
-      },
+        languageCode: user.preferredLanguage,
+        organizationId: null,
+        templateName: "password-reset",
+        locals: {
+          email: user.email,
+          expiresIn: "10 分钟",
+          resetLink: await this.buildPasswordResetLink(
+            user.email,
+            token,
+            tenant.slug,
+          ),
+        },
+      });
+      return { success: true };
     });
-
-    return { success: true };
   }
 
-  private async buildPasswordResetLink(email: string, token: string) {
+  private async buildPasswordResetLink(
+    email: string,
+    token: string,
+    tenantSlug: string,
+  ) {
     const baseUrl = await this.settingsService.getPlatformValue(
       PLATFORM_SETTING_KEYS.publicBaseUrl,
       resolvePublicBaseUrl(),
@@ -95,6 +105,7 @@ export class PasswordResetService {
     const url = new URL("/reset-password", baseUrl || resolvePublicBaseUrl());
     url.searchParams.set("email", email);
     url.searchParams.set("token", token);
+    url.searchParams.set("tenantSlug", tenantSlug);
     return url.toString();
   }
 
@@ -114,9 +125,9 @@ export class PasswordResetService {
     }
 
     // Verify the JWT token
-    let decoded: { userId: string; email: string };
+    let decoded: { email: string; tenantId: string; userId: string };
     try {
-      decoded = jwt.verify(token, PASSWORD_RESET_JWT_SECRET) as typeof decoded;
+      decoded = verifyPasswordResetToken(token);
     } catch {
       throw new BadRequestException("令牌无效或已过期");
     }
@@ -125,15 +136,25 @@ export class PasswordResetService {
       throw new BadRequestException("邮箱与令牌不匹配");
     }
 
-    const passwordHash = hashPassword(password);
+    const tenant = await this.platformTenantRepository.findOne({
+      where: { id: decoded.tenantId },
+    });
+    if (!tenant || (tenant.status !== "active" && tenant.status !== "provisioning")) {
+      throw new BadRequestException("令牌无效或已过期");
+    }
+    if (input.tenantSlug && input.tenantSlug.trim().toLowerCase() !== tenant.slug) {
+      throw new BadRequestException("租户与令牌不匹配");
+    }
 
-    await this.userRepository.manager.transaction(async (manager) => {
+    await this.runInTenant(decoded.tenantId, async () => {
+      const manager = this.tenantContext.current()!.manager;
       const record = await manager.findOne(PasswordReset, {
         lock: { mode: "pessimistic_write" },
         order: { createdAt: "DESC" },
         where: {
           createdAt: MoreThan(new Date(Date.now() - TEN_MINUTES_MS)),
           email,
+          tenantId: decoded.tenantId,
           token,
         },
       });
@@ -144,23 +165,72 @@ export class PasswordResetService {
 
       const user = await manager.findOne(User, {
         lock: { mode: "pessimistic_write" },
-        where: { id: decoded.userId },
+        where: { id: decoded.userId, tenantId: decoded.tenantId },
       });
 
       if (!user) {
         throw new NotFoundException("用户不存在");
       }
 
-      user.passwordHash = passwordHash;
+      const lockedTenant = await manager.findOne(Tenant, {
+        lock: { mode: "pessimistic_write" },
+        where: { id: decoded.tenantId },
+      });
+      if (
+        !lockedTenant ||
+        (lockedTenant.status !== "active" && lockedTenant.status !== "provisioning")
+      ) {
+        throw new BadRequestException("令牌无效或已过期");
+      }
+
+      user.passwordHash = hashPassword(password);
       user.emailVerified = true;
       await manager.save(User, user);
-      const deleteResult = await manager.delete(PasswordReset, { id: record.id });
+      if (lockedTenant.status === "provisioning") {
+        lockedTenant.status = "active";
+        await manager.save(Tenant, lockedTenant);
+      }
+      const deleteResult = await manager.delete(PasswordReset, {
+        id: record.id,
+        tenantId: decoded.tenantId,
+      });
       if (!deleteResult.affected) {
         throw new BadRequestException("令牌无效或已过期");
       }
     });
 
     return { success: true };
+  }
+
+  private async resolveTenant(explicitSlug?: string, host?: string) {
+    const identifier =
+      explicitSlug?.trim().toLowerCase() ?? resolveTenantFromHost(host);
+    if (!identifier) return null;
+    return this.platformTenantRepository.findOne({
+      where: [
+        { slug: identifier, status: "active" },
+        { status: "active", subdomain: identifier },
+      ],
+    });
+  }
+
+  private runInTenant<T>(tenantId: string, work: () => Promise<T>) {
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', 'tenant', true)",
+        [tenantId],
+      );
+      return this.tenantContext.run(
+        {
+          departmentId: null,
+          manager,
+          organizationId: null,
+          scopeLevel: "tenant",
+          tenantId,
+        },
+        work,
+      );
+    });
   }
 }
 
@@ -210,4 +280,13 @@ function resolvePublicBaseUrl() {
     process.env.NEXT_PUBLIC_APP_URL ||
     "http://localhost:3100"
   );
+}
+
+function resolveTenantFromHost(host?: string) {
+  const hostname = host?.split(":")[0]?.trim().toLowerCase();
+  if (!hostname || hostname === "localhost" || /^\d+(?:\.\d+){3}$/.test(hostname)) {
+    return null;
+  }
+  const [subdomain] = hostname.split(".");
+  return subdomain || null;
 }

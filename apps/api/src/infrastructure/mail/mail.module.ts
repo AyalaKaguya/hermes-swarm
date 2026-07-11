@@ -1,19 +1,33 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { EmailSendService } from "./email-send.service.js";
-import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
-import { MailController } from "./mail.controller.js";
+import {
+  CustomSmtp,
+  EmailLog,
+  EmailTemplate,
+  PlatformEmailTemplate,
+  PlatformSmtp,
+} from "@hermes-swarm/core";
+import { DatabaseModule } from "../../common/database/database.module.js";
+import { MailController, TenantMailController } from "./mail.controller.js";
 import { MailService } from "./mail.service.js";
 import { PlatformMailController } from "./platform-mail.controller.js";
 import { SettingsModule } from "../settings/settings.module.js";
+import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
+import { PlatformEmailSendService } from "./platform-email-send.service.js";
 
 @Module({
   imports: [
     SettingsModule,
+    DatabaseModule,
     TypeOrmModule.forFeature([CustomSmtp, EmailTemplate, EmailLog]),
+    TypeOrmModule.forFeature(
+      [PlatformEmailTemplate, PlatformSmtp],
+      PLATFORM_DATA_SOURCE,
+    ),
   ],
-  controllers: [MailController, PlatformMailController],
-  providers: [MailService, EmailSendService],
-  exports: [MailService, EmailSendService],
+  controllers: [MailController, TenantMailController, PlatformMailController],
+  providers: [MailService, EmailSendService, PlatformEmailSendService],
+  exports: [MailService, EmailSendService, PlatformEmailSendService],
 })
 export class MailModule {}

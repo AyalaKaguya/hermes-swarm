@@ -26,15 +26,18 @@ export default function SignUpPage() {
           </div>
           <div className="grid gap-1">
             <CardTitle>{t("auth.signUp")}</CardTitle>
-            <CardDescription>
-              {t("auth.signUpUnavailableDescription")}
-            </CardDescription>
+            <CardDescription>{t("auth.tenantApplicationDescription")}</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
-          <Button asChild className="w-full" variant="ghost">
-            <Link href="/login">{t("auth.backToSignIn")}</Link>
-          </Button>
+          <div className="grid gap-2">
+            <Button asChild className="w-full">
+              <Link href="/apply">{t("auth.applyForTenant")}</Link>
+            </Button>
+            <Button asChild className="w-full" variant="ghost">
+              <Link href="/login">{t("auth.backToSignIn")}</Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </main>
