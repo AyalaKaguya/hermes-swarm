@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { pathToFileURL } from "node:url";
 import { DataSource, type DataSourceOptions } from "typeorm";
 import migrationDataSource from "../migration-data-source.js";
 import { databaseRuntimeConfig } from "../../config/runtime-config.js";
@@ -106,6 +107,6 @@ function normalizeSlug(value: string) {
   return slug;
 }
 
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await runDevelopmentSeed();
 }

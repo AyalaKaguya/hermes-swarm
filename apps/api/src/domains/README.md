@@ -17,3 +17,7 @@ apps/api/src/domains/<domain>/<domain>.service.ts
 - 业务模块可以依赖基础设施公开服务和 `@hermes-swarm/core` / `@hermes-swarm/rbac-api`。
 - 基础设施模块不能反向依赖业务模块。
 - 不要把业务能力放入 `settings`、`organizations`、`platform-*`、`users` 等基础设施目录。
+
+当前业务域：
+
+- `support`：Ticket、Conversation、业务访问解析与 Ticket 归档任务。

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { InlineNotice } from "@/components/inline-notice";
 import { PermissionTree } from "@/components/permission-tree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createPlatformRole,
   deletePlatformRole,
-  listPermissionCatalog,
+  listPlatformPermissionCatalog,
   listPlatformRoles,
   replacePlatformRolePermissions,
   updatePlatformRole,
@@ -96,7 +97,7 @@ export function PlatformRolePermissions({
     try {
       const [roleItems, nextCatalog] = await Promise.all([
         listPlatformRoles(token),
-        listPermissionCatalog(token, "platform"),
+        listPlatformPermissionCatalog(token),
       ]);
       setCatalog(nextCatalog);
       setRoles(roleItems);
@@ -278,11 +279,7 @@ export function PlatformRolePermissions({
   }
 
   if (error) {
-    return (
-      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-        {error}
-      </div>
-    );
+    return <InlineNotice tone="error">{error}</InlineNotice>;
   }
 
   return (
@@ -311,17 +308,18 @@ export function PlatformRolePermissions({
               const selected = selectedRole?.id === role.id;
               const dirty = hasLocalChanges(role.id);
               return (
-                <button
+                <Button
                   aria-pressed={selected}
                   className={cn(
-                    "group flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                    "group h-auto w-full justify-between gap-2 px-3 py-2 text-left",
                     selected
                       ? "border-primary/30 bg-primary/5"
-                      : "border-transparent hover:border-border hover:bg-muted/60",
+                      : undefined,
                   )}
                   key={role.id}
                   onClick={() => setSelectedRoleId(role.id)}
                   type="button"
+                  variant={selected ? "secondary" : "ghost"}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span
@@ -341,7 +339,7 @@ export function PlatformRolePermissions({
                       {enabledPermissionCount(role.id)}/{permissionKeys.length}
                     </Badge>
                   </span>
-                </button>
+                </Button>
               );
             })}
           </div>

@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
+import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,16 +52,12 @@ export default function TenantConsolePage() {
         <p className="text-sm text-muted-foreground">{t("tenantDescription")}</p>
       </div>
 
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <InlineNotice tone="error">{error}</InlineNotice>}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{t("tenantConsole")}</CardTitle>
+            <CardTitle className="text-base">{t("workspaceProfile")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form className="grid gap-4" onSubmit={submit}>
@@ -106,13 +103,6 @@ export default function TenantConsolePage() {
               <Button asChild variant="outline">
                 <Link href="/settings/organizations">{t("organizations")}</Link>
               </Button>
-              {snapshot?.organization?.id && (
-                <Button asChild variant="outline">
-                  <Link href="/settings/organization/departments">
-                    {t("departments")}
-                  </Link>
-                </Button>
-              )}
             </CardContent>
           </Card>
         </div>

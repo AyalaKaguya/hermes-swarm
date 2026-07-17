@@ -1,7 +1,5 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
 import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
-import type { Department } from "../../identity/entities/department.entity.js";
-import type { Organization } from "../../identity/entities/organization.entity.js";
 import type { User } from "../../identity/entities/user.entity.js";
 
 export type UserNotificationStatus = "read" | "unread";
@@ -25,22 +23,6 @@ export class UserNotification extends TenantOwnedBaseEntity {
   @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "actor_user_id" })
   actorUser!: User | null;
-
-  @Column({ name: "organization_id", type: "uuid", nullable: true })
-  @Index()
-  organizationId!: string | null;
-
-  @ManyToOne("Organization", { nullable: true, onDelete: "CASCADE" })
-  @JoinColumn({ name: "organization_id" })
-  organization!: Organization | null;
-
-  @Column({ name: "department_id", type: "uuid", nullable: true })
-  @Index()
-  departmentId!: string | null;
-
-  @ManyToOne("Department", { nullable: true, onDelete: "RESTRICT" })
-  @JoinColumn({ name: "department_id" })
-  department!: Department | null;
 
   @Column({ type: "varchar", length: 24, default: "info" })
   kind!: UserNotificationKind;

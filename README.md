@@ -7,13 +7,16 @@ A distributed computing swarm built with **pnpm + NX Monorepo**, **NestJS**, **T
 ```
 hermes-swarm/
 ├── apps/
-│   ├── api/                  # NestJS API server
-│   └── web/                  # Next.js admin web app
+│   ├── api/                  # NestJS runtime: common, infrastructure, domains
+│   └── web/                  # Next.js platform, workspace, and domain routes
 ├── packages/
-│   └── core/                 # Shared core business entities and config utilities
+│   ├── core/                 # Shared persistence models and settings definitions
+│   ├── rbac-api/             # Client-safe permission contracts
+│   └── rbac/                 # NestJS access-control runtime
 ├── devenv/                   # Local dev infrastructure (Docker)
 │   ├── docker-compose.yml    # PostgreSQL 17 + Redis 7
-│   └── postgres/init/        # Database initialization scripts
+│   └── init/                 # Infrastructure initialization assets
+├── docs/architecture/        # Architecture boundaries and review records
 ├── tsconfig.base.json        # Shared TypeScript configuration
 ├── nx.json                   # NX build orchestration
 └── pnpm-workspace.yaml       # pnpm workspace definition
@@ -21,7 +24,7 @@ hermes-swarm/
 
 ## Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 20.9
 - **pnpm** >= 9
 - **Docker** & **Docker Compose**
 
@@ -65,7 +68,7 @@ curl http://localhost:3200/api/health
 |---------|-------------|
 | `pnpm build` | Build all packages via NX |
 | `pnpm test` | Run tests across workspace |
-| `pnpm lint` | Lint all packages |
+| `pnpm nx run-many -t typecheck` | Type-check all projects |
 | `pnpm clean` | Remove dist directories |
 | `pnpm graph` | Visualize dependency graph |
 

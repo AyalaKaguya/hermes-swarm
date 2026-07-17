@@ -58,8 +58,8 @@ export function hasAnyManagementAccess(
   return Boolean(
     resolvedSession &&
       (resolvedSession.permissions?.length ||
-        resolvedSession.memberships?.some(
-          (membership) => membership.role?.permissions?.some((item) => item.enabled),
+        resolvedSession.memberships?.some((membership) =>
+          membership.role?.permissions?.some((item) => item.enabled),
         ) ||
         resolvedSession.platformUser?.roles.some((role) =>
           role.permissions?.some((item) => item.enabled),

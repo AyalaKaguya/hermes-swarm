@@ -28,13 +28,12 @@ describe("AccessGuard integration token narrowing", () => {
   };
   const scope: AccessScopeMetadata = { param: "organizationId" };
 
-  it("allows selected permissions inside the selected organization", async () => {
+  it("allows selected permissions across organizations in the token tenant", async () => {
     const guard = createGuard({
       integrationToken: {
         id: "token-1",
-        organizationId: "org-1",
         permissions: ["ticket.conversation.handle:organization"],
-        scope: "organization",
+        scope: "tenant",
       },
     });
 
@@ -45,14 +44,43 @@ describe("AccessGuard integration token narrowing", () => {
   });
 
   it("denies permissions that were not selected on the integration token", async () => {
-    const guard = createGuard({
-      integrationToken: {
-        id: "token-1",
-        organizationId: "org-1",
-        permissions: ["ticket.conversation.list_organization:organization"],
-        scope: "organization",
+    let userPermissionChecks = 0;
+    const guard = createGuard(
+      {
+        integrationToken: {
+          id: "token-1",
+          permissions: ["ticket.conversation.list_organization:organization"],
+          scope: "tenant",
+        },
       },
-    });
+      undefined,
+      {
+        can: async () => {
+          userPermissionChecks += 1;
+          return true;
+        },
+      },
+    );
+
+    await assert.rejects(
+      () => guard.canActivate(createContext({ organizationId: "org-1" })),
+      ForbiddenException,
+    );
+    assert.equal(userPermissionChecks, 0);
+  });
+
+  it("denies a selected token permission when the user no longer has it", async () => {
+    const guard = createGuard(
+      {
+        integrationToken: {
+          id: "token-1",
+          permissions: ["ticket.conversation.handle:organization"],
+          scope: "tenant",
+        },
+      },
+      undefined,
+      { can: async () => false },
+    );
 
     await assert.rejects(
       () => guard.canActivate(createContext({ organizationId: "org-1" })),
@@ -66,9 +94,8 @@ describe("AccessGuard integration token narrowing", () => {
       {
         integrationToken: {
           id: "token-1",
-          organizationId: "org-1",
           permissions: [],
-          scope: "organization",
+          scope: "tenant",
         },
       },
       { recordRequest: async (...args: any[]) => audits.push(args) },
@@ -82,18 +109,18 @@ describe("AccessGuard integration token narrowing", () => {
     assert.equal(audits[0][1], "denied");
   });
 
-  it("denies organization tokens outside their selected organization", async () => {
+  it("denies a token whose embedded tenant differs from the request tenant", async () => {
     const guard = createGuard({
       integrationToken: {
         id: "token-1",
-        organizationId: "org-1",
         permissions: ["ticket.conversation.handle:organization"],
-        scope: "organization",
+        scope: "tenant",
+        tenantId: "tenant-2",
       },
     });
 
     await assert.rejects(
-      () => guard.canActivate(createContext({ organizationId: "org-2" })),
+      () => guard.canActivate(createContext({ organizationId: "org-1" })),
       ForbiddenException,
     );
   });
@@ -127,9 +154,8 @@ describe("AccessGuard integration token narrowing", () => {
     const guard = createGuard({
       integrationToken: {
         id: "token-1",
-        organizationId: "org-1",
         permissions: ["ticket.conversation.handle:organization"],
-        scope: "organization",
+        scope: "tenant",
       },
     });
 
@@ -168,11 +194,11 @@ describe("AccessGuard integration token narrowing", () => {
   function createGuard(session: {
     integrationToken: {
       id: string;
-      organizationId: string | null;
       permissions: string[];
-      scope: "organization" | "own" | "platform";
+      scope: "tenant";
+      tenantId?: string;
     };
-  }, auditService?: { recordRequest: (...args: any[]) => Promise<unknown> }) {
+  }, auditService?: { recordRequest: (...args: any[]) => Promise<unknown> }, accessService: { can: (...args: any[]) => Promise<boolean> } = { can: async () => true }) {
     return new AccessGuard(
       {
         get: (key: string) =>
@@ -188,7 +214,7 @@ describe("AccessGuard integration token narrowing", () => {
         validateAccessToken: async () => ({
           integrationToken: {
             ...session.integrationToken,
-            tenantId: "tenant-1",
+            tenantId: session.integrationToken.tenantId ?? "tenant-1",
           },
           principalType: "integration",
           sessionId: `integration:${session.integrationToken.id}`,
@@ -198,7 +224,7 @@ describe("AccessGuard integration token narrowing", () => {
         }),
       },
       { getDefinition: () => null } as any,
-      { can: async () => true } as any,
+      accessService as any,
       {
         resolve: async (_definition: unknown, _metadata: unknown, request: any) => ({
           organizationId: request.params?.organizationId ?? null,

@@ -14,13 +14,31 @@ import {
 import type { LoginPayload } from "../../common/admin-api.types.js";
 import { PublicAccess } from "@hermes-swarm/rbac";
 import { AuthService } from "./auth.service.js";
+import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
 
 @Controller("admin/auth")
 /**
  * Provides auth-focused admin endpoints under `/api/admin/auth`.
  */
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly tenantLoginResolver: TenantLoginResolverService,
+  ) {}
+
+  @Post("tenant-context")
+  @PublicAccess({ reason: "Tenant workspace discovery happens before login." })
+  async tenantContext(
+    @Body() payload: { workspace?: string } | null,
+    @Req() request: any,
+  ) {
+    const workspace = payload?.workspace;
+    const resolution = await this.tenantLoginResolver.resolve(request, workspace);
+    if (workspace?.trim() && !resolution) {
+      return { source: null, tenant: null };
+    }
+    return this.tenantLoginResolver.toPublicContext(resolution);
+  }
 
   /**
    * Starts an admin session with email and password credentials.

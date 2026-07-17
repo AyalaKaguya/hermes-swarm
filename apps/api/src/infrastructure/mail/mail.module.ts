@@ -9,7 +9,7 @@ import {
   PlatformSmtp,
 } from "@hermes-swarm/core";
 import { DatabaseModule } from "../../common/database/database.module.js";
-import { MailController, TenantMailController } from "./mail.controller.js";
+import { TenantMailController } from "./mail.controller.js";
 import { MailService } from "./mail.service.js";
 import { PlatformMailController } from "./platform-mail.controller.js";
 import { SettingsModule } from "../settings/settings.module.js";
@@ -26,7 +26,7 @@ import { PlatformEmailSendService } from "./platform-email-send.service.js";
       PLATFORM_DATA_SOURCE,
     ),
   ],
-  controllers: [MailController, TenantMailController, PlatformMailController],
+  controllers: [TenantMailController, PlatformMailController],
   providers: [MailService, EmailSendService, PlatformEmailSendService],
   exports: [MailService, EmailSendService, PlatformEmailSendService],
 })

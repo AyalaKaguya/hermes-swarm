@@ -21,6 +21,7 @@ import {
   verifyPasswordResetToken,
 } from "./password-reset-token.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
+import { TenantLoginResolverService } from "../auth/tenant-login-resolver.service.js";
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
 @Injectable()
@@ -36,6 +37,7 @@ export class PasswordResetService {
     private readonly settingsService: SettingsService,
     @InjectRepository(Tenant, PLATFORM_DATA_SOURCE)
     private readonly platformTenantRepository: Repository<Tenant>,
+    private readonly tenantLoginResolver: TenantLoginResolverService,
   ) {}
 
   /**
@@ -44,14 +46,14 @@ export class PasswordResetService {
    */
   async requestReset(
     payload: RequestPasswordResetPayload & { tenantSlug?: string },
-    context: { host?: string; tenantSlug?: string } = {},
+    request: unknown = {},
   ) {
     const input = requirePayload(payload);
     const email = normalizeEmail(input.email);
-    const tenant = await this.resolveTenant(
-      input.tenantSlug ?? context.tenantSlug,
-      context.host,
-    );
+    const tenant = (await this.tenantLoginResolver.resolve(
+      request,
+      input.tenantSlug,
+    ))?.tenant;
 
     if (!tenant) {
       // Return success even when the user is not found to avoid email
@@ -77,7 +79,6 @@ export class PasswordResetService {
       await this.emailSendService.send({
         email: user.email,
         languageCode: user.preferredLanguage,
-        organizationId: null,
         templateName: "password-reset",
         locals: {
           email: user.email,
@@ -186,10 +187,6 @@ export class PasswordResetService {
       user.passwordHash = hashPassword(password);
       user.emailVerified = true;
       await manager.save(User, user);
-      if (lockedTenant.status === "provisioning") {
-        lockedTenant.status = "active";
-        await manager.save(Tenant, lockedTenant);
-      }
       const deleteResult = await manager.delete(PasswordReset, {
         id: record.id,
         tenantId: decoded.tenantId,
@@ -202,18 +199,6 @@ export class PasswordResetService {
     return { success: true };
   }
 
-  private async resolveTenant(explicitSlug?: string, host?: string) {
-    const identifier =
-      explicitSlug?.trim().toLowerCase() ?? resolveTenantFromHost(host);
-    if (!identifier) return null;
-    return this.platformTenantRepository.findOne({
-      where: [
-        { slug: identifier, status: "active" },
-        { status: "active", subdomain: identifier },
-      ],
-    });
-  }
-
   private runInTenant<T>(tenantId: string, work: () => Promise<T>) {
     return this.dataSource.transaction(async (manager) => {
       await manager.query(
@@ -222,7 +207,6 @@ export class PasswordResetService {
       );
       return this.tenantContext.run(
         {
-          departmentId: null,
           manager,
           organizationId: null,
           scopeLevel: "tenant",
@@ -280,13 +264,4 @@ function resolvePublicBaseUrl() {
     process.env.NEXT_PUBLIC_APP_URL ||
     "http://localhost:3100"
   );
-}
-
-function resolveTenantFromHost(host?: string) {
-  const hostname = host?.split(":")[0]?.trim().toLowerCase();
-  if (!hostname || hostname === "localhost" || /^\d+(?:\.\d+){3}$/.test(hostname)) {
-    return null;
-  }
-  const [subdomain] = hostname.split(".");
-  return subdomain || null;
 }

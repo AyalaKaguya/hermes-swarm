@@ -94,18 +94,25 @@ export class AccessGuard implements CanActivate {
       principalType: session.principalType,
       tenantId: session.tenantId,
     };
-    let allowed: boolean;
+    const tokenAllowed = integrationTokenAllows(
+      session,
+      definition,
+      accessContext,
+    );
+    let allowed = false;
     try {
-      allowed = await this.accessService.can(
-        session.userId,
-        definition,
-        accessContext,
-      );
+      if (tokenAllowed) {
+        allowed = await this.accessService.can(
+          session.userId,
+          definition,
+          accessContext,
+        );
+      }
     } catch (error) {
       await this.auditService?.recordRequest(request, "error", { error });
       throw error;
     }
-    if (!allowed || !integrationTokenAllows(session, definition, accessContext)) {
+    if (!tokenAllowed || !allowed) {
       const error = createAccessDeniedException(
         definition,
         Boolean(this.catalogService.getDefinition(definition.id)),
@@ -182,7 +189,6 @@ function integrationTokenAllows(
   session: Awaited<ReturnType<AccessAuthSessionService["validateAccessToken"]>>,
   definition: ResolvedAccessDefinition,
   scopeContext: {
-    departmentId?: string | null;
     organizationId?: string | null;
     targetUserId?: string | null;
     tenantId?: string | null;
@@ -191,19 +197,7 @@ function integrationTokenAllows(
   const token = session.integrationToken;
   if (!token) return true;
   if (token.tenantId !== (scopeContext.tenantId ?? null)) return false;
-  if (token.scope !== definition.scope) return false;
+  if (definition.scope === "platform") return false;
   if (!token.permissions.includes(definition.id)) return false;
-  if (
-    token.scope === "organization" &&
-    token.organizationId !== (scopeContext.organizationId ?? null)
-  ) {
-    return false;
-  }
-  if (
-    token.scope === "department" &&
-    token.departmentId !== (scopeContext.departmentId ?? null)
-  ) {
-    return false;
-  }
   return true;
 }

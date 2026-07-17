@@ -4,7 +4,6 @@ import {
   Logger,
   NotFoundException,
   type OnModuleInit,
-  Optional,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
@@ -17,7 +16,7 @@ import {
 import { TenantContextService } from "../../common/database/tenant-context.service.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import Handlebars from "handlebars";
-import { IsNull, QueryFailedError, Repository, type EntityManager } from "typeorm";
+import { QueryFailedError, Repository, type EntityManager } from "typeorm";
 
 type SmtpPayload = {
   fromAddress?: string | null;
@@ -77,11 +76,6 @@ export class MailService implements OnModuleInit {
     });
   }
 
-  async getSmtp(organizationId: string) {
-    const record = await this.findSmtpRecord(organizationId);
-    return record ? toSmtpDto(record) : null;
-  }
-
   async getPlatformSmtp() {
     const record = await this.platformSmtpRepository.findOne({
       order: { createdAt: "DESC" },
@@ -96,18 +90,8 @@ export class MailService implements OnModuleInit {
 
   async saveTenantSmtp(payload: SmtpPayload) {
     const parsedPayload = parseSmtpPayload(payload);
-    const entity = await this.findOrCreateSmtpRecord(null);
+    const entity = await this.findOrCreateSmtpRecord();
     applySmtpPayload(entity, parsedPayload);
-    entity.isValidated = normalizeBoolean(parsedPayload.isValidated, "验证状态");
-    normalizeSmtpRecordForSave(entity);
-    return toSmtpDto(await this.smtpRepository.save(entity));
-  }
-
-  async saveSmtp(organizationId: string, payload: SmtpPayload) {
-    const parsedPayload = parseSmtpPayload(payload);
-    const entity = await this.findOrCreateSmtpRecord(organizationId);
-    applySmtpPayload(entity, parsedPayload);
-    entity.organizationId = organizationId;
     entity.isValidated = normalizeBoolean(parsedPayload.isValidated, "验证状态");
     normalizeSmtpRecordForSave(entity);
     return toSmtpDto(await this.smtpRepository.save(entity));
@@ -149,29 +133,7 @@ export class MailService implements OnModuleInit {
       ).map((template) => toTemplateDto(template));
     }
 
-    const tenantId = this.requireTenantId();
-
-    let templates = await this.emailTemplateRepository.find({
-      where: [
-        { organizationId, tenantId },
-        { organizationId: IsNull(), tenantId },
-      ],
-      order: { name: "ASC", languageCode: "ASC" },
-    });
-    if (organizationId) {
-      templates = await this.normalizeLegacyOrganizationTemplates(
-        templates,
-        organizationId,
-      );
-    }
-    const platformTemplates = await this.platformTemplateRepository.find({
-      order: { name: "ASC", languageCode: "ASC" },
-    });
-    return mergeMailTemplatesForDisplay(
-      platformTemplates.filter((template) => isTenantMailTemplate(template.name)),
-      templates,
-      organizationId,
-    );
+    return this.listTenantTemplates();
   }
 
   async listTenantTemplates() {
@@ -187,10 +149,7 @@ export class MailService implements OnModuleInit {
       ),
       this.emailTemplateRepository.find({
         order: { name: "ASC", languageCode: "ASC" },
-        where: {
-          organizationId: IsNull(),
-          tenantId: this.requireTenantId(),
-        },
+        where: { tenantId: this.requireTenantId() },
       }),
     ]);
     const byKey = new Map(
@@ -217,7 +176,6 @@ export class MailService implements OnModuleInit {
       languageCode: requireText(parsed.languageCode, "语言编码", 16),
       mjml: normalizeOptionalText(parsed.mjml),
       name: requireText(parsed.name, "模板名称", 120),
-      organizationId: null,
       subject: normalizeOptionalText(parsed.subject, 240),
       tenantId: this.requireTenantId(),
     });
@@ -225,13 +183,13 @@ export class MailService implements OnModuleInit {
   }
 
   async updateTenantTemplate(templateId: string, payload: EmailTemplatePayload) {
-    const template = await this.getTemplateOrThrow(null, templateId);
+    const template = await this.getTemplateOrThrow(templateId);
     applyTemplatePatch(template, parseTemplatePayload(payload));
     return toTemplateDto(await saveTemplateOrThrow(this.emailTemplateRepository, template));
   }
 
   async deleteTenantTemplate(templateId: string) {
-    const template = await this.getTemplateOrThrow(null, templateId);
+    const template = await this.getTemplateOrThrow(templateId);
     if (template.isSystem) throw new BadRequestException("系统模板不能删除");
     await this.emailTemplateRepository.remove(template);
     return { id: templateId };
@@ -253,21 +211,7 @@ export class MailService implements OnModuleInit {
         await saveTemplateOrThrow(this.platformTemplateRepository, template),
       );
     }
-    const template = this.emailTemplateRepository.create({
-      description: normalizeOptionalText(parsedPayload.description, 240),
-      hbs: requireText(parsedPayload.hbs, "模板内容"),
-      isSystem:
-        organizationId === null
-          ? normalizeBoolean(parsedPayload.isSystem, "系统模板")
-          : false,
-      languageCode: requireText(parsedPayload.languageCode, "语言编码", 16),
-      mjml: normalizeOptionalText(parsedPayload.mjml),
-      name: requireText(parsedPayload.name, "模板名称", 120),
-      organizationId,
-      tenantId: this.requireTenantId(),
-      subject: normalizeOptionalText(parsedPayload.subject, 240),
-    });
-    return toTemplateDto(await saveTemplateOrThrow(this.emailTemplateRepository, template));
+    return this.createTenantTemplate(parsedPayload);
   }
 
   async updateTemplate(
@@ -283,34 +227,7 @@ export class MailService implements OnModuleInit {
         await saveTemplateOrThrow(this.platformTemplateRepository, template),
       );
     }
-    const template = await this.getTemplateOrThrow(organizationId, templateId);
-    if (parsedPayload.name !== undefined) {
-      const nextName = requireText(parsedPayload.name, "模板名称", 120);
-      if (template.isSystem && nextName !== template.name) {
-        throw new BadRequestException("系统模板名称不能修改");
-      }
-      template.name = nextName;
-    }
-    if (parsedPayload.description !== undefined) {
-      template.description = normalizeOptionalText(parsedPayload.description, 240);
-    }
-    if (parsedPayload.languageCode !== undefined) {
-      const nextLanguageCode = requireText(parsedPayload.languageCode, "语言编码", 16);
-      if (template.isSystem && nextLanguageCode !== template.languageCode) {
-        throw new BadRequestException("系统模板语言不能修改");
-      }
-      template.languageCode = nextLanguageCode;
-    }
-    if (parsedPayload.hbs !== undefined) {
-      template.hbs = requireText(parsedPayload.hbs, "模板内容");
-    }
-    if (parsedPayload.mjml !== undefined) {
-      template.mjml = normalizeOptionalText(parsedPayload.mjml);
-    }
-    if (parsedPayload.subject !== undefined) {
-      template.subject = normalizeOptionalText(parsedPayload.subject, 240);
-    }
-    return toTemplateDto(await saveTemplateOrThrow(this.emailTemplateRepository, template));
+    return this.updateTenantTemplate(templateId, parsedPayload);
   }
 
   async deleteTemplate(organizationId: string | null, templateId: string) {
@@ -320,10 +237,7 @@ export class MailService implements OnModuleInit {
       await this.platformTemplateRepository.remove(template);
       return { id: templateId };
     }
-    const template = await this.getTemplateOrThrow(organizationId, templateId);
-    if (template.isSystem) throw new BadRequestException("系统模板不能删除");
-    await this.emailTemplateRepository.remove(template);
-    return { id: templateId };
+    return this.deleteTenantTemplate(templateId);
   }
 
   async ensureDefaultTemplatesForOrganization(
@@ -366,11 +280,10 @@ export class MailService implements OnModuleInit {
     }
   }
 
-  async listLogs(organizationId: string) {
+  async listLogs() {
     const logs = await this.emailLogRepository.find({
       where: {
         isArchived: false,
-        organizationId,
         tenantId: this.requireTenantId(),
       },
       order: { createdAt: "DESC" },
@@ -378,13 +291,12 @@ export class MailService implements OnModuleInit {
     return logs.map(toLogDto);
   }
 
-  async createLog(organizationId: string, payload: EmailLogPayload) {
+  async createLog(payload: EmailLogPayload) {
     const parsedPayload = parseEmailLogPayload(payload);
     const log = this.emailLogRepository.create({
       content: normalizeOptionalText(parsedPayload.content),
       email: requireText(parsedPayload.email, "收件邮箱", 240),
       isArchived: normalizeBoolean(parsedPayload.isArchived, "归档状态"),
-      organizationId,
       tenantId: this.requireTenantId(),
       status: normalizeEmailLogStatus(parsedPayload.status),
       subject: normalizeOptionalText(parsedPayload.subject, 240),
@@ -393,11 +305,10 @@ export class MailService implements OnModuleInit {
     return toLogDto(await this.emailLogRepository.save(log));
   }
 
-  private async getTemplateOrThrow(organizationId: string | null, templateId: string) {
+  private async getTemplateOrThrow(templateId: string) {
     const template = await this.emailTemplateRepository.findOne({
       where: {
         id: templateId,
-        organizationId: organizationId ?? IsNull(),
         tenantId: this.requireTenantId(),
       },
     });
@@ -413,57 +324,16 @@ export class MailService implements OnModuleInit {
     return template;
   }
 
-  private async normalizeLegacyOrganizationTemplates(
-    templates: EmailTemplate[],
-    organizationId: string,
-  ) {
-    const platformTemplates = new Map(
-      templates
-        .filter((template) => template.organizationId === null)
-        .map((template) => [templateKey(template), template]),
-    );
-    const normalized: EmailTemplate[] = [];
-
-    for (const template of templates) {
-      if (template.organizationId !== organizationId || !template.isSystem) {
-        normalized.push(template);
-        continue;
-      }
-
-      const platformTemplate = platformTemplates.get(templateKey(template));
-      if (platformTemplate && hasSameTemplateContent(template, platformTemplate)) {
-        await this.emailTemplateRepository.remove(template);
-        continue;
-      }
-
-      template.isSystem = false;
-      normalized.push(await this.emailTemplateRepository.save(template));
-    }
-
-    return normalized;
-  }
-
-  private async findSmtpRecord(organizationId: string) {
-    const organizationRecord = await this.smtpRepository.findOne({
-      where: { organizationId, tenantId: this.requireTenantId() },
-      order: { createdAt: "DESC" },
-    });
-    return organizationRecord ?? this.findGlobalSmtpRecord();
-  }
-
   private async findGlobalSmtpRecord() {
     return this.smtpRepository.findOne({
-      where: { organizationId: IsNull(), tenantId: this.requireTenantId() },
+      where: { tenantId: this.requireTenantId() },
       order: { createdAt: "DESC" },
     });
   }
 
-  private async findOrCreateSmtpRecord(organizationId: string | null) {
+  private async findOrCreateSmtpRecord() {
     const existing = await this.smtpRepository.findOne({
-      where:
-        organizationId === null
-          ? { organizationId: IsNull(), tenantId: this.requireTenantId() }
-          : { organizationId, tenantId: this.requireTenantId() },
+      where: { tenantId: this.requireTenantId() },
       order: { createdAt: "DESC" },
     });
     return (
@@ -471,7 +341,6 @@ export class MailService implements OnModuleInit {
       this.smtpRepository.create({
         fromAddress: null,
         host: "",
-        organizationId,
         tenantId: this.requireTenantId(),
         password: null,
         port: 587,
@@ -490,7 +359,6 @@ export class MailService implements OnModuleInit {
         where: {
           languageCode: definition.languageCode,
           name: definition.name,
-          organizationId: IsNull(),
           tenantId,
         },
       });
@@ -501,7 +369,6 @@ export class MailService implements OnModuleInit {
           this.emailTemplateRepository.create({
             ...definition,
             isSystem: true,
-            organizationId: null,
             tenantId,
           }),
         );
@@ -618,7 +485,6 @@ function toSmtpDto(entity: CustomSmtp | PlatformSmtp) {
     host: entity.host,
     id: entity.id,
     isValidated: entity.isValidated,
-    organizationId: "organizationId" in entity ? entity.organizationId : null,
     port: entity.port,
     secure: entity.secure,
     username: entity.username,
@@ -639,7 +505,6 @@ function toTemplateDto(
     languageCode: entity.languageCode,
     mjml: entity.mjml,
     name: entity.name,
-    organizationId: "organizationId" in entity ? entity.organizationId : null,
     subject: entity.subject,
   };
 }
@@ -672,44 +537,8 @@ function applyTemplatePatch(
   }
 }
 
-function mergeMailTemplatesForDisplay(
-  platformTemplates: PlatformEmailTemplate[],
-  tenantTemplates: EmailTemplate[],
-  organizationId: string,
-) {
-  const byKey = new Map<string, ReturnType<typeof toTemplateDto>>();
-  for (const template of platformTemplates) {
-    byKey.set(templateKey(template),
-      toTemplateDto(template, { hasPlatformDefault: true, inherited: true }));
-  }
-  for (const template of tenantTemplates.filter((item) => !item.organizationId)) {
-    byKey.set(templateKey(template),
-      toTemplateDto(template, { hasPlatformDefault: true, inherited: true }));
-  }
-  for (const template of tenantTemplates.filter(
-    (item) => item.organizationId === organizationId,
-  )) {
-    byKey.set(templateKey(template),
-      toTemplateDto(template, { hasPlatformDefault: true, inherited: false }));
-  }
-  return [...byKey.values()].sort(
-    (left, right) =>
-      left.name.localeCompare(right.name, "zh-Hans") ||
-      left.languageCode.localeCompare(right.languageCode, "zh-Hans"),
-  );
-}
-
 function templateKey(template: Pick<EmailTemplate, "languageCode" | "name">) {
   return `${template.name}:${template.languageCode}`;
-}
-
-function hasSameTemplateContent(left: EmailTemplate, right: EmailTemplate) {
-  return (
-    left.description === right.description &&
-    left.hbs === right.hbs &&
-    left.mjml === right.mjml &&
-    left.subject === right.subject
-  );
 }
 
 function toLogDto(entity: EmailLog) {
@@ -718,33 +547,10 @@ function toLogDto(entity: EmailLog) {
     email: entity.email,
     id: entity.id,
     isArchived: entity.isArchived,
-    organizationId: entity.organizationId,
     status: entity.status,
     subject: entity.subject,
     templateName: entity.templateName,
   };
-}
-
-function dedupeTemplatesForDisplay(
-  templates: EmailTemplate[],
-  organizationId: string | null,
-) {
-  if (organizationId === null) return templates;
-
-  const templatesByKey = new Map<string, EmailTemplate>();
-  for (const template of templates) {
-    const key = `${template.name}:${template.languageCode}`;
-    const existing = templatesByKey.get(key);
-    if (!existing || (!existing.organizationId && template.organizationId)) {
-      templatesByKey.set(key, template);
-    }
-  }
-
-  return [...templatesByKey.values()].sort(
-    (left, right) =>
-      left.name.localeCompare(right.name, "zh-Hans") ||
-      left.languageCode.localeCompare(right.languageCode, "zh-Hans"),
-  );
 }
 
 function requireText(value: unknown, label: string, maxLength?: number) {

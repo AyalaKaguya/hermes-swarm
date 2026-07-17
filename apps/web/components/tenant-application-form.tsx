@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
 import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { Button } from "@/components/ui/button";
+import { InlineNotice } from "@/components/inline-notice";
 import {
   Card,
   CardContent,
@@ -236,11 +237,11 @@ function Field({ children, label, name }: { children: React.ReactNode; label: st
 }
 
 function ErrorMessage({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm" role="alert">{children}</div>;
+  return <InlineNotice tone="error">{children}</InlineNotice>;
 }
 
 function Status({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" role="status">{children}</div>;
+  return <InlineNotice tone="success">{children}</InlineNotice>;
 }
 
 function getErrorMessage(error: unknown, fallback: string) {

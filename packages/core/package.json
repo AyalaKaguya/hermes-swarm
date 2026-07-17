@@ -30,6 +30,14 @@
       "types": "./dist/mail/entities/index.d.ts",
       "import": "./dist/mail/entities/index.js"
     },
+    "./support": {
+      "types": "./dist/support/index.d.ts",
+      "import": "./dist/support/index.js"
+    },
+    "./support/entities": {
+      "types": "./dist/support/entities/index.d.ts",
+      "import": "./dist/support/entities/index.js"
+    },
     "./settings": {
       "types": "./dist/settings/index.d.ts",
       "import": "./dist/settings/index.js"
@@ -52,12 +60,14 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"const {rmSync}=require('node:fs'); for (const path of ['dist','tsconfig.tsbuildinfo']) rmSync(path,{recursive:true,force:true})\""
   },
   "dependencies": {
     "typeorm": "^1.0.0"
   },
   "nx": {
+    "projectType": "library",
+    "tags": ["type:lib", "scope:shared", "layer:data-model"],
     "targets": {
       "coverage": {
         "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",

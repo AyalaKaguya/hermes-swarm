@@ -40,22 +40,45 @@ describe("permission keys", () => {
 
   it("formats page access permission identifiers", () => {
     assert.equal(
-      getPageAccessPermissionId("settings.roles", "organization"),
-      "page.settings.roles.access:organization",
+      getPageAccessPermissionId("settings.workspace-access", "tenant"),
+      "page.settings.workspace-access.access:tenant",
     );
   });
 });
 
 describe("page access definitions", () => {
   it("hydrates definitions with their permission ids", () => {
-    const definition = getPageAccessDefinition("settings.custom-smtp");
+    const definition = getPageAccessDefinition("settings.users");
 
-    assert.equal(definition?.permission, "page.settings.custom-smtp.access:organization");
-    assert.deepEqual(definition?.defaultRoles, ["owner", "admin"]);
+    assert.equal(definition?.permission, "page.settings.users.access:tenant");
+    assert.deepEqual(definition?.defaultRoles, ["tenant-owner", "tenant-admin"]);
+  });
+
+  it("exposes role management as tenant governance", () => {
+    const definition = getPageAccessDefinition("settings.workspace-access");
+
+    assert.equal(
+      definition?.permission,
+      "page.settings.workspace-access.access:tenant",
+    );
+    assert.equal(definition?.scope, "tenant");
+    assert.equal(definition?.section, "tenant");
+    assert.deepEqual(definition?.defaultRoles, ["tenant-owner", "tenant-admin"]);
   });
 
   it("returns null for unknown page keys", () => {
     assert.equal(getPageAccessDefinition("missing.page"), null);
+  });
+
+  it("does not expose the removed external notification destination page", () => {
+    assert.equal(
+      getPageAccessDefinition("settings.notification-destinations"),
+      null,
+    );
+    assert.equal(
+      findPageAccessDefinitionByPath("/settings/notification-destinations"),
+      null,
+    );
   });
 
   it("finds the first page definition for a route", () => {
@@ -82,32 +105,46 @@ describe("page access definitions", () => {
     );
   });
 
-  it("uses tenant scope for account-created integration tokens", () => {
-    const definition = getPageAccessDefinition("settings.integrations");
+  it("uses own scope for account-created integration tokens", () => {
+    const definition = getPageAccessDefinition("settings.api-tokens");
 
-    assert.equal(definition?.scope, "tenant");
+    assert.equal(definition?.scope, "own");
     assert.equal(
       definition?.permission,
-      "page.settings.integrations.access:tenant",
+      "page.settings.api-tokens.access:own",
     );
     assert.equal(getPageAccessDefinition("settings.platform-integrations"), null);
   });
 
-  it("defines explicit tenant and department settings ownership", () => {
+  it("defines explicit workspace governance ownership", () => {
     const tenant = getPageAccessDefinition("settings.tenant");
-    const departments = getPageAccessDefinition(
-      "settings.organization.departments",
-    );
+    const users = getPageAccessDefinition("settings.users");
+    const invites = getPageAccessDefinition("settings.invites");
 
     assert.equal(tenant?.scope, "tenant");
     assert.equal(tenant?.href, "/settings/tenant");
-    assert.equal(departments?.scope, "organization");
-    assert.equal(departments?.href, "/settings/organization/departments");
+    assert.equal(tenant?.section, "tenant");
+    assert.equal(tenant?.sectionLabel, "工作空间");
+    assert.equal(users?.scope, "tenant");
+    assert.equal(invites?.scope, "tenant");
+    assert.equal(
+      getPageAccessDefinition("settings.organizations")?.section,
+      "tenant",
+    );
     assert.deepEqual(
-      findPageAccessDefinitionsByPath("/settings/organization/departments").map(
+      findPageAccessDefinitionsByPath("/settings/users").map(
         (definition) => definition.key,
       ),
-      ["settings.organization.departments"],
+      ["settings.users"],
+    );
+    assert.equal(getPageAccessDefinition("settings.organization.departments"), null);
+    assert.equal(
+      getPageAccessDefinition("settings.organization.members")?.scope,
+      "organization",
+    );
+    assert.equal(
+      getPageAccessDefinition("settings.organization.roles")?.scope,
+      "organization",
     );
   });
 });

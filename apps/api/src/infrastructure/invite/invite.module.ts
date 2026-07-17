@@ -4,8 +4,11 @@ import {
   Invite,
   Organization,
   Role,
+  RolePermission,
   User,
   UserOrganization,
+  UserOrganizationRole,
+  UserTenantRole,
 } from "@hermes-swarm/core";
 import { AuthModule } from "../auth/auth.module.js";
 import { MailModule } from "../mail/mail.module.js";
@@ -22,7 +25,16 @@ import { DatabaseModule } from "../../common/database/database.module.js";
     MailModule,
     NotificationsModule,
     SettingsModule,
-    TypeOrmModule.forFeature([Invite, User, Organization, Role, UserOrganization]),
+    TypeOrmModule.forFeature([
+      Invite,
+      User,
+      Organization,
+      Role,
+      RolePermission,
+      UserOrganization,
+      UserOrganizationRole,
+      UserTenantRole,
+    ]),
   ],
   controllers: [InviteController],
   providers: [InviteService],

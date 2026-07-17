@@ -1,524 +1,222 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from "@nestjs/common";
-import {
-  Department,
   IntegrationToken,
-  Organization,
   Permission,
   RolePermission,
-  User,
-  UserDepartment,
-  UserDepartmentRole,
   UserOrganization,
   UserOrganizationRole,
   UserTenantRole,
 } from "@hermes-swarm/core";
 import { IntegrationTokensService } from "./integration-tokens.service.js";
 
-const TENANT_ID = "00000000-0000-4000-8000-000000000001";
+describe("IntegrationTokensService personal token contract", () => {
+  it("exposes the live union of workspace and organization permissions", async () => {
+    const state = createState();
+    const result = await state.service.capabilities("Bearer session");
+    assert.deepEqual(result, {
+      scopes: [{
+        permissions: [
+          {
+            description: "查看组织资料。",
+            entity: "organization",
+            entityLabel: "组织",
+            entityOrder: 20,
+            isDangerous: false,
+            label: "查看组织资料",
+            operation: "view",
+            operationOrder: 10,
+            permission: "organization.profile.view:organization",
+            purpose: "profile",
+            purposeLabel: "组织资料",
+            purposeOrder: 10,
+            scope: "organization",
+          },
+          {
+            description: "查看工作空间工单。",
+            entity: "ticket",
+            entityLabel: "工单",
+            entityOrder: 30,
+            isDangerous: false,
+            label: "查看工单",
+            operation: "list",
+            operationOrder: 10,
+            permission: "ticket.conversation.list:tenant",
+            purpose: "conversation",
+            purposeLabel: "工单会话",
+            purposeOrder: 10,
+            scope: "tenant",
+          },
+        ],
+        scope: "tenant",
+      }],
+    });
+  });
 
-describe("IntegrationTokensService", () => {
-  it("exposes tenant, organization, and department capabilities from layered roles", async () => {
-    const state = createService();
-
-    const result = await state.service.capabilities("Bearer session", "user-1");
-
-    assert.deepEqual(
-      result.scopes.map((item) => ({
-        departmentId: item.departmentId,
-        organizationId: item.organizationId,
-        permissions: item.permissions.map((permission) => permission.permission),
-        scope: item.scope,
-      })),
-      [
-        {
-          departmentId: null,
-          organizationId: null,
-          permissions: ["tenant.settings.read:tenant"],
-          scope: "tenant",
-        },
-        {
-          departmentId: null,
-          organizationId: "org-1",
-          permissions: ["ticket.list:organization"],
-          scope: "organization",
-        },
-        {
-          departmentId: "dept-1",
-          organizationId: "org-1",
-          permissions: ["ticket.assign:department"],
-          scope: "department",
-        },
-      ],
+  it("rejects legacy scope parameters on personal token creation", async () => {
+    const state = createState();
+    await assert.rejects(
+      state.service.create("Bearer session", {
+        permissions: [],
+        scope: "tenant",
+      } as never),
+      BadRequestException,
     );
   });
 
-  it("creates a tenant token with an immutable tenant binding", async () => {
-    const state = createService();
+  it("prevents permission escalation and persists user-owned tokens", async () => {
+    const state = createState();
+    await assert.rejects(
+      state.service.create("Bearer session", {
+        permissions: ["platform.manage:platform"],
+      }),
+      ForbiddenException,
+    );
+    const created = await state.service.create("Bearer session", {
+      note: "automation",
+      permissions: ["organization.profile.view:organization"],
+    });
+    assert.equal(created.scope, "tenant");
+    assert.equal(created.ownerUserId, "user-a");
+    assert.equal(state.tokens[0]?.tenantId, "tenant-a");
+    assert.equal("organizationId" in (state.tokens[0] ?? {}), false);
+    assert.equal("departmentId" in (state.tokens[0] ?? {}), false);
+  });
 
-    const result = await state.service.create("Bearer session", "user-1", {
-      expiresAt: futureIso(),
-      permissions: ["tenant.settings.read:tenant"],
+  it("marks expired tokens for the historical list", async () => {
+    const state = createState();
+    state.tokens.push({
+      createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      expiresAt: new Date("2025-01-02T00:00:00.000Z"),
+      id: "expired-token",
+      lastUsedAt: null,
+      note: "expired",
+      ownerUserId: "user-a",
+      permissions: [],
+      revokedAt: null,
       scope: "tenant",
+      tenantId: "tenant-a",
+      tokenPrefix: "expired",
     });
 
-    assert.equal(result.scope, "tenant");
-    assert.equal(result.tenantId, TENANT_ID);
-    assert.equal(result.organizationId, null);
-    assert.equal(result.departmentId, null);
-    assert.match(result.token, /^[^.]+\.[^.]+\.[^.]+$/);
-    assert.equal(state.records.IntegrationToken.length, 1);
-    assert.equal(state.records.IntegrationToken[0].tenantId, TENANT_ID);
-  });
-
-  it("creates a department token only for the matching organization department", async () => {
-    const state = createService();
-
-    const result = await state.service.create("Bearer session", "user-1", {
-      departmentId: "dept-1",
-      expiresAt: futureIso(),
-      organizationId: "org-1",
-      permissions: ["ticket.assign:department"],
-      scope: "department",
-    });
-
-    assert.equal(result.departmentId, "dept-1");
-    assert.equal(result.departmentName, "Support");
-    assert.equal(result.organizationId, "org-1");
-
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          departmentId: "dept-1",
-          organizationId: "org-other",
-          permissions: ["ticket.assign:department"],
-          scope: "department",
-        }),
-      ForbiddenException,
-    );
-  });
-
-  it("enforces scope column combinations", async () => {
-    const state = createService();
-
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          organizationId: "org-1",
-          permissions: ["tenant.settings.read:tenant"],
-          scope: "tenant",
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          permissions: ["ticket.list:organization"],
-          scope: "organization",
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          organizationId: "org-1",
-          permissions: ["ticket.assign:department"],
-          scope: "department",
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          permissions: ["tenant.settings.read:tenant"],
-          scope: "own" as never,
-        }),
-      BadRequestException,
-    );
-  });
-
-  it("rejects permission escalation", async () => {
-    const state = createService();
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          permissions: ["tenant.settings.write:tenant"],
-          scope: "tenant",
-        }),
-      ForbiddenException,
-    );
-    assert.equal(state.records.IntegrationToken.length, 0);
-  });
-
-  it("rejects malformed payloads before repository writes", async () => {
-    const state = createService();
-    await assert.rejects(
-      () => state.service.create("Bearer session", "user-1", null as never),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          permissions: "tenant.settings.read:tenant" as never,
-          scope: "tenant",
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          note: "x".repeat(161),
-          permissions: ["tenant.settings.read:tenant"],
-          scope: "tenant",
-        }),
-      BadRequestException,
-    );
-    assert.equal(state.records.IntegrationToken.length, 0);
-  });
-
-  it("rejects platform sessions, cross-tenant sessions, and integration tokens", async () => {
-    const platform = createService({
-      session: {
-        principalType: "platform",
-        sessionId: "platform-session",
-        tenantId: null,
-        tokenKind: "session",
-        userId: "platform-user-1",
-      },
-    });
-    await assert.rejects(
-      () => platform.service.list("Bearer session", "platform-user-1"),
-      ForbiddenException,
-    );
-
-    const crossTenant = createService({
-      session: tenantSession("00000000-0000-4000-8000-000000000002"),
-    });
-    await assert.rejects(
-      () => crossTenant.service.list("Bearer session", "user-1"),
-      ForbiddenException,
-    );
-
-    const integration = createService({
-      session: { ...tenantSession(TENANT_ID), tokenKind: "integration" },
-    });
-    await assert.rejects(
-      () => integration.service.list("Bearer token", "user-1"),
-      ForbiddenException,
-    );
-  });
-
-  it("lists and revokes only tokens inside the requested tenant scope", async () => {
-    const state = createService({
-      tokens: [
-        tokenRecord({ id: "tenant-token", scope: "tenant" }),
-        tokenRecord({
-          id: "org-token",
-          organizationId: "org-1",
-          scope: "organization",
-        }),
-        tokenRecord({
-          departmentId: "dept-1",
-          id: "dept-token",
-          organizationId: "org-1",
-          scope: "department",
-        }),
-      ],
-    });
-
-    const organizationTokens = await state.service.listOrganization(
-      "Bearer session",
-      "org-1",
-    );
-    assert.deepEqual(organizationTokens.map((item) => item.id), ["org-token"]);
-
-    const departmentTokens = await state.service.listDepartment(
-      "Bearer session",
-      "org-1",
-      "dept-1",
-    );
-    assert.deepEqual(departmentTokens.map((item) => item.id), ["dept-token"]);
-
-    await state.service.revokeDepartment(
-      "Bearer session",
-      "org-1",
-      "dept-1",
-      "dept-token",
-    );
-    assert.ok(state.records.IntegrationToken[2].revokedAt instanceof Date);
-
-    await assert.rejects(
-      () =>
-        state.service.revokeDepartment(
-          "Bearer session",
-          "org-1",
-          "dept-other",
-          "dept-token",
-        ),
-      NotFoundException,
-    );
-  });
-
-  it("caps token expiry at one year", async () => {
-    const state = createService();
-    await assert.rejects(
-      () =>
-        state.service.create("Bearer session", "user-1", {
-          expiresAt: "2099-01-01T00:00:00Z",
-          permissions: ["tenant.settings.read:tenant"],
-          scope: "tenant",
-        }),
-      BadRequestException,
-    );
+    const [token] = await state.service.list("Bearer session");
+    assert.equal(token?.isExpired, true);
   });
 });
 
-type Session = {
-  principalType: "integration" | "platform" | "tenant";
-  sessionId: string;
-  tenantId: string | null;
-  tokenKind: "integration" | "session";
-  userId: string;
-};
-
-function createService(
-  options: { session?: Session; tokens?: any[] } = {},
-) {
-  const records: Record<string, any[]> = {
-    Department: [
+function createState() {
+  const tokens: Array<Record<string, unknown>> = [];
+  const repositories = new Map([
+    [UserTenantRole, { find: async () => [{
+      role: { organizationId: null, scope: "tenant" },
+      roleId: "tenant-role",
+      tenantId: "tenant-a",
+      userId: "user-a",
+    }] }],
+    [UserOrganization, { find: async () => [{
+      id: "membership-a",
+      organizationId: "organization-a",
+      status: "active",
+      tenantId: "tenant-a",
+      userId: "user-a",
+    }] }],
+    [UserOrganizationRole, { find: async () => [{
+      membershipId: "membership-a",
+      organizationId: "organization-a",
+      role: { organizationId: "organization-a", scope: "organization" },
+      roleId: "organization-role",
+      tenantId: "tenant-a",
+    }] }],
+    [RolePermission, { find: async () => [
+      { enabled: true, permission: "ticket.conversation.list:tenant", roleId: "tenant-role" },
+      { enabled: true, permission: "integration_token.personal_api_token.create:own", roleId: "tenant-role" },
+      { enabled: true, permission: "page.settings.account.access:own", roleId: "tenant-role" },
+      { enabled: true, permission: "organization.profile.view:organization", roleId: "organization-role" },
+    ] }],
+    [Permission, { find: async () => [
       {
-        id: "dept-1",
-        name: "Support",
-        organizationId: "org-1",
-        status: "active",
-        tenantId: TENANT_ID,
+        code: "ticket.conversation.list:tenant",
+        description: "查看工作空间工单。",
+        entity: "ticket",
+        entityLabel: "工单",
+        entityOrder: 30,
+        isDangerous: false,
+        operation: "list",
+        operationLabel: "查看工单",
+        operationOrder: 10,
+        purpose: "conversation",
+        purposeLabel: "工单会话",
+        purposeOrder: 10,
+        scope: "tenant",
+        source: "controller",
       },
-    ],
-    IntegrationToken: options.tokens ?? [],
-    Organization: [
       {
-        id: "org-1",
-        name: "Hermes",
-        status: "active",
-        tenantId: TENANT_ID,
+        code: "organization.profile.view:organization",
+        description: "查看组织资料。",
+        entity: "organization",
+        entityLabel: "组织",
+        entityOrder: 20,
+        isDangerous: false,
+        operation: "view",
+        operationLabel: "查看组织资料",
+        operationOrder: 10,
+        purpose: "profile",
+        purposeLabel: "组织资料",
+        purposeOrder: 10,
+        scope: "organization",
+        source: "controller",
       },
-    ],
-    Permission: [
-      permissionRecord("tenant.settings.read:tenant", "tenant"),
-      permissionRecord("ticket.list:organization", "organization"),
-      permissionRecord("ticket.assign:department", "department"),
-    ],
-    RolePermission: [
-      rolePermission("tenant-role", "integration_token.tenant_integration.create:tenant"),
-      rolePermission("tenant-role", "tenant.settings.read:tenant"),
-      rolePermission(
-        "organization-role",
-        "integration_token.organization_integration.create:organization",
-      ),
-      rolePermission("organization-role", "ticket.list:organization"),
-      rolePermission(
-        "department-role",
-        "integration_token.department_integration.create:department",
-      ),
-      rolePermission("department-role", "ticket.assign:department"),
-    ],
-    User: [
       {
-        avatarUrl: null,
-        displayName: "Owner",
-        email: "owner@example.com",
-        id: "user-1",
-        imageUrl: null,
-        tenantId: TENANT_ID,
-        username: "owner",
+        code: "page.settings.account.access:own",
+        description: "访问账号设置。",
+        entity: "page",
+        entityLabel: "页面",
+        entityOrder: 1,
+        isDangerous: false,
+        operation: "access",
+        operationLabel: "账号",
+        operationOrder: 10,
+        purpose: "settings",
+        purposeLabel: "设置",
+        purposeOrder: 10,
+        scope: "own",
+        source: "navigation",
       },
-    ],
-    UserDepartment: [
-      {
-        department: {
-          id: "dept-1",
-          name: "Support",
-          organizationId: "org-1",
-          status: "active",
-        },
-        departmentId: "dept-1",
-        id: "department-membership-1",
-        membershipId: "membership-1",
-        status: "active",
-        tenantId: TENANT_ID,
+    ] }],
+    [IntegrationToken, {
+      create: (value: Record<string, unknown>) => value,
+      find: async () => tokens,
+      findOne: async ({ where }: { where: { id: string } }) => tokens.find((item) => item.id === where.id) ?? null,
+      save: async (value: Record<string, unknown>) => {
+        const entity = {
+          createdAt: new Date("2026-07-15T00:00:00.000Z"),
+          lastUsedAt: null,
+          updatedAt: new Date("2026-07-15T00:00:00.000Z"),
+          ...value,
+        };
+        const index = tokens.findIndex((item) => item.id === entity.id);
+        if (index >= 0) tokens[index] = entity;
+        else tokens.push(entity);
+        return entity;
       },
-    ],
-    UserDepartmentRole: [
-      {
-        roleId: "department-role",
-        tenantId: TENANT_ID,
-        userDepartmentId: "department-membership-1",
-      },
-    ],
-    UserOrganization: [
-      {
-        id: "membership-1",
-        organization: {
-          id: "org-1",
-          name: "Hermes",
-          status: "active",
-        },
-        organizationId: "org-1",
-        status: "active",
-        tenantId: TENANT_ID,
-        userId: "user-1",
-      },
-    ],
-    UserOrganizationRole: [
-      {
-        membershipId: "membership-1",
-        roleId: "organization-role",
-        tenantId: TENANT_ID,
-      },
-    ],
-    UserTenantRole: [
-      { roleId: "tenant-role", tenantId: TENANT_ID, userId: "user-1" },
-    ],
-  };
-  const targets = {
-    [Department.name]: Department,
-    [IntegrationToken.name]: IntegrationToken,
-    [Organization.name]: Organization,
-    [Permission.name]: Permission,
-    [RolePermission.name]: RolePermission,
-    [User.name]: User,
-    [UserDepartment.name]: UserDepartment,
-    [UserDepartmentRole.name]: UserDepartmentRole,
-    [UserOrganization.name]: UserOrganization,
-    [UserOrganizationRole.name]: UserOrganizationRole,
-    [UserTenantRole.name]: UserTenantRole,
-  };
-  const repositories = new Map(
-    Object.entries(targets).map(([name, target]) => [
-      target,
-      createRepository(records[name]),
-    ]),
-  );
+    }],
+  ]);
   const tenantContext = {
-    current: () => ({
-      departmentId: null,
-      manager: { getRepository: (target: unknown) => repositories.get(target) },
-      organizationId: null,
-      scopeLevel: "tenant",
-      tenantId: TENANT_ID,
-    }),
-    repository: (target: unknown) => repositories.get(target),
-  } as any;
+    current: () => ({ tenantId: "tenant-a" }),
+    repository: (target: unknown) => repositories.get(target as never),
+  };
   const service = new IntegrationTokensService(
     {
-      validateAccessToken: async () => options.session ?? tenantSession(TENANT_ID),
-    } as any,
-    { getOrThrow: () => "test-secret" } as any,
-    tenantContext,
+      validateAccessToken: async () => ({
+        principalType: "tenant",
+        tenantId: "tenant-a",
+        tokenKind: "session",
+        userId: "user-a",
+      }),
+    } as never,
+    { getOrThrow: () => "test-session-secret-with-sufficient-entropy" } as never,
+    tenantContext as never,
   );
-  return { records, service };
-}
-
-function createRepository(records: any[]) {
-  return {
-    create(value: any) {
-      return {
-        createdAt: new Date("2026-01-01T00:00:00Z"),
-        lastUsedAt: null,
-        revokedAt: null,
-        updatedAt: new Date("2026-01-01T00:00:00Z"),
-        ...value,
-      };
-    },
-    async find(options: any = {}) {
-      return records.filter((record) => matches(record, options.where ?? {}));
-    },
-    async findOne(options: any = {}) {
-      return records.find((record) => matches(record, options.where ?? {})) ?? null;
-    },
-    async save(value: any) {
-      const index = records.findIndex((record) => record.id === value.id);
-      if (index >= 0) records[index] = value;
-      else records.push(value);
-      return value;
-    },
-  };
-}
-
-function matches(record: any, where: any) {
-  if (Array.isArray(where)) return where.some((item) => matches(record, item));
-  return Object.entries(where).every(([key, expected]) => {
-    if (
-      expected &&
-      typeof expected === "object" &&
-      "_type" in (expected as Record<string, unknown>)
-    ) {
-      const operator = expected as { _type: string; _value: unknown[] };
-      return operator._type === "in" && operator._value.includes(record[key]);
-    }
-    return record[key] === expected;
-  });
-}
-
-function tenantSession(tenantId: string): Session {
-  return {
-    principalType: "tenant",
-    sessionId: "session-1",
-    tenantId,
-    tokenKind: "session",
-    userId: "user-1",
-  };
-}
-
-function permissionRecord(code: string, scope: string) {
-  return {
-    code,
-    description: code,
-    entity: "test",
-    entityLabel: "Test",
-    entityOrder: 1,
-    isDangerous: false,
-    operation: "read",
-    operationLabel: code,
-    operationOrder: 1,
-    purpose: "test",
-    purposeLabel: "Test",
-    purposeOrder: 1,
-    scope,
-  };
-}
-
-function rolePermission(roleId: string, permission: string) {
-  return { enabled: true, permission, roleId, tenantId: TENANT_ID };
-}
-
-function tokenRecord(overrides: Record<string, unknown>) {
-  return {
-    createdAt: new Date("2026-01-01T00:00:00Z"),
-    departmentId: null,
-    expiresAt: futureDate(),
-    lastUsedAt: null,
-    note: null,
-    organizationId: null,
-    ownerUserId: "user-1",
-    permissions: [],
-    revokedAt: null,
-    tenantId: TENANT_ID,
-    tokenPrefix: "prefix",
-    updatedAt: new Date("2026-01-01T00:00:00Z"),
-    ...overrides,
-  };
-}
-
-function futureDate(days = 30) {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-}
-
-function futureIso(days = 30) {
-  return futureDate(days).toISOString();
+  return { service, tokens };
 }

@@ -41,7 +41,7 @@ const SECRET_SETTING_KEY_PATTERNS = [
 export type PlatformSettingDefinition = {
   defaultValue?: string;
   key: string;
-  scope?: "organization" | "platform";
+  scope?: "platform" | "tenant";
   valueOptions?: readonly SettingValueOption[];
   valueType: SettingValueType;
 };
@@ -53,7 +53,7 @@ export type PlatformDefaultSetting = {
   valueType: SettingValueType;
 };
 
-export type OrganizationDefaultFieldDefinition = {
+export type TenantDefaultFieldDefinition = {
   field: "currency" | "dateFormat" | "preferredLanguage" | "regionCode" | "timeZone";
   key: string;
   label: string;
@@ -61,7 +61,7 @@ export type OrganizationDefaultFieldDefinition = {
   valueType: SettingValueType;
 };
 
-export type OrganizationControlSettingDefinition = {
+export type TenantControlSettingDefinition = {
   key: string;
   label: string;
   options: readonly SettingOption[];
@@ -73,7 +73,7 @@ export type FeatureSettingDefinition = {
   description: string;
   key: string;
   label: string;
-  scope: "organization" | "platform" | "tenant";
+  scope: "platform" | "tenant";
   valueOptions?: readonly SettingValueOption[];
   valueType: "boolean";
 };
@@ -91,12 +91,12 @@ export const PLATFORM_TITLE_SETTING_KEY = "platform.title";
 
 export const PLATFORM_SETTING_KEYS = {
   allowOrganizationCreation: "platform.allowOrganizationCreation",
-  defaultCurrency: "organization.defaultCurrency",
-  defaultDateFormat: "organization.defaultDateFormat",
-  defaultLanguage: "organization.defaultLanguage",
+  defaultCurrency: "tenant.defaultCurrency",
+  defaultDateFormat: "tenant.defaultDateFormat",
+  defaultLanguage: "tenant.defaultLanguage",
   defaultOrganizationStatus: "platform.defaultOrganizationStatus",
-  defaultRegionCode: "organization.defaultRegionCode",
-  defaultTimeZone: "organization.defaultTimeZone",
+  defaultRegionCode: "tenant.defaultRegionCode",
+  defaultTimeZone: "tenant.defaultTimeZone",
   messageServiceEnabled: "platform.messageServiceEnabled",
   messageServiceProvider: "platform.messageServiceProvider",
   passwordMinLength: "auth.passwordPolicy.minLength",
@@ -161,7 +161,7 @@ export const ORGANIZATION_STATUS_OPTIONS = [
   { label: "停用", value: "suspended" },
 ] as const satisfies readonly SettingOption[];
 
-export const ORGANIZATION_DEFAULT_FIELD_DEFINITIONS = [
+export const TENANT_DEFAULT_FIELD_DEFINITIONS = [
   {
     field: "currency",
     key: PLATFORM_SETTING_KEYS.defaultCurrency,
@@ -197,16 +197,16 @@ export const ORGANIZATION_DEFAULT_FIELD_DEFINITIONS = [
     options: LANGUAGE_OPTIONS,
     valueType: "enum",
   },
-] as const satisfies readonly OrganizationDefaultFieldDefinition[];
+] as const satisfies readonly TenantDefaultFieldDefinition[];
 
-export const ORGANIZATION_CONTROL_SETTING_DEFINITIONS = [
+export const TENANT_CONTROL_SETTING_DEFINITIONS = [
   {
     key: PLATFORM_SETTING_KEYS.passwordMinLength,
     label: "密码最小长度",
     options: PASSWORD_LENGTH_OPTIONS,
     valueType: "enum",
   },
-] as const satisfies readonly OrganizationControlSettingDefinition[];
+] as const satisfies readonly TenantControlSettingDefinition[];
 
 export const PLATFORM_SETTING_DEFINITIONS = {
   allowOrganizationCreation: {
@@ -218,21 +218,21 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   defaultCurrency: {
     defaultValue: "CNY",
     key: PLATFORM_SETTING_KEYS.defaultCurrency,
-    scope: "organization",
+    scope: "tenant",
     valueOptions: CURRENCY_OPTIONS,
     valueType: "enum",
   },
   defaultDateFormat: {
     defaultValue: "YYYY-MM-DD",
     key: PLATFORM_SETTING_KEYS.defaultDateFormat,
-    scope: "organization",
+    scope: "tenant",
     valueOptions: DATE_FORMAT_OPTIONS,
     valueType: "enum",
   },
   defaultLanguage: {
     defaultValue: "zh-CN",
     key: PLATFORM_SETTING_KEYS.defaultLanguage,
-    scope: "organization",
+    scope: "tenant",
     valueOptions: LANGUAGE_OPTIONS,
     valueType: "enum",
   },
@@ -246,14 +246,14 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   defaultRegionCode: {
     defaultValue: "CN",
     key: PLATFORM_SETTING_KEYS.defaultRegionCode,
-    scope: "organization",
+    scope: "tenant",
     valueOptions: REGION_OPTIONS,
     valueType: "enum",
   },
   defaultTimeZone: {
     defaultValue: "Asia/Shanghai",
     key: PLATFORM_SETTING_KEYS.defaultTimeZone,
-    scope: "organization",
+    scope: "tenant",
     valueOptions: TIME_ZONE_OPTIONS,
     valueType: "enum",
   },
@@ -272,7 +272,7 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   passwordMinLength: {
     defaultValue: "8",
     key: PLATFORM_SETTING_KEYS.passwordMinLength,
-    scope: "organization",
+    scope: "tenant",
     valueOptions: PASSWORD_LENGTH_OPTIONS,
     valueType: "enum",
   },
@@ -318,31 +318,33 @@ export const FEATURE_SETTING_DEFINITIONS = [
   {
     defaultValue: "true",
     key: FEATURE_SETTING_KEYS.ticketing,
-    label: "组织工单提交",
-    description: "允许当前组织成员提交组织工单",
-    scope: "organization",
+    label: "工作空间工单提交",
+    description: "允许工作空间成员从所属组织提交工单",
+    scope: "tenant",
     valueType: "boolean",
   },
   {
     defaultValue: "true",
     key: FEATURE_SETTING_KEYS.ticketingHandling,
-    label: "组织工单处理",
-    description: "允许有处理权限的成员接收、回复并关闭组织工单",
-    scope: "organization",
+    label: "工作空间工单处理",
+    description: "允许有处理权限的成员接收、回复并关闭可见工单",
+    scope: "tenant",
     valueType: "boolean",
   },
   {
+    defaultValue: "true",
     key: FEATURE_SETTING_KEYS.email,
     label: "邮件功能",
-    description: "启用或禁用组织邮件发送能力",
-    scope: "organization",
+    description: "启用或禁用工作空间邮件发送能力",
+    scope: "tenant",
     valueType: "boolean",
   },
   {
+    defaultValue: "true",
     key: FEATURE_SETTING_KEYS.invite,
     label: "邀请功能",
-    description: "允许通过邮件邀请新用户加入组织",
-    scope: "organization",
+    description: "允许通过邮件邀请用户加入工作空间及指定组织",
+    scope: "tenant",
     valueType: "boolean",
   },
   {
@@ -355,7 +357,7 @@ export const FEATURE_SETTING_DEFINITIONS = [
   {
     key: FEATURE_SETTING_KEYS.organizationManagement,
     label: "组织管理",
-    description: "启用组织级别的管理功能",
+    description: "启用工作空间组织树管理功能",
     scope: "tenant",
     valueType: "boolean",
   },
@@ -375,14 +377,14 @@ export const FEATURE_SETTING_DEFINITIONS = [
   },
 ] as const satisfies readonly FeatureSettingDefinition[];
 
-export const PLATFORM_ORGANIZATION_SETTING_DEFAULTS: readonly PlatformDefaultSetting[] = [
-  ...ORGANIZATION_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
+export const PLATFORM_TENANT_SETTING_DEFAULTS: readonly PlatformDefaultSetting[] = [
+  ...TENANT_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
     name: definition.key,
     value: getPlatformSettingDefinition(definition.key).defaultValue ?? "",
     valueOptions: getPlatformSettingDefinition(definition.key).valueOptions,
     valueType: getPlatformSettingDefinition(definition.key).valueType,
   })),
-  ...ORGANIZATION_CONTROL_SETTING_DEFINITIONS.map((definition) => ({
+  ...TENANT_CONTROL_SETTING_DEFINITIONS.map((definition) => ({
     name: definition.key,
     value: getPlatformSettingDefinition(definition.key).defaultValue ?? "",
     valueOptions: getPlatformSettingDefinition(definition.key).valueOptions,

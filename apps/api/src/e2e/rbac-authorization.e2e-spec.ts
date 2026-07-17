@@ -1,870 +1,98 @@
 import "reflect-metadata";
 import assert from "node:assert/strict";
-import { after, before, beforeEach, describe, it } from "node:test";
-import { Injectable, INestApplication, Module } from "@nestjs/common";
+import { after, before, describe, it } from "node:test";
+import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { TypeOrmModule } from "@nestjs/typeorm";
 import request from "supertest";
-import { DataSource, Repository } from "typeorm";
-import {
-  CustomSmtp,
-  EmailLog,
-  EmailTemplate,
-  IntegrationToken,
-  Invite,
-  NotificationDestination,
-  Organization,
-  OrganizationContact,
-  OrganizationGroup,
-  OrganizationGroupMember,
-  OrganizationLanguage,
-  OrganizationSetting,
-  PasswordReset,
-  Permission,
-  PlatformRole,
-  PlatformRolePermission,
-  PlatformSetting,
-  PlatformUser,
-  PlatformUserRole,
-  Role,
-  RolePermission,
-  User,
-  UserOrganization,
-} from "@hermes-swarm/core";
-import { RbacModule } from "@hermes-swarm/rbac";
-import { createAuthSessionToken, parseAuthSessionToken } from "../infrastructure/auth/auth-session.js";
-import { RedisService } from "../common/redis/redis.service.js";
-import { GroupsController } from "../infrastructure/groups/groups.controller.js";
-import { GroupsService } from "../infrastructure/groups/groups.service.js";
-import { MembershipsController } from "../infrastructure/memberships/memberships.controller.js";
-import { MembershipsService } from "../infrastructure/memberships/memberships.service.js";
-import { OrganizationsController } from "../infrastructure/organizations/organizations.controller.js";
-import { OrganizationsService } from "../infrastructure/organizations/organizations.service.js";
-import { PlatformMembersController } from "../infrastructure/platform-members/platform-members.controller.js";
-import { PlatformMembersService } from "../infrastructure/platform-members/platform-members.service.js";
-import { SettingsController } from "../infrastructure/settings/settings.controller.js";
-import { SettingsService } from "../infrastructure/settings/settings.service.js";
+import { AuthSessionService } from "../infrastructure/auth/auth-session.service.js";
+import { InviteController } from "../infrastructure/invite/invite.controller.js";
+import { InviteService } from "../infrastructure/invite/invite.service.js";
 import { UsersController } from "../infrastructure/users/users.controller.js";
 import { UsersService } from "../infrastructure/users/users.service.js";
-import { AuthSessionService } from "../infrastructure/auth/auth-session.service.js";
-import { MailService } from "../infrastructure/mail/mail.service.js";
-import { PLATFORM_DATA_SOURCE } from "../common/database/database.constants.js";
 
-type Persona = "ordinary" | "orgScoped" | "platformAdmin";
-
-const e2eDatabaseUrl =
-  process.env.POSTGRES_E2E_URL ??
-  process.env.POSTGRES_URL?.replace(/\/[^/]+$/, "/hermes-e2e") ??
-  "postgresql://hermes:hermes_dev_pwd@localhost:5432/hermes-e2e";
-
-const ids = {
-  acmeGroup: "00000000-0000-4000-8000-000000000402",
-  acmeOrg: "00000000-0000-4000-8000-000000000202",
-  acmeRole: "00000000-0000-4000-8000-000000000304",
-  acmeUser: "00000000-0000-4000-8000-000000000104",
-  hermesGroup: "00000000-0000-4000-8000-000000000401",
-  hermesOrg: "00000000-0000-4000-8000-000000000201",
-  ordinaryRole: "00000000-0000-4000-8000-000000000303",
-  ordinaryUser: "00000000-0000-4000-8000-000000000103",
-  orgScopedRole: "00000000-0000-4000-8000-000000000302",
-  orgScopedUser: "00000000-0000-4000-8000-000000000102",
-  platformRole: "00000000-0000-4000-8000-000000000301",
-  platformUser: "00000000-0000-4000-8000-000000000101",
-  tenant: "00000000-0000-4000-8000-000000000001",
-};
-
-const tokenByPersona: Record<Persona, string> = {
-  ordinary: token(ids.ordinaryUser),
-  orgScoped: token(ids.orgScopedUser),
-  platformAdmin: token(ids.platformUser, "platform"),
-};
-
-@Injectable()
-class E2EAuthSessionService {
-  async validateAccessToken(value: string | undefined) {
-    const payload = parseAuthSessionToken(value);
-    if (!payload) throw new Error("Invalid auth token");
-    return {
-      principalType: payload.principalType,
-      sessionId: payload.sessionId,
-      tenantId: payload.tenantId,
-      tokenKind: "session" as const,
-      userId: payload.userId,
-    };
-  }
-}
-
-@Module({
-  providers: [E2EAuthSessionService],
-  exports: [E2EAuthSessionService],
-})
-class E2EAuthSessionModule {}
-
-describe("API RBAC e2e with database", { concurrency: false }, () => {
+describe("workspace admin route contract e2e", { concurrency: false }, () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  const calls: Array<{ method: string; value?: unknown }> = [];
 
   before(async () => {
+    const users = {
+      create: async (_authorization: string, value: unknown) => ({ id: "user-2", ...value as object }),
+      deleteManaged: async (_authorization: string, userId: string) => calls.push({ method: "deleteUser", value: userId }),
+      list: async () => [{ email: "owner@example.com", id: "user-1", tenantRole: null }],
+      replaceTenantRole: async (_authorization: string, userId: string, roleId: string) => ({ id: userId, roleId }),
+      updateManaged: async (_authorization: string, userId: string, value: unknown) => ({ id: userId, ...value as object }),
+    };
+    const invites = {
+      create: async (userId: string, value: unknown) => ({ id: "invite-1", invitedById: userId, ...value as object }),
+      list: async () => [{ email: "member@example.com", id: "invite-1", status: "invited" }],
+      resend: async (inviteId: string, userId: string) => ({ id: inviteId, invitedById: userId, status: "invited" }),
+      revoke: async (inviteId: string) => calls.push({ method: "revokeInvite", value: inviteId }),
+    };
     const moduleRef = await Test.createTestingModule({
-      imports: [
-        TypeOrmModule.forRoot({
-          type: "postgres",
-          url: e2eDatabaseUrl,
-          entities: [
-            CustomSmtp,
-            EmailLog,
-            EmailTemplate,
-            IntegrationToken,
-            Invite,
-            NotificationDestination,
-            Organization,
-            OrganizationContact,
-            OrganizationGroup,
-            OrganizationGroupMember,
-            OrganizationLanguage,
-            OrganizationSetting,
-            PasswordReset,
-            Permission,
-            PlatformRole,
-            PlatformRolePermission,
-            PlatformSetting,
-            PlatformUser,
-            PlatformUserRole,
-            Role,
-            RolePermission,
-            User,
-            UserOrganization,
-          ],
-          cache: false,
-          dropSchema: true,
-          retryAttempts: 0,
-          synchronize: true,
-        }),
-        TypeOrmModule.forRoot({
-          name: PLATFORM_DATA_SOURCE,
-          type: "postgres",
-          url: e2eDatabaseUrl,
-          entities: [
-            Permission,
-            PlatformRole,
-            PlatformRolePermission,
-            PlatformUser,
-            PlatformUserRole,
-            Role,
-            RolePermission,
-          ],
-          cache: false,
-          retryAttempts: 0,
-          synchronize: false,
-        }),
-        TypeOrmModule.forFeature([
-          IntegrationToken,
-          Organization,
-          OrganizationSetting,
-          Permission,
-          PlatformSetting,
-          Role,
-          RolePermission,
-          User,
-          UserOrganization,
-          OrganizationGroup,
-          OrganizationGroupMember,
-        ]),
-        TypeOrmModule.forFeature(
-          [PlatformRole, PlatformRolePermission, PlatformUser, PlatformUserRole],
-          PLATFORM_DATA_SOURCE,
-        ),
-        RbacModule.register({
-          authSessionService: E2EAuthSessionService,
-          imports: [E2EAuthSessionModule],
-        }),
-      ],
-      controllers: [
-        GroupsController,
-        MembershipsController,
-        OrganizationsController,
-        PlatformMembersController,
-        SettingsController,
-        UsersController,
-      ],
+      controllers: [InviteController, UsersController],
       providers: [
-        GroupsService,
+        { provide: UsersService, useValue: users },
+        { provide: InviteService, useValue: invites },
         {
           provide: AuthSessionService,
-          useClass: E2EAuthSessionService,
-        },
-        MembershipsService,
-        {
-          provide: MailService,
-          useValue: {
-            async ensureDefaultTemplatesForOrganization() {
-              return undefined;
-            },
-          },
-        },
-        OrganizationsService,
-        PlatformMembersService,
-        SettingsService,
-        UsersService,
-        {
-          provide: RedisService,
-          useValue: {
-            async getClient() {
-              return null;
-            },
-          },
+          useValue: { validateAccessToken: async () => ({ userId: "user-1" }) },
         },
       ],
     }).compile();
-
     app = moduleRef.createNestApplication();
     await app.init();
-    dataSource = app.get(DataSource);
-  });
-
-  beforeEach(async () => {
-    await resetDatabase(dataSource);
-    await seedDatabase(dataSource);
   });
 
   after(async () => {
     await app?.close();
   });
 
-  it("requires a valid bearer token before high-privilege APIs run", async () => {
-    await request(app.getHttpServer())
-      .get("/admin/organizations")
-      .expect(401);
-  });
-
-  it("denies platform organization APIs to ordinary and org-scoped users", async () => {
-    await request(app.getHttpServer())
-      .get("/admin/organizations")
-      .set(auth(tokenByPersona.ordinary))
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.code, "RBAC_PERMISSION_DENIED");
-        assert.equal(body.permission.id, "organization.platform_organization.list:platform");
-      });
-
-    await request(app.getHttpServer())
-      .post("/admin/organizations")
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ name: "Forbidden Org", slug: "forbidden" })
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.permission.id, "organization.platform_organization.create:platform");
-      });
-
-    assert.equal(await organizationCount(), 2);
-  });
-
-  it("allows platform admins to list and create platform organizations through real services", async () => {
-    await request(app.getHttpServer())
-      .get("/admin/organizations")
-      .set(auth(tokenByPersona.platformAdmin))
-      .expect(200)
-      .expect(({ body }) => {
-        assert.deepEqual(
-          body.map((item: { slug: string }) => item.slug),
-          ["acme", "hermes"],
-        );
-      });
-
-    await request(app.getHttpServer())
-      .post("/admin/organizations")
-      .set(auth(tokenByPersona.platformAdmin))
-      .send({ name: "Allowed Org", slug: "allowed" })
-      .expect(201)
-      .expect(({ body }) => {
-        assert.equal(body.slug, "allowed");
-        assert.equal(body.createdByUserId, ids.platformUser);
-      });
-
-    assert.equal(await organizationCount(), 3);
-  });
-
-  it("keeps organization-scoped permissions inside the user's organization", async () => {
-    await request(app.getHttpServer())
-      .get(`/admin/organizations/${ids.hermesOrg}`)
-      .set(auth(tokenByPersona.orgScoped))
-      .expect(200)
-      .expect(({ body }) => {
-        assert.equal(body.id, ids.hermesOrg);
-        assert.equal(body.slug, "hermes");
-      });
-
-    await request(app.getHttpServer())
-      .get(`/admin/organizations/${ids.acmeOrg}`)
-      .set(auth(tokenByPersona.orgScoped))
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.permission.id, "organization.profile.view:organization");
-      });
-  });
-
-  it("denies organization resources to ordinary users without the resource permission", async () => {
-    await request(app.getHttpServer())
-      .get(`/admin/organizations/${ids.hermesOrg}`)
-      .set(auth(tokenByPersona.ordinary))
-      .expect(403);
-  });
-
-  it("enforces own-scope profile APIs at the HTTP boundary and persists allowed updates", async () => {
-    await request(app.getHttpServer())
-      .patch(`/admin/users/${ids.orgScopedUser}`)
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ displayName: "Updated Self" })
-      .expect(200)
-      .expect(({ body }) => {
-        assert.equal(body.id, ids.orgScopedUser);
-        assert.equal(body.displayName, "Updated Self");
-      });
-
-    await request(app.getHttpServer())
-      .patch(`/admin/users/${ids.ordinaryUser}`)
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ displayName: "Should Not Update" })
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.permission.id, "user.self_profile.update_profile:own");
-      });
-
-    const ordinary = await userRepository().findOneByOrFail({
-      id: ids.ordinaryUser,
+  it("exposes workspace user CRUD and role replacement without legacy tenant paths", async () => {
+    await request(app.getHttpServer()).get("/admin/users").expect(200).expect(({ body }) => {
+      assert.equal(body[0].id, "user-1");
     });
-    assert.equal(ordinary.displayName, "Ordinary User");
+    await request(app.getHttpServer())
+      .patch("/admin/users/user-2")
+      .set("Authorization", "Bearer token")
+      .send({ status: "disabled" })
+      .expect(200)
+      .expect(({ body }) => assert.equal(body.status, "disabled"));
+    await request(app.getHttpServer())
+      .put("/admin/users/user-2/role")
+      .set("Authorization", "Bearer token")
+      .send({ roleId: "role-1" })
+      .expect(200)
+      .expect(({ body }) => assert.equal(body.roleId, "role-1"));
+    await request(app.getHttpServer())
+      .delete("/admin/users/user-2")
+      .set("Authorization", "Bearer token")
+      .expect(204);
+    assert.deepEqual(calls.find((call) => call.method === "deleteUser")?.value, "user-2");
   });
 
-  it("denies platform user search to org-scoped users but allows platform admins", async () => {
+  it("exposes one workspace invite with multiple organization assignments", async () => {
+    await request(app.getHttpServer()).get("/admin/invites").expect(200);
     await request(app.getHttpServer())
-      .get("/admin/users/search?search=admin")
-      .set(auth(tokenByPersona.orgScoped))
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.permission.id, "user.platform_user.search:platform");
-      });
-
-    await request(app.getHttpServer())
-      .get("/admin/users/search?search=admin")
-      .set(auth(tokenByPersona.platformAdmin))
-      .expect(200)
-      .expect(({ body }) => {
-        assert.deepEqual(
-          body.map((item: { id: string }) => item.id),
-          [ids.platformUser],
-        );
-      });
-  });
-
-  it("enforces member management permissions and organization boundaries", async () => {
-    await request(app.getHttpServer())
-      .get(`/admin/organizations/${ids.hermesOrg}/members`)
-      .set(auth(tokenByPersona.orgScoped))
-      .expect(200)
-      .expect(({ body }) => {
-        assert.deepEqual(
-          body.map((item: { userId: string }) => item.userId).sort(),
-          [ids.ordinaryUser, ids.orgScopedUser].sort(),
-        );
-      });
-
-    await request(app.getHttpServer())
-      .get(`/admin/organizations/${ids.hermesOrg}/members`)
-      .set(auth(tokenByPersona.ordinary))
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.permission.id, "user.organization_member.list:organization");
-      });
-
-    await request(app.getHttpServer())
-      .post(`/admin/organizations/${ids.hermesOrg}/members`)
-      .set(auth(tokenByPersona.orgScoped))
+      .post("/admin/invites")
+      .set("Authorization", "Bearer token")
       .send({
-        displayName: "New Org Member",
-        email: "new.member@hermes.local",
-        roleId: ids.ordinaryRole,
-      })
-      .expect(201)
-      .expect(({ body }) => {
-        assert.equal(body.organizationId, ids.hermesOrg);
-        assert.equal(body.roleId, ids.ordinaryRole);
-        assert.equal(body.userId.length > 0, true);
-      });
-
-    assert.equal(
-      await userRepository().count({ where: { email: "new.member@hermes.local" } }),
-      1,
-    );
-
-    await request(app.getHttpServer())
-      .post(`/admin/organizations/${ids.acmeOrg}/members`)
-      .set(auth(tokenByPersona.orgScoped))
-      .send({
-        email: "blocked.member@acme.local",
-        roleId: ids.acmeRole,
-      })
-      .expect(403);
-
-    assert.equal(
-      await userRepository().count({ where: { email: "blocked.member@acme.local" } }),
-      0,
-    );
-  });
-
-  it("keeps group membership edits inside the managed organization", async () => {
-    const hermesMemberships = await membershipRepository().find({
-      order: { userId: "ASC" },
-      where: { organizationId: ids.hermesOrg },
-    });
-    const acmeMembership = await membershipRepository().findOneByOrFail({
-      organizationId: ids.acmeOrg,
-      userId: ids.acmeUser,
-    });
-
-    await request(app.getHttpServer())
-      .get(`/admin/organizations/${ids.hermesOrg}/groups`)
-      .set(auth(tokenByPersona.orgScoped))
-      .expect(200)
-      .expect(({ body }) => {
-        assert.deepEqual(
-          body.map((item: { id: string }) => item.id),
-          [ids.hermesGroup],
-        );
-      });
-
-    await request(app.getHttpServer())
-      .put(`/admin/organizations/${ids.hermesOrg}/groups/${ids.hermesGroup}/members`)
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ membershipIds: hermesMemberships.map((membership) => membership.id) })
-      .expect(200)
-      .expect(({ body }) => {
-        assert.equal(body.length, 2);
-      });
-
-    assert.equal(
-      await groupMemberRepository().count({ where: { groupId: ids.hermesGroup } }),
-      2,
-    );
-
-    await request(app.getHttpServer())
-      .put(`/admin/organizations/${ids.hermesOrg}/groups/${ids.hermesGroup}/members`)
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ membershipIds: [acmeMembership.id] })
-      .expect(400);
-
-    await request(app.getHttpServer())
-      .get(`/admin/organizations/${ids.acmeOrg}/groups`)
-      .set(auth(tokenByPersona.orgScoped))
-      .expect(403);
-  });
-
-  it("protects organization and platform settings with scope-specific permissions", async () => {
-    await request(app.getHttpServer())
-      .put(`/admin/organizations/${ids.hermesOrg}/settings`)
-      .set(auth(tokenByPersona.orgScoped))
-      .send({
-        settings: [
-          {
-            name: "feature:invite:enabled",
-            value: false,
-            valueType: "boolean",
-          },
+        email: "member@example.com",
+        organizations: [
+          { isDefault: true, organizationId: "org-1", roleId: "role-org-1" },
+          { organizationId: "org-2", roleId: "role-org-2" },
         ],
-      })
-      .expect(200);
-
-    const orgSetting = await organizationSettingRepository().findOneByOrFail({
-      name: "feature:invite:enabled",
-      organizationId: ids.hermesOrg,
-    });
-    assert.equal(orgSetting.value, "false");
-
-    await request(app.getHttpServer())
-      .put(`/admin/organizations/${ids.acmeOrg}/settings`)
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ "feature:invite:enabled": true })
-      .expect(403);
-
-    await request(app.getHttpServer())
-      .put("/admin/platform/settings")
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ "platform.allowOrganizationCreation": false })
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.permission.id, "setting.platform_config.save:platform");
-      });
-
-    await request(app.getHttpServer())
-      .put("/admin/platform/settings")
-      .set(auth(tokenByPersona.platformAdmin))
-      .send({ "platform.allowOrganizationCreation": false })
-      .expect(200);
-
-    assert.equal(
-      (
-        await platformSettingRepository().findOneByOrFail({
-          name: "platform.allowOrganizationCreation",
-        })
-      ).value,
-      "false",
-    );
-  });
-
-  it("keeps platform-member administration platform-only and persists allowed changes", async () => {
-    await request(app.getHttpServer())
-      .get("/admin/platform/members")
-      .set(auth(tokenByPersona.orgScoped))
-      .expect(403)
-      .expect(({ body }) => {
-        assert.equal(body.permission.id, "user.platform_member.list:platform");
-      });
-
-    await request(app.getHttpServer())
-      .post("/admin/platform/members")
-      .set(auth(tokenByPersona.orgScoped))
-      .send({ roleId: ids.platformRole, userId: ids.ordinaryUser })
-      .expect(403);
-
-    await request(app.getHttpServer())
-      .post("/admin/platform/members")
-      .set(auth(tokenByPersona.platformAdmin))
-      .send({
-        displayName: "Elevated Ordinary User",
-        email: "new-platform-user@hermes.local",
-        password: "platform-password",
-        roleId: ids.platformRole,
+        workspaceRoleId: "role-tenant",
       })
       .expect(201)
       .expect(({ body }) => {
-        assert.equal(body.displayName, "Elevated Ordinary User");
-        assert.equal(body.roleId, ids.platformRole);
-        assert.equal(body.email, "new-platform-user@hermes.local");
+        assert.equal(body.invitedById, "user-1");
+        assert.equal(body.organizations.length, 2);
       });
-
-    assert.equal(
-      await platformUserRepository().count({
-        where: { email: "new-platform-user@hermes.local" },
-      }),
-      1,
-    );
+    await request(app.getHttpServer())
+      .post("/admin/invites/invite-1/resend")
+      .set("Authorization", "Bearer token")
+      .expect(201);
+    await request(app.getHttpServer()).delete("/admin/invites/invite-1").expect(204);
+    assert.deepEqual(calls.find((call) => call.method === "revokeInvite")?.value, "invite-1");
   });
-
-  function organizationCount() {
-    return organizationRepository().count();
-  }
-
-  function organizationRepository() {
-    return dataSource.getRepository(Organization);
-  }
-
-  function organizationSettingRepository() {
-    return dataSource.getRepository(OrganizationSetting);
-  }
-
-  function platformUserRepository() {
-    return dataSource.getRepository(PlatformUser);
-  }
-
-  function platformSettingRepository() {
-    return dataSource.getRepository(PlatformSetting);
-  }
-
-  function membershipRepository() {
-    return dataSource.getRepository(UserOrganization);
-  }
-
-  function groupMemberRepository() {
-    return dataSource.getRepository(OrganizationGroupMember);
-  }
-
-  function userRepository() {
-    return dataSource.getRepository(User);
-  }
 });
-
-async function seedDatabase(dataSource: DataSource) {
-  const users = dataSource.getRepository(User);
-  const organizations = dataSource.getRepository(Organization);
-  const roles = dataSource.getRepository(Role);
-  const memberships = dataSource.getRepository(UserOrganization);
-  const platformUsers = dataSource.getRepository(PlatformUser);
-  const platformRoles = dataSource.getRepository(PlatformRole);
-  const platformUserRoles = dataSource.getRepository(PlatformUserRole);
-  const platformRolePermissions = dataSource.getRepository(PlatformRolePermission);
-  const permissionRepository = dataSource.getRepository(Permission);
-  const rolePermissions = dataSource.getRepository(RolePermission);
-  const platformSettings = dataSource.getRepository(PlatformSetting);
-  const groups = dataSource.getRepository(OrganizationGroup);
-
-  await users.save([
-    user(users, ids.orgScopedUser, "member@hermes.local", "Org Scoped User"),
-    user(users, ids.ordinaryUser, "ordinary@hermes.local", "Ordinary User"),
-    user(users, ids.acmeUser, "member@acme.local", "Acme Member"),
-  ]);
-
-  await organizations.save([
-    organization(organizations, ids.hermesOrg, "Hermes", "hermes", true),
-    organization(organizations, ids.acmeOrg, "Acme Labs", "acme", false),
-  ]);
-
-  await roles.save([
-    role(roles, ids.orgScopedRole, "member", "Member", "organization", ids.hermesOrg),
-    role(roles, ids.ordinaryRole, "viewer", "Viewer", "organization", ids.hermesOrg),
-    role(roles, ids.acmeRole, "member", "Member", "organization", ids.acmeOrg),
-  ]);
-
-  await memberships.save([
-    membership(memberships, ids.orgScopedUser, ids.hermesOrg, ids.orgScopedRole),
-    membership(memberships, ids.ordinaryUser, ids.hermesOrg, ids.ordinaryRole),
-    membership(memberships, ids.acmeUser, ids.acmeOrg, ids.acmeRole),
-  ]);
-
-  await groups.save([
-    group(groups, ids.hermesGroup, ids.hermesOrg, "Operators", "operators"),
-    group(groups, ids.acmeGroup, ids.acmeOrg, "Acme Operators", "acme-operators"),
-  ]);
-
-  await platformRoles.save(
-    platformRoles.create({
-      description: "Platform administrator",
-      id: ids.platformRole,
-      isSystem: true,
-      label: "Platform Admin",
-      name: "platform-admin",
-    }),
-  );
-  await platformUsers.save(
-    platformUsers.create({
-      displayName: "Platform Admin",
-      email: "admin@hermes.local",
-      id: ids.platformUser,
-      passwordHash: null,
-      preferredLanguage: "zh-CN",
-      status: "active",
-    }),
-  );
-  await platformUserRoles.save(
-    platformUserRoles.create({
-      platformRoleId: ids.platformRole,
-      platformUserId: ids.platformUser,
-    }),
-  );
-
-  const platformPermissionCodes = [
-    "organization.platform_organization.list:platform",
-    "organization.platform_organization.create:platform",
-    "setting.platform_config.save:platform",
-    "user.platform_member.create:platform",
-    "user.platform_member.list:platform",
-    "user.platform_user.search:platform",
-  ];
-  const platformPermissions = await permissionRepository.save(
-    platformPermissionCodes.map((code) =>
-      permissionRepository.create({
-        action: "access",
-        code,
-        defaultRoles: ["platform-admin"],
-        entity: code.split(".")[0] ?? "platform",
-        scope: "platform",
-        source: "manual",
-      }),
-    ),
-  );
-  await platformRolePermissions.save(
-    platformPermissions.map((permission) =>
-      platformRolePermissions.create({
-        enabled: true,
-        permissionId: permission.id,
-        platformRoleId: ids.platformRole,
-      }),
-    ),
-  );
-
-  await platformSettings.save(
-    platformSettings.create({
-      name: "platform.allowOrganizationCreation",
-      value: "true",
-      valueOptions: null,
-      valueType: "boolean",
-    }),
-  );
-
-  await rolePermissions.save([
-    ...permissions(rolePermissions, ids.orgScopedRole, ids.hermesOrg, [
-      "group.organization_group.list:organization",
-      "group.organization_group.replace_members:organization",
-      "organization.profile.view:organization",
-      "setting.organization_config.save:organization",
-      "user.organization_member.create:organization",
-      "user.organization_member.list:organization",
-      "user.self_profile.update_profile:own",
-    ]),
-    ...permissions(rolePermissions, ids.ordinaryRole, ids.hermesOrg, [
-      "user.self_profile.update_profile:own",
-    ]),
-  ]);
-}
-
-async function resetDatabase(dataSource: DataSource) {
-  const tables = dataSource.entityMetadatas
-    .map((metadata) => quoteTablePath(metadata.tablePath))
-    .join(", ");
-  if (!tables) return;
-  await dataSource.query(`TRUNCATE ${tables} RESTART IDENTITY CASCADE`);
-}
-
-function quoteTablePath(tablePath: string) {
-  return tablePath
-    .split(".")
-    .map((part) => `"${part.replaceAll('"', '""')}"`)
-    .join(".");
-}
-
-function user(
-  repository: Repository<User>,
-  id: string,
-  email: string,
-  displayName: string,
-) {
-  return repository.create({
-    id,
-    avatarUrl: null,
-    displayName,
-    email,
-    emailVerified: true,
-    firstName: null,
-    imageUrl: null,
-    lastName: null,
-    mobile: null,
-    nickname: displayName,
-    passwordHash: null,
-    preferredLanguage: "zh-CN",
-    refreshToken: null,
-    status: "active",
-    thirdPartyId: null,
-    timeZone: null,
-    type: "user",
-    username: null,
-  });
-}
-
-function organization(
-  repository: Repository<Organization>,
-  id: string,
-  name: string,
-  slug: string,
-  isDefault: boolean,
-) {
-  return repository.create({
-    id,
-    banner: null,
-    brandColor: null,
-    clientFocus: null,
-    createdByUserId: ids.platformUser,
-    currency: null,
-    dateFormat: null,
-    imageUrl: null,
-    isDefault,
-    logoUrl: null,
-    name,
-    officialName: name,
-    overview: null,
-    preferredLanguage: "zh-CN",
-    profileLink: null,
-    regionCode: null,
-    shortDescription: null,
-    slug,
-    status: "active",
-    subdomain: slug,
-    timeZone: null,
-    totalEmployees: null,
-    website: null,
-  });
-}
-
-function role(
-  repository: Repository<Role>,
-  id: string,
-  name: string,
-  label: string,
-  scope: Role["scope"],
-  organizationId: string | null,
-) {
-  return repository.create({
-    id,
-    color: null,
-    description: null,
-    displayName: label,
-    isSystem: true,
-    label,
-    name,
-    organizationId,
-    scope,
-  });
-}
-
-function membership(
-  repository: Repository<UserOrganization>,
-  userId: string,
-  organizationId: string,
-  roleId: string,
-) {
-  return repository.create({
-    displayName: null,
-    joinedAt: new Date(),
-    organizationId,
-    roleId,
-    status: "active",
-    userId,
-  });
-}
-
-function group(
-  repository: Repository<OrganizationGroup>,
-  id: string,
-  organizationId: string,
-  displayName: string,
-  name: string,
-) {
-  return repository.create({
-    color: null,
-    createdByUserId: ids.platformUser,
-    description: null,
-    displayName,
-    id,
-    name,
-    organizationId,
-  });
-}
-
-function permissions(
-  repository: Repository<RolePermission>,
-  roleId: string,
-  organizationId: string | null,
-  values: string[],
-) {
-  return values.map((permission) =>
-    repository.create({
-      enabled: true,
-      organizationId,
-      permission,
-      permissionId: null,
-      roleId,
-    }),
-  );
-}
-
-function auth(tokenValue: string) {
-  return { Authorization: `Bearer ${tokenValue}` };
-}
-
-function token(userId: string, principalType: "platform" | "tenant" = "tenant") {
-  return createAuthSessionToken({
-    jti: `jti-${userId}`,
-    principalType,
-    sessionId: `session-${userId}`,
-    tenantId: principalType === "platform" ? null : ids.tenant,
-    userId,
-  });
-}

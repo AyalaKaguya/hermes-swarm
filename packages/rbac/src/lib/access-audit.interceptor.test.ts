@@ -21,12 +21,11 @@ describe("access audit persistence", () => {
     assert.deepEqual(rows, [
       {
         actorId: "user-1",
-        departmentId: "dept-1",
         errorCode: null,
         httpMethod: "PATCH",
-        httpPath: "/api/admin/organizations/org-1/departments/dept-1",
+        httpPath: "/api/admin/organizations/org-1",
         organizationId: "org-1",
-        permission: "ticket.conversation.handle:department",
+        permission: "organization.update:organization",
         principalType: "tenant",
         result: "allowed",
         statusCode: 200,
@@ -128,7 +127,7 @@ const definition: ResolvedAccessDefinition = {
   entity: "ticket",
   entityLabel: "工单",
   entityOrder: 1,
-  id: "ticket.conversation.handle:department",
+  id: "organization.update:organization",
   isDangerous: false,
   operation: "handle",
   operationLabel: "处理工单",
@@ -136,7 +135,7 @@ const definition: ResolvedAccessDefinition = {
   purpose: "conversation",
   purposeLabel: "工单会话",
   purposeOrder: 1,
-  scope: "department",
+  scope: "organization",
 };
 
 function createRequest(overrides: Partial<AccessRequest> = {}): AccessRequest {
@@ -144,9 +143,8 @@ function createRequest(overrides: Partial<AccessRequest> = {}): AccessRequest {
     accessAudit: {
       definition,
       scope: {
-        departmentId: "dept-1",
         organizationId: "org-1",
-        scopeLevel: "department",
+        scopeLevel: "organization",
         tenantId: "tenant-1",
       },
     },
@@ -156,7 +154,7 @@ function createRequest(overrides: Partial<AccessRequest> = {}): AccessRequest {
       userId: "user-1",
     },
     method: "patch",
-    originalUrl: "/api/admin/organizations/org-1/departments/dept-1",
+    originalUrl: "/api/admin/organizations/org-1",
     params: {},
     ...overrides,
   };

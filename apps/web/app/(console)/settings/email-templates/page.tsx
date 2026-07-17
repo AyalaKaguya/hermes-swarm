@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { EmailTemplatePreview } from "@/components/email-template-preview";
+import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,8 +59,6 @@ const LANGUAGE_LABELS: Record<LanguageFilter, string> = {
 export default function EmailTemplatesPage() {
   const t = useTranslations();
   const tr = useTextTranslation();
-  const { snapshot } = useAdminShell();
-  const organizationId = snapshot?.organization?.id ?? null;
   const [templates, setTemplates] = useState<EmailTemplateDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,19 +74,19 @@ export default function EmailTemplatesPage() {
 
   const load = useCallback(async () => {
     const token = await getAuthenticatedAdminSessionMarker();
-    if (!token || !organizationId) {
+    if (!token) {
       setLoading(false);
       return;
     }
     try {
-      const data = await listEmailTemplates(token, organizationId);
+      const data = await listEmailTemplates(token);
       setTemplates(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
     } finally {
       setLoading(false);
     }
-  }, [organizationId, tr]);
+  }, [tr]);
 
   useEffect(() => {
     void load();
@@ -95,15 +94,13 @@ export default function EmailTemplatesPage() {
 
   async function remove(templateId: string) {
     try {
-      if (!organizationId) return;
       await deleteEmailTemplate(
         await requireAuthenticatedAdminSessionMarker(),
-        organizationId,
         templateId,
       );
       setMsg(
         deleteTemplate?.hasPlatformDefault
-          ? tr("已恢复平台默认")
+          ? tr("已恢复系统默认")
           : tr("已删除"),
       );
       setDeleteTemplate(null);
@@ -129,9 +126,7 @@ export default function EmailTemplatesPage() {
   if (error)
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
-          {error}
-        </div>
+        <InlineNotice className="max-w-xl" tone="error">{error}</InlineNotice>
       </div>
     );
 
@@ -140,8 +135,12 @@ export default function EmailTemplatesPage() {
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div>
           <CardTitle>{tr("邮件模板")}</CardTitle>
-          <CardDescription>{tr("管理组织邮件模板")}</CardDescription>
+          <CardDescription>{tr("管理工作空间邮件模板")}</CardDescription>
         </div>
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/settings/custom-smtp">{tr("SMTP 设置")}</Link>
+          </Button>
         <Dialog onOpenChange={setCreateOpen} open={createOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
@@ -154,7 +153,6 @@ export default function EmailTemplatesPage() {
               <DialogTitle>{tr("创建邮件模板")}</DialogTitle>
             </DialogHeader>
             <CreateTemplateForm
-              organizationId={organizationId}
               onDone={() => {
                 setCreateOpen(false);
                 void load();
@@ -162,13 +160,10 @@ export default function EmailTemplatesPage() {
             />
           </DialogContent>
         </Dialog>
+        </div>
       </CardHeader>
       <CardContent>
-        {msg && !error && (
-          <div className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm">
-            {msg}
-          </div>
-        )}
+        {msg && !error && <InlineNotice className="mb-4" tone="success">{msg}</InlineNotice>}
 
         {availableLanguages.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-1.5">
@@ -209,11 +204,11 @@ export default function EmailTemplatesPage() {
                       )}
                       {t.inherited ? (
                         <Badge className="text-xs" variant="outline">
-                          {tr("继承平台")}
+                          {tr("系统默认")}
                         </Badge>
                       ) : t.hasPlatformDefault ? (
                         <Badge className="text-xs" variant="outline">
-                          {tr("组织覆盖")}
+                          {tr("工作空间自定义模板")}
                         </Badge>
                       ) : null}
                       <Badge className="text-xs" variant="outline">
@@ -241,10 +236,10 @@ export default function EmailTemplatesPage() {
                   )}
                   <div className="text-xs">
                     {t.inherited
-                      ? tr("当前使用平台默认内容")
+                      ? tr("当前使用系统默认内容")
                       : t.hasPlatformDefault
-                        ? tr("当前使用组织覆盖内容")
-                        : tr("组织自定义模板")}
+                        ? tr("当前使用工作空间模板")
+                        : tr("工作空间自定义模板")}
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-1">
@@ -256,7 +251,7 @@ export default function EmailTemplatesPage() {
                     size="xs"
                     variant="ghost"
                   >
-                    {t.inherited ? tr("创建覆盖") : tr("编辑与预览")}
+                    {t.inherited ? tr("创建工作空间模板") : tr("编辑与预览")}
                   </Button>
                   <Button
                     disabled={t.inherited}
@@ -287,11 +282,10 @@ export default function EmailTemplatesPage() {
           <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
             <DialogHeader>
               <DialogTitle>
-                {editTemplate.inherited ? tr("创建组织覆盖") : tr("编辑模板")}
+                {editTemplate.inherited ? tr("创建工作空间模板") : tr("编辑模板")}
               </DialogTitle>
             </DialogHeader>
             <EditTemplateForm
-              organizationId={organizationId}
               template={editTemplate}
               onDone={() => {
                 setEditTemplate(null);
@@ -308,7 +302,7 @@ export default function EmailTemplatesPage() {
         }
         description={
           deleteTemplate?.hasPlatformDefault
-            ? tr("删除组织覆盖后，将重新使用对应语言的平台系统模板。")
+            ? tr("删除工作空间模板后，将重新使用对应语言的系统模板。")
             : t("dialogs.deleteEmailTemplateDescription", {
                 name: deleteTemplate?.name ?? "",
               })
@@ -322,7 +316,7 @@ export default function EmailTemplatesPage() {
         open={Boolean(deleteTemplate)}
         title={
           deleteTemplate?.hasPlatformDefault
-            ? tr("恢复平台默认")
+            ? tr("恢复系统默认")
             : tr("删除邮件模板")
         }
       />
@@ -330,13 +324,7 @@ export default function EmailTemplatesPage() {
   );
 }
 
-function CreateTemplateForm({
-  organizationId,
-  onDone,
-}: {
-  organizationId: string | null;
-  onDone: () => void;
-}) {
+function CreateTemplateForm({ onDone }: { onDone: () => void }) {
   const tr = useTextTranslation();
   const [name, setName] = useState("");
   const [languageCode, setLanguageCode] = useState("zh-CN");
@@ -351,11 +339,9 @@ function CreateTemplateForm({
     setSaving(true);
     setMsg("");
     try {
-      if (!organizationId) throw new Error(tr("缺少组织 ID"));
       const token = await requireAuthenticatedAdminSessionMarker();
       await createEmailTemplate(
         token,
-        organizationId,
         {
           name: name.trim(),
           languageCode,
@@ -436,21 +422,15 @@ function CreateTemplateForm({
           {saving ? tr("创建中...") : tr("创建模板")}
         </Button>
       </div>
-      <EmailTemplatePreview
-        hbs={hbs}
-        organizationId={organizationId}
-        subject={subject}
-      />
+      <EmailTemplatePreview hbs={hbs} subject={subject} />
     </div>
   );
 }
 
 function EditTemplateForm({
-  organizationId,
   template,
   onDone,
 }: {
-  organizationId: string | null;
   template: EmailTemplateDto;
   onDone: () => void;
 }) {
@@ -467,7 +447,6 @@ function EditTemplateForm({
     setSaving(true);
     setMsg("");
     try {
-      if (!organizationId) throw new Error(tr("缺少组织 ID"));
       const token = await requireAuthenticatedAdminSessionMarker();
       const payload = {
         description: template.description,
@@ -478,9 +457,9 @@ function EditTemplateForm({
         mjml: mjml.trim() || null,
       };
       if (template.inherited) {
-        await createEmailTemplate(token, organizationId, payload);
+        await createEmailTemplate(token, payload);
       } else {
-        await updateEmailTemplate(token, organizationId, template.id, payload);
+        await updateEmailTemplate(token, template.id, payload);
       }
       onDone();
     } catch (err) {
@@ -549,14 +528,10 @@ function EditTemplateForm({
           onClick={() => void submit()}
           type="button"
         >
-          {template.inherited ? tr("创建组织覆盖") : tr("保存")}
+          {template.inherited ? tr("创建工作空间模板") : tr("保存")}
         </Button>
       </div>
-      <EmailTemplatePreview
-        hbs={hbs}
-        organizationId={organizationId}
-        subject={subject}
-      />
+      <EmailTemplatePreview hbs={hbs} subject={subject} />
     </div>
   );
 }

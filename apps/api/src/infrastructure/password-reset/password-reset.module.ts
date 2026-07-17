@@ -7,10 +7,12 @@ import { PasswordResetController } from "./password-reset.controller.js";
 import { PasswordResetService } from "./password-reset.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
+import { AuthModule } from "../auth/auth.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
+    AuthModule,
     MailModule,
     SettingsModule,
     TypeOrmModule.forFeature([PasswordReset, User]),

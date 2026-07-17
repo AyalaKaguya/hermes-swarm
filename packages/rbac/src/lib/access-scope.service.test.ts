@@ -24,12 +24,11 @@ describe("AccessScopeService tenant request scope", () => {
     );
   });
 
-  it("rejects path and header organization conflicts", async () => {
+  it("does not accept an implicit organization header", async () => {
     await assert.rejects(
       () =>
         service.resolve(definition, undefined, request({
           headers: { "organization-id": "org-2" },
-          params: { organizationId: "org-1" },
         })),
       BadRequestException,
     );
@@ -46,24 +45,6 @@ describe("AccessScopeService tenant request scope", () => {
     );
   });
 
-  it("requires both organization and department for department scope", async () => {
-    assert.deepEqual(
-      await service.resolve(
-        definition,
-        { scope: "department" },
-        request({
-          headers: { "organization-id": "org-1" },
-          params: { departmentId: "dept-1" },
-        }),
-      ),
-      {
-        departmentId: "dept-1",
-        organizationId: "org-1",
-        scopeLevel: "department",
-        tenantId: "tenant-1",
-      },
-    );
-  });
 });
 
 function request(overrides: Partial<AccessRequest>): AccessRequest {

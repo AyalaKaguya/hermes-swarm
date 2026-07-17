@@ -1,19 +1,17 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Headers,
   Param,
   Patch,
   Post,
-  Put,
   Req,
 } from "@nestjs/common";
 import { AccessOperation, AccessResource, PublicAccess } from "@hermes-swarm/rbac";
 import { TenantsService } from "./tenants.service.js";
 
-type PrincipalRequest = {
+export type PrincipalRequest = {
   accessPrincipal?: {
     principalType?: "integration" | "platform" | "tenant";
     tenantId?: string | null;
@@ -166,9 +164,9 @@ export class TenantApplicationsController {
 @Controller("admin/tenant")
 @AccessResource({
   entity: "tenant",
-  entityLabel: "租户",
+  entityLabel: "工作空间",
   purpose: "tenant_profile",
-  purposeLabel: "租户资料",
+  purposeLabel: "工作空间资料",
   scope: "tenant",
 })
 export class TenantsController {
@@ -177,102 +175,56 @@ export class TenantsController {
   @Get()
   @AccessOperation({
     defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
-    label: "查看租户资料",
+    label: "查看工作空间资料",
     operation: "view",
   })
   get(@Req() request: PrincipalRequest) {
     return this.tenantsService.get(requireTenantId(request));
   }
 
+  @Get("console-capability")
+  @AccessOperation({
+    defaultRoles: ["tenant-owner", "tenant-admin"],
+    description: "允许进入全部组织工作空间控制台。",
+    entity: "workspace",
+    entityLabel: "工作空间",
+    label: "进入工作空间控制台",
+    operation: "access",
+    purpose: "console",
+    purposeLabel: "控制台访问",
+    scope: "tenant",
+  })
+  consoleCapability() {
+    return { allowed: true };
+  }
+
   @Patch()
   @AccessOperation({
     defaultRoles: ["tenant-owner", "tenant-admin"],
-    label: "更新租户资料",
+    label: "更新工作空间资料",
     operation: "update",
   })
   update(@Req() request: PrincipalRequest, @Body() payload: UpdateTenantPayload) {
     return this.tenantsService.update(requireTenantId(request), payload);
   }
 
-  @Get("roles")
+  @Post("onboarding/root-organization")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
-    label: "查看租户角色",
-    operation: "list_roles",
+    defaultRoles: ["tenant-owner"],
+    label: "创建根组织",
+    operation: "create_root_organization",
   })
-  listRoles(@Req() request: PrincipalRequest) {
-    return this.tenantsService.listTenantRoles(requireTenantId(request));
-  }
-
-  @Post("roles")
-  @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
-    label: "创建租户角色",
-    operation: "create_role",
-  })
-  createRole(
+  createRootOrganization(
     @Req() request: PrincipalRequest,
-    @Body() payload: TenantRolePayload,
+    @Body() payload: RootOrganizationPayload,
   ) {
-    return this.tenantsService.createTenantRole(
+    return this.tenantsService.createRootOrganization(
       requireTenantId(request),
+      requireTenantUserId(request),
       payload,
     );
   }
 
-  @Patch("roles/:roleId")
-  @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
-    label: "更新租户角色",
-    operation: "update_role",
-  })
-  updateRole(
-    @Req() request: PrincipalRequest,
-    @Param("roleId") roleId: string,
-    @Body() payload: Partial<TenantRolePayload>,
-  ) {
-    return this.tenantsService.updateTenantRole(
-      requireTenantId(request),
-      roleId,
-      payload,
-    );
-  }
-
-  @Put("roles/:roleId/permissions")
-  @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
-    isDangerous: true,
-    label: "配置租户角色权限",
-    operation: "replace_role_permissions",
-  })
-  replaceRolePermissions(
-    @Req() request: PrincipalRequest,
-    @Param("roleId") roleId: string,
-    @Body() payload: TenantRolePermissionsPayload,
-  ) {
-    return this.tenantsService.replaceTenantRolePermissions(
-      requireTenantId(request),
-      roleId,
-      payload,
-    );
-  }
-
-  @Delete("roles/:roleId")
-  @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
-    isDangerous: true,
-    label: "删除租户角色",
-    operation: "delete_role",
-  })
-  deleteRole(
-    @Req() request: PrincipalRequest,
-    @Param("roleId") roleId: string,
-  ) {
-    return this.tenantsService.deleteTenantRole(
-      requireTenantId(request),
-      roleId,
-    );
-  }
 }
 
 export type TenantApplicationPayload = {
@@ -286,8 +238,9 @@ export type TenantApplicationPayload = {
 
 export type TenantApplicationReviewPayload = {
   note?: string | null;
-  organizationName?: string;
 };
+
+export type RootOrganizationPayload = { name?: string; slug?: string };
 
 export type UpdateTenantPayload = {
   name?: string;
@@ -320,5 +273,14 @@ function requirePlatformUserId(request: PrincipalRequest) {
   }
   const userId = request.accessPrincipal.userId?.trim();
   if (!userId) throw new Error("Platform principal is missing an id.");
+  return userId;
+}
+
+function requireTenantUserId(request: PrincipalRequest) {
+  if (request.accessPrincipal?.principalType !== "tenant") {
+    throw new Error("Tenant principal was not established by the access guard.");
+  }
+  const userId = request.accessPrincipal.userId?.trim();
+  if (!userId) throw new Error("Tenant principal is missing an id.");
   return userId;
 }

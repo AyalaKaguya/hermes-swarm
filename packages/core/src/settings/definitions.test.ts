@@ -60,14 +60,34 @@ describe("setting definitions", () => {
     assert.equal(getSettingDefinitionByKey(feature.key), feature);
   });
 
-  it("includes organization ticket submission and handling feature definitions", () => {
-    const organizationFeatureKeys = FEATURE_SETTING_DEFINITIONS.filter(
-      (definition) => definition.scope === "organization",
+  it("keeps business feature gates at workspace scope", () => {
+    const workspaceFeatureKeys = FEATURE_SETTING_DEFINITIONS.filter(
+      (definition) => definition.scope === "tenant",
     ).map((definition) => definition.key);
 
-    assert.ok(organizationFeatureKeys.includes(FEATURE_SETTING_KEYS.ticketing));
+    assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.ticketing));
     assert.ok(
-      organizationFeatureKeys.includes(FEATURE_SETTING_KEYS.ticketingHandling),
+      workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.ticketingHandling),
+    );
+    assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.email));
+    assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.invite));
+    assert.equal(
+      FEATURE_SETTING_DEFINITIONS.some(
+        (definition) => (definition.scope as string) === "organization",
+      ),
+      false,
+    );
+    assert.equal(
+      FEATURE_SETTING_DEFINITIONS.find(
+        (definition) => definition.key === FEATURE_SETTING_KEYS.email,
+      )?.defaultValue,
+      "true",
+    );
+    assert.equal(
+      FEATURE_SETTING_DEFINITIONS.find(
+        (definition) => definition.key === FEATURE_SETTING_KEYS.invite,
+      )?.defaultValue,
+      "true",
     );
   });
 });

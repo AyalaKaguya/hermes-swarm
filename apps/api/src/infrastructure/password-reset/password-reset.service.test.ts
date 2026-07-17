@@ -39,7 +39,7 @@ describe("PasswordResetService", () => {
     assert.equal(state.sentEmails.length, 0);
   });
 
-  it("creates a reset token and sends a reset email through the user organization context", async () => {
+  it("creates a tenant-bound reset token and sends the tenant password template", async () => {
     const state = createPasswordResetService({
       memberships: [{ organizationId: "org-1", userId: "user-1" }],
       users: [userRecord({ email: "Admin@Example.com", id: "user-1" })],
@@ -55,7 +55,7 @@ describe("PasswordResetService", () => {
     assert.equal(state.passwordResets[0].email, "admin@example.com");
     assert.equal(state.sentEmails.length, 1);
     assert.equal(state.sentEmails[0].email, "admin@example.com");
-    assert.equal(state.sentEmails[0].organizationId, null);
+    assert.equal("organizationId" in state.sentEmails[0], false);
     assert.equal(state.sentEmails[0].templateName, "password-reset");
     assert.match(state.sentEmails[0].locals.resetLink, /\/reset-password\?/);
   });
@@ -132,7 +132,7 @@ describe("PasswordResetService", () => {
     );
   });
 
-  it("activates a provisioning tenant atomically when its owner sets a password", async () => {
+  it("keeps a provisioning tenant restricted until its root organization is created", async () => {
     const user = userRecord({ email: "owner@example.com", id: "owner-1" });
     const state = createPasswordResetService({
       tenantStatus: "provisioning",
@@ -160,7 +160,7 @@ describe("PasswordResetService", () => {
       token,
     });
 
-    assert.equal(state.tenant.status, "active");
+    assert.equal(state.tenant.status, "provisioning");
     assert.equal(verifyPassword("owner-password", user.passwordHash), true);
     assert.equal(state.passwordResets.length, 0);
   });
@@ -357,6 +357,16 @@ function createPasswordResetService(options: {
       },
     } as any,
     dataSource.getRepository(Tenant),
+    {
+      async resolve(_request: unknown, workspace?: string) {
+        const resolved =
+          tenant.status === "active" &&
+          (tenant.slug === workspace || tenant.subdomain === workspace)
+            ? tenant
+            : null;
+        return resolved ? { source: "workspace", tenant: resolved } : null;
+      },
+    } as any,
   );
 
   return {

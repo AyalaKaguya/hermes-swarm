@@ -4,7 +4,6 @@ import type { EntityManager, EntityTarget, ObjectLiteral, Repository } from "typ
 import type { RequestScopeLevel } from "@hermes-swarm/rbac-api";
 
 export type TenantExecutionContext = {
-  departmentId: string | null;
   manager: EntityManager;
   organizationId: string | null;
   scopeLevel: RequestScopeLevel;

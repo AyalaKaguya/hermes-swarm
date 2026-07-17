@@ -10,11 +10,9 @@ const principal = (permissions: string[]): ResolvedSession =>
 const rolePermission = (
   permission: string,
   roleId = "role-test",
-  organizationId: string | null = "org-1",
 ): RolePermission => ({
   enabled: true,
   id: `${roleId}-${permission}`,
-  organizationId,
   permission,
   roleId,
 });
@@ -29,16 +27,16 @@ const organizationPrincipal = (
         organizationId,
         role: {
           permissions: permissions.map((permission) =>
-            rolePermission(permission, "role-org", organizationId),
+            rolePermission(permission, "role-org"),
           ),
         },
         status: "active",
       },
     ],
     organization: { id: organizationId },
-    permissions,
+    permissions: [],
     principalType: "tenant",
-  }) as ResolvedSession;
+  }) as unknown as ResolvedSession;
 
 const platformPrincipal = (permissions: string[]): ResolvedSession =>
   ({
@@ -47,7 +45,7 @@ const platformPrincipal = (permissions: string[]): ResolvedSession =>
       roles: [{
         name: "platform-admin",
         permissions: permissions.map((permission) =>
-          rolePermission(permission, "role-platform", null),
+          rolePermission(permission, "role-platform"),
         ),
       }],
     },
@@ -74,12 +72,12 @@ describe("web access control", () => {
   it("checks page access through page definition permissions", () => {
     assert.equal(
       hasPageAccess(
-        organizationPrincipal(["page.settings.roles.access:organization"]),
-        "settings.roles",
+        principal(["page.settings.workspace-access.access:tenant"]),
+        "settings.workspace-access",
       ),
       true,
     );
-    assert.equal(hasPageAccess(principal([]), "settings.roles"), false);
+    assert.equal(hasPageAccess(principal([]), "settings.workspace-access"), false);
     assert.equal(hasPageAccess(principal([]), "missing.page"), false);
   });
 
@@ -120,15 +118,15 @@ describe("web access control", () => {
     );
   });
 
-  it("checks tenant pages without accepting platform principals", () => {
-    const permission = "page.settings.integrations.access:tenant";
+  it("checks personal pages without accepting platform principals", () => {
+    const permission = "page.settings.api-tokens.access:own";
 
     assert.equal(
-      hasPageAccess(principal([permission]), "settings.integrations"),
+      hasPageAccess(principal([permission]), "settings.api-tokens"),
       true,
     );
     assert.equal(
-      hasPageAccess(platformPrincipal([permission]), "settings.integrations"),
+      hasPageAccess(platformPrincipal([permission]), "settings.api-tokens"),
       false,
     );
   });

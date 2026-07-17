@@ -1,16 +1,9 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import {
-  NotificationDestination,
-  UserNotification,
-  UserOrganization,
-} from "@hermes-swarm/core";
-import { NotificationDestinationsController } from "./notification-destinations.controller.js";
-import { NotificationDestinationsService } from "./notification-destinations.service.js";
+import { UserNotification } from "@hermes-swarm/core";
 import { NotificationsController } from "./notifications.controller.js";
 import { NotificationsService } from "./notifications.service.js";
 import { AuthModule } from "../auth/auth.module.js";
-import { DepartmentsModule } from "../departments/departments.module.js";
 import { RealtimeModule } from "../realtime/realtime.module.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
 
@@ -18,16 +11,11 @@ import { DatabaseModule } from "../../common/database/database.module.js";
   imports: [
     AuthModule,
     DatabaseModule,
-    DepartmentsModule,
     RealtimeModule,
-    TypeOrmModule.forFeature([
-      NotificationDestination,
-      UserNotification,
-      UserOrganization,
-    ]),
+    TypeOrmModule.forFeature([UserNotification]),
   ],
-  controllers: [NotificationDestinationsController, NotificationsController],
-  providers: [NotificationDestinationsService, NotificationsService],
+  controllers: [NotificationsController],
+  providers: [NotificationsService],
   exports: [NotificationsService],
 })
 export class NotificationsModule {}

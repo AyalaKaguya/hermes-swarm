@@ -10,9 +10,11 @@
     "test": "node --import tsx --test \"lib/**/*.test.ts\"",
     "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"lib/**/*.ts\" \"lib/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf .next out"
+    "clean": "node -e \"const {rmSync}=require('node:fs'); for (const path of ['.next','.next-dev','out','tsconfig.tsbuildinfo']) rmSync(path,{recursive:true,force:true})\""
   },
   "nx": {
+    "projectType": "application",
+    "tags": ["type:app", "scope:frontend"],
     "targets": {
       "coverage": {
         "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"lib/**/*.ts\" \"lib/**/*.test.ts\"",

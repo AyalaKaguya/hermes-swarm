@@ -1,87 +1,70 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import {
   Organization,
-  OrganizationGroup,
-  OrganizationGroupMember,
-  IntegrationToken,
   Role,
   User,
   UserOrganization,
-  type UserOrganizationStatus,
+  UserOrganizationRole,
 } from "@hermes-swarm/core";
-import { In, IsNull, type EntityManager } from "typeorm";
+import { In } from "typeorm";
 import { hashPassword } from "../../common/security/password-hash.js";
-import { toUserDto } from "../users/user-dto.js";
-import type { MembershipPayload } from "./memberships.controller.js";
 import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import type { MembershipPayload } from "./memberships.controller.js";
 
 @Injectable()
 export class MembershipsService {
-  constructor(
-    private readonly tenantContext: TenantContextService,
-  ) {}
+  constructor(private readonly tenantContext: TenantContextService) {}
 
   async list(organizationId: string) {
-    await this.ensureOrganization(organizationId);
-    const memberships = await this.memberships.find({
+    const organization = await this.requireOrganization(organizationId);
+    const { tenantId } = this.tenantContext.current()!;
+    const memberships = await this.tenantContext.repository(UserOrganization).find({
       order: { createdAt: "ASC" },
-      relations: { role: true, user: true },
-      where: { organizationId, tenantId: this.tenantId },
+      relations: { user: true },
+      where: { organizationId: organization.id, tenantId },
     });
-    const groupsByMembership = await this.loadGroupsByMembership(
-      memberships.map((membership) => membership.id),
-    );
+    const assignments = memberships.length
+      ? await this.tenantContext.repository(UserOrganizationRole).find({
+          relations: { role: true },
+          where: { membershipId: In(memberships.map((item) => item.id)), tenantId },
+        })
+      : [];
     return memberships.map((membership) =>
-      toMembershipDto(membership, groupsByMembership.get(membership.id) ?? []),
+      toMembershipDto(
+        membership,
+        assignments.find((assignment) => assignment.membershipId === membership.id)?.role ?? null,
+      ),
     );
   }
 
   async create(organizationId: string, payload: MembershipPayload) {
-    const input = requireMembershipPayload(payload);
-    await this.ensureOrganization(organizationId);
-    try {
-      const manager = this.manager;
-      const user = await this.resolveOrCreateUser(input, manager);
-      const existing = await manager.findOne(UserOrganization, {
-        where: { organizationId, tenantId: this.tenantId, userId: user.id },
-      });
-      if (existing) throw new BadRequestException("用户已经在该组织中");
-
-      const roleId = await this.resolveRoleId(
-        organizationId,
-        input.roleId,
-        manager,
-      );
-      const membership = await manager.save(
-        UserOrganization,
-        this.memberships.create({
-          displayName:
-            normalizeNullableText(input.displayName) ??
-            user.nickname ??
-            user.displayName,
-          joinedAt: new Date(),
-          organizationId,
-          roleId,
-          status: normalizeMembershipStatus(input.status),
-          tenantId: this.tenantId,
-          userId: user.id,
-        }),
-      );
-      return toMembershipDto(membership);
-    } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        const constraint = getConstraintName(error);
-        if (constraint?.includes("users_email")) {
-          throw new BadRequestException("邮箱已被使用");
-        }
-        throw new BadRequestException("用户已经在该组织中");
-      }
-      throw error;
-    }
+    const organization = await this.requireOrganization(organizationId);
+    if (organization.status !== "active") throw new BadRequestException("组织不可用");
+    const { tenantId } = this.tenantContext.current()!;
+    const user = await this.resolveUser(payload, tenantId);
+    let membership = await this.tenantContext.repository(UserOrganization).findOne({
+      where: { organizationId, tenantId, userId: user.id },
+    });
+    if (membership?.status === "active") throw new ConflictException("用户已经是组织成员");
+    membership ??= this.tenantContext.repository(UserOrganization).create({
+      organizationId,
+      tenantId,
+      userId: user.id,
+    });
+    Object.assign(membership, {
+      displayName: payload.displayName ?? user.displayName,
+      isDefault: Boolean(payload.isDefault),
+      joinedAt: membership.joinedAt ?? new Date(),
+      status: payload.status ?? "active",
+    });
+    membership = await this.tenantContext.repository(UserOrganization).save(membership);
+    await this.replaceRole(organizationId, membership.id, requireText(payload.roleId, "角色"));
+    return this.getMembership(organizationId, membership.id);
   }
 
   async update(
@@ -89,363 +72,167 @@ export class MembershipsService {
     membershipId: string,
     payload: Partial<MembershipPayload>,
   ) {
-    const input = requireMembershipPayload(payload);
-    const manager = this.manager;
-    const membership = await this.getMembershipOrThrow(
+    const membership = await this.requireMembership(organizationId, membershipId);
+    if (payload.displayName !== undefined) membership.displayName = nullableText(payload.displayName);
+    if (payload.status !== undefined) {
+      if (!["active", "disabled", "invited"].includes(payload.status)) {
+        throw new BadRequestException("成员状态无效");
+      }
+      membership.status = payload.status;
+    }
+    if (payload.isDefault !== undefined) membership.isDefault = Boolean(payload.isDefault);
+    await this.tenantContext.repository(UserOrganization).save(membership);
+    if (payload.roleId !== undefined) {
+      await this.replaceRole(organizationId, membership.id, payload.roleId);
+    }
+    return this.getMembership(organizationId, membership.id);
+  }
+
+  async replaceRole(organizationId: string, membershipId: string, roleId: string) {
+    const membership = await this.requireMembership(organizationId, membershipId);
+    const { tenantId, manager } = this.tenantContext.current()!;
+    roleId = requireText(roleId, "角色");
+    const role = await this.tenantContext.repository(Role).findOne({
+      where: { id: roleId, organizationId, scope: "organization", tenantId },
+    });
+    if (!role) throw new BadRequestException("组织角色无效");
+    await this.assertOwnerContinuity(membership, role.name);
+    await manager.delete(UserOrganizationRole, { membershipId: membership.id, tenantId });
+    await manager.save(UserOrganizationRole, {
+      membershipId: membership.id,
       organizationId,
-      membershipId,
-      manager,
-      true,
-    );
-    const wasActiveOwner = isActiveOwnerMembership(membership);
-    const previousRoleId = membership.roleId;
-    let nextRole = membership.role;
-
-    if (input.displayName !== undefined) {
-      membership.displayName = normalizeNullableText(input.displayName);
-    }
-    if (input.roleId !== undefined) {
-      nextRole = await this.resolveRole(organizationId, input.roleId, manager);
-      membership.roleId = nextRole?.id ?? null;
-    }
-    if (input.status !== undefined) {
-      membership.status = normalizeMembershipStatus(input.status);
-    }
-
-    if (wasActiveOwner && !isActiveOwnerState(nextRole, membership.status)) {
-      await this.assertAnotherActiveOwner(
-        organizationId,
-        membership.id,
-        manager,
-      );
-    }
-    if (
-      input.roleId !== undefined ||
-      (input.status !== undefined && membership.status !== "active")
-    ) {
-      await this.revokeOrganizationTokensForMembership(
-        membership.userId,
-        organizationId,
-        manager,
-        previousRoleId !== membership.roleId
-          ? "role_changed"
-          : "membership_disabled",
-      );
-    }
-
-    await manager.update(
-      UserOrganization,
-      { id: membership.id, organizationId, tenantId: this.tenantId },
-      {
-        displayName: membership.displayName,
-        roleId: membership.roleId,
-        status: membership.status,
-      },
-    );
-    return toMembershipDto(
-      await this.getMembershipOrThrow(organizationId, membershipId),
-    );
+      roleId: role.id,
+      tenantId,
+    });
+    return this.getMembership(organizationId, membership.id);
   }
 
   async remove(organizationId: string, membershipId: string) {
-    const manager = this.manager;
-    const membership = await this.getMembershipOrThrow(
-      organizationId,
-      membershipId,
-      manager,
-      true,
-    );
-    if (isActiveOwnerMembership(membership)) {
-      await this.assertAnotherActiveOwner(
-        organizationId,
-        membership.id,
-        manager,
-      );
+    const membership = await this.requireMembership(organizationId, membershipId);
+    await this.assertOwnerContinuity(membership, null);
+    const organization = await this.requireOrganization(organizationId);
+    if (!organization.parentOrganizationId) {
+      const ownerCount = await this.tenantContext.repository(UserOrganization).count({
+        where: { organizationId, status: "active", tenantId: membership.tenantId },
+      });
+      if (ownerCount <= 1) throw new BadRequestException("根组织必须至少保留一个有效成员");
     }
-    await this.revokeOrganizationTokensForMembership(
-      membership.userId,
-      organizationId,
-      manager,
-      "membership_removed",
-    );
-    await manager.delete(OrganizationGroupMember, {
-      membershipId: membership.id,
-      organizationId,
-      tenantId: this.tenantId,
-    });
-    await manager.delete(UserOrganization, {
-      id: membership.id,
-      organizationId,
-      tenantId: this.tenantId,
-    });
+    await this.tenantContext.repository(UserOrganization).remove(membership);
+    return { deleted: true, id: membership.id };
   }
 
-  private async ensureOrganization(organizationId: string) {
-    const organization = await this.organizations.findOne({
-      where: { id: organizationId, tenantId: this.tenantId },
+  private async getMembership(organizationId: string, membershipId: string) {
+    const membership = await this.requireMembership(organizationId, membershipId, true);
+    const assignment = await this.tenantContext.repository(UserOrganizationRole).findOne({
+      relations: { role: true },
+      where: { membershipId, tenantId: membership.tenantId },
     });
-    if (!organization) throw new NotFoundException("组织不存在");
+    return toMembershipDto(membership, assignment?.role ?? null);
   }
 
-  private async getMembershipOrThrow(
+  private async assertOwnerContinuity(
+    membership: UserOrganization,
+    nextRoleName: string | null,
+  ) {
+    const assignment = await this.tenantContext.repository(UserOrganizationRole).findOne({
+      relations: { role: true },
+      where: { membershipId: membership.id, tenantId: membership.tenantId },
+    });
+    if (assignment?.role?.name !== "owner" || nextRoleName === "owner") return;
+    const ownerRole = await this.tenantContext.repository(Role).findOne({
+      where: {
+        name: "owner",
+        organizationId: membership.organizationId,
+        scope: "organization",
+        tenantId: membership.tenantId,
+      },
+    });
+    if (!ownerRole) throw new BadRequestException("组织 Owner 角色不存在");
+    const owners = await this.tenantContext.repository(UserOrganizationRole).count({
+      where: {
+        organizationId: membership.organizationId,
+        roleId: ownerRole.id,
+        tenantId: membership.tenantId,
+      },
+    });
+    if (owners <= 1) throw new BadRequestException("组织必须至少保留一个 Owner");
+  }
+
+  private async resolveUser(payload: MembershipPayload, tenantId: string) {
+    if (payload.userId) {
+      const user = await this.tenantContext.repository(User).findOne({
+        where: { id: payload.userId, tenantId },
+      });
+      if (!user) throw new NotFoundException("用户不存在");
+      return user;
+    }
+    const email = normalizeEmail(payload.email);
+    let user = await this.tenantContext.repository(User).findOne({ where: { email, tenantId } });
+    if (user) return user;
+    const password = requireText(payload.password, "密码");
+    user = this.tenantContext.repository(User).create({
+      displayName: nullableText(payload.displayName) ?? email,
+      email,
+      emailVerified: false,
+      passwordHash: hashPassword(password),
+      preferredLanguage: "zh-CN",
+      status: "active",
+      tenantId,
+      type: "user",
+    });
+    return this.tenantContext.repository(User).save(user);
+  }
+
+  private async requireMembership(
     organizationId: string,
     membershipId: string,
-    manager: EntityManager = this.manager,
-    lockForUpdate = false,
+    withUser = false,
   ) {
-    const membership = await manager.findOne(UserOrganization, {
-      lock: lockForUpdate ? { mode: "pessimistic_write" } : undefined,
-      relations: { role: true, user: true },
-      where: { id: membershipId, organizationId, tenantId: this.tenantId },
+    const { tenantId } = this.tenantContext.current()!;
+    const membership = await this.tenantContext.repository(UserOrganization).findOne({
+      relations: withUser ? { user: true } : undefined,
+      where: { id: membershipId, organizationId, tenantId },
     });
     if (!membership) throw new NotFoundException("组织成员不存在");
     return membership;
   }
 
-  private async resolveRoleId(
-    organizationId: string,
-    roleId: string | null | undefined,
-    manager: EntityManager = this.manager,
-  ) {
-    return (await this.resolveRole(organizationId, roleId, manager))?.id ?? null;
-  }
-
-  private async resolveRole(
-    organizationId: string,
-    roleId: string | null | undefined,
-    manager: EntityManager = this.manager,
-  ) {
-    if (roleId === null || roleId === undefined) return null;
-    const role = await manager.findOne(Role, {
-      where: { id: roleId, tenantId: this.tenantId },
+  private async requireOrganization(organizationId: string) {
+    const { tenantId } = this.tenantContext.current()!;
+    const organization = await this.tenantContext.repository(Organization).findOne({
+      where: { id: organizationId, tenantId },
     });
-    if (!role || role.scope !== "organization" || role.organizationId !== organizationId) {
-      throw new BadRequestException("角色不属于该组织");
-    }
-    return role;
-  }
-
-  private async resolveOrCreateUser(
-    payload: MembershipPayload,
-    manager: EntityManager = this.manager,
-  ) {
-    if (payload.userId) {
-      const user = await manager.findOne(User, {
-        where: {
-          id: requireText(payload.userId, "用户 ID"),
-          tenantId: this.tenantId,
-        },
-      });
-      if (!user) throw new NotFoundException("用户不存在");
-      return user;
-    }
-
-    const email = normalizeEmail(payload.email);
-    const existing = await manager.findOne(User, {
-      where: { email, tenantId: this.tenantId },
-    });
-    if (existing) return existing;
-
-    const displayName =
-      normalizeNullableText(payload.displayName) ?? email.split("@")[0] ?? email;
-    return manager.save(
-      User,
-      this.users.create({
-        displayName,
-        email,
-        nickname: displayName,
-        passwordHash: payload.password
-          ? hashPassword(requirePassword(payload.password))
-          : null,
-        status: "active",
-        tenantId: this.tenantId,
-        type: "user",
-      }),
-    );
-  }
-
-  private async loadGroupsByMembership(membershipIds: string[]) {
-    if (membershipIds.length === 0) return new Map<string, OrganizationGroup[]>();
-
-    const rows = await this.groupMembers.find({
-      order: { createdAt: "ASC" },
-      relations: { group: true },
-      where: { membershipId: In(membershipIds), tenantId: this.tenantId },
-    });
-    const groupsByMembership = new Map<string, OrganizationGroup[]>();
-    for (const row of rows) {
-      if (!row.group) continue;
-      groupsByMembership.set(row.membershipId, [
-        ...(groupsByMembership.get(row.membershipId) ?? []),
-        row.group,
-      ]);
-    }
-    return groupsByMembership;
-  }
-
-  private async revokeOrganizationTokensForMembership(
-    userId: string,
-    organizationId: string,
-    manager: EntityManager = this.manager,
-    _reason: "membership_disabled" | "membership_removed" | "role_changed",
-  ) {
-    await manager.update(
-      IntegrationToken,
-      {
-        organizationId,
-        ownerUserId: userId,
-        revokedAt: IsNull(),
-        scope: "organization",
-        tenantId: this.tenantId,
-      },
-      { revokedAt: new Date() },
-    );
-  }
-
-  private async assertAnotherActiveOwner(
-    organizationId: string,
-    currentMembershipId: string,
-    manager: EntityManager = this.manager,
-  ) {
-    const activeMemberships = await manager.find(UserOrganization, {
-      lock: { mode: "pessimistic_write" },
-      relations: { role: true },
-      where: { organizationId, status: "active", tenantId: this.tenantId },
-    });
-    const hasAnotherOwner = activeMemberships.some(
-      (membership) =>
-        membership.id !== currentMembershipId && membership.role?.name === "owner",
-    );
-    if (!hasAnotherOwner) {
-      throw new BadRequestException("组织至少需要保留一个 Owner");
-    }
-  }
-
-  private get tenantId() {
-    return this.tenantContext.current()!.tenantId;
-  }
-
-  private get manager() {
-    return this.tenantContext.current()!.manager;
-  }
-
-  private get memberships() {
-    return this.tenantContext.repository(UserOrganization);
-  }
-
-  private get organizations() {
-    return this.tenantContext.repository(Organization);
-  }
-
-  private get groupMembers() {
-    return this.tenantContext.repository(OrganizationGroupMember);
-  }
-
-  private get users() {
-    return this.tenantContext.repository(User);
+    if (!organization) throw new NotFoundException("组织不存在");
+    return organization;
   }
 }
 
-function requireMembershipPayload(
-  value: MembershipPayload | Partial<MembershipPayload>,
-) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new BadRequestException("请求内容无效");
-  }
-  return value;
-}
-
-function requireText(value: string | undefined, label: string) {
-  if (value !== undefined && typeof value !== "string") {
-    throw new BadRequestException(`${label}格式不正确`);
-  }
-  const text = value?.trim();
-  if (!text) throw new BadRequestException(`${label}不能为空`);
-  return text;
-}
-
-function normalizeEmail(value: string | undefined) {
-  const email = requireText(value, "邮箱").toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new BadRequestException("邮箱格式不正确");
-  }
-  return email;
-}
-
-function normalizeNullableText(value: string | null | undefined) {
-  if (value !== null && value !== undefined && typeof value !== "string") {
-    throw new BadRequestException("显示名称格式不正确");
-  }
-  const text = value?.trim();
-  return text || null;
-}
-
-function requirePassword(value: string | undefined) {
-  const password = requireText(value, "密码");
-  if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
-  return password;
-}
-
-function normalizeMembershipStatus(
-  value: string | null | undefined,
-): UserOrganizationStatus {
-  if (value === null || value === undefined) return "active";
-  if (value === "active" || value === "disabled" || value === "invited") {
-    return value;
-  }
-  throw new BadRequestException("组织成员状态无效");
-}
-
-function isActiveOwnerMembership(membership: UserOrganization) {
-  return isActiveOwnerState(membership.role, membership.status);
-}
-
-function isActiveOwnerState(
-  role: Role | null | undefined,
-  status: UserOrganizationStatus,
-) {
-  return status === "active" && role?.name === "owner";
-}
-
-function isUniqueConstraintError(error: unknown) {
-  const typed = error as {
-    code?: string;
-    driverError?: { code?: string; constraint?: string };
-  };
-  return typed.code === "23505" || typed.driverError?.code === "23505";
-}
-
-function getConstraintName(error: unknown) {
-  const typed = error as { constraint?: string; driverError?: { constraint?: string } };
-  return typed.constraint ?? typed.driverError?.constraint ?? null;
-}
-
-function toMembershipDto(
-  membership: UserOrganization,
-  groups: OrganizationGroup[] = [],
-) {
+function toMembershipDto(membership: UserOrganization, role: Role | null) {
   return {
     displayName: membership.displayName,
-    groupIds: groups.map((group) => group.id),
-    groups: groups.map(toGroupBriefDto),
     id: membership.id,
+    isDefault: membership.isDefault,
     joinedAt: membership.joinedAt,
     organizationId: membership.organizationId,
-    tenantId: membership.tenantId,
-    role: membership.role,
-    roleId: membership.roleId,
+    role,
     status: membership.status,
-    user: membership.user ? toUserDto(membership.user) : undefined,
+    user: membership.user,
     userId: membership.userId,
   };
 }
 
-function toGroupBriefDto(group: OrganizationGroup) {
-  return {
-    color: group.color,
-    displayName: group.displayName,
-    id: group.id,
-    name: group.name,
-    organizationId: group.organizationId,
-  };
+function normalizeEmail(value: unknown) {
+  return requireText(value, "邮箱").toLowerCase();
+}
+
+function requireText(value: unknown, label: string) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new BadRequestException(`${label}不能为空`);
+  }
+  return value.trim();
+}
+
+function nullableText(value: unknown) {
+  if (typeof value !== "string") return null;
+  return value.trim() || null;
 }

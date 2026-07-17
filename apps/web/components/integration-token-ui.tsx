@@ -1,15 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, type Dispatch, type SetStateAction } from "react";
 import { PermissionTree } from "@/components/permission-tree";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type {
   CreatedIntegrationToken,
   IntegrationToken,
@@ -32,12 +27,11 @@ export type IntegrationTokenDraft = {
   expiresAt: string;
   note: string;
   permissions: string[];
-  scopeKey: string;
+  scopeKey: "tenant" | "";
 };
 
 export function CreateTokenDialog({
   canCreate,
-  capabilities,
   createToken,
   draft,
   onOpenChange,
@@ -47,10 +41,8 @@ export function CreateTokenDialog({
   submitting,
   togglePermission,
   tr,
-  updateScope,
 }: {
   canCreate: boolean;
-  capabilities: IntegrationTokenScopeCapability[];
   createToken: () => void;
   draft: IntegrationTokenDraft;
   onOpenChange: (open: boolean) => void;
@@ -60,86 +52,34 @@ export function CreateTokenDialog({
   submitting: boolean;
   togglePermission: (permission: string, checked: boolean) => void;
   tr: (value: string | null | undefined) => string;
-  updateScope: (scopeKey: string) => void;
 }) {
   const catalog = useMemo(
     () => capabilityToCatalog(selectedCapability, tr),
     [selectedCapability, tr],
   );
-  const selectedCount = draft.permissions.length;
-  const totalCount = selectedCapability?.permissions.length ?? 0;
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="grid h-[min(80vh,72rem)] max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl">
-        <DialogHeader className="border-b p-4 pr-12">
-          <DialogTitle>{tr("创建 Token")}</DialogTitle>
+      <DialogContent className="grid max-h-[min(90svh,760px)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b p-5 pr-12">
+          <DialogTitle>{tr("创建个人 API Token")}</DialogTitle>
           <DialogDescription>
-            {tr("选择这个 Token 可使用的作用范围、有效期和权限。")}
+            {tr("选择这个 Token 可以请求的权限和有效期。最终权限还会实时受当前账号约束。")}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-4 p-4">
-          <div className="grid gap-2">
-            <Label htmlFor="integration-scope">{tr("作用范围")}</Label>
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
-              disabled={submitting}
-              id="integration-scope"
-              onChange={(event) => updateScope(event.target.value)}
-              value={draft.scopeKey}
-            >
-              {capabilities.map((capability) => (
-                <option
-                  key={scopeCapabilityKey(capability)}
-                  value={scopeCapabilityKey(capability)}
-                >
-                  {formatScopeCapability(capability, tr)}
-                </option>
-              ))}
-            </select>
+        <div className="grid min-h-0 gap-4 overflow-y-auto p-5">
+          <div className="grid gap-1.5">
+            <Label>{tr("所有者")}</Label>
+            <Badge className="w-fit" variant="secondary">{tr("当前账号")}</Badge>
           </div>
-          {(selectedCapability?.scope === "organization" ||
-            selectedCapability?.scope === "department") && (
-            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">
-                {selectedCapability.scope === "department"
-                  ? tr("所属部门")
-                  : tr("所属组织")}
-              </span>
-              <span className="ml-2 font-medium">
-                {selectedCapability.scope === "department"
-                  ? selectedCapability.departmentName ??
-                    selectedCapability.departmentId ??
-                    tr("当前部门")
-                  : selectedCapability.organizationName ??
-                    selectedCapability.organizationId ??
-                    tr("当前组织")}
-              </span>
-            </div>
-          )}
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="integration-note">{tr("备注")}</Label>
+          <div className="grid gap-1.5 sm:grid-cols-2 sm:gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="integration-token-expires">{tr("有效期")}</Label>
               <Input
                 disabled={submitting}
-                id="integration-note"
-                maxLength={160}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, note: event.target.value }))
-                }
-                placeholder={tr("例如：CI 部署")}
-                value={draft.note}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="integration-expiry">{tr("有效期")}</Label>
-              <Input
-                disabled={submitting}
-                id="integration-expiry"
-                max={formatDateInput(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000))}
-                min={formatDateInput(new Date(Date.now() + 24 * 60 * 60 * 1000))}
+                id="integration-token-expires"
+                min={new Date().toISOString().slice(0, 10)}
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, expiresAt: event.target.value }))
                 }
@@ -147,45 +87,57 @@ export function CreateTokenDialog({
                 value={draft.expiresAt}
               />
             </div>
-          </div>
-
-          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <div className="text-sm font-medium">{tr("权限")}</div>
-                <div className="text-xs text-muted-foreground">
-                  {tr("只能选择当前账号在该作用范围内已经拥有的权限。")}
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {selectedCount} / {totalCount} {tr("已选择")}
-              </div>
-            </div>
-            <div className="min-h-0 overflow-y-auto overscroll-contain rounded-lg border">
-              <PermissionTree
-                catalog={catalog}
+            <div className="grid gap-1.5">
+              <Label htmlFor="integration-token-note">{tr("备注")}</Label>
+              <Input
                 disabled={submitting}
-                isChecked={(permission) => draft.permissions.includes(permission)}
-                onToggle={(permission, enabled) =>
-                  togglePermission(permission, enabled === true)
+                id="integration-token-note"
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, note: event.target.value }))
                 }
+                value={draft.note}
               />
             </div>
           </div>
+          <div className="grid min-h-0 gap-2">
+            <Label>{tr("权限")}</Label>
+            <ScrollArea className="h-[min(48svh,440px)] rounded-lg border bg-card/40">
+              <PermissionTree
+                catalog={catalog}
+                defaultExpanded={false}
+                disabled={submitting}
+                isChecked={(permission) => draft.permissions.includes(permission)}
+                onToggle={(permission, enabled) =>
+                  togglePermission(permission, enabled ?? false)
+                }
+              />
+            </ScrollArea>
+          </div>
         </div>
 
-        <DialogFooter className="mx-0 mb-0 rounded-b-xl border-t bg-muted/50 px-5 py-4">
-          <Button
-            disabled={submitting}
-            onClick={() => onOpenChange(false)}
-            type="button"
-            variant="outline"
-          >
-            {tr("取消")}
-          </Button>
-          <Button disabled={!canCreate} onClick={createToken} type="button">
-            {tr("创建 Token")}
-          </Button>
+        <DialogFooter className="mx-0 mb-0 flex-col gap-3 rounded-none rounded-b-xl border-t px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs text-muted-foreground">
+            {draft.permissions.length} {tr("项权限已选择")}
+          </span>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <Button
+              className="flex-1 sm:flex-none"
+              disabled={submitting}
+              onClick={() => onOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
+              {tr("取消")}
+            </Button>
+            <Button
+              className="flex-1 sm:flex-none"
+              disabled={!canCreate}
+              onClick={createToken}
+              type="button"
+            >
+              {submitting ? tr("创建中...") : tr("创建")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -194,40 +146,30 @@ export function CreateTokenDialog({
 
 export function CreatedTokenDialog({
   createdToken,
-  organizationNames,
   onOpenChange,
   tr,
 }: {
   createdToken: CreatedIntegrationToken | null;
-  organizationNames: Map<string, string>;
   onOpenChange: (open: boolean) => void;
   tr: (value: string | null | undefined) => string;
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={Boolean(createdToken)}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>{tr("保存这个 Token")}</DialogTitle>
-          <DialogDescription>
-            {tr("Token 只会显示一次。关闭页面后只能撤销并重新创建。")}
-          </DialogDescription>
+          <DialogTitle>{tr("个人 API Token 已创建")}</DialogTitle>
+          <DialogDescription>{tr("请立即复制并妥善保存，这个 Token 不会再次显示。")}</DialogDescription>
         </DialogHeader>
-        {createdToken && (
-          <div className="grid gap-1 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-            <span className="text-xs text-muted-foreground">{tr("作用范围")}</span>
-            <span className="font-medium">
-              {formatTokenScope(createdToken, organizationNames, tr)}
-            </span>
-          </div>
-        )}
-        <Textarea
-          className="min-h-32 font-mono text-xs"
-          readOnly
-          value={createdToken?.token ?? ""}
-        />
+        <div className="grid gap-3">
+          <Badge className="w-fit" variant="secondary">{tr("个人 Token")}</Badge>
+          <Input readOnly value={createdToken?.token ?? ""} />
+        </div>
         <DialogFooter>
-          <Button onClick={() => onOpenChange(false)} type="button">
-            {tr("关闭")}
+          <Button
+            onClick={() => void navigator.clipboard.writeText(createdToken?.token ?? "")}
+            type="button"
+          >
+            {tr("复制 Token")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -240,89 +182,41 @@ export function TokenSection({
   emptyText,
   locale,
   onRevoke,
-  organizationNames,
-  showOwner,
   title,
   tokens,
   tr,
 }: {
-  canRevoke?: boolean;
+  canRevoke: boolean;
   emptyText: string;
   locale: string;
   onRevoke: (token: IntegrationToken) => void;
-  organizationNames: Map<string, string>;
-  showOwner?: boolean;
   title: string;
   tokens: IntegrationToken[];
   tr: (value: string | null | undefined) => string;
 }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
+      <CardHeader className="pb-3"><CardTitle className="text-base">{title}</CardTitle></CardHeader>
+      <CardContent className="grid gap-2">
         {tokens.length === 0 ? (
-          <div className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-            {emptyText}
+          <div className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">{emptyText}</div>
+        ) : tokens.map((token) => (
+          <div className="flex flex-col gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center" key={token.id}>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 break-all font-mono text-sm">{token.tokenPrefix}</span>
+                <Badge variant="outline">{tr("个人 Token")}</Badge>
+                <Badge variant="secondary">{token.permissions.length} {tr("项权限")}</Badge>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {token.note || tr("无备注")} · {tr("到期")} {formatDateTime(token.expiresAt, locale)}
+              </p>
+            </div>
+            {canRevoke && !token.revokedAt && !token.isExpired && (
+              <Button onClick={() => onRevoke(token)} size="sm" type="button" variant="outline">{tr("撤销")}</Button>
+            )}
           </div>
-        ) : (
-          <div className="grid gap-3">
-            {tokens.map((token) => {
-              const inactive = Boolean(token.revokedAt || token.isExpired);
-              return (
-                <div
-                  className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                  key={token.id}
-                >
-                  <div className="grid min-w-0 gap-1 text-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">
-                        {token.note || tr("未命名 Token")}
-                      </span>
-                      <span className="rounded-md border px-1.5 py-0.5 text-xs">
-                        {formatTokenScope(token, organizationNames, tr)}
-                      </span>
-                      {inactive && (
-                        <span className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground">
-                          {token.revokedAt ? tr("已撤销") : tr("已过期")}
-                        </span>
-                      )}
-                    </div>
-                    <div className="font-mono text-xs text-muted-foreground">
-                      {token.tokenPrefix}...
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {showOwner && token.owner && (
-                        <span>
-                          {tr("创建人")} {token.owner.displayName || token.owner.email}
-                        </span>
-                      )}
-                      <span>{tr("权限")} {token.permissions.length}</span>
-                      <span>{tr("过期时间")} {formatDateTime(token.expiresAt, locale)}</span>
-                      <span>
-                        {tr("最近使用")}{" "}
-                        {token.lastUsedAt
-                          ? formatDateTime(token.lastUsedAt, locale)
-                          : tr("从未使用")}
-                      </span>
-                    </div>
-                  </div>
-                  {!inactive && canRevoke && (
-                    <Button
-                      onClick={() => onRevoke(token)}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {tr("撤销")}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        ))}
       </CardContent>
     </Card>
   );
@@ -331,133 +225,78 @@ export function TokenSection({
 export function emptyIntegrationTokenDraft(
   capability?: IntegrationTokenScopeCapability | null,
 ): IntegrationTokenDraft {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 30);
   return {
-    expiresAt: formatDateInput(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
+    expiresAt: expiresAt.toISOString().slice(0, 10),
     note: "",
     permissions: [],
-    scopeKey: capability ? scopeCapabilityKey(capability) : "",
+    scopeKey: capability?.scope ?? "tenant",
   };
 }
 
 export function scopeCapabilityKey(capability: IntegrationTokenScopeCapability) {
-  return [
-    capability.scope,
-    capability.organizationId ?? "none",
-    capability.departmentId ?? "none",
-  ].join(":");
+  return capability.scope;
 }
 
 function capabilityToCatalog(
   capability: IntegrationTokenScopeCapability | null,
   tr: (value: string | null | undefined) => string,
-): PermissionCatalog {
-  if (!capability) return { scopes: [] };
-
-  const entities: PermissionCatalog["scopes"][number]["entities"] = [];
-  const entityMap = new Map<string, PermissionCatalog["scopes"][number]["entities"][number]>();
-  const purposeMaps = new Map<
-    string,
-    Map<string, PermissionCatalog["scopes"][number]["entities"][number]["purposes"][number]>
-  >();
-
-  for (const permission of capability.permissions) {
-    const parsed = parsePermissionParts(permission.permission);
-    const entityKey = permission.entity ?? parsed.entity;
-    let entity = entityMap.get(entityKey);
-    if (!entity) {
-      entity = {
-        entity: entityKey,
-        label: permission.entityLabel ?? entityKey,
-        order: permission.entityOrder ?? null,
-        purposes: [],
-      };
-      entityMap.set(entityKey, entity);
-      purposeMaps.set(entityKey, new Map());
-      entities.push(entity);
-    }
-
-    const purposeKey = permission.purpose ?? parsed.purpose;
-    const entityPurposeMap = purposeMaps.get(entityKey);
-    let purpose = entityPurposeMap?.get(purposeKey);
-    if (!purpose) {
-      purpose = {
-        label: permission.purposeLabel ?? purposeKey,
-        operations: [],
-        order: permission.purposeOrder ?? null,
-        purpose: purposeKey,
-      };
-      entityPurposeMap?.set(purposeKey, purpose);
-      entity.purposes.push(purpose);
-    }
-
-    purpose.operations.push({
-      description: permission.description,
-      isDangerous: permission.isDangerous,
-      label: permission.label,
-      operation: permission.operation ?? parsed.operation,
-      order: permission.operationOrder ?? null,
-      permission: permission.permission,
-    });
-  }
-
+): PermissionCatalog | null {
+  if (!capability) return null;
+  const scopeLabels = {
+    organization: tr("组织"),
+    own: tr("个人"),
+    tenant: tr("工作空间"),
+  } as const;
   return {
-    scopes: [
-      {
-        entities,
-        label: formatScopeCapability(capability, tr),
-        scope: capability.scope,
-      },
-    ],
+    scopes: (["tenant", "organization", "own"] as const).flatMap((scope) => {
+      const scopedPermissions = capability.permissions.filter(
+        (item) => item.scope === scope,
+      );
+      if (!scopedPermissions.length) return [];
+      const entities = new Map<
+        string,
+        IntegrationTokenScopeCapability["permissions"]
+      >();
+      for (const item of scopedPermissions) {
+        entities.set(item.entity, [...(entities.get(item.entity) ?? []), item]);
+      }
+      return [{
+        entities: [...entities.entries()].map(([entity, operations]) => ({
+          entity,
+          label: operations[0]?.entityLabel ?? entity,
+          order: operations[0]?.entityOrder,
+          purposes: [...new Set(operations.map((item) => item.purpose))].map(
+            (purpose) => {
+              const purposeOperations = operations.filter(
+                (item) => item.purpose === purpose,
+              );
+              return {
+                label: purposeOperations[0]?.purposeLabel ?? purpose,
+                operations: purposeOperations.map((item) => ({
+                  description: item.description,
+                  isDangerous: item.isDangerous,
+                  label: item.label,
+                  operation: item.operation,
+                  order: item.operationOrder,
+                  permission: item.permission,
+                })),
+                order: purposeOperations[0]?.purposeOrder,
+                purpose,
+              };
+            },
+          ),
+        })),
+        label: scopeLabels[scope],
+        scope,
+      }];
+    }),
   };
 }
 
-function parsePermissionParts(permission: string) {
-  const [path] = permission.split(":");
-  const parts = path.split(".");
-  const entity = parts.shift() || "permission";
-  const operation = parts.pop() || "access";
-  const purpose = parts.join(".") || "default";
-  return { entity, operation, purpose };
-}
-
-function formatDateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 function formatDateTime(value: string | null, locale: string) {
-  if (!value) return "";
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function formatScopeCapability(
-  capability: IntegrationTokenScopeCapability,
-  tr: (value: string | null | undefined) => string,
-) {
-  if (capability.scope === "tenant") return tr("租户");
-  if (capability.scope === "department") {
-    return `${tr("部门")} / ${capability.departmentName ?? capability.departmentId}`;
-  }
-  return `${tr("组织")} / ${capability.organizationName ?? capability.organizationId}`;
-}
-
-function formatTokenScope(
-  token: IntegrationToken,
-  organizationNames: Map<string, string>,
-  tr: (value: string | null | undefined) => string,
-) {
-  if (token.scope === "tenant") return tr("租户");
-  if (token.scope === "department") {
-    return `${tr("部门")} / ${token.departmentName ?? token.departmentId ?? tr("当前部门")}`;
-  }
-  const organizationLabel =
-    token.organizationName ??
-    (token.organizationId ? organizationNames.get(token.organizationId) ?? token.organizationId : null);
-  return organizationLabel
-    ? `${tr("组织")} / ${organizationLabel}`
-    : tr("组织");
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString(locale);
 }

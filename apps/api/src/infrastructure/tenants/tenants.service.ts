@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -24,12 +25,14 @@ import type {
   TenantApplicationReviewPayload,
   TenantRolePayload,
   TenantRolePermissionsPayload,
+  RootOrganizationPayload,
   UpdateTenantPayload,
 } from "./tenants.controller.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { TenantContextService } from "../../common/database/tenant-context.service.js";
 import { createPasswordResetToken } from "../password-reset/password-reset-token.js";
 import { PlatformEmailSendService } from "../mail/platform-email-send.service.js";
+import { OrganizationRolesService } from "../organizations/organization-roles.service.js";
 
 const RESERVED_TENANT_ROLE_NAMES = new Set([
   "tenant-owner",
@@ -44,22 +47,17 @@ export class TenantsService {
     private readonly platformTenantRepository: Repository<Tenant>,
     @InjectRepository(TenantApplication, PLATFORM_DATA_SOURCE)
     private readonly applicationRepository: Repository<TenantApplication>,
-    @InjectRepository(Organization, PLATFORM_DATA_SOURCE)
-    private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User, PLATFORM_DATA_SOURCE)
     private readonly userRepository: Repository<User>,
-    @InjectRepository(UserOrganization, PLATFORM_DATA_SOURCE)
-    private readonly membershipRepository: Repository<UserOrganization>,
     @InjectRepository(Role, PLATFORM_DATA_SOURCE)
     private readonly roleRepository: Repository<Role>,
-    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
-    private readonly rolePermissionRepository: Repository<RolePermission>,
     @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
     private readonly permissionRepository: Repository<Permission>,
     @InjectRepository(PasswordReset, PLATFORM_DATA_SOURCE)
     private readonly passwordResetRepository: Repository<PasswordReset>,
     private readonly tenantContext: TenantContextService,
     private readonly platformEmailSendService: PlatformEmailSendService,
+    private readonly organizationRoles: OrganizationRolesService,
   ) {}
 
   async apply(payload: TenantApplicationPayload) {
@@ -227,81 +225,28 @@ export class TenantsService {
         tenantId: tenant.id,
         userId: user.id,
       });
-      const organization = await manager.save(
-        Organization,
-        this.organizationRepository.create({
-          createdByUserId: user.id,
-          isDefault: true,
-          name: normalizeOptionalName(payload?.organizationName) ?? tenant.name,
-          slug: normalizeSlug(payload?.organizationName ?? tenant.slug),
-          status: "active",
-          tenantId: tenant.id,
-        }),
-      );
       const tenantOwnerRole = await manager.save(
         Role,
         this.roleRepository.create({
           color: "#7c3aed",
-          departmentId: null,
           description: "Tenant owner with tenant governance access.",
           displayName: "Tenant Owner",
           isSystem: true,
           label: "Tenant Owner",
           name: "tenant-owner",
-          organizationId: null,
           scope: "tenant",
           tenantId: tenant.id,
         }),
-      );
-      const ownerRole = await manager.save(
-        Role,
-        this.roleRepository.create({
-          color: "#2563eb",
-          departmentId: null,
-          description: "Tenant owner with organization administration access.",
-          displayName: "Owner",
-          isSystem: true,
-          label: "Owner",
-          name: "owner",
-          organizationId: organization.id,
-          scope: "organization",
-          tenantId: tenant.id,
-        }),
-      );
-      await this.assignOrganizationOwnerPermissions(
-        tenant.id,
-        organization.id,
-        ownerRole,
-        manager,
       );
       await this.assignTenantOwnerPermissions(
         tenant.id,
         tenantOwnerRole,
         manager,
       );
-      const membership = await manager.save(
-        UserOrganization,
-        this.membershipRepository.create({
-          displayName: user.displayName,
-          isDefault: true,
-          joinedAt: new Date(),
-          organizationId: organization.id,
-          roleId: ownerRole.id,
-          status: "active",
-          tenantId: tenant.id,
-          userId: user.id,
-        }),
-      );
       await manager.save(UserTenantRole, {
         roleId: tenantOwnerRole.id,
         tenantId: tenant.id,
         userId: user.id,
-      });
-      await manager.save(UserOrganizationRole, {
-        membershipId: membership.id,
-        organizationId: organization.id,
-        roleId: ownerRole.id,
-        tenantId: tenant.id,
       });
       await manager.save(PasswordReset, {
         email: user.email,
@@ -318,7 +263,6 @@ export class TenantsService {
 
       return {
         application,
-        organization,
         ownerActivationToken,
         ownerUser: user,
         tenant,
@@ -393,17 +337,79 @@ export class TenantsService {
     return this.tenantContext.repository(Tenant).save(tenant);
   }
 
+  async createRootOrganization(
+    tenantId: string,
+    userId: string,
+    payload: RootOrganizationPayload,
+  ) {
+    tenantId = this.requireTenantExecution(tenantId);
+    const name = requireText(payload?.name, "根组织名称");
+    const slug = normalizeSlug(payload?.slug);
+    const manager = this.tenantContext.current()!.manager;
+    const tenant = await manager.findOne(Tenant, {
+      lock: { mode: "pessimistic_write" },
+      where: { id: tenantId },
+    });
+    if (!tenant) throw new NotFoundException("工作空间不存在");
+    const existing = await manager.findOne(Organization, {
+      where: { parentOrganizationId: IsNull(), tenantId },
+    });
+    if (existing) {
+      if (existing.name !== name || existing.slug !== slug) {
+        throw new ConflictException("根组织已创建，名称或标识与现有组织不一致");
+      }
+      return { organization: existing, tenant };
+    }
+    if (tenant.status !== "provisioning") {
+      throw new BadRequestException("当前工作空间不需要创建根组织");
+    }
+    const user = await manager.findOne(User, {
+      where: { id: requireText(userId, "用户"), status: "active", tenantId },
+    });
+    if (!user) throw new NotFoundException("用户不存在");
+    const organization = await manager.save(
+      Organization,
+      manager.create(Organization, {
+        createdByUserId: user.id,
+        name,
+        parentOrganizationId: null,
+        slug,
+        status: "active",
+        tenantId,
+      }),
+    );
+    const membership = await manager.save(
+      UserOrganization,
+      manager.create(UserOrganization, {
+        displayName: user.displayName,
+        isDefault: true,
+        joinedAt: new Date(),
+        organizationId: organization.id,
+        status: "active",
+        tenantId,
+        userId: user.id,
+      }),
+    );
+    const roles = await this.organizationRoles.bootstrap(organization.id);
+    const ownerRole = roles.get("owner");
+    if (!ownerRole) throw new Error("Organization Owner role was not provisioned.");
+    await manager.insert(UserOrganizationRole, {
+      membershipId: membership.id,
+      organizationId: organization.id,
+      roleId: ownerRole.id,
+      tenantId,
+    });
+    tenant.status = "active";
+    await manager.save(Tenant, tenant);
+    return { organization, tenant };
+  }
+
   async listTenantRoles(tenantId: string) {
     tenantId = this.requireTenantExecution(tenantId);
     const roles = await this.tenantContext.repository(Role).find({
       order: { createdAt: "ASC" },
       relations: { rolePermissions: true },
-      where: {
-        departmentId: IsNull(),
-        organizationId: IsNull(),
-        scope: "tenant",
-        tenantId,
-      },
+      where: { organizationId: IsNull(), scope: "tenant", tenantId },
     });
     return roles.map(toTenantRoleDto);
   }
@@ -415,13 +421,12 @@ export class TenantsService {
     const name = normalizeSlug(payload.name ?? displayName);
     assertCustomTenantRoleName(name);
     const roles = this.tenantContext.repository(Role);
-    if (await roles.findOne({ where: { name, scope: "tenant", tenantId } })) {
+    if (await roles.findOne({ where: { name, organizationId: IsNull(), scope: "tenant", tenantId } })) {
       throw new BadRequestException("角色标识已被使用");
     }
     const role = await roles.save(
       roles.create({
         color: normalizeNullableText(payload.color),
-        departmentId: null,
         description: normalizeNullableText(payload.description),
         displayName,
         isSystem: false,
@@ -450,7 +455,7 @@ export class TenantsService {
       }
       if (!role.isSystem) assertCustomTenantRoleName(name);
       const duplicate = await this.tenantContext.repository(Role).findOne({
-        where: { name, scope: "tenant", tenantId },
+        where: { name, organizationId: IsNull(), scope: "tenant", tenantId },
       });
       if (duplicate && duplicate.id !== role.id) {
         throw new BadRequestException("角色标识已被使用");
@@ -475,7 +480,9 @@ export class TenantsService {
   ) {
     tenantId = this.requireTenantExecution(tenantId);
     const role = await this.requireTenantRole(tenantId, roleId);
-    if (role.isSystem) throw new BadRequestException("系统租户角色权限不能替换");
+    if (isProtectedTenantRole(role)) {
+      throw new BadRequestException("Tenant Owner 权限不能修改");
+    }
     if (!payload || !Array.isArray(payload.permissions)) {
       throw new BadRequestException("权限列表格式不正确");
     }
@@ -489,9 +496,10 @@ export class TenantsService {
     const permissions: Permission[] = [];
     for (const code of requestedCodes) {
       const permission = await this.tenantContext.repository(Permission).findOne({
-        where: { code, scope: "tenant" },
+        where: { code },
       });
-      if (!permission) throw new BadRequestException(`租户权限不存在: ${code}`);
+      const allowed = permission && (permission.scope === "tenant" || permission.scope === "own");
+      if (!allowed) throw new BadRequestException(`角色权限范围不匹配: ${code}`);
       permissions.push(permission);
     }
     const manager = this.tenantContext.current()!.manager;
@@ -500,9 +508,7 @@ export class TenantsService {
       await manager.save(
         RolePermission,
         permissions.map((permission) => ({
-          departmentId: null,
           enabled: true,
-          organizationId: null,
           permission: permission.code ?? "",
           permissionId: permission.id,
           roleId,
@@ -518,7 +524,9 @@ export class TenantsService {
     const role = await this.requireTenantRole(tenantId, roleId);
     if (role.isSystem) throw new BadRequestException("系统租户角色不能删除");
     const manager = this.tenantContext.current()!.manager;
-    await manager.delete(UserTenantRole, { roleId, tenantId });
+    if (await manager.exists(UserTenantRole, { where: { roleId, tenantId } })) {
+      throw new ConflictException("角色仍分配给工作空间用户，不能删除");
+    }
     await manager.delete(RolePermission, { roleId, tenantId });
     await manager.delete(Role, { id: roleId, tenantId });
     return { success: true };
@@ -532,7 +540,6 @@ export class TenantsService {
     const role = await this.tenantContext.repository(Role).findOne({
       relations: withPermissions ? { rolePermissions: true } : undefined,
       where: {
-        departmentId: IsNull(),
         id: requireText(roleId, "角色"),
         organizationId: IsNull(),
         scope: "tenant",
@@ -591,47 +598,18 @@ export class TenantsService {
     if (existing) throw new BadRequestException("租户标识或子域名已被使用");
   }
 
-  private async assignOrganizationOwnerPermissions(
-    tenantId: string,
-    organizationId: string,
-    role: Role,
-    manager: import("typeorm").EntityManager,
-  ) {
-    const permissions = await manager.find(Permission, {
-      where: [{ scope: "organization" }, { scope: "own" }],
-    });
-    const rows = permissions
-      .filter((permission) => permission.defaultRoles?.includes("owner"))
-      .map((permission) =>
-        this.rolePermissionRepository.create({
-          enabled: true,
-          organizationId,
-          permission: permission.code ?? "",
-          permissionId: permission.id,
-          roleId: role.id,
-          tenantId,
-        }),
-      );
-    if (rows.length) await manager.save(RolePermission, rows);
-  }
-
   private async assignTenantOwnerPermissions(
     tenantId: string,
     role: Role,
     manager: import("typeorm").EntityManager,
   ) {
-    const permissions = await manager.find(Permission, {
-      where: { scope: "tenant" },
-    });
+    const permissions = (await manager.find(Permission)).filter(
+      (permission) => permission.scope !== "platform",
+    );
     const rows = permissions
-      .filter((permission) =>
-        permission.defaultRoles?.includes("tenant-owner"),
-      )
       .map((permission) =>
-        this.rolePermissionRepository.create({
-          departmentId: null,
+        manager.create(RolePermission, {
           enabled: true,
-          organizationId: null,
           permission: permission.code ?? "",
           permissionId: permission.id,
           roleId: role.id,
@@ -765,6 +743,10 @@ function requireObject(value: unknown, label: string): asserts value is object {
   }
 }
 
+function isProtectedTenantRole(role: Pick<Role, "name">) {
+  return role.name === "tenant-owner";
+}
+
 function toTenantRoleDto(role: Role) {
   return {
     color: role.color,
@@ -772,11 +754,17 @@ function toTenantRoleDto(role: Role) {
     displayName: role.displayName ?? role.label,
     id: role.id,
     isSystem: role.isSystem,
+    label: role.label,
     name: role.name,
-    permissions: (role.rolePermissions ?? [])
-      .filter((permission) => permission.enabled)
-      .map((permission) => permission.permission),
+    permissions: (role.rolePermissions ?? []).map((permission) => ({
+      enabled: permission.enabled,
+      id: permission.id,
+      permission: permission.permission,
+      permissionId: permission.permissionId,
+      roleId: permission.roleId,
+    })),
     scope: role.scope,
+    organizationId: role.organizationId,
     tenantId: role.tenantId,
   };
 }

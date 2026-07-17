@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { OrganizationSetting, PlatformSetting, TenantSetting } from "@hermes-swarm/core";
+import { PlatformSetting, TenantSetting } from "@hermes-swarm/core";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { RedisModule } from "../../common/redis/redis.module.js";
 import { SettingsController } from "./settings.controller.js";
@@ -11,7 +11,7 @@ import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.j
   imports: [
     RedisModule,
     DatabaseModule,
-    TypeOrmModule.forFeature([OrganizationSetting, TenantSetting]),
+    TypeOrmModule.forFeature([TenantSetting]),
     TypeOrmModule.forFeature([PlatformSetting], PLATFORM_DATA_SOURCE),
   ],
   controllers: [SettingsController],

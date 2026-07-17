@@ -9,8 +9,6 @@ import {
   PlatformUserRole,
   Role,
   RolePermission,
-  UserDepartment,
-  UserDepartmentRole,
   UserOrganization,
   UserOrganizationRole,
   UserTenantRole,
@@ -27,8 +25,6 @@ import { PLATFORM_DATA_SOURCE } from "./tokens.js";
     DiscoveryModule,
     TypeOrmModule.forFeature([
       RolePermission,
-      UserDepartment,
-      UserDepartmentRole,
       UserOrganization,
       UserOrganizationRole,
       UserTenantRole,

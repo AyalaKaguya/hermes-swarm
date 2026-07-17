@@ -1,7 +1,7 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import type { Role } from "./role.entity.js";
 import type { User } from "./user.entity.js";
-import { OrganizationBaseEntity } from "./organization-base.entity.js";
+import type { Role } from "./role.entity.js";
+import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 /**
  * Invite lifecycle status.
@@ -14,11 +14,14 @@ export type InviteStatus =
   | "revoked";
 
 @Entity({ name: "invites" })
-@Index(["organizationId", "email"], { unique: true })
+@Index("UQ_invites_active_tenant_email", ["tenantId", "email"], {
+  unique: true,
+  where: "status = 'invited' AND email IS NOT NULL",
+})
 /**
  * Invitation records for onboarding new users into an organization.
  */
-export class Invite extends OrganizationBaseEntity {
+export class Invite extends TenantOwnedBaseEntity {
   /**
    * JWT token used to validate invite acceptance.
    */
@@ -85,14 +88,21 @@ export class Invite extends OrganizationBaseEntity {
   @JoinColumn({ name: "invited_by_id" })
   invitedBy!: User | null;
 
-  /**
-   * Role assigned upon acceptance.
-   */
-  @Column({ name: "role_id", type: "uuid", nullable: true })
+  @Column({ name: "workspace_role_id", type: "uuid" })
   @Index()
-  roleId!: string | null;
+  workspaceRoleId!: string;
 
-  @ManyToOne("Role", { nullable: true, onDelete: "SET NULL" })
-  @JoinColumn({ name: "role_id" })
-  role!: Role | null;
+  @ManyToOne("Role", { onDelete: "RESTRICT" })
+  @JoinColumn([
+    { name: "tenant_id", referencedColumnName: "tenantId" },
+    { name: "workspace_role_id", referencedColumnName: "id" },
+  ])
+  workspaceRole!: Role;
+
+  @Column({ name: "organization_assignments", type: "jsonb", default: () => "'[]'::jsonb" })
+  organizationAssignments!: Array<{
+    isDefault?: boolean;
+    organizationId: string;
+    roleId: string;
+  }>;
 }

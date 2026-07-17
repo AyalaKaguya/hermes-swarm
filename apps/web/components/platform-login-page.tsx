@@ -8,6 +8,7 @@ import { AppIcon } from "@/components/app-icon";
 import { useI18n } from "@/components/i18n-provider";
 import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { Button } from "@/components/ui/button";
+import { InlineNotice } from "@/components/inline-notice";
 import {
   Card,
   CardContent,
@@ -23,8 +24,8 @@ export function PlatformLoginPage() {
   const router = useRouter();
   const t = useTranslations("platformAuth");
   const { setLanguage } = useI18n();
-  const [email, setEmail] = useState("admin@hermes.local");
-  const [password, setPassword] = useState("admin123456");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -82,11 +83,7 @@ export function PlatformLoginPage() {
                 value={password}
               />
             </div>
-            {error && (
-              <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <InlineNotice tone="error">{error}</InlineNotice>}
             <Button disabled={submitting || !email || !password} type="submit">
               {submitting ? t("signingIn") : t("signIn")}
             </Button>

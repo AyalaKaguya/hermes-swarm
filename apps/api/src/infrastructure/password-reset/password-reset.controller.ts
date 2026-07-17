@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, Post } from "@nestjs/common";
+import { Body, Controller, Post, Req } from "@nestjs/common";
 import type {
   RequestPasswordResetPayload,
   ResetPasswordPayload,
@@ -22,13 +22,9 @@ export class PasswordResetController {
   @PublicAccess({ reason: "Password reset requests start without a session." })
   async requestPassword(
     @Body() payload: RequestPasswordResetPayload & { tenantSlug?: string },
-    @Headers("host") host?: string,
-    @Headers("x-tenant-slug") tenantSlugHeader?: string,
+    @Req() request?: any,
   ) {
-    return this.passwordResetService.requestReset(payload, {
-      host,
-      tenantSlug: tenantSlugHeader,
-    });
+    return this.passwordResetService.requestReset(payload, request);
   }
 
   /**

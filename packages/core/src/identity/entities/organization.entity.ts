@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   DeleteDateColumn,
   Entity,
@@ -7,9 +8,6 @@ import {
   ManyToOne,
   OneToMany,
 } from "typeorm";
-import type { Role } from "./role.entity.js";
-import type { RolePermission } from "./role-permission.entity.js";
-import type { OrganizationSetting } from "../../settings/entities/organization-setting.entity.js";
 import type { User } from "./user.entity.js";
 import type { UserOrganization } from "./user-organization.entity.js";
 import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
@@ -25,14 +23,14 @@ export type OrganizationStatus = "active" | "suspended";
   unique: true,
   where: "deleted_at IS NULL",
 })
-@Index("UQ_organizations_active_subdomain", ["tenantId", "subdomain"], {
+@Index("UQ_organizations_single_root", ["tenantId"], {
   unique: true,
-  where: "deleted_at IS NULL",
+  where: "parent_organization_id IS NULL AND deleted_at IS NULL",
 })
-@Index("UQ_organizations_single_default", ["tenantId"], {
-  unique: true,
-  where: "\"is_default\" = true AND deleted_at IS NULL",
-})
+@Check(
+  "CHK_organizations_not_self_parent",
+  "parent_organization_id IS NULL OR parent_organization_id <> id",
+)
 /**
  * Represents an organization boundary in the admin backend.
  */
@@ -42,6 +40,20 @@ export class Organization extends TenantOwnedBaseEntity {
    */
   @Column({ type: "varchar", length: 120 })
   name!: string;
+
+  @Column({ name: "parent_organization_id", type: "uuid", nullable: true })
+  @Index()
+  parentOrganizationId!: string | null;
+
+  @ManyToOne("Organization", "children", {
+    nullable: true,
+    onDelete: "RESTRICT",
+  })
+  @JoinColumn({ name: "parent_organization_id" })
+  parentOrganization!: Organization | null;
+
+  @OneToMany("Organization", "parentOrganization")
+  children!: Organization[];
 
   @Column({ name: "created_by_user_id", type: "uuid", nullable: true })
   @Index()
@@ -61,115 +73,10 @@ export class Organization extends TenantOwnedBaseEntity {
   slug!: string;
 
   /**
-   * Optional organization subdomain used by onboarding and host resolution.
-   */
-  @Column({ type: "varchar", length: 80, nullable: true })
-  subdomain!: string | null;
-
-  /**
    * Operational status used to allow or block login.
    */
   @Column({ type: "varchar", length: 24, default: "active" })
   status!: OrganizationStatus;
-
-  /**
-   * Marks the default organization.
-   */
-  @Column({ name: "is_default", type: "boolean", default: false })
-  isDefault!: boolean;
-
-  /**
-   * Public profile link for the organization profile.
-   */
-  @Column({ name: "profile_link", type: "varchar", length: 240, nullable: true })
-  profileLink!: string | null;
-
-  /**
-   * Banner image URL or asset reference.
-   */
-  @Column({ type: "varchar", length: 500, nullable: true })
-  banner!: string | null;
-
-  /**
-   * Optional employee count metadata.
-   */
-  @Column({ name: "total_employees", type: "integer", nullable: true })
-  totalEmployees!: number | null;
-
-  /**
-   * Short organization description for profile and admin views.
-   */
-  @Column({ name: "short_description", type: "text", nullable: true })
-  shortDescription!: string | null;
-
-  /**
-   * Customer or domain focus text for organization settings.
-   */
-  @Column({ name: "client_focus", type: "text", nullable: true })
-  clientFocus!: string | null;
-
-  /**
-   * Long-form organization overview.
-   */
-  @Column({ type: "text", nullable: true })
-  overview!: string | null;
-
-  /**
-   * Organization avatar or logo URL.
-   */
-  @Column({ name: "image_url", type: "varchar", length: 500, nullable: true })
-  imageUrl!: string | null;
-
-  @Column({ name: "logo_url", type: "varchar", length: 500, nullable: true })
-  logoUrl!: string | null;
-
-  /**
-   * Preferred currency code for organization-level defaults.
-   */
-  @Column({ type: "varchar", length: 12, nullable: true })
-  currency!: string | null;
-
-  /**
-   * Preferred time zone for organization operations.
-   */
-  @Column({ name: "time_zone", type: "varchar", length: 40, nullable: true })
-  timeZone!: string | null;
-
-  /**
-   * Region code used by localization-aware features.
-   */
-  @Column({ name: "region_code", type: "varchar", length: 40, nullable: true })
-  regionCode!: string | null;
-
-  /**
-   * Brand color for organization presentation.
-   */
-  @Column({ name: "brand_color", type: "varchar", length: 40, nullable: true })
-  brandColor!: string | null;
-
-  /**
-   * Date format preferred by the organization.
-   */
-  @Column({ name: "date_format", type: "varchar", length: 40, nullable: true })
-  dateFormat!: string | null;
-
-  /**
-   * Legal or official organization name.
-   */
-  @Column({ name: "official_name", type: "varchar", length: 180, nullable: true })
-  officialName!: string | null;
-
-  /**
-   * Organization website URL.
-   */
-  @Column({ type: "varchar", length: 240, nullable: true })
-  website!: string | null;
-
-  /**
-   * Preferred language code for organization defaults.
-   */
-  @Column({ name: "preferred_language", type: "varchar", length: 16, nullable: true })
-  preferredLanguage!: string | null;
 
   @DeleteDateColumn({ name: "deleted_at", type: "timestamptz", nullable: true })
   deletedAt!: Date | null;
@@ -177,12 +84,4 @@ export class Organization extends TenantOwnedBaseEntity {
   @OneToMany("UserOrganization", "organization")
   memberships!: UserOrganization[];
 
-  @OneToMany("Role", "organization")
-  roles!: Role[];
-
-  @OneToMany("RolePermission", "organization")
-  rolePermissions!: RolePermission[];
-
-  @OneToMany("OrganizationSetting", "organization")
-  settings!: OrganizationSetting[];
 }

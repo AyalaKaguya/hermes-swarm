@@ -4,14 +4,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  Optional,
   UnauthorizedException,
 } from "@nestjs/common";
 import {
   User,
-  UserDepartment,
   UserNotification,
-  UserOrganization,
   type UserNotificationKind,
   type UserNotificationStatus,
 } from "@hermes-swarm/core";
@@ -19,28 +16,16 @@ import { In, IsNull } from "typeorm";
 import { TenantContextService } from "../../common/database/tenant-context.service.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 import { RealtimeEventBus } from "../realtime/realtime-event-bus.service.js";
-import { DepartmentDispatchResolverService } from "../departments/department-dispatch-resolver.service.js";
 
 export type CreateUserNotificationInput = {
   actorUserId?: string | null;
   body?: string | null;
-  departmentId?: string | null;
   kind?: UserNotificationKind;
-  organizationId?: string | null;
   payload?: Record<string, unknown> | null;
   recipientUserId: string;
   sourceId?: string | null;
   sourceType?: string | null;
   title: string;
-};
-
-export type CreateDepartmentRouteNotificationInput = Omit<
-  CreateUserNotificationInput,
-  "departmentId" | "organizationId" | "recipientUserId"
-> & {
-  idempotencyKey: string;
-  maxHops?: number;
-  sourceDepartmentId: string;
 };
 
 @Injectable()
@@ -53,9 +38,6 @@ export class NotificationsService {
     private readonly authSessionService: AuthSessionService,
     @Inject(RealtimeEventBus)
     private readonly realtimeEventBus: RealtimeEventBus,
-    @Optional()
-    @Inject(DepartmentDispatchResolverService)
-    private readonly departmentDispatchResolver?: DepartmentDispatchResolverService,
   ) {}
 
   async createForUser(input: CreateUserNotificationInput) {
@@ -97,86 +79,17 @@ export class NotificationsService {
     return dtos;
   }
 
-  /**
-   * Selects existing active department members as recipients. Routing edges do
-   * not create memberships and therefore never grant data access.
-   */
-  async createForDepartmentRoute(input: CreateDepartmentRouteNotificationInput) {
-    if (!this.departmentDispatchResolver) {
-      throw new BadRequestException("部门调度服务不可用");
-    }
-    const tenantId = this.tenantId;
-    const dispatch = await this.departmentDispatchResolver.resolveNotificationTargets({
-      idempotencyKey: input.idempotencyKey,
-      maxHops: input.maxHops,
-      sourceDepartmentId: input.sourceDepartmentId,
-      tenantId,
-    });
-    const targetIds = dispatch.targets.map((target) => target.departmentId);
-    if (targetIds.length === 0) return { dispatch, notifications: [] };
-
-    const assignments = await this.tenantContext.repository(UserDepartment).find({
-      relations: { membership: true },
-      where: { departmentId: In(targetIds), status: "active", tenantId },
-    });
-    const assignedRecipients = new Set<string>();
-    const notifications: Awaited<ReturnType<NotificationsService["createForUsers"]>> = [];
-    for (const target of dispatch.targets) {
-      const recipientUserIds = assignments
-        .filter(
-          (assignment) =>
-            assignment.departmentId === target.departmentId &&
-            assignment.membership?.status === "active" &&
-            !assignedRecipients.has(assignment.membership.userId),
-        )
-        .map((assignment) => assignment.membership.userId);
-      recipientUserIds.forEach((userId) => assignedRecipients.add(userId));
-      if (recipientUserIds.length === 0) continue;
-      notifications.push(
-        ...(await this.createForUsers(recipientUserIds, {
-          actorUserId: input.actorUserId,
-          body: input.body,
-          departmentId: target.departmentId,
-          kind: input.kind,
-          organizationId: target.organizationId,
-          payload: {
-            ...(input.payload ?? {}),
-            dispatch: {
-              hop: target.hop,
-              idempotencyKey: dispatch.idempotencyKey,
-              relationId: target.relationId,
-              type: target.type,
-            },
-          },
-          sourceId: input.sourceId,
-          sourceType: input.sourceType,
-          title: input.title,
-        })),
-      );
-    }
-    return { dispatch, notifications };
-  }
-
   async sendFromAuthorization(
     authorization: string | undefined,
     payload: unknown,
   ) {
     const session = await this.requireSession(authorization);
-    const tenantId = this.requireSessionTenantId(session);
+    this.requireSessionTenantId(session);
     const input = parseSendNotificationPayload(payload);
-    if (input.organizationId) {
-      await this.requireSameOrganizationRecipients(
-        session.userId,
-        tenantId,
-        input.organizationId,
-        input.recipientUserIds,
-      );
-    }
     return this.createForUsers(input.recipientUserIds, {
       actorUserId: session.userId,
       body: input.body,
       kind: input.kind,
-      organizationId: input.organizationId,
       payload: input.payload,
       sourceId: null,
       sourceType: "user",
@@ -323,30 +236,6 @@ export class NotificationsService {
     }
   }
 
-  private async requireSameOrganizationRecipients(
-    senderUserId: string,
-    tenantId: string,
-    organizationId: string,
-    recipientUserIds: string[],
-  ) {
-    const memberships = await this.memberships.find({
-      where: {
-        organizationId,
-        status: "active",
-        tenantId,
-        userId: In([senderUserId, ...recipientUserIds]),
-      },
-    });
-    const memberIds = new Set(memberships.map((membership) => membership.userId));
-    if (!memberIds.has(senderUserId)) {
-      throw new UnauthorizedException("不是当前组织成员");
-    }
-    const missing = recipientUserIds.filter((userId) => !memberIds.has(userId));
-    if (missing.length > 0) {
-      throw new BadRequestException("接收人不属于当前组织");
-    }
-  }
-
   private publishCreatedNotification(
     tenantId: string,
     recipientUserId: string,
@@ -397,10 +286,6 @@ export class NotificationsService {
     return this.tenantContext.current()!.tenantId;
   }
 
-  private get memberships() {
-    return this.tenantContext.repository(UserOrganization);
-  }
-
   private get notifications() {
     return this.tenantContext.repository(UserNotification);
   }
@@ -417,9 +302,7 @@ function toNotificationEntityInput(
   return {
     body: optionalString(input.body),
     actorUserId: optionalString(input.actorUserId),
-    departmentId: optionalString(input.departmentId),
     kind: normalizeNotificationKind(input.kind),
-    organizationId: optionalString(input.organizationId),
     payload: input.payload && isRecord(input.payload) ? input.payload : null,
     recipientUserId: requireString(input.recipientUserId, "接收人"),
     sourceId: optionalString(input.sourceId),
@@ -457,10 +340,8 @@ function toNotificationDto(notification: UserNotification) {
     body: notification.body,
     createdAt: notification.createdAt,
     dismissedAt: notification.dismissedAt,
-    departmentId: notification.departmentId,
     id: notification.id,
     kind: notification.kind,
-    organizationId: notification.organizationId,
     payload: notification.payload,
     readAt: notification.readAt,
     sourceId: notification.sourceId,
@@ -483,7 +364,6 @@ function parseSendNotificationPayload(payload: unknown) {
   return {
     body: optionalString(Reflect.get(value, "body")),
     kind: normalizeNotificationKind(kind),
-    organizationId: optionalString(Reflect.get(value, "organizationId")),
     payload: isRecord(Reflect.get(value, "payload"))
       ? (Reflect.get(value, "payload") as Record<string, unknown>)
       : null,

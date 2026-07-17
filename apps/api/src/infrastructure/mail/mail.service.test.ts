@@ -1,873 +1,106 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BadRequestException } from "@nestjs/common";
-import { EmailTemplate } from "@hermes-swarm/core";
-import nodemailer from "nodemailer";
-import { getMetadataArgsStorage, QueryFailedError } from "typeorm";
-import { EmailSendService } from "./email-send.service.js";
+import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
+import { getMetadataArgsStorage } from "typeorm";
 import { MailService } from "./mail.service.js";
 
-describe("MailService templates", () => {
-  it("declares separate unique indexes for platform and organization templates", () => {
-    const indices = getMetadataArgsStorage().indices.filter(
-      (index) => index.target === EmailTemplate,
-    );
-
-    assert.ok(
-      indices.some(
-        (index) =>
-          index.name === "UQ_email_templates_platform_name_language" &&
-          getIndexUnique(index) === true &&
-          getIndexWhere(index) === "\"organization_id\" IS NULL",
-      ),
-    );
-    assert.ok(
-      indices.some(
-        (index) =>
-          index.name === "UQ_email_templates_org_name_language" &&
-          getIndexUnique(index) === true &&
-          getIndexWhere(index) === "\"organization_id\" IS NOT NULL",
-      ),
-    );
+describe("MailService workspace ownership", () => {
+  it("stores SMTP and templates at tenant scope without organization columns", () => {
+    const smtpColumns = getMetadataArgsStorage().columns
+      .filter((column) => column.target === CustomSmtp)
+      .map((column) => column.propertyName);
+    const templateColumns = getMetadataArgsStorage().columns
+      .filter((column) => column.target === EmailTemplate)
+      .map((column) => column.propertyName);
+    assert.equal(smtpColumns.includes("organizationId"), false);
+    assert.equal(templateColumns.includes("organizationId"), false);
   });
 
-  it("seeds localized platform system templates and exposes them as organization fallbacks", async () => {
-    const state = createMailService();
-
-    await state.service.ensureDefaultPlatformTemplates();
-    await state.service.ensureDefaultTemplatesForOrganization("org-1");
-
-    const platformTemplates = await state.service.listTemplates(null);
-    assert.deepEqual(
-      platformTemplates.map((template) => [template.name, template.languageCode]),
-      [
-        ["organization-invite", "en"],
-        ["organization-invite", "zh-CN"],
-        ["password-reset", "en"],
-        ["password-reset", "zh-CN"],
-        ["tenant-application-verification", "en"],
-        ["tenant-application-verification", "zh-CN"],
-        ["tenant-owner-activation", "en"],
-        ["tenant-owner-activation", "zh-CN"],
-      ],
-    );
-    assert.ok(platformTemplates.every((template) => template.isSystem));
-    assert.ok(platformTemplates.every((template) => template.organizationId === null));
-
-    const organizationTemplates = await state.service.listTemplates("org-1");
-    assert.deepEqual(
-      organizationTemplates.map((template) => [
-        template.name,
-        template.languageCode,
-        template.inherited,
-      ]),
-      [
-        ["organization-invite", "en", true],
-        ["organization-invite", "zh-CN", true],
-        ["password-reset", "en", true],
-        ["password-reset", "zh-CN", true],
-      ],
-    );
-    assert.ok(
-      organizationTemplates.every(
-        (template) => template.organizationId === null,
-      ),
-    );
-  });
-
-  it("creates organization overrides without changing the platform template", async () => {
-    const state = createMailService();
-    await state.service.ensureDefaultPlatformTemplates();
-
-    await state.service.createTemplate("org-1", {
-      hbs: "<p>Organization copy</p>",
-      languageCode: "en",
-      name: "password-reset",
-      subject: "Organization subject",
+  it("creates tenant templates with the current tenant id", async () => {
+    const state = createState();
+    const created = await state.service.createTenantTemplate({
+      hbs: "<p>{{workspaceName}}</p>",
+      languageCode: "zh-CN",
+      name: "organization-invite",
+      subject: "{{workspaceName}} 邀请",
     });
-
-    const organizationTemplates = await state.service.listTemplates("org-1");
-    const override = organizationTemplates.find(
-      (template) =>
-        template.name === "password-reset" && template.languageCode === "en",
-    );
-    assert.equal(override?.organizationId, "org-1");
-    assert.equal(override?.hasPlatformDefault, true);
-    assert.equal(override?.inherited, false);
-    assert.equal(override?.isSystem, false);
-
-    const platformTemplates = await state.service.listTemplates(null);
-    assert.equal(
-      platformTemplates.find(
-        (template) =>
-          template.name === "password-reset" && template.languageCode === "en",
-      )?.subject,
-      "Reset your password",
-    );
+    assert.equal(created.name, "organization-invite");
+    assert.equal(state.templates[0]?.tenantId, "tenant-a");
   });
 
-  it("keeps legacy organization copies isolated from platform templates", async () => {
-    const state = createMailService();
-    await state.service.ensureDefaultPlatformTemplates();
-    const platform = state.platformEmailTemplates.find(
-      (template) =>
-        template.name === "password-reset" && template.languageCode === "en",
-    );
-    state.emailTemplates.push(
-      {
-        ...platform,
-        id: "legacy-same",
-        organizationId: "org-1",
-        tenantId: "tenant-1",
-      },
-      emailTemplateRecord({
-        hbs: "<p>Customized</p>",
-        id: "legacy-edited",
-        languageCode: "zh-CN",
-        name: "password-reset",
-        organizationId: "org-1",
-        subject: "Customized",
-      }),
-    );
-
-    const templates = await state.service.listTemplates("org-1");
-    assert.equal(
-      state.emailTemplates.some((template) => template.id === "legacy-same"),
-      true,
-    );
-    assert.equal(
-      templates.find((template) => template.id === "legacy-edited")?.isSystem,
-      false,
-    );
-  });
-
-  it("renders subject and body previews with safe example variables", () => {
-    const state = createMailService();
-
-    const preview = state.service.previewTemplate({
-      hbs: "<p>Hello {{name}} from {{organizationName}}</p>",
-      subject: "Welcome {{name}}",
+  it("saves one workspace SMTP configuration", async () => {
+    const state = createState();
+    const smtp = await state.service.saveTenantSmtp({
+      fromAddress: "noreply@example.com",
+      host: "smtp.example.com",
+      port: 587,
+      secure: false,
     });
+    assert.equal(smtp.host, "smtp.example.com");
+    assert.equal(state.smtp[0]?.tenantId, "tenant-a");
+  });
 
-    assert.equal(preview.subject, "Welcome Alex Chen");
-    assert.equal(
-      preview.html,
-      "<p>Hello Alex Chen from Hermes Organization</p>",
+  it("renders safe template previews and rejects malformed SMTP", () => {
+    const state = createState();
+    assert.match(
+      state.service.previewTemplate({ hbs: "<p>{{tenantName}}</p>" }).html,
+      /Hermes/,
     );
     assert.throws(
-      () => state.service.previewTemplate({ hbs: "{{#if}}" }),
+      () => state.service.validateSmtp({ host: "", port: 70000 }),
       BadRequestException,
     );
   });
 
-  it("allows editing system template content but protects identity fields and deletion", async () => {
-    const state = createMailService();
-    await state.service.ensureDefaultPlatformTemplates();
-    const [template] = await state.service.listTemplates(null);
-
-    const updated = await state.service.updateTemplate(null, template.id, {
-      hbs: "<p>updated</p>",
-      subject: "Updated subject",
-    });
-
-    assert.equal(updated.hbs, "<p>updated</p>");
-    assert.equal(updated.subject, "Updated subject");
-
-    await assert.rejects(
-      () =>
-        state.service.updateTemplate(null, template.id, {
-          name: "renamed-template",
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.updateTemplate(null, template.id, {
-          languageCode: "fr",
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () => state.service.deleteTemplate(null, template.id),
-      BadRequestException,
-    );
-  });
-
-  it("resolves organization templates before platform fallback templates", async () => {
-    const state = createEmailSendService();
-    state.platformEmailTemplates.push(
-      emailTemplateRecord({
-        hbs: "<p>platform-en</p>",
-        id: "template-platform",
-        languageCode: "en",
-        name: "organization-invite",
-        organizationId: null,
-        subject: "Platform",
-      }),
-    );
-    state.emailTemplates.push(
-      emailTemplateRecord({
-        hbs: "<p>org-zh</p>",
-        id: "template-org",
-        languageCode: "zh-CN",
-        name: "organization-invite",
-        organizationId: "org-1",
-        subject: "Organization",
-      }),
-    );
-
-    const organizationTemplate = await (state.service as any).resolveTemplate(
-      "organization-invite",
-      "zh-Hans",
-      "org-1",
-      "tenant-1",
-    );
-    assert.equal(organizationTemplate.hbs, "<p>org-zh</p>");
-
-    const platformFallback = await (state.service as any).resolveTemplate(
-      "organization-invite",
-      "zh-Hant",
-      "org-1",
-      "tenant-1",
-    );
-    assert.equal(platformFallback.hbs, "<p>platform-en</p>");
-  });
-
-  it("continues default template seeding when a concurrent insert wins the race", async () => {
-    const state = createMailService({
-      simulateConcurrentPlatformTemplateSeed: true,
-    });
-
-    await state.service.ensureDefaultPlatformTemplates();
-
-    assert.deepEqual(
-      state.platformEmailTemplates
-        .map((template) => `${template.name}:${template.languageCode}`)
-        .sort(),
-      [
-        "organization-invite:en",
-        "organization-invite:zh-CN",
-        "password-reset:en",
-        "password-reset:zh-CN",
-        "tenant-application-verification:en",
-        "tenant-application-verification:zh-CN",
-        "tenant-owner-activation:en",
-        "tenant-owner-activation:zh-CN",
-      ],
-    );
-  });
-
-  it("rejects malformed template payloads before repository writes", async () => {
-    const state = createMailService();
-
-    await assert.rejects(
-      () => state.service.createTemplate(null, null as any),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.createTemplate(null, {
-          hbs: "<p>body</p>",
-          languageCode: "zh-CN",
-          name: "x".repeat(121),
-        }),
-      BadRequestException,
-    );
-
-    assert.equal(state.emailTemplates.length, 0);
-  });
-
-  it("maps template uniqueness failures to a business error", async () => {
-    const state = createMailService({
-      failTemplateSaveWithUniqueConstraint: true,
-    });
-
-    await assert.rejects(
-      () =>
-        state.service.createTemplate(null, {
-          hbs: "<p>body</p>",
-          languageCode: "zh-CN",
-          name: "password-reset",
-        }),
-      BadRequestException,
-    );
-  });
-});
-
-describe("MailService SMTP resolution", () => {
-  it("uses organization SMTP first and gates global SMTP behind public SMTP setting", async () => {
-    const state = createEmailSendService({ publicSmtpEnabled: false });
-    state.platformSmtpTemplates.push(
-      smtpRecord({ host: "global.smtp.local", id: "smtp-global", organizationId: null }),
-    );
-    state.smtpTemplates.push(
-      smtpRecord({ host: "org.smtp.local", id: "smtp-org", organizationId: "org-1" }),
-    );
-
-    const organizationSmtp = await (state.service as any).findSmtpRecord("tenant-1", "org-1");
-    assert.equal(organizationSmtp.host, "org.smtp.local");
-
-    const disabledGlobal = await (state.service as any).findSmtpRecord("tenant-1", null);
-    assert.equal(disabledGlobal, null);
-
-    state.publicSmtpEnabled = true;
-    const enabledGlobal = await (state.service as any).findSmtpRecord("tenant-1", null);
-    assert.equal(enabledGlobal.host, "global.smtp.local");
-  });
-
-  it("rejects malformed SMTP payloads before saving", async () => {
-    const state = createMailService();
-
-    await assert.rejects(
-      () => state.service.saveSmtp("org-1", null as any),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.saveSmtp("org-1", {
-          host: "x".repeat(241),
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.saveSmtp("org-1", {
-          port: 587,
-        }),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.saveSmtp("org-1", {
-          host: "smtp.local",
-          secure: "false" as any,
-        }),
-      BadRequestException,
-    );
-    assert.throws(
-      () =>
-        state.service.validateSmtp({
-          host: "smtp.local",
-          port: 0,
-        }),
-      BadRequestException,
-    );
-    assert.throws(
-      () =>
-        state.service.validateSmtp({
-          host: "smtp.local",
-          secure: "false" as any,
-        }),
-      BadRequestException,
-    );
-
-    assert.equal(state.smtpTemplates.length, 0);
-  });
-
-  it("allows partial SMTP updates only after a valid host exists", async () => {
-    const state = createMailService();
-    state.smtpTemplates.push(
-      smtpRecord({ host: "smtp.local", id: "smtp-org", organizationId: "org-1" }),
-    );
-
-    const updated = await state.service.saveSmtp("org-1", {
-      port: 2525,
-    });
-
-    assert.equal(updated.host, "smtp.local");
-    assert.equal(updated.port, 2525);
-    assert.equal(state.smtpTemplates.length, 1);
-  });
-});
-
-describe("MailService logs", () => {
-  it("rejects malformed log payloads and invalid statuses before saving", async () => {
-    const state = createMailService();
-
-    await assert.rejects(
-      () => state.service.createLog("org-1", null as any),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.createLog("org-1", {
-          email: "user@example.com",
-          status: "delivered" as any,
-        }),
-      BadRequestException,
-    );
-
-    assert.equal(state.emailLogs.length, 0);
-  });
-
-  it("hides archived email logs from default list results", async () => {
-    const state = createMailService();
-    await state.service.createLog("org-1", {
-      email: "visible@example.com",
+  it("queries only unarchived tenant email logs", async () => {
+    const state = createState();
+    await state.service.listLogs();
+    assert.deepEqual(state.logQueries[0]?.where, {
       isArchived: false,
-      status: "sent",
+      tenantId: "tenant-a",
     });
-    await state.service.createLog("org-1", {
-      email: "archived@example.com",
-      isArchived: true,
-      status: "sent",
-    });
-
-    const logs = await state.service.listLogs("org-1");
-
-    assert.deepEqual(
-      logs.map((log) => log.email),
-      ["visible@example.com"],
-    );
   });
 });
 
-describe("EmailSendService send", () => {
-  it("returns a skipped result and records an audit row when no SMTP is configured", async () => {
-    const state = createEmailSendService({ publicSmtpEnabled: false });
-
-    const result = await state.service.send({
-      email: "user@example.com",
-      organizationId: null,
-      templateName: "password-reset",
-    });
-
-    assert.deepEqual(result, {
-      reason: "smtp_not_configured",
-      sent: false,
-    });
-    assert.equal(state.emailLogs.length, 1);
-    assert.equal(state.emailLogs[0].status, "skipped");
-    assert.equal(state.emailLogs[0].templateName, "password-reset");
-  });
-
-  it("returns a skipped result and records an audit row when the template is missing", async () => {
-    const state = createEmailSendService({ publicSmtpEnabled: true });
-    state.smtpTemplates.push(
-      smtpRecord({
-        host: "global.smtp.local",
-        id: "smtp-global",
-        organizationId: null,
-      }),
-    );
-
-    const result = await state.service.send({
-      email: "user@example.com",
-      organizationId: null,
-      templateName: "password-reset",
-    });
-
-    assert.deepEqual(result, {
-      reason: "template_not_found",
-      sent: false,
-    });
-    assert.equal(state.emailLogs.length, 1);
-    assert.equal(state.emailLogs[0].status, "skipped");
-  });
-
-  it("returns send_failed and records failure when the transporter rejects", async () => {
-    const state = createEmailSendService({ publicSmtpEnabled: true });
-    state.smtpTemplates.push(
-      smtpRecord({
-        host: "global.smtp.local",
-        id: "smtp-global",
-        organizationId: null,
-      }),
-    );
-    state.emailTemplates.push(
-      emailTemplateRecord({
-        hbs: "<p>Hello {{name}}</p>",
-        id: "template",
-        languageCode: "zh-CN",
-        name: "password-reset",
-        organizationId: null,
-        subject: "Hi {{name}}",
-      }),
-    );
-
-    const result = await withMockedTransporter(
-      {
-        async sendMail() {
-          throw new Error("smtp unavailable");
-        },
-      },
-      () =>
-        state.service.send({
-          email: "user@example.com",
-          organizationId: null,
-          templateName: "password-reset",
-          locals: { name: "Ayala" },
-        }),
-    );
-
-    assert.deepEqual(result, {
-      reason: "send_failed",
-      sent: false,
-    });
-    assert.equal(state.emailLogs.length, 1);
-    assert.equal(state.emailLogs[0].status, "failed");
-  });
-
-  it("sends with empty locals, compiles subject and body, and records sent status", async () => {
-    const state = createEmailSendService({ publicSmtpEnabled: true });
-    const deliveries: any[] = [];
-    state.smtpTemplates.push(
-      smtpRecord({
-        host: "global.smtp.local",
-        id: "smtp-global",
-        organizationId: null,
-      }),
-    );
-    state.emailTemplates.push(
-      emailTemplateRecord({
-        hbs: "<p>Hello {{name}}</p>",
-        id: "template",
-        languageCode: "zh-CN",
-        name: "password-reset",
-        organizationId: null,
-        subject: "Hi {{name}}",
-      }),
-    );
-
-    const result = await withMockedTransporter(
-      {
-        async sendMail(message: any) {
-          deliveries.push(message);
-          return { messageId: "mail-1" };
-        },
-      },
-      () =>
-        state.service.send({
-          email: "user@example.com",
-          organizationId: null,
-          templateName: "password-reset",
-        }),
-    );
-
-    assert.deepEqual(result, { sent: true });
-    assert.equal(deliveries.length, 1);
-    assert.equal(deliveries[0].to, "user@example.com");
-    assert.equal(deliveries[0].subject, "Hi ");
-    assert.equal(deliveries[0].html, "<p>Hello </p>");
-    assert.equal(state.emailLogs.length, 1);
-    assert.equal(state.emailLogs[0].status, "sent");
-    assert.equal(state.emailLogs[0].content, "<p>Hello </p>");
-  });
-
-  it("normalizes audit fields before saving skipped delivery logs", async () => {
-    const state = createEmailSendService({ publicSmtpEnabled: false });
-
-    const result = await state.service.send({
-      email: `${"u".repeat(241)}@example.com`,
-      organizationId: null,
-      templateName: "template-".repeat(20),
-    });
-
-    assert.deepEqual(result, {
-      reason: "smtp_not_configured",
-      sent: false,
-    });
-    assert.equal(state.emailLogs.length, 1);
-    assert.equal(state.emailLogs[0].email.length, 240);
-    assert.equal(state.emailLogs[0].templateName.length, 120);
-  });
-
-  it("keeps sending while constraining long rendered subjects in audit logs", async () => {
-    const state = createEmailSendService({ publicSmtpEnabled: true });
-    const deliveries: any[] = [];
-    const subject = `Subject ${"x".repeat(260)}`;
-    state.smtpTemplates.push(
-      smtpRecord({
-        host: "global.smtp.local",
-        id: "smtp-global",
-        organizationId: null,
-      }),
-    );
-    state.emailTemplates.push(
-      emailTemplateRecord({
-        hbs: "<p>Hello</p>",
-        id: "template",
-        languageCode: "zh-CN",
-        name: "password-reset",
-        organizationId: null,
-        subject,
-      }),
-    );
-
-    const result = await withMockedTransporter(
-      {
-        async sendMail(message: any) {
-          deliveries.push(message);
-          return { messageId: "mail-1" };
-        },
-      },
-      () =>
-        state.service.send({
-          email: "user@example.com",
-          organizationId: null,
-          templateName: "password-reset",
-        }),
-    );
-
-    assert.deepEqual(result, { sent: true });
-    assert.equal(deliveries[0].subject, subject);
-    assert.equal(state.emailLogs.length, 1);
-    assert.equal(state.emailLogs[0].subject.length, 240);
-  });
-});
-
-function createMailService(
-  options: {
-    failTemplateSaveWithUniqueConstraint?: boolean;
-    simulateConcurrentPlatformTemplateSeed?: boolean;
-  } = {},
-) {
-  const emailTemplates: any[] = [];
-  const platformEmailTemplates: any[] = [];
-  const smtpTemplates: any[] = [];
-  const platformSmtpTemplates: any[] = [];
-  const emailLogs: any[] = [];
-  let simulatedConcurrentInsert = false;
-
+function createState() {
+  const templates: Array<Record<string, any>> = [];
+  const smtp: Array<Record<string, any>> = [];
+  const logQueries: any[] = [];
+  const templateRepository = {
+    create: (value: any) => ({ id: `template-${templates.length + 1}`, createdAt: new Date(), updatedAt: new Date(), ...value }),
+    findOne: async () => null,
+    save: async (value: any) => { templates.push(value); return value; },
+  };
+  const smtpRepository = {
+    create: (value: any) => ({ id: "smtp-a", tenantId: "tenant-a", ...value }),
+    findOne: async () => smtp[0] ?? null,
+    save: async (value: any) => { if (!smtp.includes(value)) smtp.push(value); return value; },
+  };
+  const logRepository = {
+    find: async (query: any) => { logQueries.push(query); return []; },
+  };
+  const manager = {
+    getRepository: (target: unknown) => {
+      if (target === EmailTemplate) return templateRepository;
+      if (target === CustomSmtp) return smtpRepository;
+      if (target === EmailLog) return logRepository;
+      throw new Error("unexpected repository");
+    },
+  };
+  const emptyPlatformRepository = {
+    create: (value: any) => value,
+    find: async () => [],
+    findOne: async () => null,
+    save: async (value: any) => value,
+  };
   const service = new MailService(
-    createRepository(smtpTemplates) as any,
-    createRepository(emailTemplates, {
-      async onSave(record, saveDefault) {
-        if (options.failTemplateSaveWithUniqueConstraint) {
-          throw new QueryFailedError("INSERT", [], { code: "23505" } as any);
-        }
-        return saveDefault(record);
-      },
-    }) as any,
-    createRepository(emailLogs) as any,
-    createRepository(platformEmailTemplates, {
-      async onSave(record, saveDefault) {
-        if (options.failTemplateSaveWithUniqueConstraint) {
-          throw new QueryFailedError("INSERT", [], { code: "23505" } as any);
-        }
-        if (
-          options.simulateConcurrentPlatformTemplateSeed &&
-          !simulatedConcurrentInsert &&
-          record.name === "organization-invite"
-        ) {
-          simulatedConcurrentInsert = true;
-          await saveDefault(record);
-          throw new QueryFailedError("INSERT", [], { code: "23505" } as any);
-        }
-        return saveDefault(record);
-      },
-    }) as any,
-    createRepository(platformSmtpTemplates) as any,
-    { current: () => ({ tenantId: "tenant-1" }) } as any,
+    smtpRepository as never,
+    templateRepository as never,
+    logRepository as never,
+    emptyPlatformRepository as never,
+    emptyPlatformRepository as never,
+    { current: () => ({ manager, tenantId: "tenant-a" }) } as never,
   );
-
-  return {
-    emailLogs,
-    emailTemplates,
-    platformEmailTemplates,
-    platformSmtpTemplates,
-    service,
-    smtpTemplates,
-  };
-}
-
-function createEmailSendService(options: { publicSmtpEnabled?: boolean } = {}) {
-  const emailTemplates: any[] = [];
-  const platformEmailTemplates: any[] = [];
-  const smtpTemplates: any[] = [];
-  const platformSmtpTemplates: any[] = [];
-  const emailLogs: any[] = [];
-  const state = {
-    publicSmtpEnabled: Boolean(options.publicSmtpEnabled),
-  };
-  const service = new EmailSendService(
-    createRepository(smtpTemplates) as any,
-    createRepository(emailTemplates) as any,
-    createRepository(emailLogs) as any,
-    createRepository(platformEmailTemplates) as any,
-    createRepository(platformSmtpTemplates) as any,
-    {
-      async getPlatformValue() {
-        return state.publicSmtpEnabled ? "true" : "false";
-      },
-    } as any,
-    { current: () => ({ tenantId: "tenant-1" }) } as any,
-  );
-
-  return {
-    emailLogs,
-    emailTemplates,
-    platformEmailTemplates,
-    platformSmtpTemplates,
-    get publicSmtpEnabled() {
-      return state.publicSmtpEnabled;
-    },
-    set publicSmtpEnabled(value: boolean) {
-      state.publicSmtpEnabled = value;
-    },
-    service,
-    smtpTemplates,
-  };
-}
-
-function createRepository(
-  records: any[],
-  options: {
-    onSave?: (
-      record: any,
-      saveDefault: (record: any) => Promise<any>,
-    ) => Promise<any>;
-  } = {},
-) {
-  async function saveDefault(record: any) {
-    const next = { ...record, id: record.id ?? `${records.length + 1}` };
-    const index = records.findIndex((item) => item.id === next.id);
-    if (index >= 0) {
-      records[index] = next;
-    } else {
-      records.push(next);
-    }
-    return next;
-  }
-
-  const repository = {
-    create(value: any) {
-      return {
-        createdAt: new Date("2026-01-01T00:00:00Z"),
-        id: `${records.length + 1}`,
-        updatedAt: new Date("2026-01-01T00:00:00Z"),
-        ...value,
-      };
-    },
-    manager: {
-      async findOne(_target: unknown, options: any) {
-        return repository.findOne(options);
-      },
-      async save(_target: unknown, record: any) {
-        return repository.save(record);
-      },
-    },
-    async find({ where, order }: any = {}) {
-      const candidates = where === undefined ? [{}] : Array.isArray(where) ? where : [where];
-      const matched = records.filter((record) =>
-        candidates.some((candidate) => matchesWhere(record, candidate)),
-      );
-      if (order?.name && order?.languageCode) {
-        return [...matched].sort(
-          (left, right) =>
-            left.name.localeCompare(right.name) ||
-            left.languageCode.localeCompare(right.languageCode),
-        );
-      }
-      return matched;
-    },
-    async findOne({ where }: any = {}) {
-      const candidates =
-        where === undefined ? [{}] : Array.isArray(where) ? where : [where];
-      return (
-        records.find((record) =>
-          candidates.some((candidate) => matchesWhere(record, candidate)),
-        ) ?? null
-      );
-    },
-    async remove(record: any) {
-      const index = records.findIndex((item) => item.id === record.id);
-      if (index >= 0) records.splice(index, 1);
-      return record;
-    },
-    async save(record: any) {
-      return options.onSave
-        ? options.onSave(record, saveDefault)
-        : saveDefault(record);
-    },
-  };
-
-  return repository;
-}
-
-function matchesWhere(record: any, where: Record<string, unknown>) {
-  return Object.entries(where).every(([key, expected]) => {
-    if (isNullOperator(expected)) return record[key] === null;
-    return record[key] === expected;
-  });
-}
-
-function isNullOperator(value: unknown) {
-  return Boolean(value && typeof value === "object");
-}
-
-function smtpRecord(input: {
-  host: string;
-  id: string;
-  organizationId: string | null;
-}) {
-  return {
-    fromAddress: "noreply@example.com",
-    host: input.host,
-    id: input.id,
-    isValidated: true,
-    organizationId: input.organizationId,
-    tenantId: "tenant-1",
-    password: null,
-    port: 587,
-    secure: false,
-    username: null,
-  };
-}
-
-function emailTemplateRecord(input: {
-  hbs: string;
-  id: string;
-  languageCode: string;
-  name: string;
-  organizationId: string | null;
-  subject: string;
-}) {
-  return {
-    description: null,
-    hbs: input.hbs,
-    id: input.id,
-    isSystem: true,
-    languageCode: input.languageCode,
-    mjml: null,
-    name: input.name,
-    organizationId: input.organizationId,
-    tenantId: "tenant-1",
-    subject: input.subject,
-  };
-}
-
-async function withMockedTransporter<T>(
-  transporter: { sendMail?: (message: any) => Promise<any>; verify?: () => Promise<boolean> },
-  action: () => Promise<T>,
-) {
-  const mutableNodemailer = nodemailer as unknown as {
-    createTransport: (options: unknown) => unknown;
-  };
-  const originalCreateTransport = mutableNodemailer.createTransport;
-  mutableNodemailer.createTransport = () => ({
-    sendMail: transporter.sendMail ?? (async () => ({ messageId: "mail" })),
-    verify: transporter.verify ?? (async () => true),
-  });
-  try {
-    return await action();
-  } finally {
-    mutableNodemailer.createTransport = originalCreateTransport;
-  }
-}
-
-function getIndexUnique(index: unknown) {
-  const value = index as {
-    options?: { unique?: boolean };
-    unique?: boolean;
-  };
-  return value.options?.unique ?? value.unique;
-}
-
-function getIndexWhere(index: unknown) {
-  const value = index as {
-    options?: { where?: string };
-    where?: string;
-  };
-  return value.options?.where ?? value.where;
+  return { logQueries, service, smtp, templates };
 }

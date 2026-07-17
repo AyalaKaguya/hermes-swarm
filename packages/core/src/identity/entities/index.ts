@@ -4,14 +4,6 @@ export {
   type AccessAuditPrincipalType,
   type AccessAuditResult,
 } from "./access-audit-log.entity.js";
-export {
-  Department,
-  type DepartmentStatus,
-} from "./department.entity.js";
-export {
-  DepartmentDispatchRelation,
-  type DepartmentDispatchType,
-} from "./department-dispatch-relation.entity.js";
 export { EmailVerification } from "./email-verification.entity.js";
 export {
   IntegrationToken,
@@ -22,11 +14,6 @@ export {
   Organization,
   type OrganizationStatus,
 } from "./organization.entity.js";
-export { OrganizationBaseEntity } from "./organization-base.entity.js";
-export { OrganizationContact } from "./organization-contact.entity.js";
-export { OrganizationGroup } from "./organization-group.entity.js";
-export { OrganizationGroupMember } from "./organization-group-member.entity.js";
-export { OrganizationLanguage } from "./organization-language.entity.js";
 export { PasswordReset } from "./password-reset.entity.js";
 export {
   Permission,
@@ -52,11 +39,6 @@ export {
   type TenantApplicationStatus,
 } from "./tenant-application.entity.js";
 export { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
-export {
-  UserDepartment,
-  type UserDepartmentStatus,
-} from "./user-department.entity.js";
-export { UserDepartmentRole } from "./user-department-role.entity.js";
 export {
   UserOrganization,
   type UserOrganizationStatus,

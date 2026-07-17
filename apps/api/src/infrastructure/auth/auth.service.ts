@@ -1,25 +1,23 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
-  OrganizationGroup,
-  OrganizationGroupMember,
+  Organization,
   PlatformUser,
   RolePermission,
   Tenant,
   User,
-  UserDepartment,
-  UserDepartmentRole,
   UserOrganization,
+  UserOrganizationRole,
   UserTenantRole,
 } from "@hermes-swarm/core";
-import { DataSource, In, Repository, type EntityManager } from "typeorm";
+import { DataSource, In, IsNull, Repository, type EntityManager } from "typeorm";
 import { TenantContextService } from "../../common/database/tenant-context.service.js";
 import type { LoginPayload } from "../../common/admin-api.types.js";
 import { AuthSessionService } from "./auth-session.service.js";
 import { verifyPassword } from "../../common/security/password-hash.js";
-import { SettingsService } from "../settings/settings.service.js";
 import { toUserDto } from "../users/user-dto.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
+import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
 
 @Injectable()
 /**
@@ -27,22 +25,12 @@ import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.j
  */
 export class AuthService {
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(UserOrganization)
-    private readonly membershipRepository: Repository<UserOrganization>,
-    @InjectRepository(OrganizationGroupMember)
-    private readonly groupMemberRepository: Repository<OrganizationGroupMember>,
-    @InjectRepository(RolePermission)
-    private readonly rolePermissionRepository: Repository<RolePermission>,
     private readonly authSessionService: AuthSessionService,
-    private readonly settingsService: SettingsService,
     @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
     private readonly platformUserRepository: Repository<PlatformUser>,
-    @InjectRepository(Tenant, PLATFORM_DATA_SOURCE)
-    private readonly tenantRepository: Repository<Tenant>,
     private readonly dataSource: DataSource,
     private readonly tenantContext: TenantContextService,
+    private readonly tenantLoginResolver: TenantLoginResolverService,
   ) {}
 
   /**
@@ -52,10 +40,10 @@ export class AuthService {
     const input = requireLoginPayload(payload);
     const email = normalizeEmail(input.email);
     const password = requireText(input.password, "密码");
-    const tenantSlug = requireText(input.tenantSlug, "租户标识").toLowerCase();
-    const tenant = await this.tenantRepository.findOne({
-      where: { slug: tenantSlug, status: "active" },
-    });
+    const tenant = (await this.tenantLoginResolver.resolve(
+      request,
+      input.tenantSlug,
+    ))?.tenant;
     const user = tenant
       ? await this.runInTenantContext(tenant.id, (manager) =>
           manager.getRepository(User).findOne({
@@ -329,165 +317,81 @@ export class AuthService {
 
   private async getPrincipalSnapshot(user: User, manager: EntityManager) {
     const tenantId = requireUserTenantId(user);
-    const membershipRepository =
-      manager.getRepository(UserOrganization);
-    const groupMemberRepository =
-      manager.getRepository(OrganizationGroupMember);
-    const rolePermissionRepository =
-      manager.getRepository(RolePermission);
-    const [tenant, memberships, tenantRoleAssignments, departmentMemberships, systemSettings] =
+    const [tenant, rootOrganization, memberships, tenantRoleAssignments] =
       await Promise.all([
       manager.getRepository(Tenant).findOne({ where: { id: tenantId } }),
-      membershipRepository.find({
-        relations: { organization: true, role: true, user: true },
+      manager.getRepository(Organization).findOne({
+        where: { parentOrganizationId: IsNull(), tenantId },
+      }),
+      manager.getRepository(UserOrganization).find({
+        relations: { organization: true, user: true },
         where: { status: "active", tenantId, userId: user.id },
       }),
       manager.getRepository(UserTenantRole).find({
         relations: { role: true },
         where: { tenantId, userId: user.id },
       }),
-      manager.getRepository(UserDepartment).find({
-        relations: { department: true, membership: true },
-        where: {
-          membership: { userId: user.id },
-          status: "active",
-          tenantId,
-        },
-      }),
-      this.settingsService.listPlatformSettings(),
     ]);
 
-    const userDepartmentMemberships = departmentMemberships;
-    const departmentRoleAssignments = userDepartmentMemberships.length
-      ? await manager.getRepository(UserDepartmentRole).find({
+    const organizationRoleAssignments = memberships.length
+      ? await manager.getRepository(UserOrganizationRole).find({
           relations: { role: true },
-          where: userDepartmentMemberships.map((item) => ({
-            tenantId,
-            userDepartmentId: item.id,
-          })),
+          where: { membershipId: In(memberships.map((item) => item.id)), tenantId },
         })
       : [];
 
     const roleIds = [
-      ...memberships.map((membership) => membership.roleId),
       ...tenantRoleAssignments.map((assignment) => assignment.roleId),
-      ...departmentRoleAssignments.map((assignment) => assignment.roleId),
-    ].filter((roleId): roleId is string => Boolean(roleId));
+      ...organizationRoleAssignments.map((assignment) => assignment.roleId),
+    ];
     const permissions = roleIds.length
-      ? await rolePermissionRepository.find({
+      ? await manager.getRepository(RolePermission).find({
           where: roleIds.map((roleId) => ({ enabled: true, roleId })),
         })
       : [];
     const permissionsByRoleId = groupPermissionsByRoleId(permissions);
-    const groupsByMembership = await this.loadGroupsByMembership(
-      memberships.map((membership) => membership.id),
-      groupMemberRepository,
-    );
-    const allowedScopes = [
-      ...(tenantRoleAssignments.length > 0 ? ["tenant" as const] : []),
-      ...(memberships.length > 0 ? ["organization" as const] : []),
-      ...(userDepartmentMemberships.length > 0 ? ["department" as const] : []),
-    ];
-    const defaultDepartment =
-      userDepartmentMemberships.find((item) => item.isDefault) ??
-      userDepartmentMemberships[0] ??
-      null;
     const defaultMembership =
       memberships.find((item) => item.isDefault) ?? memberships[0] ?? null;
-    const defaultScope = defaultDepartment
-      ? {
-          departmentId: defaultDepartment.departmentId,
-          level: "department" as const,
-          organizationId: defaultDepartment.organizationId,
-        }
-      : defaultMembership
-        ? {
-            departmentId: null,
-            level: "organization" as const,
-            organizationId: defaultMembership.organizationId,
-          }
-        : tenantRoleAssignments.length > 0
-          ? {
-              departmentId: null,
-              level: "tenant" as const,
-              organizationId: null,
-            }
-          : null;
 
     return {
-      allowedScopes,
-      defaultScope,
-      departmentMemberships: userDepartmentMemberships.map((membership) => ({
-        department: membership.department,
-        departmentId: membership.departmentId,
-        id: membership.id,
-        isDefault: membership.isDefault,
-        joinedAt: membership.joinedAt,
-        membershipId: membership.membershipId,
-        organizationId: membership.organizationId,
-        roles: departmentRoleAssignments
-          .filter((assignment) => assignment.userDepartmentId === membership.id)
-          .map((assignment) => assignment.role),
-        status: membership.status,
-        tenantId: membership.tenantId,
-      })),
-      memberships: memberships.map((membership) => {
-        const groups = groupsByMembership.get(membership.id) ?? [];
-        return {
+      defaultOrganizationId: defaultMembership?.organizationId ?? null,
+      memberships: memberships.map((membership) => ({
           displayName: membership.displayName,
-          groupIds: groups.map((group) => group.id),
-          groups: groups.map(toGroupBriefDto),
           id: membership.id,
+          isDefault: membership.isDefault,
           joinedAt: membership.joinedAt,
           organization: membership.organization,
           organizationId: membership.organizationId,
-          role: membership.role
-            ? {
-                ...membership.role,
-                permissions:
-                  permissionsByRoleId.get(
-                    membership.roleId ?? membership.role.id,
-                  ) ?? [],
-              }
-            : null,
-          roleId: membership.roleId,
+          role: (() => {
+            const assignment = organizationRoleAssignments.find(
+              (item) => item.membershipId === membership.id,
+            );
+            return assignment
+              ? {
+                  ...assignment.role,
+                  permissions: permissionsByRoleId.get(assignment.roleId) ?? [],
+                }
+              : null;
+          })(),
           status: membership.status,
-          user: membership.user,
-          userId: membership.userId,
-        };
-      }),
-      permissions: permissions.map((permission) => permission.permission),
+      })),
+      onboarding: { rootOrganizationRequired: !rootOrganization },
+      permissions: tenantRoleAssignments.flatMap((assignment) =>
+        (permissionsByRoleId.get(assignment.roleId) ?? []).map(
+          (permission) => permission.permission,
+        ),
+      ),
       principalType: "tenant" as const,
-      systemSettings,
       tenant,
       tenantId,
-      tenantRoles: tenantRoleAssignments.map((assignment) => ({
-        ...assignment.role,
-        permissions: permissionsByRoleId.get(assignment.roleId) ?? [],
-      })),
+      tenantRole: tenantRoleAssignments[0]
+        ? {
+            ...tenantRoleAssignments[0].role,
+            permissions: permissionsByRoleId.get(tenantRoleAssignments[0].roleId) ?? [],
+          }
+        : null,
       user: toUserDto(user),
     };
-  }
-
-  private async loadGroupsByMembership(
-    membershipIds: string[],
-    repository: Repository<OrganizationGroupMember>,
-  ) {
-    if (membershipIds.length === 0) return new Map<string, OrganizationGroup[]>();
-
-    const rows = await repository.find({
-      relations: { group: true },
-      where: { membershipId: In(membershipIds) },
-    });
-    const groupsByMembership = new Map<string, OrganizationGroup[]>();
-    for (const row of rows) {
-      if (!row.group) continue;
-      groupsByMembership.set(row.membershipId, [
-        ...(groupsByMembership.get(row.membershipId) ?? []),
-        row.group,
-      ]);
-    }
-    return groupsByMembership;
   }
 
   private runInTenantContext<T>(
@@ -501,7 +405,6 @@ export class AuthService {
       );
       return this.tenantContext.run(
         {
-          departmentId: null,
           manager,
           organizationId: null,
           scopeLevel: "tenant",
@@ -591,16 +494,6 @@ function clearRefreshCookie(
   options: Record<string, unknown>,
 ) {
   response.clearCookie(name, options);
-}
-
-function toGroupBriefDto(group: OrganizationGroup) {
-  return {
-    color: group.color,
-    displayName: group.displayName,
-    id: group.id,
-    name: group.name,
-    organizationId: group.organizationId,
-  };
 }
 
 function requireUserTenantId(user: User) {

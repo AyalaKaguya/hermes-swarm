@@ -1,5 +1,4 @@
 import type {
-  IntegrationTokenScope,
   OrganizationStatus,
   SettingValueOption,
   SettingValueType,
@@ -46,12 +45,9 @@ export type AuthSessionDeviceDto = {
 };
 
 export type CreateIntegrationTokenPayload = {
-  departmentId?: string | null;
   expiresAt?: string;
   note?: string | null;
-  organizationId?: string | null;
   permissions?: string[];
-  scope?: IntegrationTokenScope;
 };
 
 /**
@@ -78,26 +74,10 @@ export type OnboardingPayload = {
  * Organization creation and update payload shared by organization routes.
  */
 export type CreateOrganizationPayload = {
-  banner?: string | null;
-  brandColor?: string | null;
-  clientFocus?: string | null;
-  currency?: string | null;
-  dateFormat?: string | null;
-  imageUrl?: string | null;
-  isDefault?: boolean;
   name?: string;
-  officialName?: string | null;
-  overview?: string | null;
-  preferredLanguage?: string | null;
-  profileLink?: string | null;
-  regionCode?: string | null;
-  shortDescription?: string | null;
+  parentOrganizationId?: string | null;
   slug?: string;
   status?: OrganizationStatus;
-  subdomain?: string | null;
-  timeZone?: string | null;
-  totalEmployees?: number | null;
-  website?: string | null;
 };
 
 /**
@@ -207,18 +187,22 @@ export type PermissionCatalogDto = {
       }>;
     }>;
     label: string;
-    scope: "platform" | "tenant" | "organization" | "department" | "own";
+    scope: "platform" | "tenant" | "organization" | "own";
   }>;
 };
 
 /**
  * Bulk invite creation payload.
  */
-export type CreateBulkInvitesPayload = {
-  emailIds?: string[];
+export type CreateInvitePayload = {
+  email?: string;
   expiresIn?: "3d" | "7d" | "never";
-  roleId?: string;
-  invitedById?: string;
+  workspaceRoleId?: string;
+  organizations?: Array<{
+    isDefault?: boolean;
+    organizationId?: string;
+    roleId?: string;
+  }>;
 };
 
 /**
@@ -243,14 +227,11 @@ export type InviteDto = {
   email: string | null;
   existingUser?: boolean;
   link?: string;
-  organization?: {
-    id: string;
-    imageUrl: string | null;
-    logoUrl: string | null;
-    name: string;
-    shortDescription: string | null;
-    slug: string;
-  };
+  organizationAssignments: Array<{
+    isDefault?: boolean;
+    organizationId: string;
+    roleId: string;
+  }>;
   invitedBy?: {
     avatarUrl: string | null;
     displayName: string;
@@ -259,20 +240,12 @@ export type InviteDto = {
     imageUrl: string | null;
     username: string | null;
   } | null;
-  role?: {
-    color: string | null;
-    displayName: string | null;
-    id: string;
-    isSystem: boolean;
-    label: string;
-    name: string;
-  } | null;
+  workspaceRoleId: string;
   token?: string;
   status: "invited" | "accepted" | "declined" | "expired" | "revoked";
   createdAt: Date;
   actionDate: Date | null;
   expireDate: Date | null;
-  roleId: string | null;
   invitedById: string | null;
 };
 

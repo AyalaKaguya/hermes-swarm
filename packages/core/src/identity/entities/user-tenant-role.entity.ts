@@ -4,7 +4,7 @@ import type { User } from "./user.entity.js";
 import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 @Entity({ name: "user_tenant_roles" })
-@Index("UQ_user_tenant_roles", ["tenantId", "userId", "roleId"], {
+@Index("UQ_user_tenant_roles", ["tenantId", "userId"], {
   unique: true,
 })
 export class UserTenantRole extends TenantOwnedBaseEntity {

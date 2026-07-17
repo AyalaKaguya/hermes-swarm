@@ -26,6 +26,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -907,7 +908,7 @@ export const PromptInput = ({
   // Render with or without local provider
   const inner = (
     <>
-      <input
+      <Input
         accept={accept}
         aria-label={tr("上传文件")}
         className="hidden"

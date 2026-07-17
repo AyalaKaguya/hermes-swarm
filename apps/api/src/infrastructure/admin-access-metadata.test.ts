@@ -7,47 +7,36 @@ import {
 } from "@hermes-swarm/rbac";
 import { AuthController } from "./auth/auth.controller.js";
 import { FilesController } from "./files/files.controller.js";
-import { GroupsController } from "./groups/groups.controller.js";
 import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
-import {
-  DepartmentIntegrationTokensController,
-  IntegrationTokensController,
-  OrganizationIntegrationTokensController,
-} from "./integrations/integration-tokens.controller.js";
+import { IntegrationTokensController } from "./integrations/integration-tokens.controller.js";
 import { InviteController } from "./invite/invite.controller.js";
-import { MailController } from "./mail/mail.controller.js";
+import { TenantMailController } from "./mail/mail.controller.js";
 import { PlatformMailController } from "./mail/platform-mail.controller.js";
 import { MembershipsController } from "./memberships/memberships.controller.js";
-import {
-  NotificationDestinationsController,
-} from "./notifications/notification-destinations.controller.js";
 import { NotificationsController } from "./notifications/notifications.controller.js";
 import { OrganizationsController } from "./organizations/organizations.controller.js";
 import { PasswordResetController } from "./password-reset/password-reset.controller.js";
 import { PlatformMembersController } from "./platform-members/platform-members.controller.js";
 import { PlatformRolesController } from "./platform-roles/platform-roles.controller.js";
 import { SettingsController } from "./settings/settings.controller.js";
-import { TicketsController } from "./tickets/tickets.controller.js";
+import { TicketsController } from "../domains/support/tickets/tickets.controller.js";
 import {
   TenantApplicationsController,
   TenantsController,
 } from "./tenants/tenants.controller.js";
+import { RolesController } from "./tenants/roles.controller.js";
 import { UsersController } from "./users/users.controller.js";
 import { PermissionsController } from "@hermes-swarm/rbac";
 
 const ADMIN_CONTROLLERS = [
   AuthController,
-  DepartmentIntegrationTokensController,
   FilesController,
-  GroupsController,
   InfrastructureBootstrapController,
   IntegrationTokensController,
   InviteController,
-  MailController,
+  TenantMailController,
   MembershipsController,
-  NotificationDestinationsController,
   NotificationsController,
-  OrganizationIntegrationTokensController,
   OrganizationsController,
   PasswordResetController,
   PlatformMailController,
@@ -55,6 +44,7 @@ const ADMIN_CONTROLLERS = [
   PlatformRolesController,
   PermissionsController,
   SettingsController,
+  RolesController,
   TenantApplicationsController,
   TenantsController,
   TicketsController,
@@ -85,5 +75,14 @@ describe("admin route access metadata", () => {
     }
 
     assert.deepEqual(missing, []);
+  });
+
+  it("allows tenant governors to read the role permission catalog", () => {
+    const operation = Reflect.getMetadata(
+      ACCESS_OPERATION_METADATA,
+      PermissionsController.prototype.catalog,
+    );
+
+    assert.deepEqual(operation?.defaultRoles, ["tenant-owner", "tenant-admin"]);
   });
 });

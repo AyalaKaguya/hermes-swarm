@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import Handlebars from "handlebars";
 import nodemailer from "nodemailer";
-import { IsNull, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import {
   CustomSmtp,
   EmailLog,
@@ -19,7 +19,6 @@ export type EmailLanguageCode = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
 
 export type SendEmailContext = {
   email: string;
-  organizationId: string | null;
   tenantId?: string;
   templateName: string;
   languageCode?: EmailLanguageCode;
@@ -64,7 +63,6 @@ export class EmailSendService {
       await this.recordLog({
         content: null,
         email: "",
-        organizationId: ctx.organizationId,
         tenantId,
         status: "skipped",
         subject: null,
@@ -75,13 +73,12 @@ export class EmailSendService {
 
     let smtp: CustomSmtp | PlatformSmtp | null;
     try {
-      smtp = await this.findSmtpRecord(tenantId, ctx.organizationId);
+      smtp = await this.findSmtpRecord(tenantId);
     } catch (error) {
       this.logger.error("Failed to resolve SMTP config:", error);
       await this.recordLog({
         content: null,
         email: recipient,
-        organizationId: ctx.organizationId,
         tenantId,
         status: "failed",
         subject: null,
@@ -91,11 +88,10 @@ export class EmailSendService {
     }
 
     if (!smtp || !smtp.host) {
-      this.logger.warn(`No SMTP config for org ${ctx.organizationId}`);
+      this.logger.warn(`No SMTP config for tenant ${tenantId}`);
       await this.recordLog({
         content: null,
         email: recipient,
-        organizationId: ctx.organizationId,
         tenantId,
         status: "skipped",
         subject: null,
@@ -110,7 +106,6 @@ export class EmailSendService {
       template = await this.resolveTemplate(
         ctx.templateName,
         langCode,
-        ctx.organizationId,
         tenantId,
       );
     } catch (error) {
@@ -118,7 +113,6 @@ export class EmailSendService {
       await this.recordLog({
         content: null,
         email: recipient,
-        organizationId: ctx.organizationId,
         tenantId,
         status: "failed",
         subject: null,
@@ -132,7 +126,6 @@ export class EmailSendService {
       await this.recordLog({
         content: null,
         email: recipient,
-        organizationId: ctx.organizationId,
         tenantId,
         status: "skipped",
         subject: null,
@@ -159,7 +152,6 @@ export class EmailSendService {
       await this.recordLog({
         content: html,
         email: recipient,
-        organizationId: ctx.organizationId,
         tenantId,
         status: "sent",
         subject,
@@ -171,7 +163,6 @@ export class EmailSendService {
       await this.recordLog({
         content: null,
         email: recipient,
-        organizationId: ctx.organizationId,
         tenantId,
         status: "failed",
         subject: null,
@@ -195,26 +186,15 @@ export class EmailSendService {
   private async resolveTemplate(
     name: string,
     languageCode: string,
-    organizationId: string | null,
     tenantId: string,
   ): Promise<EmailTemplate | PlatformEmailTemplate | null> {
     const languageCodes = getTemplateLanguageCandidates(languageCode);
-
-    if (organizationId) {
-      for (const candidate of languageCodes) {
-        const template = await this.templateRepository.findOne({
-          where: { name, languageCode: candidate, organizationId, tenantId },
-        });
-        if (template) return template;
-      }
-    }
 
     for (const candidate of languageCodes) {
       const template = await this.templateRepository.findOne({
         where: {
           name,
           languageCode: candidate,
-          organizationId: IsNull(),
           tenantId,
         },
       });
@@ -233,18 +213,9 @@ export class EmailSendService {
 
   private async findSmtpRecord(
     tenantId: string,
-    organizationId: string | null,
   ): Promise<CustomSmtp | PlatformSmtp | null> {
-    if (organizationId) {
-      const organizationSmtp = await this.smtpRepository.findOne({
-        where: { organizationId, tenantId },
-        order: { createdAt: "DESC" },
-      });
-      if (organizationSmtp) return organizationSmtp;
-    }
-
     const tenantSmtp = await this.smtpRepository.findOne({
-      where: { organizationId: IsNull(), tenantId },
+      where: { tenantId },
       order: { createdAt: "DESC" },
     });
     if (tenantSmtp) return tenantSmtp;
@@ -259,7 +230,6 @@ export class EmailSendService {
   private async recordLog(entry: {
     content: string | null;
     email: string;
-    organizationId: string | null;
     tenantId: string;
     status: "sent" | "failed" | "skipped";
     subject: string | null;
@@ -301,7 +271,6 @@ export class EmailSendService {
 function normalizeEmailLogEntry(entry: {
   content: string | null;
   email: string;
-  organizationId: string | null;
   tenantId: string;
   status: "sent" | "failed" | "skipped";
   subject: string | null;

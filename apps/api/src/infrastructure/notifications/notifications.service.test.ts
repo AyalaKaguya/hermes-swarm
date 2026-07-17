@@ -232,29 +232,23 @@ describe("NotificationsService", () => {
     assert.equal(notificationRepository.saved.length, 0);
   });
 
-  it("rejects organization notifications when a recipient is outside the organization", async () => {
+  it("routes notifications by tenant recipient without organization destinations", async () => {
+    const notificationRepository = createNotificationRepositoryHarness();
     const service = createNotificationsService(
+      notificationRepository.repository,
       {} as any,
-      {
-        find: async () => [
-          { organizationId: "org-1", status: "active", userId: "sender" },
-        ],
-      } as any,
       {
         validateAccessToken: async () => ({ sessionId: "s1", userId: "sender" }),
       } as any,
       {} as any,
     );
 
-    await assert.rejects(
-      () =>
-        service.sendFromAuthorization("Bearer token", {
-          organizationId: "org-1",
-          recipientUserIds: ["outsider"],
-          title: "Notice",
-        }),
-      BadRequestException,
-    );
+    const result = await service.sendFromAuthorization("Bearer token", {
+      recipientUserIds: ["recipient"],
+      title: "Notice",
+    });
+    assert.equal(result.length, 1);
+    assert.equal(notificationRepository.saved[0]?.recipientUserId, "recipient");
   });
 
   it("rejects recipients that are outside the active tenant", async () => {

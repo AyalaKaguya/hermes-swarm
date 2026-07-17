@@ -3,16 +3,14 @@ import {
   Controller,
   Delete,
   Get,
-  Headers,
   Inject,
   Param,
   Patch,
   Post,
-  Put,
+  Req,
 } from "@nestjs/common";
 import type {
   CreateOrganizationPayload,
-  ReplaceRolePermissionsPayload,
   UpdateOrganizationPayload,
 } from "../../common/admin-api.types.js";
 import {
@@ -20,6 +18,7 @@ import {
   AccessResource,
 } from "@hermes-swarm/rbac";
 import { OrganizationsService } from "./organizations.service.js";
+import type { PrincipalRequest } from "../tenants/tenants.controller.js";
 
 @Controller("admin")
 @AccessResource({
@@ -46,13 +45,14 @@ export class OrganizationsController {
    */
   @Get("organizations")
   @AccessOperation({
-    description: "查看当前租户内的组织目录。",
+    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    description: "查看当前工作空间内的组织目录。",
     entity: "organization",
     entityLabel: "组织",
     label: "查看组织列表",
     operation: "list",
     purpose: "tenant_organization",
-    purposeLabel: "租户组织",
+    purposeLabel: "工作空间组织",
     scope: "tenant",
     sortOrder: 10,
   })
@@ -82,21 +82,24 @@ export class OrganizationsController {
    */
   @Post("organizations")
   @AccessOperation({
-    description: "创建新的组织并初始化组织角色。",
+    defaultRoles: ["tenant-owner", "tenant-admin"],
+    description: "创建新的子组织并加入组织树。",
     entity: "organization",
     entityLabel: "组织",
     label: "创建组织",
     operation: "create",
     purpose: "tenant_organization",
-    purposeLabel: "租户组织",
+    purposeLabel: "工作空间组织",
     scope: "tenant",
     sortOrder: 20,
   })
   create(
-    @Headers("authorization") authorization: string | undefined,
+    @Req() request: PrincipalRequest,
     @Body() payload: CreateOrganizationPayload,
   ) {
-    return this.organizationsService.create(authorization, payload);
+    const userId = request.accessPrincipal?.userId?.trim();
+    if (!userId) throw new Error("Tenant principal is missing an id.");
+    return this.organizationsService.create(userId, payload);
   }
 
   /**
@@ -111,15 +114,10 @@ export class OrganizationsController {
     sortOrder: 20,
   })
   update(
-    @Headers("authorization") authorization: string | undefined,
     @Param("organizationId") organizationId: string,
     @Body() payload: UpdateOrganizationPayload,
   ) {
-    return this.organizationsService.update(
-      authorization,
-      organizationId,
-      payload,
-    );
+    return this.organizationsService.update(organizationId, payload);
   }
 
   /**
@@ -127,14 +125,15 @@ export class OrganizationsController {
    */
   @Delete("organizations/:organizationId")
   @AccessOperation({
-    description: "删除当前租户中的组织。",
+    defaultRoles: ["tenant-owner", "tenant-admin"],
+    description: "删除当前工作空间中的组织。",
     entity: "organization",
     entityLabel: "组织",
     isDangerous: true,
     label: "删除组织",
     operation: "delete",
     purpose: "tenant_organization",
-    purposeLabel: "租户组织",
+    purposeLabel: "工作空间组织",
     scope: "tenant",
     sortOrder: 90,
   })
@@ -144,142 +143,4 @@ export class OrganizationsController {
     return this.organizationsService.delete(organizationId);
   }
 
-  /**
-   * Lists roles in a managed organization selected by id.
-   */
-  @Get("organizations/:organizationId/roles")
-  @AccessOperation({
-    description: "查看当前组织的角色列表。",
-    entity: "role",
-    entityLabel: "角色",
-    entityOrder: 30,
-    label: "查看角色列表",
-    operation: "list",
-    purpose: "organization_role",
-    purposeLabel: "组织角色",
-    purposeOrder: 10,
-    sortOrder: 10,
-  })
-  listRoles(
-    @Param("organizationId") organizationId: string,
-  ) {
-    return this.organizationsService.listRoles(organizationId);
-  }
-
-  /**
-   * Creates a role in a managed organization selected by id.
-   */
-  @Post("organizations/:organizationId/roles")
-  @AccessOperation({
-    description: "创建当前组织内的自定义角色。",
-    entity: "role",
-    entityLabel: "角色",
-    entityOrder: 30,
-    label: "创建角色",
-    operation: "create",
-    purpose: "organization_role",
-    purposeLabel: "组织角色",
-    purposeOrder: 10,
-    sortOrder: 20,
-  })
-  createRole(
-    @Param("organizationId") organizationId: string,
-    @Body() payload: OrganizationRolePayload,
-  ) {
-    return this.organizationsService.createRole(
-      organizationId,
-      payload,
-    );
-  }
-
-  /**
-   * Updates a role in a managed organization selected by id.
-   */
-  @Patch("organizations/:organizationId/roles/:roleId")
-  @AccessOperation({
-    description: "更新当前组织角色的名称、颜色和描述。",
-    entity: "role",
-    entityLabel: "角色",
-    entityOrder: 30,
-    label: "更新角色",
-    operation: "update_basic",
-    purpose: "organization_role",
-    purposeLabel: "组织角色",
-    purposeOrder: 10,
-    sortOrder: 30,
-  })
-  updateRole(
-    @Param("organizationId") organizationId: string,
-    @Param("roleId") roleId: string,
-    @Body() payload: Partial<OrganizationRolePayload>,
-  ) {
-    return this.organizationsService.updateRole(
-      organizationId,
-      roleId,
-      payload,
-    );
-  }
-
-  /**
-   * Replaces a role permission set with entity CRUD permissions.
-   */
-  @Put("organizations/:organizationId/roles/:roleId/permissions")
-  @AccessOperation({
-    description: "替换当前组织角色拥有的权限。",
-    entity: "role",
-    entityLabel: "角色",
-    entityOrder: 30,
-    isDangerous: true,
-    label: "配置角色权限",
-    operation: "replace_permissions",
-    purpose: "organization_role",
-    purposeLabel: "组织角色",
-    purposeOrder: 10,
-    sortOrder: 40,
-  })
-  replaceRolePermissions(
-    @Param("organizationId") organizationId: string,
-    @Param("roleId") roleId: string,
-    @Body() payload: ReplaceRolePermissionsPayload,
-  ) {
-    return this.organizationsService.replaceRolePermissions(
-      organizationId,
-      roleId,
-      payload,
-    );
-  }
-
-  /**
-   * Deletes a role in a managed organization selected by id.
-   */
-  @Delete("organizations/:organizationId/roles/:roleId")
-  @AccessOperation({
-    description: "删除当前组织内的自定义角色。",
-    entity: "role",
-    entityLabel: "角色",
-    entityOrder: 30,
-    isDangerous: true,
-    label: "删除角色",
-    operation: "delete",
-    purpose: "organization_role",
-    purposeLabel: "组织角色",
-    purposeOrder: 10,
-    sortOrder: 90,
-  })
-  deleteRole(
-    @Param("organizationId") organizationId: string,
-    @Param("roleId") roleId: string,
-  ) {
-    return this.organizationsService.deleteRole(
-      organizationId,
-      roleId,
-    );
-  }
 }
-
-export type OrganizationRolePayload = {
-  color?: string | null;
-  description?: string | null;
-  displayName?: string;
-  name?: string;
-};

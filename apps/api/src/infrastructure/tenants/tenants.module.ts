@@ -14,19 +14,21 @@ import {
   UserTenantRole,
 } from "@hermes-swarm/core";
 import { TenantApplicationsController, TenantsController } from "./tenants.controller.js";
+import { RolesController } from "./roles.controller.js";
 import { TenantsService } from "./tenants.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { MailModule } from "../mail/mail.module.js";
+import { OrganizationsModule } from "../organizations/organizations.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
     MailModule,
+    OrganizationsModule,
     TypeOrmModule.forFeature([Tenant]),
     TypeOrmModule.forFeature(
       [
-        Organization,
         Permission,
         PasswordReset,
         Role,
@@ -34,14 +36,12 @@ import { MailModule } from "../mail/mail.module.js";
         Tenant,
         TenantApplication,
         User,
-        UserOrganization,
-        UserOrganizationRole,
         UserTenantRole,
       ],
       PLATFORM_DATA_SOURCE,
     ),
   ],
-  controllers: [TenantApplicationsController, TenantsController],
+  controllers: [RolesController, TenantApplicationsController, TenantsController],
   providers: [TenantsService],
   exports: [TenantsService],
 })

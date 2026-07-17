@@ -4,6 +4,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { TenantContextService } from "./tenant-context.service.js";
 import { PLATFORM_DATA_SOURCE } from "./database.constants.js";
 import { DatabaseRoleValidatorService } from "./database-role-validator.service.js";
+import { DATABASE_ENTITIES } from "./database-entities.js";
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { DatabaseRoleValidatorService } from "./database-role-validator.service.
         return {
           type: "postgres",
           url: configService.getOrThrow<string>("database.tenantUrl"),
+          entities: [...DATABASE_ENTITIES],
           autoLoadEntities: true,
           // Development and isolated tests synchronize directly from entities.
           // Production schema changes run before API replicas start.
@@ -48,6 +50,7 @@ import { DatabaseRoleValidatorService } from "./database-role-validator.service.
       useFactory: (configService: ConfigService) => ({
         type: "postgres",
         url: configService.getOrThrow<string>("database.platformUrl"),
+        entities: [...DATABASE_ENTITIES],
         autoLoadEntities: true,
         synchronize: false,
       }),

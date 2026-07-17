@@ -40,7 +40,6 @@ export type ResolvedAccessDefinition = AccessResourceMetadata & {
 };
 
 export type AccessScopeResult = {
-  departmentId?: string | null;
   organizationId?: string | null;
   scopeLevel?: RequestScopeLevel;
   tenantId?: string | null;
@@ -78,11 +77,9 @@ export type AccessScopeMetadata = {
 
 export type AccessAuthSession = {
   integrationToken?: {
-    departmentId?: string | null;
     id: string;
-    organizationId: string | null;
     permissions: string[];
-    scope: PermissionScope;
+    scope: "tenant";
     tenantId: string;
   } | null;
   principalType: "integration" | "platform" | "tenant";
@@ -97,7 +94,6 @@ export type AccessAuthSessionService = {
 };
 
 export type AccessCheckContext = {
-  departmentId?: string | null;
   organizationId?: string | null;
   principalType?: "integration" | "platform" | "tenant";
   scopeLevel?: RequestScopeLevel;

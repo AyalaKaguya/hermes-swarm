@@ -34,25 +34,26 @@ describe("UsersService uniqueness handling", () => {
       () =>
         state.service.create(token, {
           email: "new@example.com",
+          roleId: "role-member",
           status: "archived",
         } as any),
       { message: "用户状态无效" },
     );
     await assert.rejects(
-      () => state.service.update(token, USER_ID, null as any),
+      () => state.service.updateSelf(token, null as any),
       { message: "请求内容无效" },
     );
     await assert.rejects(
-      () => state.service.update(token, USER_ID, { status: "archived" } as any),
+      () => state.service.updateSelf(token, { status: "archived" } as any),
       { message: "用户状态无效" },
     );
     assert.equal(state.users[0].status, "active");
     await assert.rejects(
-      () => state.service.updatePassword(token, USER_ID, null as any),
+      () => state.service.updatePassword(token, null as any),
       { message: "请求内容无效" },
     );
     await assert.rejects(
-      () => state.service.updatePreferredLanguage(token, USER_ID, null as any),
+      () => state.service.updatePreferredLanguage(token, null as any),
       { message: "请求内容无效" },
     );
   });
@@ -70,21 +71,21 @@ describe("UsersService uniqueness handling", () => {
 
     await assert.rejects(
       () =>
-        state.service.updatePassword(token, USER_ID, {
+        state.service.updatePassword(token, {
           password: "new-password",
         }),
       { message: "当前密码不能为空" },
     );
     await assert.rejects(
       () =>
-        state.service.updatePassword(token, USER_ID, {
+        state.service.updatePassword(token, {
           currentPassword: "wrong-password",
           password: "new-password",
         }),
       { message: "当前密码不正确" },
     );
 
-    await state.service.updatePassword(token, USER_ID, {
+    await state.service.updatePassword(token, {
       currentPassword: "old-password",
       password: "new-password",
     });
@@ -101,6 +102,7 @@ describe("UsersService uniqueness handling", () => {
           displayName: "New User",
           email: "new@example.com",
           password: "password-123",
+          roleId: "role-member",
           status: "active",
         }),
       BadRequestException,
@@ -120,7 +122,7 @@ describe("UsersService uniqueness handling", () => {
 
     await assert.rejects(
       () =>
-        state.service.update(token, USER_ID, {
+        state.service.updateSelf(token, {
           email: "next@example.com",
         }),
       BadRequestException,
@@ -191,14 +193,42 @@ describe("UsersService uniqueness handling", () => {
     ]);
     assert.deepEqual(state.revokedSessionUsers, [`${TENANT_ID}:${USER_ID}`]);
   });
+
+  it("replaces workspace roles while protecting the tenant owner assignment", async () => {
+    const ownerRole = roleRecord("role-owner", "tenant-owner");
+    const adminRole = roleRecord("role-admin", "tenant-admin");
+    const state = createService({
+      roles: [ownerRole, adminRole],
+      userTenantRoles: [
+        { role: ownerRole, roleId: ownerRole.id, tenantId: TENANT_ID, userId: USER_ID },
+      ],
+      users: [userRecord({ email: "owner@example.com", id: USER_ID })],
+    });
+
+    await assert.rejects(
+      () => state.service.replaceTenantRole(token, USER_ID, adminRole.id),
+      { message: "不能移除 Tenant Owner 的所有者角色" },
+    );
+
+    const updated = await state.service.replaceTenantRole(
+      token,
+      USER_ID,
+      ownerRole.id,
+    );
+    assert.equal(updated.tenantRole.name, "tenant-owner");
+  });
 });
 
 function createService(options: {
   failTransactionAfterTokenRevoke?: boolean;
   failSaveWithUniqueError?: boolean;
+  roles?: any[];
+  userTenantRoles?: any[];
   users?: Array<ReturnType<typeof userRecord>>;
 } = {}) {
   const users = options.users ?? [];
+  const roles = options.roles ?? [roleRecord("role-member", "tenant-member")];
+  const userTenantRoles = options.userTenantRoles ?? [];
   const revokedIntegrationTokenUpdates: any[] = [];
   const revokedSessionUsers: string[] = [];
   const softDeletedUsers: string[] = [];
@@ -217,6 +247,61 @@ function createService(options: {
     return { ...saved };
   }
   const manager = {
+    async delete(target: any, query: any) {
+      if (target.name === "UserTenantRole") {
+        for (let index = userTenantRoles.length - 1; index >= 0; index -= 1) {
+          const item = userTenantRoles[index];
+          if (item.tenantId === query.tenantId && item.userId === query.userId) {
+            userTenantRoles.splice(index, 1);
+          }
+        }
+      }
+      return { affected: 1 };
+    },
+    async find(target: any, options: any) {
+      if (target.name === "Role") {
+        const ids = findOperatorValues(options.where.id);
+        return roles.filter(
+          (role) =>
+            ids.includes(role.id) &&
+            role.scope === options.where.scope &&
+            role.tenantId === options.where.tenantId,
+        );
+      }
+      if (target.name === "UserTenantRole") {
+        const ids = options.where.userId?._value
+          ? findOperatorValues(options.where.userId)
+          : [options.where.userId];
+        return userTenantRoles.filter(
+          (item) =>
+            item.tenantId === options.where.tenantId && ids.includes(item.userId),
+        );
+      }
+      return [];
+    },
+    async findOne(target: any, options: any) {
+      if (target.name === "Role") {
+        return roles.find(
+          (role) =>
+            role.id === options.where.id &&
+            role.scope === options.where.scope &&
+            role.tenantId === options.where.tenantId,
+        ) ?? null;
+      }
+      return null;
+    },
+    async insert(target: any, values: any[]) {
+      if (target.name === "UserTenantRole") {
+        const rows = Array.isArray(values) ? values : [values];
+        userTenantRoles.push(
+          ...rows.map((value) => ({
+            ...value,
+            role: roles.find((role) => role.id === value.roleId),
+          })),
+        );
+      }
+      return { identifiers: [] };
+    },
     async save(target: any, user: any) {
       void target;
       return saveUser(user);
@@ -302,7 +387,9 @@ function createService(options: {
   const service = new UsersService(
     {
       current: () => ({ manager, tenantId: TENANT_ID }),
-      repository: () => userRepository,
+      repository: (target: any) => target.name === "Role"
+        ? { findOne: (options: any) => manager.findOne(target, options) }
+        : userRepository,
     } as any,
     {
       validateAccessToken: async () => ({
@@ -362,4 +449,24 @@ function stripDates(value: any) {
     );
   }
   return value;
+}
+
+function findOperatorValues(value: any): string[] {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?._value)) return value._value;
+  return value ? [value] : [];
+}
+
+function roleRecord(id: string, name: string) {
+  return {
+    color: null,
+    description: null,
+    displayName: name,
+    id,
+    isSystem: true,
+    label: name,
+    name,
+    scope: "tenant",
+    tenantId: TENANT_ID,
+  };
 }

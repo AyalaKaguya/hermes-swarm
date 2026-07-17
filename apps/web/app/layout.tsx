@@ -7,6 +7,7 @@ import { NotificationProvider } from "@/components/app-notifications";
 import { AppearanceController } from "@/components/appearance-controller";
 import { I18nProvider } from "@/components/i18n-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { APPEARANCE_BOOTSTRAP_SCRIPT } from "@/lib/appearance-bootstrap";
 import { getMessagesForLanguage, normalizeLanguagePreference } from "@/lib/i18n";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
@@ -37,6 +38,12 @@ export default async function RootLayout({
       lang={locale}
       suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP_SCRIPT }}
+          id="hermes-appearance-bootstrap"
+        />
+      </head>
       <body>
         <I18nProvider initialLocale={locale} initialMessages={messages}>
           <AppearanceController />

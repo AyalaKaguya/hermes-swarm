@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale } from "next-intl";
-import { useAdminShell } from "@/components/admin-shell";
 import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { InlineNotice } from "@/components/inline-notice";
 import {
   CreateTokenDialog,
   CreatedTokenDialog,
@@ -23,6 +23,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useTextTranslation } from "@/hooks/use-text-translation";
+import { usePermission } from "@/hooks/use-permission";
 import {
   createIntegrationToken,
   getIntegrationTokenCapabilities,
@@ -38,11 +39,13 @@ import {
 } from "@/lib/authenticated-admin";
 
 export default function IntegrationsPage() {
-  const { snapshot } = useAdminShell();
+  const access = usePermission();
   const notifications = useNotifications();
   const tr = useTextTranslation();
   const locale = useLocale();
-  const userId = snapshot?.user.id ?? null;
+  const canCreatePersonalToken = access.hasPermission(
+    "integration_token.personal_api_token.create:own",
+  );
   const [capabilities, setCapabilities] = useState<IntegrationTokenScopeCapability[]>([]);
   const [tokens, setTokens] = useState<IntegrationToken[]>([]);
   const [createdToken, setCreatedToken] = useState<CreatedIntegrationToken | null>(null);
@@ -59,30 +62,18 @@ export default function IntegrationsPage() {
     () => capabilities.find((item) => scopeCapabilityKey(item) === draft.scopeKey) ?? null,
     [capabilities, draft.scopeKey],
   );
-  const organizationNames = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const organization of snapshot?.organizations ?? []) {
-      names.set(organization.id, organization.name);
-    }
-    for (const capability of capabilities) {
-      if (capability.organizationId && capability.organizationName) {
-        names.set(capability.organizationId, capability.organizationName);
-      }
-    }
-    return names;
-  }, [capabilities, snapshot?.organizations]);
 
   const load = useCallback(async () => {
     const token = await getAuthenticatedAdminSessionMarker();
-    if (!token || !userId) {
+    if (!token) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
       const [nextCapabilities, nextTokens] = await Promise.all([
-        getIntegrationTokenCapabilities(token, userId),
-        listIntegrationTokens(token, userId),
+        getIntegrationTokenCapabilities(token),
+        listIntegrationTokens(token),
       ]);
       setCapabilities(nextCapabilities.scopes);
       setTokens(nextTokens);
@@ -102,20 +93,11 @@ export default function IntegrationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tr, userId]);
+  }, [tr]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  function updateScope(scopeKey: string) {
-    setCreatedToken(null);
-    setDraft((current) => ({
-      ...current,
-      permissions: [],
-      scopeKey,
-    }));
-  }
 
   function togglePermission(permission: string, checked: boolean) {
     setDraft((current) => ({
@@ -127,19 +109,16 @@ export default function IntegrationsPage() {
   }
 
   async function createToken() {
-    if (!userId || !selectedCapability || draft.permissions.length === 0) return;
+    if (!canCreatePersonalToken || !selectedCapability || draft.permissions.length === 0) return;
     setSubmitting(true);
     setCreatedToken(null);
     setError(null);
     try {
       const created = await withAuthenticatedAdminSessionMarker((token) =>
-        createIntegrationToken(token, userId, {
-          departmentId: selectedCapability.departmentId,
+        createIntegrationToken(token, {
           expiresAt: draft.expiresAt ? new Date(draft.expiresAt).toISOString() : undefined,
           note: draft.note,
-          organizationId: selectedCapability.organizationId,
           permissions: draft.permissions,
-          scope: selectedCapability.scope,
         }),
       );
       setCreatedToken(created);
@@ -155,12 +134,12 @@ export default function IntegrationsPage() {
   }
 
   async function revokeToken() {
-    if (!userId || !pendingRevoke) return;
+    if (!pendingRevoke) return;
     setSubmitting(true);
     setError(null);
     try {
       await withAuthenticatedAdminSessionMarker((token) =>
-        revokeIntegrationToken(token, userId, pendingRevoke.id),
+        revokeIntegrationToken(token, pendingRevoke.id),
       );
       notifications.success(tr("集成 Token 已撤销"));
       setPendingRevoke(null);
@@ -175,31 +154,34 @@ export default function IntegrationsPage() {
   const activeTokens = tokens.filter((token) => !token.revokedAt && !token.isExpired);
   const inactiveTokens = tokens.filter((token) => token.revokedAt || token.isExpired);
   const canCreate =
-    Boolean(selectedCapability) && draft.permissions.length > 0 && !submitting;
+    canCreatePersonalToken &&
+    Boolean(selectedCapability) &&
+    draft.permissions.length > 0 &&
+    !submitting;
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4">
-      {error && (
-        <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <InlineNotice tone="error">{error}</InlineNotice>}
 
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <CardTitle>{tr("集成")}</CardTitle>
+            <CardTitle>{tr("个人 API Token")}</CardTitle>
             <CardDescription>
-              {tr("创建当前租户的集成 Token，并限制它可使用的租户、组织或部门范围。")}
+              {tr("创建仅属于当前账号的 API Token，并限制它可使用的权限和有效期。")}
+              <br />
+              {tr("Token 的实际权限始终受当前账号权限限制；账号权限被撤销后立即生效。")}
             </CardDescription>
           </div>
           <Button
-            disabled={loading || capabilities.length === 0}
+            disabled={
+              loading || capabilities.length === 0 || !canCreatePersonalToken
+            }
             onClick={() => setCreateDialogOpen(true)}
             type="button"
           >
             <AppIcon className="size-3.5" name="plus" />
-            {tr("创建 Token")}
+            {tr("创建个人 Token")}
           </Button>
         </CardHeader>
         {(loading || capabilities.length === 0) && (
@@ -215,11 +197,17 @@ export default function IntegrationsPage() {
             )}
           </CardContent>
         )}
+        {!loading && capabilities.length > 0 && !canCreatePersonalToken && (
+          <CardContent>
+            <InlineNotice tone="info">
+              {tr("当前工作空间角色不允许创建个人 API Token。")}
+            </InlineNotice>
+          </CardContent>
+        )}
       </Card>
 
       <CreateTokenDialog
         canCreate={canCreate}
-        capabilities={capabilities}
         createToken={() => void createToken()}
         draft={draft}
         onOpenChange={setCreateDialogOpen}
@@ -229,12 +217,10 @@ export default function IntegrationsPage() {
         submitting={submitting}
         togglePermission={togglePermission}
         tr={tr}
-        updateScope={updateScope}
       />
 
       <CreatedTokenDialog
         createdToken={createdToken}
-        organizationNames={organizationNames}
         onOpenChange={(open) => {
           if (!open) setCreatedToken(null);
         }}
@@ -246,7 +232,6 @@ export default function IntegrationsPage() {
         emptyText={tr("暂无有效的集成 Token")}
         locale={locale}
         onRevoke={setPendingRevoke}
-        organizationNames={organizationNames}
         title={tr("有效 Token")}
         tokens={activeTokens}
         tr={tr}
@@ -256,7 +241,6 @@ export default function IntegrationsPage() {
         emptyText={tr("暂无已撤销或过期的集成 Token")}
         locale={locale}
         onRevoke={setPendingRevoke}
-        organizationNames={organizationNames}
         title={tr("已撤销和过期 Token")}
         tokens={inactiveTokens}
         tr={tr}

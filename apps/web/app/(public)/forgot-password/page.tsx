@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import { useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
 import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { Button } from "@/components/ui/button";
+import { InlineNotice } from "@/components/inline-notice";
 import {
   Card,
   CardContent,
@@ -14,69 +17,180 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { requestPasswordReset } from "@/lib/admin-api";
-import { useTranslations } from "next-intl";
+import {
+  requestPasswordReset,
+  resolveTenantLoginContext,
+  type TenantLoginContext,
+} from "@/lib/admin-api";
+import {
+  normalizeWorkspace,
+  readRecentWorkspace,
+  withWorkspace,
+} from "@/lib/login-workspace";
 
 export default function ForgotPasswordPage() {
+  return <Suspense><ForgotPasswordContent /></Suspense>;
+}
+
+function ForgotPasswordContent() {
   const t = useTranslations("auth");
+  const searchParams = useSearchParams();
+  const workspaceRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const [workspace, setWorkspace] = useState("");
+  const [tenantContext, setTenantContext] = useState<TenantLoginContext | null>(null);
   const [email, setEmail] = useState("");
+  const [initializing, setInitializing] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  async function submit() {
+  useEffect(() => {
+    let cancelled = false;
+    async function initialize() {
+      try {
+        const candidate =
+          normalizeWorkspace(searchParams.get("workspace")) ||
+          readRecentWorkspace(window.localStorage);
+        if (candidate) setWorkspace(candidate);
+        const context = await resolveTenantLoginContext(candidate || undefined);
+        if (!cancelled && context.tenant) {
+          setTenantContext(context);
+          setWorkspace(context.tenant.slug);
+        }
+      } catch (loadError) {
+        if (!cancelled) setError(getErrorMessage(loadError, t("workspaceNotFound")));
+      } finally {
+        if (!cancelled) setInitializing(false);
+      }
+    }
+    void initialize();
+    return () => { cancelled = true; };
+  }, [searchParams, t]);
+
+  useEffect(() => {
+    if (initializing) return;
+    if (tenantContext?.tenant) emailRef.current?.focus();
+    else workspaceRef.current?.focus();
+  }, [initializing, tenantContext]);
+
+  async function selectWorkspace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = normalizeWorkspace(workspace);
+    if (!normalized || loading) return;
     setLoading(true);
     setError("");
-    setMessage("");
     try {
-      await requestPasswordReset(email);
-      setMessage(t("forgotPasswordSuccess"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("sendFailed"));
+      const context = await resolveTenantLoginContext(normalized);
+      if (!context.tenant) {
+        setError(t("workspaceNotFound"));
+        return;
+      }
+      setTenantContext(context);
+      setWorkspace(context.tenant.slug);
+    } catch (selectError) {
+      setError(getErrorMessage(selectError, t("workspaceNotFound")));
     } finally {
       setLoading(false);
     }
   }
 
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!tenantContext?.tenant || loading || !email.trim()) return;
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      await requestPasswordReset(email.trim(), tenantContext.tenant.slug);
+      setMessage(t("forgotPasswordSuccess"));
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, t("sendFailed")));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const tenant = tenantContext?.tenant;
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <main className="relative grid min-h-svh place-items-center bg-muted/30 p-4">
       <PublicLanguageSwitcher />
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <div className="mb-2 flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <AppIcon className="size-5" name="mail" />
+      <Card className="w-full max-w-sm" size="sm">
+        <CardHeader className="gap-3">
+          <div className="grid size-9 place-items-center rounded-lg border bg-muted text-muted-foreground">
+            <AppIcon className="size-4" name="mail" />
           </div>
-          <CardTitle>{t("forgotPassword")}</CardTitle>
-          <CardDescription>{t("forgotPasswordDescription")}</CardDescription>
+          <div className="grid gap-1">
+            <CardTitle>{t("forgotPassword")}</CardTitle>
+            <CardDescription>
+              {tenant ? t("forgotPasswordFor", { workspace: tenant.name }) : t("workspaceFirst")}
+            </CardDescription>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="forgot-email">{t("email")}</Label>
-            <Input
-              id="forgot-email"
-              onChange={(event) => setEmail(event.target.value)}
-              type="email"
-              value={email}
-            />
-          </div>
-          {message && (
-            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-              {message}
-            </div>
+        <CardContent>
+          {initializing ? (
+            <div className="h-9 animate-pulse rounded-md bg-muted" aria-busy="true" />
+          ) : tenant ? (
+            <form className="grid gap-3" onSubmit={submit}>
+              <div className="rounded-md border bg-muted/35 px-3 py-2">
+                <p className="text-sm font-medium">{tenant.name}</p>
+                <p className="text-xs text-muted-foreground">{tenant.slug}</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="forgot-email">{t("email")}</Label>
+                <Input
+                  autoComplete="email"
+                  id="forgot-email"
+                  onChange={(event) => setEmail(event.target.value)}
+                  ref={emailRef}
+                  required
+                  type="email"
+                  value={email}
+                />
+              </div>
+              {message && <StatusMessage>{message}</StatusMessage>}
+              {error && <ErrorMessage>{error}</ErrorMessage>}
+              <Button disabled={loading || !email.trim()} type="submit">
+                {loading ? t("sending") : t("sendResetLink")}
+              </Button>
+              <Button asChild variant="ghost">
+                <Link href={withWorkspace("/login", tenant.slug)}>{t("backToSignIn")}</Link>
+              </Button>
+            </form>
+          ) : (
+            <form className="grid gap-3" onSubmit={selectWorkspace}>
+              <div className="grid gap-1.5">
+                <Label htmlFor="forgot-workspace">{t("workspace")}</Label>
+                <Input
+                  id="forgot-workspace"
+                  onChange={(event) => setWorkspace(event.target.value.toLowerCase())}
+                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                  ref={workspaceRef}
+                  required
+                  value={workspace}
+                />
+              </div>
+              {error && <ErrorMessage>{error}</ErrorMessage>}
+              <Button disabled={loading || !normalizeWorkspace(workspace)} type="submit">
+                {loading ? t("findingWorkspace") : t("continue")}
+              </Button>
+              <Button asChild variant="ghost"><Link href="/login">{t("backToSignIn")}</Link></Button>
+            </form>
           )}
-          {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-              {error}
-            </div>
-          )}
-          <Button disabled={loading || !email.trim()} onClick={submit}>
-            {loading ? t("sending") : t("sendResetLink")}
-          </Button>
-          <Button asChild variant="ghost">
-            <Link href="/login">{t("backToSignIn")}</Link>
-          </Button>
         </CardContent>
       </Card>
     </main>
   );
+}
+
+function StatusMessage({ children }: { children: React.ReactNode }) {
+  return <InlineNotice tone="success">{children}</InlineNotice>;
+}
+
+function ErrorMessage({ children }: { children: React.ReactNode }) {
+  return <InlineNotice tone="error">{children}</InlineNotice>;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }

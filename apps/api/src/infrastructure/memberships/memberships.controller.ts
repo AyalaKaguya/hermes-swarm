@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
 } from "@nestjs/common";
 import {
   AccessOperation,
@@ -89,13 +90,35 @@ export class MembershipsController {
   ) {
     return this.membershipsService.remove(organizationId, membershipId);
   }
+
+  @Put(":membershipId/role")
+  @AccessOperation({
+    defaultRoles: ["owner", "admin"],
+    description: "替换当前组织成员的角色。",
+    isDangerous: true,
+    label: "配置成员角色",
+    operation: "replace_roles",
+    sortOrder: 40,
+  })
+  replaceRoles(
+    @Param("organizationId") organizationId: string,
+    @Param("membershipId") membershipId: string,
+    @Body() payload: { roleId?: string },
+  ) {
+    return this.membershipsService.replaceRole(
+      organizationId,
+      membershipId,
+      typeof payload?.roleId === "string" ? payload.roleId : "",
+    );
+  }
 }
 
 export type MembershipPayload = {
   displayName?: string | null;
   email?: string;
   password?: string;
-  roleId?: string | null;
+  isDefault?: boolean;
+  roleId?: string;
   status?: "active" | "disabled" | "invited";
   userId?: string;
 };

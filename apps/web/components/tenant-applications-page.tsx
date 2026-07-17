@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
+import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -402,18 +403,7 @@ function TenantStatusBadge({ status }: { status: Tenant["status"] }) {
 }
 
 function Feedback({ children, kind }: { children: React.ReactNode; kind: "error" | "success" }) {
-  return (
-    <div
-      className={
-        kind === "error"
-          ? "rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm"
-          : "rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm"
-      }
-      role={kind === "error" ? "alert" : "status"}
-    >
-      {children}
-    </div>
-  );
+  return <InlineNotice tone={kind}>{children}</InlineNotice>;
 }
 
 function formatDate(value: string) {

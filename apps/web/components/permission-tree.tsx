@@ -14,6 +14,7 @@ import type {
 
 type PermissionTreeProps = {
   catalog: PermissionCatalog | null;
+  defaultExpanded?: boolean;
   disabled?: boolean;
   isChecked: (permission: string) => boolean;
   onToggle: (permission: string, enabled?: boolean) => void;
@@ -21,6 +22,7 @@ type PermissionTreeProps = {
 
 export function PermissionTree({
   catalog,
+  defaultExpanded = true,
   disabled,
   isChecked,
   onToggle,
@@ -35,12 +37,12 @@ export function PermissionTree({
     [scopes],
   );
   const [expandedEntityKeys, setExpandedEntityKeys] = useState<Set<string>>(
-    () => new Set(entityKeys),
+    () => new Set(defaultExpanded ? entityKeys : []),
   );
 
   useEffect(() => {
-    setExpandedEntityKeys(new Set(entityKeys));
-  }, [entityKeys]);
+    setExpandedEntityKeys(new Set(defaultExpanded ? entityKeys : []));
+  }, [defaultExpanded, entityKeys]);
 
   if (scopes.length === 0) {
     return (

@@ -31,9 +31,6 @@ export class AccessAuditLog {
   @Column({ name: "organization_id", type: "uuid", nullable: true })
   organizationId!: string | null;
 
-  @Column({ name: "department_id", type: "uuid", nullable: true })
-  departmentId!: string | null;
-
   @Column({ name: "actor_id", type: "uuid", nullable: true })
   actorId!: string | null;
 

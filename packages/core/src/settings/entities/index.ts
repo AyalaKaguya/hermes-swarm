@@ -1,4 +1,3 @@
-export { OrganizationSetting } from "./organization-setting.entity.js";
 export { TenantSetting } from "./tenant-setting.entity.js";
 export {
   PlatformSetting,

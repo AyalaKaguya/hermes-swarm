@@ -9,6 +9,7 @@ import {
 import { useLocale } from "next-intl";
 import { useNotifications } from "@/components/app-notifications";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { InlineNotice } from "@/components/inline-notice";
 import { Button } from "@/components/ui/button";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
@@ -146,14 +147,7 @@ export default function SessionsPage() {
 
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-4">
-      {error && (
-        <div
-          className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm"
-          role="alert"
-        >
-          {error}
-        </div>
-      )}
+      {error && <InlineNotice tone="error">{error}</InlineNotice>}
 
       <Card>
         <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">

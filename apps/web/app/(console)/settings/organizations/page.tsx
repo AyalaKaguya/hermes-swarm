@@ -7,10 +7,10 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAdminShell } from "@/components/admin-shell";
 import { AppIcon } from "@/components/app-icon";
+import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -44,28 +51,27 @@ import {
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
+import { useOrganizationContext } from "@/components/organization-context-provider";
 
 export default function OrganizationsPage() {
   const tr = useTextTranslation();
   const router = useRouter();
+  const { switchOrganization } = useOrganizationContext();
   const { refreshSnapshot, resolvedSession, snapshot } = useAdminShell();
   const access = usePermission();
-  const canViewPlatformOrganizations =
+  const canViewOrganizations =
     snapshot && resolvedSession
       ? access.hasPageAccess("settings.organizations")
       : false;
-  const canManage =
-    canViewPlatformOrganizations && snapshot && resolvedSession
-      ? access.hasPermission([
-          "organization.platform_organization.create:platform",
-          "organization.platform_organization.delete:platform",
-        ])
+  const canCreateOrganization =
+    canViewOrganizations && snapshot && resolvedSession
+      ? access.hasPermission("organization.tenant_organization.create:tenant")
       : false;
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: "",
+    parentOrganizationId: "",
     slug: "",
-    subdomain: "",
   });
   const [creating, setCreating] = useState(false);
   const [items, setItems] = useState<Organization[]>([]);
@@ -75,7 +81,7 @@ export default function OrganizationsPage() {
 
   const load = useCallback(async () => {
     const token = await getAuthenticatedAdminSessionMarker();
-    if (!token || !canViewPlatformOrganizations) {
+    if (!token || !canViewOrganizations) {
       setLoading(false);
       return;
     }
@@ -86,7 +92,7 @@ export default function OrganizationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [canViewPlatformOrganizations, tr]);
+  }, [canViewOrganizations, tr]);
 
   useEffect(() => {
     void load();
@@ -96,7 +102,7 @@ export default function OrganizationsPage() {
     const value = search.trim().toLowerCase();
     if (!value) return items;
     return items.filter((item) =>
-      [item.name, item.slug, item.subdomain].some((field) =>
+      [item.name, item.slug].some((field) =>
         field?.toLowerCase().includes(value),
       ),
     );
@@ -104,7 +110,7 @@ export default function OrganizationsPage() {
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canManage) return;
+    if (!canCreateOrganization) return;
 
     setCreating(true);
     setError(null);
@@ -112,16 +118,15 @@ export default function OrganizationsPage() {
       const token = await requireAuthenticatedAdminSessionMarker();
       const payload: OrganizationPayload = {
         name: createForm.name,
+        parentOrganizationId: createForm.parentOrganizationId,
         slug: createForm.slug.trim() || undefined,
-        subdomain: createForm.subdomain.trim() || null,
         status: "active",
       };
       const created = await createOrganization(token, payload);
       setItems((current) => [...current, created]);
-      setCreateForm({ name: "", slug: "", subdomain: "" });
+      setCreateForm({ name: "", parentOrganizationId: "", slug: "" });
       setCreateOpen(false);
       await refreshSnapshot();
-      router.push(`/settings/organizations/${created.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("创建失败"));
     } finally {
@@ -137,12 +142,10 @@ export default function OrganizationsPage() {
     );
   }
 
-  if (!canViewPlatformOrganizations) {
+  if (!canViewOrganizations) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
-          {tr("当前账号无权访问组织列表。")}
-        </div>
+        <InlineNotice className="max-w-xl">{tr("当前账号无权访问组织列表。")}</InlineNotice>
       </div>
     );
   }
@@ -151,8 +154,8 @@ export default function OrganizationsPage() {
     <section className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">{tr("组织列表")}</h1>
-          <p className="text-sm">{tr("平台范围内的组织管理视图")}</p>
+          <h1 className="text-lg font-semibold">{tr("组织")}</h1>
+          <p className="text-sm text-muted-foreground">{tr("管理当前工作空间的轻量组织树")}</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Input
@@ -161,7 +164,7 @@ export default function OrganizationsPage() {
             placeholder={tr("搜索组织...")}
             value={search}
           />
-          {canManage && (
+          {canCreateOrganization && (
             <Button onClick={() => setCreateOpen(true)} type="button">
               <AppIcon className="size-3.5" name="building" />
               {tr("新建组织")}
@@ -169,11 +172,7 @@ export default function OrganizationsPage() {
           )}
         </div>
       </div>
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <InlineNotice tone="error">{error}</InlineNotice>}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">{tr("组织")}</CardTitle>
@@ -184,7 +183,7 @@ export default function OrganizationsPage() {
               <TableRow>
                 <TableHead>{tr("名称")}</TableHead>
                 <TableHead>{tr("标识")}</TableHead>
-                <TableHead>{tr("子域名")}</TableHead>
+                <TableHead>{tr("上级组织")}</TableHead>
                 <TableHead>{tr("状态")}</TableHead>
                 <TableHead className="w-24 text-right">
                   {tr("操作")}
@@ -198,7 +197,9 @@ export default function OrganizationsPage() {
                   <TableCell className="font-mono text-xs">
                     {item.slug}
                   </TableCell>
-                  <TableCell>{item.subdomain ?? "-"}</TableCell>
+                  <TableCell>
+                    {items.find((candidate) => candidate.id === item.parentOrganizationId)?.name ?? tr("根组织")}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -209,11 +210,17 @@ export default function OrganizationsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button asChild size="sm" variant="ghost">
-                      <Link href={`/settings/organizations/${item.id}`}>
-                        <AppIcon className="size-3.5" name="settings" />
-                        {tr("配置")}
-                      </Link>
+                    <Button
+                      disabled={!snapshot?.memberships.some((membership) => membership.organizationId === item.id && membership.status === "active")}
+                      onClick={async () => {
+                        await switchOrganization(item.id);
+                        router.push("/settings/organization");
+                      }}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      <AppIcon className="size-3.5" name="settings" />
+                      {tr("配置")}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -235,7 +242,7 @@ export default function OrganizationsPage() {
           <DialogHeader>
             <DialogTitle>{tr("新建组织")}</DialogTitle>
             <DialogDescription>
-              {tr("创建后进入该组织的完整配置页。")}
+              {tr("新组织必须挂在当前工作空间已有组织下。")}
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitCreate}>
@@ -254,6 +261,26 @@ export default function OrganizationsPage() {
               />
             </div>
             <div className="grid gap-2">
+              <Label htmlFor="organization-create-parent">{tr("上级组织")}</Label>
+              <Select
+                onValueChange={(value) =>
+                  setCreateForm((current) => ({
+                    ...current,
+                    parentOrganizationId: value,
+                  }))
+                }
+                required
+                value={createForm.parentOrganizationId || undefined}
+              >
+                <SelectTrigger className="w-full" id="organization-create-parent"><SelectValue placeholder={tr("请选择")} /></SelectTrigger>
+                <SelectContent>
+                  {items.filter((item) => item.status === "active").map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="organization-create-slug">{tr("标识符")}</Label>
               <Input
                 id="organization-create-slug"
@@ -267,21 +294,6 @@ export default function OrganizationsPage() {
                 value={createForm.slug}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="organization-create-subdomain">
-                {tr("子域名")}
-              </Label>
-              <Input
-                id="organization-create-subdomain"
-                onChange={(event) =>
-                  setCreateForm((current) => ({
-                    ...current,
-                    subdomain: event.target.value,
-                  }))
-                }
-                value={createForm.subdomain}
-              />
-            </div>
             <DialogFooter>
               <Button
                 disabled={creating}
@@ -291,7 +303,10 @@ export default function OrganizationsPage() {
               >
                 {tr("取消")}
               </Button>
-              <Button disabled={creating} type="submit">
+              <Button
+                disabled={creating || !createForm.parentOrganizationId}
+                type="submit"
+              >
                 {creating ? tr("创建中...") : tr("创建")}
               </Button>
             </DialogFooter>

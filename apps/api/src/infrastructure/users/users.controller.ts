@@ -10,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from "@nestjs/common";
 import type {
@@ -31,7 +32,7 @@ import { UsersService } from "./users.service.js";
   entityLabel: "用户",
   entityOrder: 10,
   purpose: "tenant_user",
-  purposeLabel: "租户用户",
+  purposeLabel: "工作空间用户",
   purposeOrder: 10,
   scope: "tenant",
 })
@@ -49,7 +50,7 @@ export class UsersController {
    */
   @Get()
   @AccessOperation({
-    description: "查看当前租户的用户列表。",
+    description: "查看当前工作空间的用户列表。",
     label: "查看用户列表",
     operation: "list",
     sortOrder: 10,
@@ -63,7 +64,7 @@ export class UsersController {
    */
   @Get("search")
   @AccessOperation({
-    description: "按邮箱、昵称或名称搜索当前租户用户。",
+    description: "按邮箱、昵称或名称搜索当前工作空间用户。",
     label: "搜索用户",
     operation: "search",
     sortOrder: 20,
@@ -80,7 +81,7 @@ export class UsersController {
    */
   @Post()
   @AccessOperation({
-    description: "在当前租户创建用户账号。",
+    description: "在当前工作空间创建用户账号。",
     label: "创建用户",
     operation: "create",
     sortOrder: 30,
@@ -95,44 +96,7 @@ export class UsersController {
   /**
    * Updates a global user through platform user management.
    */
-  @Patch("tenant/:userId")
-  @AccessOperation({
-    description: "更新当前租户用户的基础资料和状态。",
-    label: "更新用户",
-    operation: "update_basic",
-    sortOrder: 40,
-  })
-  updateManaged(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
-    @Body() payload: UpdateUserPayload,
-  ) {
-    return this.usersService.updateManaged(authorization, userId, payload);
-  }
-
-  /**
-   * Deletes a global user through platform user management.
-   */
-  @Delete("tenant/:userId")
-  @AccessOperation({
-    description: "删除当前租户用户账号。",
-    isDangerous: true,
-    label: "删除用户",
-    operation: "delete",
-    sortOrder: 90,
-  })
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteManaged(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
-  ) {
-    await this.usersService.deleteManaged(authorization, userId);
-  }
-
-  /**
-   * Updates an existing user profile or administrative state.
-   */
-  @Patch(":userId")
+  @Patch("me")
   @AccessOperation({
     description: "更新自己的个人资料。",
     entity: "user",
@@ -144,18 +108,14 @@ export class UsersController {
     scope: "own",
     sortOrder: 10,
   })
-  update(
+  updateSelf(
     @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
     @Body() payload: UpdateUserPayload,
   ) {
-    return this.usersService.update(authorization, userId, payload);
+    return this.usersService.updateSelf(authorization, payload);
   }
 
-  /**
-   * Changes a user's password through admin or self-service flow.
-   */
-  @Post(":userId/password")
+  @Post("me/password")
   @AccessOperation({
     description: "修改自己的登录密码。",
     entity: "user",
@@ -169,16 +129,12 @@ export class UsersController {
   })
   updatePassword(
     @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
     @Body() payload: UpdateUserPasswordPayload,
   ) {
-    return this.usersService.updatePassword(authorization, userId, payload);
+    return this.usersService.updatePassword(authorization, payload);
   }
 
-  /**
-   * Updates the preferred language of the selected user.
-   */
-  @Patch(":userId/preferred-language")
+  @Patch("me/preferred-language")
   @AccessOperation({
     description: "修改自己的界面语言偏好。",
     entity: "user",
@@ -192,13 +148,58 @@ export class UsersController {
   })
   updatePreferredLanguage(
     @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
     @Body() payload: UpdatePreferredLanguagePayload,
   ) {
-    return this.usersService.updatePreferredLanguage(
+    return this.usersService.updatePreferredLanguage(authorization, payload);
+  }
+
+  @Patch(":userId")
+  @AccessOperation({
+    description: "更新当前工作空间用户的基础资料和状态。",
+    label: "更新用户",
+    operation: "update_basic",
+    sortOrder: 40,
+  })
+  updateManaged(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("userId") userId: string,
+    @Body() payload: UpdateUserPayload,
+  ) {
+    return this.usersService.updateManaged(authorization, userId, payload);
+  }
+
+  @Put(":userId/role")
+  @AccessOperation({
+    description: "替换当前工作空间用户的工作空间角色。",
+    label: "配置工作空间角色",
+    operation: "replace_roles",
+    sortOrder: 50,
+  })
+  replaceTenantRoles(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("userId") userId: string,
+    @Body() payload: { roleId?: string },
+  ) {
+    return this.usersService.replaceTenantRole(
       authorization,
       userId,
-      payload,
+      typeof payload?.roleId === "string" ? payload.roleId : "",
     );
+  }
+
+  @Delete(":userId")
+  @AccessOperation({
+    description: "删除当前工作空间用户账号。",
+    isDangerous: true,
+    label: "删除用户",
+    operation: "delete",
+    sortOrder: 90,
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteManaged(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("userId") userId: string,
+  ) {
+    await this.usersService.deleteManaged(authorization, userId);
   }
 }

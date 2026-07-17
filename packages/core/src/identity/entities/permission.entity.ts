@@ -7,7 +7,6 @@ export type PermissionScope =
   | "platform"
   | "tenant"
   | "organization"
-  | "department"
   | "own";
 export type PermissionCatalogSource = "controller" | "manual" | "navigation";
 

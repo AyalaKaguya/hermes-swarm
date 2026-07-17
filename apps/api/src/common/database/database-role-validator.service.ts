@@ -1,4 +1,4 @@
-import { Injectable, OnApplicationBootstrap } from "@nestjs/common";
+import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
@@ -13,7 +13,7 @@ type RoleState = {
 @Injectable()
 export class DatabaseRoleValidatorService implements OnApplicationBootstrap {
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     @InjectDataSource() private readonly tenantDataSource: DataSource,
     @InjectDataSource(PLATFORM_DATA_SOURCE)
     private readonly platformDataSource: DataSource,

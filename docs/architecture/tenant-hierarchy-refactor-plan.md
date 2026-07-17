@@ -1,190 +1,201 @@
-# Hermes 真租户层级重构计划
+# Hermes 工作空间与组织双层 RBAC
 
-## 目标
+## 目标模型
 
-将当前的 `Platform + Organization` 假租户模型重构为：
+Hermes 的身份、治理和业务边界固定为：
 
-> Platform Control Plane → Tenant → Organization → Department
+> Platform → Tenant（UI 称“工作空间”）→ Organization → User / Role / Permission
 
-当前没有生产数据，允许直接删除并重建开发数据库。本次不实现旧数据迁移、双读双写或旧会话兼容；从新基线开始启用 PostgreSQL RLS。
+这是开发期破坏性基线，不迁移旧数据，不保留 Department、用户组、共享组织角色、旧 scope header、旧 API 或旧会话兼容层。空数据库必须能仅通过 migration + seed 完整重建。
 
-## 已锁定的架构决策
+## 控制面边界
 
-- 平台账号与租户账号完全分离：`PlatformUser` 只访问控制面，`User` 强制属于一个 Tenant。
-- 同一邮箱可在不同 Tenant 中拥有独立账号、密码、角色和会话。
-- Tenant 支持自助申请与平台审批；批准后创建默认 Organization 和 Owner。
-- Tenant 下可有多个 Organization；Organization 下可有树状 Department。
-- Department 是可选硬数据作用域，并支持同 Tenant 内跨 Organization 的有向调度关系。
-- RBAC 分为 tenant、organization、department 三层，有效权限按 allow-only 并集合并，v1 不实现显式 deny。
-- 全部 tenant-owned 表强制 `tenant_id NOT NULL`，通过复合外键和 PostgreSQL RLS 阻止串租户引用与查询。
-- 调度关系不授予数据权限。
+### Platform
 
-## 核心模型
+- `PlatformUser`、`PlatformRole`、`PlatformRolePermission` 使用独立身份、会话、API 和 datasource。
+- 平台页面与接口只位于 `/platform/**`、`/api/admin/platform/**`。
+- 平台权限目录只由 `/api/admin/platform/permissions/catalog` 返回。
+- 租户用户看不到平台入口、平台角色或平台权限；平台角色不参与租户授权。
 
-### 平台控制面
+### Workspace
 
-- `PlatformUser`、`PlatformRole`、`PlatformRolePermission` 独立建模。
-- `TenantApplication` 支持申请、邮箱验证、审批、拒绝和取消。
-- 平台跨租户操作只允许通过 `/api/admin/platform/**`，并写入不可变审计记录。
+- Tenant 是账号、会话、域名、RLS、Redis、任务和缓存的硬边界。
+- `User.tenantId` 非空；邮箱按 `(tenantId, lower(email))` 唯一。
+- 同一邮箱可在不同 Tenant 中拥有完全独立的账号和密码。
+- 一个会话固定一个 Tenant；切换 Tenant 必须重新登录。
+- “全部组织”表示工作空间控制台，仅拥有 `workspace.console.access:tenant` 的用户可选择。
 
-### 租户数据面
+### Organization
 
-- `Tenant`：全局唯一 slug/subdomain，状态为 `provisioning | active | suspended | archived`。
-- `User`：`tenantId` 非空，邮箱唯一约束为 `(tenantId, lower(email))`。
-- `Organization`：属于 Tenant，slug 在 Tenant 内唯一，每个 Tenant 最多一个有效默认 Organization。
-- `Department`：属于 Organization，使用 `parentDepartmentId` 构建树并禁止循环。
-- `UserOrganization`：表达组织访问资格。
-- `UserDepartment`：引用 `UserOrganization`，保证部门成员先属于组织。
-- `OrganizationGroup` 保留为非层级标签分组，不承担 Department 或安全边界职责。
+- Organization 是 Tenant 内的轻量树节点，只保存父级、名称、slug、状态、创建者和审计字段。
+- 每个 Tenant 恰好一个有效根组织；非根组织必须指定同 Tenant 父级。
+- 服务层阻止自引用和循环；根组织不能删除、停用或改挂。
+- 有子组织、有效成员或工单引用的组织不能删除。
+- 组织之间不继承角色或权限。
 
-### 分层 RBAC
+## 双层 RBAC
 
-- Permission 继续作为全局目录。
-- Role 明确属于 `tenant | organization | department` 层级。
-- 通过独立关联表支持 Tenant User、Organization Membership、Department Membership 的多角色绑定。
-- Tenant scope 合并 Tenant roles；Organization scope 再合并 Organization roles；Department scope 再合并 Department roles。
-- Platform roles 不参与租户权限计算。
+### 工作空间角色
 
-### 部门调度
+- `Role.scope = tenant` 且 `organizationId IS NULL`。
+- 每个活跃 User 通过 `UserTenantRole` 恰好绑定一个工作空间角色。
+- 工作空间角色只能包含 `tenant | own` 权限。
+- Tenant Owner 是不可删除的系统角色，拥有全部租户治理和个人能力权限。
+- Tenant Owner 不绕过组织授权；进入具体组织仍需显式 membership 和组织角色。
 
-`DepartmentDispatchRelation` 包含 tenant、source、target、类型、优先级、启用状态和 JSON policy。
+### 组织角色
 
-v1 类型：
+- `Role.scope = organization` 且 `organizationId` 必须指向同 Tenant 的组织。
+- 每个组织拥有独立角色库；名称只在该组织内唯一。
+- 每个活跃 `UserOrganization` 通过 `UserOrganizationRole` 恰好绑定一个当前组织角色。
+- 组织角色只能包含 `organization` 权限，只作用于精确组织，不向父级、子级或其他组织继承。
+- 新建组织原子创建 Owner、Admin、Member、Viewer，并把创建者加入该组织、绑定 Owner。
+- Owner 权限不可削减；最后一个 Owner 不可降级或移除；已分配角色不可删除。
 
-- `handoff`
-- `escalation`
-- `collaboration`
-- `fallback`
+### 有效权限
 
-允许同 Tenant 跨 Organization 调度，禁止跨 Tenant；解析器使用幂等键、visited-set 和最大跳数防止循环，首批接入工单分派、通知目标和升级路由。
+- 个人请求：只使用工作空间角色中的 `own` 权限。
+- 工作空间请求：只使用工作空间角色中的 `tenant` 权限。
+- 组织请求：只使用目标组织 membership 的单个组织角色。
+- 不合并工作空间角色与组织角色，不合并其他组织角色，也不做组织树继承。
+- 跨 Tenant 资源返回 404；同 Tenant 权限不足返回 403。
+
+权限目录分别由以下端点返回：
+
+```http
+GET /api/admin/permissions/catalog
+GET /api/admin/organizations/:organizationId/permissions/catalog
+GET /api/admin/platform/permissions/catalog
+```
+
+第一条只返回 `tenant + own`，第二条只返回 `organization`，第三条只返回 `platform`。
+
+## 用户、成员与会话
+
+- User 是工作空间账号，可加入多个 Organization；删除 membership 不删除 User。
+- 禁用 User 会撤销全部会话和个人 Integration Token。
+- 切换组织不重新认证；前端只保存 `activeOrganizationId`、epoch 和请求取消状态。
+- `/api/admin/auth/me` 返回单个 `tenantRole`，以及每个 membership 的单个 `role + permissions`。
+- 顶层 `permissions` 只含工作空间角色权限，不返回组织权限全局并集。
+- 客户端不发送 Tenant、scope 或隐式 Organization header；Tenant 来自服务端会话，Organization 由路径、查询或请求体明确表达。
+
+## Onboarding
+
+平台审批后创建 `provisioning` Tenant、Owner User 和 Tenant Owner 角色，不自动创建 Organization。Owner 激活密码后获得受限会话，并调用：
+
+```http
+POST /api/admin/tenant/onboarding/root-organization
+```
+
+根组织、默认组织角色、Owner membership、组织 Owner 分配和 Tenant `active` 状态在一个事务中完成。重复提交相同输入幂等返回，冲突输入返回 409。
+
+## API 契约
+
+工作空间治理：
+
+```http
+GET    /api/admin/tenant
+PATCH  /api/admin/tenant
+
+GET    /api/admin/organizations
+POST   /api/admin/organizations
+GET    /api/admin/organizations/:organizationId
+PATCH  /api/admin/organizations/:organizationId
+DELETE /api/admin/organizations/:organizationId
+
+GET    /api/admin/users
+POST   /api/admin/users
+PATCH  /api/admin/users/:userId
+DELETE /api/admin/users/:userId
+PUT    /api/admin/users/:userId/role
+
+GET    /api/admin/roles
+POST   /api/admin/roles
+PATCH  /api/admin/roles/:roleId
+PUT    /api/admin/roles/:roleId/permissions
+DELETE /api/admin/roles/:roleId
+```
+
+组织治理：
+
+```http
+GET  /api/admin/organizations/:organizationId/members
+POST /api/admin/organizations/:organizationId/members
+PATCH /api/admin/organizations/:organizationId/members/:membershipId
+DELETE /api/admin/organizations/:organizationId/members/:membershipId
+PUT /api/admin/organizations/:organizationId/members/:membershipId/role
+
+GET  /api/admin/organizations/:organizationId/roles
+POST /api/admin/organizations/:organizationId/roles
+PATCH /api/admin/organizations/:organizationId/roles/:roleId
+PUT /api/admin/organizations/:organizationId/roles/:roleId/permissions
+DELETE /api/admin/organizations/:organizationId/roles/:roleId
+```
+
+统一邀请使用一个工作空间角色和每个目标组织的一个角色：
+
+```ts
+type CreateInvitePayload = {
+  email: string;
+  workspaceRoleId: string;
+  organizations: Array<{
+    organizationId: string;
+    roleId: string;
+    isDefault?: boolean;
+  }>;
+};
+```
+
+邀请者必须在每个目标组织拥有 `user.organization_member.create:organization`；Tenant Owner 没有绕过。接受邀请在单个事务内创建或复用 User、唯一工作空间角色、memberships 和组织角色。
+
+## 业务边界
+
+- Ticket 保存 `tenantId`、`sourceOrganizationId`、requester 和可选 assignee。
+- 提交 Ticket 必须属于来源组织并拥有该组织的 `ticket.conversation.submit:organization`。
+- Requester、参与者、assignee 具有工单固有访问；批量处理要求来源组织精确角色的 `ticket.conversation.handle:organization`。
+- 父组织、子组织和兄弟组织均不自动获得工单处理权限。
+- Conversation 从 Ticket 推导组织来源。
+- Notifications 为 Tenant + recipient User，不存在组织通知目标或部门路由。
+- Personal API Token 由当前账号通过 `/api/admin/account/integration-tokens` 创建和撤销；创建能力由工作空间角色中的 `own` 权限控制。Token 固定 Tenant namespace，但不是工作空间共享资源，也不接受客户端 scope 参数。
+- Token 的有效授权为 `Token 声明权限 ∩ Owner 当前有效权限`：先检查 Token 是否声明目标权限，再实时检查 Owner 的工作空间角色或目标组织成员角色；任一权限、成员关系或用户状态被撤销后，已有 Token 立即失去对应能力。
+- Settings、SMTP、邮件模板和 Feature Access 只支持 Platform default → Tenant override。
+- Realtime、Redis、Jobs、cache 和幂等键都使用 Tenant namespace。
 
 ## 数据库与 RLS
 
-- Platform：平台用户/角色、TenantApplication、平台设置、平台模板。
-- Tenant：User、Tenant roles/settings、密码重置、邮箱验证、租户 SMTP/模板。
-- Organization：memberships、组织 roles/invites/groups/contacts/languages/settings。
-- Department：Department、memberships、dispatch relations 及可选部门业务归属。
-- Tenant + 可选范围：tickets、conversations、notifications、integration tokens、email logs。
+- `WorkspaceModelBaseline2026071500001` 是唯一初始 migration。
+- Tenant-owned 表包含 `tenant_id NOT NULL`、Tenant 索引、复合外键和强制 RLS policy。
+- Role scope 使用 CHECK；组织角色通过 `(tenant_id, organization_id, role_id)` 复合外键防止跨组织分配。
+- `UserTenantRole(tenantId,userId)` 与 `UserOrganizationRole(tenantId,membershipId)` 唯一。
+- Invite 的工作空间角色、Organization 父级、User、Membership、Ticket 来源均使用 Tenant 一致性外键。
+- Tenant datasource 使用 `hermes_tenant_app`（`NOBYPASSRLS`）；Platform datasource 使用独立跨租户角色。
+- 每个租户请求在事务内设置 `app.tenant_id`，repository 只使用 AsyncLocalStorage 当前 EntityManager。
+- 退役表不得存在：Department、UserDepartment、DepartmentDispatchRelation、OrganizationGroup、OrganizationSetting 及相关关联表。
 
-所有租户业务表包含非空 `tenant_id`；Organization/Department 资源同时保留相应下级外键。使用复合外键确保引用属于同一 Tenant，并用 CHECK 约束 scope 字段组合。
+## 前端信息架构
 
-Tenant/Organization 使用软删除，核心业务外键默认 `RESTRICT`。缓存、Redis channel、实时客户端、后台任务及幂等键全部加入 tenant namespace。
+始终显示个人设置：账号、登录设备、API Token。
 
-RLS 从首阶段全面启用：
+选择“全部组织”时显示：工作空间、组织、用户、邀请、邮件、工作空间访问。
 
-- 租户应用数据库角色不具备 BYPASSRLS。
-- 请求在事务中使用 `SET LOCAL` 设置 tenant、scope、organization 和 department。
-- 所有租户表启用 `FORCE ROW LEVEL SECURITY`；无 TenantContext 时拒绝访问。
-- TypeORM repository 从 AsyncLocalStorage 获取当前事务 EntityManager。
-- 平台跨租户模块使用独立 datasource/数据库角色并强制审计。
-- Worker 每个任务显式携带 tenantId；平台任务拆分为逐 Tenant 子任务。
-- CI 校验 TenantOwnedEntity 的非空 tenantId、索引及 RLS policy 覆盖。
+选择具体组织时显示：组织资料、成员、角色与权限。
 
-## 认证、作用域与 API
+工作空间角色路由为 `/settings/workspace-access`；组织角色路由为 `/settings/organization/roles`。旧 `/settings/roles` 不再存在。组织切换通过 `OrganizationContextProvider` 原子更新，不刷新页面或重新登录。
 
-- 租户 JWT 与 Redis session 固化 tenantId、userId、sessionId 和 principal type。
-- token、session、User.tenantId 与 Tenant active 状态必须一致。
-- 普通客户端不能覆盖 tenantId；登录、重置和邀请在认证前通过 host/subdomain 解析 Tenant，localhost 使用显式 tenant slug。
-- 密码重置 token 包含 tenantId；平台账号使用独立认证端点和会话。
+## 验收门禁
 
-请求作用域：
+- 同一用户在组织 A 为 Admin、组织 B 为 Viewer，切换后页面、按钮、API 和数据结果同步变化。
+- A 组织角色不能分配给 B 组织成员；父子组织不继承权限。
+- Tenant Owner 未加入目标组织时不能进入组织控制台或邀请成员。
+- 无 `workspace.console.access:tenant` 时不能显示、选择或伪造“全部组织”。
+- `/auth/me` 顶层不合并组织权限；三个权限目录互不泄漏。
+- 空库可通过 migration + seed 重建，并通过 RLS、API/Web E2E、OpenAPI、coverage、test、typecheck 和 build。
 
-```ts
-type RequestScopeLevel = "tenant" | "organization" | "department";
-```
+## 2026-07-16 实施状态
 
-使用 `X-Scope-Level`、`Organization-Id`、`Department-Id`；tenantId 由服务端会话注入。路径/header 冲突返回 400，跨 Tenant 资源返回 404，同 Tenant 权限不足返回 403。
-
-API：
-
-- `/api/admin/platform/**`：租户审批、状态、平台人员与默认配置。
-- `/api/admin/tenant/**`：租户资料、组织目录、成员、角色和默认设置。
-- `/api/admin/organizations/:organizationId/**`：组织成员、角色、部门、邮件、集成和通知。
-- `/api/admin/organizations/:organizationId/departments/**`：部门树、成员和调度关系。
-- `/api/auth/me` 返回 Tenant、分层 memberships、默认 scope 和 allowed scopes。
-
-## 基础业务重构
-
-- Settings：`platform default → tenant override → organization override`。
-- Mail：SMTP `organization → tenant → platform public`；密码重置使用 Tenant 模板，组织邀请使用 Organization 模板。
-- Tickets：始终携带 tenantId，可选 organization/department；平台支持视图显式跨租户。
-- Conversations：唯一键改为 `(tenantId, sourceType, sourceId)`，参与者与消息受 TenantContext 保护。
-- Notifications/Realtime：通知、socket key、Redis event 和订阅全部携带 tenantId。
-- Integration Tokens：支持 tenant/organization/department scope，签名主体包含 tenantId。
-- Jobs：使用 tenant-aware 队列、分布式锁和幂等执行，替换进程内全表任务。
-- Audit：记录 tenant/org/department、actor、principal、permission、结果及平台目标 Tenant。
-- Feature Access：扩展为 platform/tenant/organization 三层。
-
-## 前端重构
-
-- `/platform/**`：平台控制面。
-- `/settings/tenant/**`：租户治理。
-- `/settings/organization/**`：当前组织。
-- `/settings/organization/departments/**`：部门管理。
-- `/settings/organizations` 改为当前 Tenant 的 Organization 目录。
-- 新建统一 ScopeProvider，持有 tenant、organization、department、scopeKey 和 epoch。
-- Scope 偏好按 `${tenantId}:${userId}` 持久化，恢复时重新校验 membership。
-- 切换 scope 时取消在途请求、清理局部状态、更新 header、重挂业务树、重连 realtime 并导航到兼容路由。
-- 请求与缓存 key 包含完整 scope；公共认证接口不注入已登录 scope。
-- v1 使用现有 React 数据模式，通过 AbortController、epoch 与 scope-key remount 防止旧响应污染。
-- Onboarding 分为平台初始化、Tenant 申请/审批和 Owner 激活。
-
-## 实施顺序
-
-1. 建立文档、资源归属清单、scope 契约和可回放 schema 基线。
-2. 实现新实体、复合约束、RLS、TenantContext、平台 datasource；重建开发数据库。
-3. 分离平台/租户认证，完成 tenant-aware session、申请审批、激活、密码重置和分层 RBAC。
-4. 迁移 Settings/Mail、Tickets/Conversations、Notifications/Realtime、Integrations、Jobs/Audit。
-5. 实现 Tenant Console、ScopeProvider、部门树和调度 UI，改造现有设置与业务页面。
-6. 删除 Platform-as-Tenant、旧 PlatformMember、全局 User、旧 scope 和 nullable organization fallback，生成 OpenAPI 并更新运行手册。
-
-## 多 Agent 工作流
-
-第一轮：
-
-- Agent A：核心实体、migration、RLS 和数据库测试。
-- Agent B：认证、会话、RBAC、请求上下文和 OpenAPI。
-- Agent C：ScopeProvider、导航、登录及设置页面。
-- 主 Agent：公共契约、业务模块整合和阶段验收。
-
-第二轮：
-
-- Agent A：Tickets、Conversations、Jobs。
-- Agent B：Settings、Mail、Integrations、Audit。
-- Agent C：Notifications、Realtime、Departments UI。
-- 主 Agent：端到端测试、安全检查和文档。
-
-共享类型由单一负责人修改，每轮以 core build、typecheck 和契约测试为合并门槛。
-
-## 测试与验收
-
-- 双 Tenant 同邮箱及相似资源 ID 的 list/get/update/delete/raw SQL 隔离。
-- 无上下文、伪造 tenant、连接池复用和缺少上下文的后台任务均失败。
-- host 解析、Tenant suspended、refresh 不漂移、平台/租户 token 混用。
-- 伪造组织/部门 header、路径冲突、跨 Tenant Organization、跨 Organization Department。
-- Department 树循环、无效 membership、跨 Tenant 调度、循环及最大跳数。
-- 设置/模板回退、密码重置、工单/会话、实时事件、缓存、队列和 integration token 隔离。
-- 平台运营、Tenant Owner、Org Admin、Department Manager、多组织成员、同邮箱双 Tenant 六类 E2E 身份。
-- 刷新恢复 scope、浏览器前进后退、慢请求取消、缓存清理和 realtime 重连。
-- 执行 `pnpm nx run-many -t test typecheck build` 以及 API/Web e2e 和 coverage。
-
-完成标准：不存在缺少 tenantId 的租户业务表，不存在客户端可覆盖的 Tenant 授权，不存在未经过 RLS 或平台 datasource 的跨租户查询；Organization 不再承担账号边界，Department 调度与数据授权完全分离，开发数据库可从空库通过 migration + seed 重建。
-
-## 2026-07-11 实施状态
-
-本轮破坏性重构已完成代码与静态数据库契约落地：
-
-- PlatformUser/PlatformRole 与 Tenant User/RBAC 已分离，Tenant 申请、审批和 Owner 激活闭环已实现。
-- Tenant → Organization → Department 实体、成员关系、三层角色关联与跨组织部门调度已实现。
-- 初始 migration 覆盖 Tenant 根表和全部 tenant-owned 表的强制 RLS、复合外键、scope CHECK、默认项约束和不可变访问审计。
-- API 使用 `hermes_tenant_app` 非 BYPASSRLS 角色与独立 platform datasource；生产启动会验证两个数据库角色的隔离能力。
-- Settings/Mail、Tickets/Conversations、Notifications/Realtime、Integration Token、Invite、Password Reset、Users/Groups/Memberships 已迁入 TenantContext。
-- Department Dispatch 已实现带 tenant 校验、visited-set、最大跳数和幂等键的解析器，并接入工单分派、通知目标与升级路由；调度收件人仍必须具备已有组织/部门成员资格。
-- Jobs 已使用逐 Tenant envelope、Redis 分布式锁和幂等完成标记，首个 `tickets.archive-expired` handler 不再依赖进程内全表 timer。
-- Web 已提供 ScopeProvider、租户控制台、平台控制面、Tenant 申请/审批、组织/部门切换、部门树和调度管理，并移除 Platform-as-Tenant 与 platform integration token 语义。
-- TenantApplication 已支持私密取消 token；平台支持租户目录及 suspend/archive 状态控制；Tenant Role CRUD API 已建立。
-- 旧 Docker Organization-as-Tenant 初始化 schema 与旧 `PlatformMember` 实体已删除；开发空库只由 migration + 幂等 seed 创建。
-- Feature Access 已按定义分别解析 platform、tenant、organization，并在组织层使用 platform → tenant → organization 覆盖链。
-- 全仓 `test + typecheck + build` 通过；coverage 任务通过。
-
-当前工作站没有 PostgreSQL/Docker/psql，且 5432 未监听，因此尚未在真实 PostgreSQL 上执行 migration、seed、API/Web E2E 与 OpenAPI 再生成。代码门禁将在本轮最终变更整合后重新执行；下一次具备数据库运行时后，必须按 `docs/dev-runtime-playbook.md` 从空库执行这些步骤，在此之前不得宣称“空库重建”运行验收完成。
+- 双层单角色实体、API、授权解析、组织默认角色、邀请、工单和前端动态设置导航已落地。
+- 开发数据库已从唯一基线 migration 重建并完成 Seed；租户应用角色已启用 `NOBYPASSRLS`，退役表、RLS 缺口、重复角色分配、跨组织角色错配和权限 scope 泄漏检查均为零。
+- 工作空间、组织与平台权限目录已拆为独立 API；工作空间目录只返回 `tenant/own`，组织目录只返回 `organization`，平台目录只返回 `platform`。
+- 全仓 `test`、`typecheck`、`build` 已通过；API 单元测试 163 项、Web 单元测试 47 项、API E2E 5 项及 Web E2E 3 项全部通过。
+- API coverage 为行 70.60%、分支 69.44%、函数 61.30%；Web coverage 为行 75.18%、分支 83.82%、函数 36.56%。
+- OpenAPI 已按最终权限目录重新生成；浏览器已验收“全部组织”与具体组织导航切换、组织资料、组织角色权限目录和工作空间角色权限目录。

@@ -6,126 +6,88 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Post,
   UnauthorizedException,
 } from "@nestjs/common";
+import { AccessOperation, AccessResource, PublicAccess } from "@hermes-swarm/rbac";
 import type {
   AcceptInvitePayload,
-  CreateBulkInvitesPayload,
+  CreateInvitePayload,
 } from "../../common/admin-api.types.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 import { RequireFeature } from "../feature-access/require-feature.decorator.js";
-import {
-  AccessOperation,
-  AccessResource,
-  PublicAccess,
-} from "@hermes-swarm/rbac";
 import { InviteService } from "./invite.service.js";
 
-@Controller("admin")
+@Controller("admin/invites")
 @AccessResource({
   entity: "invite",
   entityLabel: "邀请",
   entityOrder: 70,
-  purpose: "organization_invite",
-  purposeLabel: "组织邀请",
+  purpose: "workspace_invite",
+  purposeLabel: "工作空间邀请",
   purposeOrder: 10,
-  scope: "organization",
+  scope: "tenant",
 })
 export class InviteController {
   constructor(
+    @Inject(InviteService)
     private readonly inviteService: InviteService,
+    @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
   ) {}
 
-  @Get("organizations/:organizationId/invites")
-  @AccessOperation({
-    description: "查看当前组织的邀请列表。",
-    label: "查看邀请",
-    operation: "list",
-    sortOrder: 10,
-  })
+  @Get()
+  @AccessOperation({ label: "查看邀请", operation: "list", sortOrder: 10 })
   @RequireFeature("feature:invite:enabled")
-  async listForOrganization(@Param("organizationId") organizationId: string) {
-    return this.inviteService.listForOrganization(organizationId);
+  list() {
+    return this.inviteService.list();
   }
 
-  @Post("organizations/:organizationId/invites")
-  @AccessOperation({
-    description: "批量创建当前组织的邀请。",
-    label: "创建邀请",
-    operation: "create_bulk",
-    sortOrder: 20,
-  })
+  @Post()
+  @AccessOperation({ label: "创建邀请", operation: "create", sortOrder: 20 })
   @RequireFeature("feature:invite:enabled")
-  async createBulkForOrganization(
+  async create(
     @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
-    @Body() payload: CreateBulkInvitesPayload,
+    @Body() payload: CreateInvitePayload,
   ) {
-    return this.inviteService.createBulkForOrganization(
-      organizationId,
+    return this.inviteService.create(
       await requireSessionUserId(this.authSessionService, authorization),
       payload,
     );
   }
 
-  @Post("organizations/:organizationId/invites/:inviteId/resend")
-  @AccessOperation({
-    description: "重新发送当前组织的邀请。",
-    label: "重发邀请",
-    operation: "resend",
-    sortOrder: 30,
-  })
+  @Post(":inviteId/resend")
+  @AccessOperation({ label: "重发邀请", operation: "resend", sortOrder: 30 })
   @RequireFeature("feature:invite:enabled")
-  async resendForOrganization(
+  async resend(
     @Headers("authorization") authorization: string | undefined,
-    @Param("organizationId") organizationId: string,
     @Param("inviteId") inviteId: string,
   ) {
-    return this.inviteService.resendForOrganization(
-      organizationId,
-      await requireSessionUserId(this.authSessionService, authorization),
+    return this.inviteService.resend(
       inviteId,
+      await requireSessionUserId(this.authSessionService, authorization),
     );
   }
 
-  @Delete("organizations/:organizationId/invites/:inviteId")
-  @AccessOperation({
-    description: "撤销或删除当前组织的邀请。",
-    isDangerous: true,
-    label: "删除邀请",
-    operation: "delete",
-    sortOrder: 90,
-  })
+  @Delete(":inviteId")
+  @AccessOperation({ isDangerous: true, label: "撤销邀请", operation: "delete", sortOrder: 90 })
   @RequireFeature("feature:invite:enabled")
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteForOrganization(
-    @Param("organizationId") organizationId: string,
-    @Param("inviteId") inviteId: string,
-  ) {
-    await this.inviteService.deleteForOrganization(organizationId, inviteId);
+  async revoke(@Param("inviteId") inviteId: string) {
+    await this.inviteService.revoke(inviteId);
   }
 
-  /**
-   * Public endpoint to validate an invite token.
-   */
-  @Post("invites/validate")
+  @Post("validate")
   @PublicAccess({ reason: "Invite validation begins before the invitee has a session." })
-  async validate(
-    @Body("email") email?: string,
-    @Body("token") token?: string,
-  ) {
+  validate(@Body("email") email?: string, @Body("token") token?: string) {
     return this.inviteService.validateByToken(email, token);
   }
 
-  /**
-   * Public endpoint to accept an invite and register the user.
-   */
-  @Post("invites/accept")
+  @Post("accept")
   @PublicAccess({ reason: "An invite token authorizes acceptance before sign-in." })
-  async accept(@Body() payload: AcceptInvitePayload) {
+  accept(@Body() payload: AcceptInvitePayload) {
     return this.inviteService.accept(payload);
   }
 }
@@ -136,8 +98,7 @@ async function requireSessionUserId(
 ) {
   const token = authorization?.replace(/^Bearer\s+/i, "").trim();
   try {
-    const session = await authSessionService.validateAccessToken(token);
-    return session.userId;
+    return (await authSessionService.validateAccessToken(token)).userId;
   } catch {
     throw new UnauthorizedException("登录已失效，请重新登录");
   }

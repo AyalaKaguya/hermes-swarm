@@ -29,19 +29,17 @@ import type {
 import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 const SCOPE_LABELS: Record<PermissionScope, string> = {
-  department: "部门",
   organization: "组织",
   own: "个人",
   platform: "平台",
-  tenant: "租户",
+  tenant: "工作空间",
 };
 
 const SCOPE_ORDER: Record<PermissionScope, number> = {
   platform: 0,
   tenant: 1,
   organization: 2,
-  department: 3,
-  own: 4,
+  own: 3,
 };
 
 @Injectable()
@@ -284,7 +282,7 @@ export class AccessCatalogService implements OnModuleInit {
         if (role.scope === "tenant") {
           return permission.scope === "tenant" || permission.scope === "own";
         }
-        return permission.scope === role.scope || permission.scope === "own";
+        return permission.scope === "organization";
       });
 
       for (const permission of rolePermissions) {
@@ -296,8 +294,6 @@ export class AccessCatalogService implements OnModuleInit {
         missingRows.push(
           this.rolePermissionRepository.create({
             enabled: true,
-            departmentId: role.departmentId,
-            organizationId: role.organizationId,
             permission: permissionCode,
             permissionId: permission.id,
             roleId: role.id,
@@ -430,14 +426,9 @@ function resolveFallbackDefaultRoles(
   operation: AccessOperationMetadata,
 ): AccessDefaultRole[] {
   if (scope === "platform") return ["platform-admin"];
-  if (scope === "tenant") return ["owner", "admin"];
-  if (scope === "department") {
-    return operation.isDangerous
-      ? ["department-manager"]
-      : ["department-manager", "member", "viewer"];
-  }
+  if (scope === "tenant") return ["tenant-owner", "tenant-admin"];
   if (scope === "own") {
-    return ["platform-admin", "admin", "member", "owner", "viewer"];
+    return ["tenant-owner", "tenant-admin", "tenant-member"];
   }
   if (operation.isDangerous) return ["owner"];
   if (/^(list|view|get|read|search)/.test(operation.operation)) {

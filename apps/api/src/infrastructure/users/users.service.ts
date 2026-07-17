@@ -1,13 +1,18 @@
 import {
   BadRequestException,
   Injectable,
-  ForbiddenException,
   Inject,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { ILike, IsNull } from "typeorm";
-import { IntegrationToken, User, type UserStatus } from "@hermes-swarm/core";
+import { ILike, In, IsNull } from "typeorm";
+import {
+  IntegrationToken,
+  Role,
+  User,
+  UserTenantRole,
+  type UserStatus,
+} from "@hermes-swarm/core";
 import type {
   CreateUserPayload,
   SearchUsersQuery,
@@ -43,7 +48,7 @@ export class UsersService {
       order: { createdAt: "DESC" },
       where: { tenantId: session.tenantId },
     });
-    return users.map(toUserDto);
+    return this.withTenantRoles(users);
   }
 
   /**
@@ -67,7 +72,7 @@ export class UsersService {
         { mobile: ILike(pattern), tenantId: session.tenantId },
       ],
     });
-    return users.map(toUserDto);
+    return users.map((user) => toUserDto(user));
   }
 
   /**
@@ -87,6 +92,16 @@ export class UsersService {
     const passwordHash = input.password
       ? hashPassword(requirePassword(input.password))
       : null;
+    const roleId = requireText(input.roleId, "工作空间角色");
+    const role = await this.tenantContext.repository(Role).findOne({
+      where: {
+        id: roleId,
+        organizationId: IsNull(),
+        scope: "tenant",
+        tenantId: session.tenantId,
+      },
+    });
+    if (!role) throw new BadRequestException("工作空间角色无效");
 
     const user = this.users.create({
       avatarUrl: normalizeNullableText(input.imageUrl),
@@ -106,7 +121,13 @@ export class UsersService {
     });
 
     try {
-      return toUserDto(await this.users.save(user));
+      const saved = await this.users.save(user);
+      await this.tenantContext.current()!.manager.insert(UserTenantRole, {
+        roleId: role.id,
+        tenantId: session.tenantId,
+        userId: saved.id,
+      });
+      return toUserDto(saved, role);
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException("邮箱已被使用");
@@ -118,17 +139,13 @@ export class UsersService {
   /**
    * Updates mutable profile, status, role, and credential fields for a user.
    */
-  async update(
+  async updateSelf(
     authorization: string | undefined,
-    userId: string,
     payload: UpdateUserPayload,
   ) {
     const session = await this.requireSession(authorization);
-    if (session.userId !== userId) {
-      throw new ForbiddenException("只能更新自己的账号信息");
-    }
     const input = requirePayload(payload);
-    const user = await this.getUserOrThrow(userId);
+    const user = await this.getUserOrThrow(session.userId);
     return this.applyUserPatch(user, input);
   }
 
@@ -162,20 +179,64 @@ export class UsersService {
     await this.authSessionService.revokeUserSessions(session.tenantId, user.id);
   }
 
+  async replaceTenantRole(
+    authorization: string | undefined,
+    userId: string,
+    roleId: string,
+  ) {
+    await this.requireSession(authorization);
+    const user = await this.getUserOrThrow(userId);
+    roleId = requireText(roleId, "工作空间角色");
+    const role = await this.tenantContext.current()!.manager.findOne(Role, {
+      where: {
+        id: roleId,
+        organizationId: IsNull(),
+        scope: "tenant",
+        tenantId: this.tenantId,
+      },
+    });
+    if (!role) throw new BadRequestException("工作空间角色无效");
+
+    const currentAssignments = await this.tenantContext.current()!.manager.find(
+      UserTenantRole,
+      {
+        relations: { role: true },
+        where: { tenantId: this.tenantId, userId },
+      },
+    );
+    const ownsWorkspace = currentAssignments.some(
+      (assignment) => assignment.role?.name === "tenant-owner",
+    );
+    const keepsOwnership = role.name === "tenant-owner";
+    if (ownsWorkspace && !keepsOwnership) {
+      throw new BadRequestException("不能移除 Tenant Owner 的所有者角色");
+    }
+
+    const manager = this.tenantContext.current()!.manager;
+    await manager.transaction(async (transaction) => {
+      await transaction.delete(UserTenantRole, {
+        tenantId: this.tenantId,
+        userId,
+      });
+      await transaction.insert(UserTenantRole, {
+        roleId: role.id,
+        tenantId: this.tenantId,
+        userId,
+      });
+    });
+    return toUserDto(user, role);
+  }
+
   /**
    * Updates a user password, allowing self-service with current password proof.
    */
   async updatePassword(
     authorization: string | undefined,
-    userId: string,
     payload: UpdateUserPasswordPayload,
   ) {
     const session = await this.requireSession(authorization);
-    if (session.userId !== userId) {
-      throw new ForbiddenException("只能更新自己的密码");
-    }
     const input = requirePayload(payload);
-    const user = await this.getUserOrThrow(userId);
+    const user = await this.getUserOrThrow(session.userId);
 
     if (user.passwordHash) {
       const currentPassword = requireText(input.currentPassword, "当前密码");
@@ -201,15 +262,11 @@ export class UsersService {
    */
   async updatePreferredLanguage(
     authorization: string | undefined,
-    userId: string,
     payload: UpdatePreferredLanguagePayload,
   ) {
     const session = await this.requireSession(authorization);
-    if (session.userId !== userId) {
-      throw new ForbiddenException("只能更新自己的语言偏好");
-    }
     const input = requirePayload(payload);
-    const user = await this.getUserOrThrow(userId);
+    const user = await this.getUserOrThrow(session.userId);
     user.preferredLanguage = normalizePreferredLanguage(
       input.preferredLanguage,
     );
@@ -303,6 +360,26 @@ export class UsersService {
     if (existing && existing.id !== exceptUserId) {
       throw new BadRequestException("邮箱已被使用");
     }
+  }
+
+  private async withTenantRoles(users: User[]) {
+    if (users.length === 0) return [];
+    const assignments = await this.tenantContext.current()!.manager.find(
+      UserTenantRole,
+      {
+        relations: { role: true },
+        where: {
+          tenantId: this.tenantId,
+          userId: In(users.map((user) => user.id)),
+        },
+      },
+    );
+    const byUser = new Map<string, Role>();
+    for (const assignment of assignments) {
+      if (!assignment.role) continue;
+      byUser.set(assignment.userId, assignment.role);
+    }
+    return users.map((user) => toUserDto(user, byUser.get(user.id) ?? null));
   }
 
   private get tenantId() {

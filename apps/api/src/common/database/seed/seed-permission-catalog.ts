@@ -8,41 +8,28 @@ import {
   type ResolvedAccessDefinition,
 } from "@hermes-swarm/rbac";
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
-import { DepartmentsController } from "../../../infrastructure/departments/departments.controller.js";
 import { FilesController } from "../../../infrastructure/files/files.controller.js";
-import { GroupsController } from "../../../infrastructure/groups/groups.controller.js";
-import {
-  DepartmentIntegrationTokensController,
-  IntegrationTokensController,
-  OrganizationIntegrationTokensController,
-} from "../../../infrastructure/integrations/integration-tokens.controller.js";
+import { IntegrationTokensController } from "../../../infrastructure/integrations/integration-tokens.controller.js";
 import { InviteController } from "../../../infrastructure/invite/invite.controller.js";
-import { MailController, TenantMailController } from "../../../infrastructure/mail/mail.controller.js";
+import { TenantMailController } from "../../../infrastructure/mail/mail.controller.js";
 import { PlatformMailController } from "../../../infrastructure/mail/platform-mail.controller.js";
 import { MembershipsController } from "../../../infrastructure/memberships/memberships.controller.js";
-import { NotificationDestinationsController } from "../../../infrastructure/notifications/notification-destinations.controller.js";
 import { NotificationsController } from "../../../infrastructure/notifications/notifications.controller.js";
 import { OrganizationsController } from "../../../infrastructure/organizations/organizations.controller.js";
 import { PlatformMembersController } from "../../../infrastructure/platform-members/platform-members.controller.js";
 import { PlatformRolesController } from "../../../infrastructure/platform-roles/platform-roles.controller.js";
 import { SettingsController } from "../../../infrastructure/settings/settings.controller.js";
 import { TenantApplicationsController, TenantsController } from "../../../infrastructure/tenants/tenants.controller.js";
-import { TicketsController } from "../../../infrastructure/tickets/tickets.controller.js";
+import { TicketsController } from "../../../domains/support/tickets/tickets.controller.js";
 import { UsersController } from "../../../infrastructure/users/users.controller.js";
 
 const ACCESS_CONTROLLERS = [
-  DepartmentsController,
   FilesController,
-  GroupsController,
   IntegrationTokensController,
-  OrganizationIntegrationTokensController,
-  DepartmentIntegrationTokensController,
   InviteController,
-  MailController,
   TenantMailController,
   PlatformMailController,
   MembershipsController,
-  NotificationDestinationsController,
   NotificationsController,
   OrganizationsController,
   PlatformMembersController,

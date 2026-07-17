@@ -37,7 +37,6 @@ export class AccessAuditService {
     try {
       await this.repository.insert({
         actorId: principal?.userId ?? null,
-        departmentId: context.scope.departmentId ?? null,
         errorCode: resolveErrorCode(input.error),
         httpMethod: normalizeText(request.method, 16)?.toUpperCase() ?? null,
         httpPath: path,

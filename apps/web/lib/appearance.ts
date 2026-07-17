@@ -1,5 +1,9 @@
 "use client";
 
+import { THEME_MODE_STORAGE_KEY } from "@/lib/appearance-bootstrap";
+
+export { THEME_MODE_STORAGE_KEY } from "@/lib/appearance-bootstrap";
+
 export {
   LANGUAGE_OPTIONS,
   LANGUAGE_STORAGE_KEY,
@@ -13,7 +17,6 @@ export {
 export type ThemeMode = "dark" | "light" | "system";
 
 export const THEME_MODE_EVENT = "hermes:theme-mode-change";
-export const THEME_MODE_STORAGE_KEY = "hermes-swarm.theme-mode";
 
 export const THEME_OPTIONS: Array<{
   icon: "moon" | "sun" | "system";

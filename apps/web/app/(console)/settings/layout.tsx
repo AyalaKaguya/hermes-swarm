@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
+import { useOrganizationContext } from "@/components/organization-context-provider";
 import { AppIcon } from "@/components/app-icon";
 import {
   SETTINGS_NAV_SECTIONS,
@@ -15,6 +16,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   findPageAccessDefinitionsByPath,
@@ -22,6 +24,7 @@ import {
 } from "@hermes-swarm/rbac-api";
 import { usePermission } from "@/hooks/use-permission";
 import { useTextTranslation } from "@/hooks/use-text-translation";
+import { resolveActiveSettingsNavigationKey } from "@/lib/settings-navigation-active";
 import { cn } from "@/lib/utils";
 
 const SETTINGS_SIDEBAR_DEFAULT_SIZE = "240px";
@@ -35,45 +38,59 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const t = useTranslations();
   const tr = useTextTranslation();
   const { resolvedSession, snapshot } = useAdminShell();
+  const { activeOrganizationId } = useOrganizationContext();
   const access = usePermission();
   const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] =
     useState(false);
-  const activeOrganizationId = snapshot?.organization?.id ?? "none";
   const routeOrganizationId = getRouteOrganizationId(pathname);
   const currentPages = findPageAccessDefinitionsByPath(pathname);
   const canAccessCurrentPage =
     currentPages.length > 0 &&
       currentPages.some((page) =>
         access.hasPageAccess(page.key, {
-          organizationId: routeOrganizationId ?? snapshot?.organization?.id,
+          organizationId: routeOrganizationId ?? activeOrganizationId,
         }),
       );
 
-  const navSections = SETTINGS_NAV_SECTIONS.map((section) => ({
+  const visibleSectionKeys = activeOrganizationId
+    ? new Set(["personal", "organization"])
+    : new Set(["personal", "tenant"]);
+  const navSections = SETTINGS_NAV_SECTIONS
+    .filter((section) => visibleSectionKeys.has(section.key))
+    .map((section) => ({
     ...section,
     label: tr(section.label),
     items: section.items
       .filter((item) => {
         if (!snapshot || !resolvedSession) return false;
         return access.hasPageAccess(item.pageKey, {
-          organizationId: snapshot.organization?.id,
+          organizationId: activeOrganizationId,
         });
       })
       .map((item) => ({ ...item, label: tr(item.label) })),
   })).filter((section) => section.items.length > 0);
   const visibleItems = navSections.flatMap((section) => section.items);
 
-  const activeKey =
-    visibleItems.find((item) =>
-      matchesSettingsHref(item.href, pathname, searchParams, true),
-    )?.key ??
-    visibleItems.find((item) =>
-      matchesSettingsHref(item.href, pathname, searchParams, false),
-    )?.key;
+  const activeKey = resolveActiveSettingsNavigationKey(
+    visibleItems,
+    pathname,
+    searchParams,
+  );
+
+  useEffect(() => {
+    const page = currentPages[0];
+    if (!page) return;
+    if (page.section === "organization" && !activeOrganizationId) {
+      router.replace("/settings/tenant");
+    } else if (page.section === "tenant" && activeOrganizationId) {
+      router.replace("/settings/organization");
+    }
+  }, [activeOrganizationId, currentPages, router]);
 
   return (
     <div className="min-h-svh min-w-0 bg-background lg:h-svh lg:overflow-hidden">
@@ -105,10 +122,7 @@ export default function SettingsLayout({
             minSize="360px"
           >
             <div className="h-full min-w-0 overflow-auto px-4 py-5 lg:px-5">
-              <div
-                className="mx-auto flex max-w-7xl flex-col gap-4"
-                key={activeOrganizationId}
-              >
+              <div className="mx-auto flex max-w-7xl flex-col gap-4">
                 {canAccessCurrentPage ? (
                   children
                 ) : (
@@ -142,7 +156,7 @@ export default function SettingsLayout({
             </Link>
           ))}
         </nav>
-        <div key={activeOrganizationId}>
+        <div>
           {canAccessCurrentPage ? (
             children
           ) : (
@@ -198,63 +212,43 @@ function SettingsSidebar({
           </div>
         )}
       </div>
-      <div className="min-h-0 w-full flex-1 overflow-auto px-2 py-3">
-        {navSections.map((section, sectionIndex) => (
-          <div className="grid gap-1" key={section.key}>
-            {sectionIndex > 0 && <Separator className="my-2" />}
-            {!collapsed && (
-              <div className="px-2 py-1 text-[0.68rem] font-medium uppercase">
-                {section.label}
-              </div>
-            )}
-            {section.items.map((item) => {
-              const active = item.key === activeKey;
-              return (
-                <Link
-                  className={cn(
-                    "flex h-8 items-center gap-2 rounded-lg px-2 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-                    active && "bg-accent",
-                    collapsed && "justify-center",
-                  )}
-                  href={item.href}
-                  key={item.key}
-                  title={item.label}
-                >
-                  <AppIcon
-                    className="size-4 shrink-0"
-                    name={item.icon ?? "settings"}
-                  />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      <ScrollArea className="min-h-0 w-full flex-1">
+        <div className="px-2 py-3">
+          {navSections.map((section, sectionIndex) => (
+            <div className="grid gap-1" key={section.key}>
+              {sectionIndex > 0 && <Separator className="my-2" />}
+              {!collapsed && (
+                <div className="px-2 py-1 text-[0.68rem] font-medium uppercase">
+                  {section.label}
+                </div>
+              )}
+              {section.items.map((item) => {
+                const active = item.key === activeKey;
+                return (
+                  <Link
+                    className={cn(
+                      "flex h-8 items-center gap-2 rounded-lg px-2 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+                      active && "bg-accent",
+                      collapsed && "justify-center",
+                    )}
+                    href={item.href}
+                    key={item.key}
+                    title={item.label}
+                  >
+                    <AppIcon
+                      className="size-4 shrink-0"
+                      name={item.icon ?? "settings"}
+                    />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
     </aside>
   );
-}
-
-function matchesSettingsHref(
-  href: string,
-  pathname: string,
-  searchParams: { get(name: string): string | null },
-  queryOnly: boolean,
-) {
-  const [hrefWithoutHash] = href.split("#");
-  const [hrefPath, hrefQuery] = hrefWithoutHash.split("?");
-
-  if (hrefQuery) {
-    if (!queryOnly || pathname !== hrefPath) return false;
-    const expectedParams = new URLSearchParams(hrefQuery);
-    for (const [key, value] of expectedParams) {
-      if (searchParams.get(key) !== value) return false;
-    }
-    return true;
-  }
-
-  if (queryOnly) return false;
-  return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 }
 
 function getRouteOrganizationId(pathname: string) {

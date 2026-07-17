@@ -1,5 +1,4 @@
 import { Column, DeleteDateColumn, Entity, Index, OneToMany } from "typeorm";
-import type { Department } from "./department.entity.js";
 import type { Organization } from "./organization.entity.js";
 import type { User } from "./user.entity.js";
 import { BaseEntity } from "./base.entity.js";
@@ -40,7 +39,4 @@ export class Tenant extends BaseEntity {
 
   @OneToMany("Organization", "tenant")
   organizations!: Organization[];
-
-  @OneToMany("Department", "tenant")
-  departments!: Department[];
 }

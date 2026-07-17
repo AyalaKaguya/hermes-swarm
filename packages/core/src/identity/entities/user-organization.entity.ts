@@ -1,6 +1,5 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
 import type { Organization } from "./organization.entity.js";
-import type { Role } from "./role.entity.js";
 import type { User } from "./user.entity.js";
 import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
@@ -33,17 +32,6 @@ export class UserOrganization extends TenantOwnedBaseEntity {
   })
   @JoinColumn({ name: "organization_id" })
   organization!: Organization;
-
-  @Column({ name: "role_id", type: "uuid", nullable: true })
-  @Index()
-  roleId!: string | null;
-
-  @ManyToOne("Role", "organizationMembers", {
-    nullable: true,
-    onDelete: "SET NULL",
-  })
-  @JoinColumn({ name: "role_id" })
-  role!: Role | null;
 
   @Column({ name: "display_name", type: "varchar", length: 120, nullable: true })
   displayName!: string | null;

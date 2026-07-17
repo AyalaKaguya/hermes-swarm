@@ -9,6 +9,7 @@ import {
 } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { InlineNotice } from "@/components/inline-notice";
 import { UserAvatar } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -211,11 +212,7 @@ export function PlatformMemberManagement({
         </Button>
       </CardHeader>
       <CardContent className="grid gap-3">
-        {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-            {error}
-          </div>
-        )}
+        {error && <InlineNotice tone="error">{error}</InlineNotice>}
         {!canOpenCreate && (
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             {tr(
@@ -458,11 +455,7 @@ function AddPlatformMemberDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
-          {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-              {error}
-            </div>
-          )}
+          {error && <InlineNotice tone="error">{error}</InlineNotice>}
           <div className="grid gap-2">
             <Label htmlFor="platform-member-search">{tr("搜索用户")}</Label>
             <Input
@@ -579,16 +572,17 @@ function UserOption({
   const tr = useTextTranslation();
 
   return (
-    <button
+    <Button
       className={cn(
-        "flex min-w-0 items-center justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors",
+        "h-auto w-full min-w-0 justify-between gap-3 px-3 py-2 text-left",
         selected
           ? "bg-primary/10"
-          : "hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
+          : undefined,
       )}
       disabled={disabled}
       onClick={onClick}
       type="button"
+      variant={selected ? "secondary" : "ghost"}
     >
       <span className="flex min-w-0 items-center gap-3">
         <UserAvatar size="sm" user={user} />
@@ -606,6 +600,6 @@ function UserOption({
       ) : selected ? (
         <Badge variant="outline">{tr("已选择")}</Badge>
       ) : null}
-    </button>
+    </Button>
   );
 }

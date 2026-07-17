@@ -19,6 +19,10 @@ import { hashPassword } from "../../security/password-hash.js";
 import { TenantContextService } from "../tenant-context.service.js";
 import { TENANT_DATABASE_GUCS } from "../tenant-database.constants.js";
 import { buildSeedPermissionCatalog } from "./seed-permission-catalog.js";
+import {
+  seedDevelopmentFixtures,
+  type DevelopmentFixtureCounts,
+} from "./development-seed-fixtures.js";
 
 export type DevelopmentSeedConfig = {
   organizationName: string;
@@ -34,6 +38,7 @@ export type DevelopmentSeedConfig = {
 };
 
 export type DevelopmentSeedResult = {
+  fixtures: DevelopmentFixtureCounts;
   organizationId: string;
   ownerUserId: string;
   permissionCount: number;
@@ -57,7 +62,6 @@ export class DevelopmentSeedService {
       await configureSeedTenantContext(manager, platform.tenant.id);
       return this.tenantContext.run(
         {
-          departmentId: null,
           manager,
           organizationId: null,
           scopeLevel: "tenant",
@@ -67,6 +71,7 @@ export class DevelopmentSeedService {
       );
     });
     return {
+      fixtures: tenant.fixtures,
       organizationId: tenant.organization.id,
       ownerUserId: tenant.owner.id,
       permissionCount: definitions.length,
@@ -207,10 +212,9 @@ async function seedTenantData(
   Object.assign(organization, {
     createdByUserId: owner.id,
     deletedAt: null,
-    isDefault: true,
     name: config.organizationName,
+    parentOrganizationId: null,
     status: "active",
-    subdomain: null,
   });
   organization = await manager.save(Organization, organization);
 
@@ -218,16 +222,56 @@ async function seedTenantData(
     description: "Tenant owner with tenant governance access.",
     label: "Tenant Owner",
     name: "tenant-owner",
-    organizationId: null,
     scope: "tenant",
+    organizationId: null,
     tenantId: tenant.id,
   });
   const organizationOwnerRole = await ensureRole(manager, {
     description: "Organization owner with administration access.",
     label: "Owner",
     name: "owner",
-    organizationId: organization.id,
     scope: "organization",
+    organizationId: organization.id,
+    tenantId: tenant.id,
+  });
+  const tenantAdminRole = await ensureRole(manager, {
+    description: "Tenant administrator with tenant governance access.",
+    label: "Tenant Admin",
+    name: "tenant-admin",
+    scope: "tenant",
+    organizationId: null,
+    tenantId: tenant.id,
+  });
+  const tenantMemberRole = await ensureRole(manager, {
+    description: "Tenant member with standard tenant access.",
+    label: "Tenant Member",
+    name: "tenant-member",
+    scope: "tenant",
+    organizationId: null,
+    tenantId: tenant.id,
+  });
+  const organizationAdminRole = await ensureRole(manager, {
+    description: "Organization administrator for membership and settings.",
+    label: "Admin",
+    name: "admin",
+    scope: "organization",
+    organizationId: organization.id,
+    tenantId: tenant.id,
+  });
+  const organizationMemberRole = await ensureRole(manager, {
+    description: "Organization member with standard business access.",
+    label: "Member",
+    name: "member",
+    scope: "organization",
+    organizationId: organization.id,
+    tenantId: tenant.id,
+  });
+  const organizationViewerRole = await ensureRole(manager, {
+    description: "Organization viewer with read-oriented access.",
+    label: "Viewer",
+    name: "viewer",
+    scope: "organization",
+    organizationId: organization.id,
     tenantId: tenant.id,
   });
 
@@ -247,7 +291,6 @@ async function seedTenantData(
     displayName: owner.displayName,
     isDefault: true,
     joinedAt: membership.joinedAt ?? new Date(),
-    roleId: organizationOwnerRole.id,
     status: "active",
   });
   membership = await manager.save(UserOrganization, membership);
@@ -275,7 +318,39 @@ async function seedTenantData(
     definitions,
     "owner",
   );
-  return { organization, owner };
+  const fixtureRoles = [
+    [tenantAdminRole, "tenant-admin"],
+    [tenantMemberRole, "tenant-member"],
+    [organizationAdminRole, "admin"],
+    [organizationMemberRole, "member"],
+    [organizationViewerRole, "viewer"],
+  ] as const;
+  for (const [role, defaultRole] of fixtureRoles) {
+    await seedRolePermissions(
+      manager,
+      role,
+      permissions,
+      definitions,
+      defaultRole,
+    );
+  }
+  const fixtures = await seedDevelopmentFixtures({
+    manager,
+    organization,
+    owner,
+    ownerPassword: config.ownerPassword,
+    roles: {
+      organizationAdmin: organizationAdminRole,
+      organizationMember: organizationMemberRole,
+      organizationOwner: organizationOwnerRole,
+      organizationViewer: organizationViewerRole,
+      tenantAdmin: tenantAdminRole,
+      tenantMember: tenantMemberRole,
+      tenantOwner: tenantOwnerRole,
+    },
+    tenantId: tenant.id,
+  });
+  return { fixtures: fixtures.counts, organization, owner };
 }
 
 async function ensureRole(
@@ -300,11 +375,11 @@ async function ensureRole(
   role ??= manager.create(Role, input);
   Object.assign(role, {
     color: input.scope === "tenant" ? "#7c3aed" : "#2563eb",
-    departmentId: null,
     description: input.description,
     displayName: input.label,
     isSystem: true,
     label: input.label,
+    organizationId: input.organizationId,
   });
   return manager.save(Role, role);
 }
@@ -318,7 +393,13 @@ async function seedRolePermissions(
 ) {
   const definitionsById = new Map(definitions.map((item) => [item.id, item]));
   const allowedScopes =
-    role.scope === "tenant" ? new Set(["tenant", "own"]) : new Set(["organization", "own"]);
+    role.scope === "tenant"
+      ? new Set(["tenant", "own"])
+      : new Set(["organization"]);
+  await manager.delete(RolePermission, {
+    roleId: role.id,
+    tenantId: role.tenantId,
+  });
   for (const permission of permissions) {
     const definition = permission.code
       ? definitionsById.get(permission.code)
@@ -326,26 +407,18 @@ async function seedRolePermissions(
     if (
       !permission.code ||
       !allowedScopes.has(permission.scope) ||
-      !definition?.defaultRoles.includes(defaultRole)
+      (defaultRole !== "tenant-owner" &&
+        !definition?.defaultRoles.includes(defaultRole))
     ) {
       continue;
     }
-    let row = await manager.findOne(RolePermission, {
-      where: {
-        permission: permission.code,
-        roleId: role.id,
-        tenantId: role.tenantId,
-      },
-    });
-    row ??= manager.create(RolePermission, {
+    const row = manager.create(RolePermission, {
       permission: permission.code,
       roleId: role.id,
       tenantId: role.tenantId,
     });
     Object.assign(row, {
-      departmentId: role.departmentId,
       enabled: true,
-      organizationId: role.organizationId,
       permissionId: permission.id,
     });
     await manager.save(RolePermission, row);
@@ -390,15 +463,11 @@ async function ensureTenantRoleAssignment(
   userId: string,
   roleId: string,
 ) {
-  const existing = await manager.findOne(UserTenantRole, {
-    where: { roleId, tenantId, userId },
-  });
-  if (!existing) {
-    await manager.save(
-      UserTenantRole,
-      manager.create(UserTenantRole, { roleId, tenantId, userId }),
-    );
-  }
+  await manager.delete(UserTenantRole, { tenantId, userId });
+  await manager.save(
+    UserTenantRole,
+    manager.create(UserTenantRole, { roleId, tenantId, userId }),
+  );
 }
 
 async function ensureOrganizationRoleAssignment(
@@ -408,20 +477,16 @@ async function ensureOrganizationRoleAssignment(
   membershipId: string,
   roleId: string,
 ) {
-  const existing = await manager.findOne(UserOrganizationRole, {
-    where: { membershipId, roleId, tenantId },
-  });
-  if (!existing) {
-    await manager.save(
-      UserOrganizationRole,
-      manager.create(UserOrganizationRole, {
-        membershipId,
-        organizationId,
-        roleId,
-        tenantId,
-      }),
-    );
-  }
+  await manager.delete(UserOrganizationRole, { membershipId, tenantId });
+  await manager.save(
+    UserOrganizationRole,
+    manager.create(UserOrganizationRole, {
+      membershipId,
+      organizationId,
+      roleId,
+      tenantId,
+    }),
+  );
 }
 
 async function configureSeedTenantContext(
@@ -432,8 +497,7 @@ async function configureSeedTenantContext(
     `SELECT
       set_config('${TENANT_DATABASE_GUCS.tenantId}', $1, true),
       set_config('${TENANT_DATABASE_GUCS.scopeLevel}', 'tenant', true),
-      set_config('${TENANT_DATABASE_GUCS.organizationId}', '', true),
-      set_config('${TENANT_DATABASE_GUCS.departmentId}', '', true)`,
+      set_config('${TENANT_DATABASE_GUCS.organizationId}', '', true)`,
     [tenantId],
   );
 }

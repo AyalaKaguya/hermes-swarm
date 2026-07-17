@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Put, Req } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Put, Req } from "@nestjs/common";
 import type { SaveSettingsPayload } from "../../common/admin-api.types.js";
 import {
   AccessOperation,
@@ -48,11 +48,11 @@ export class SettingsController {
   @Get("tenant/settings")
   @AccessOperation({
     defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
-    description: "查看当前租户配置项。",
-    label: "查看租户配置",
+    description: "查看当前工作空间配置项。",
+    label: "查看工作空间配置",
     operation: "list",
     purpose: "tenant_config",
-    purposeLabel: "租户配置",
+    purposeLabel: "工作空间配置",
     scope: "tenant",
     sortOrder: 10,
   })
@@ -63,11 +63,11 @@ export class SettingsController {
   @Put("tenant/settings")
   @AccessOperation({
     defaultRoles: ["tenant-owner", "tenant-admin"],
-    description: "更新当前租户配置项。",
-    label: "更新租户配置",
+    description: "更新当前工作空间配置项。",
+    label: "更新工作空间配置",
     operation: "save",
     purpose: "tenant_config",
-    purposeLabel: "租户配置",
+    purposeLabel: "工作空间配置",
     scope: "tenant",
     sortOrder: 20,
   })
@@ -81,47 +81,6 @@ export class SettingsController {
     );
   }
 
-  @Get("organizations/:organizationId/settings")
-  @AccessOperation({
-    description: "查看当前组织配置项。",
-    label: "查看组织配置",
-    operation: "list",
-    purpose: "organization_config",
-    purposeLabel: "组织配置",
-    scope: "organization",
-    sortOrder: 10,
-  })
-  listOrganizationSettings(
-    @Req() request: TenantSettingsRequest,
-    @Param("organizationId") organizationId: string,
-  ) {
-    return this.settingsService.listOrganizationSettingsForOrganization(
-      organizationId,
-      requireTenantId(request),
-    );
-  }
-
-  @Put("organizations/:organizationId/settings")
-  @AccessOperation({
-    description: "更新当前组织配置项。",
-    label: "更新组织配置",
-    operation: "save",
-    purpose: "organization_config",
-    purposeLabel: "组织配置",
-    scope: "organization",
-    sortOrder: 20,
-  })
-  saveOrganizationSettings(
-    @Req() request: TenantSettingsRequest,
-    @Param("organizationId") organizationId: string,
-    @Body() payload: SaveSettingsPayload,
-  ) {
-    return this.settingsService.saveOrganizationSettingsForOrganization(
-      organizationId,
-      payload,
-      requireTenantId(request),
-    );
-  }
 }
 
 type TenantSettingsRequest = {

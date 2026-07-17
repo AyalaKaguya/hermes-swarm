@@ -2,22 +2,32 @@ import {
   BadRequestException,
   CallHandler,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   NestInterceptor,
 } from "@nestjs/common";
-import { DataSource, type EntityManager } from "typeorm";
+import { Organization, Tenant } from "@hermes-swarm/core";
+import { DataSource, IsNull, type EntityManager } from "typeorm";
 import { defer, from, lastValueFrom, type Observable } from "rxjs";
 import type { RequestScopeLevel } from "@hermes-swarm/rbac-api";
 import { TenantContextService } from "./tenant-context.service.js";
 import { TENANT_DATABASE_GUCS } from "./tenant-database.constants.js";
 
 export type ScopedRequest = {
+  accessAudit?: {
+    scope?: {
+      organizationId?: string | null;
+      scopeLevel?: RequestScopeLevel;
+    };
+  };
   accessPrincipal?: {
     principalType?: "integration" | "platform" | "tenant";
     tenantId?: string | null;
   };
   headers?: Record<string, string | string[] | undefined>;
+  originalUrl?: string;
   params?: Record<string, string | undefined>;
+  url?: string;
 };
 
 @Injectable()
@@ -45,13 +55,15 @@ export class TenantTransactionInterceptor implements NestInterceptor {
           await configureRlsContext(manager, tenantId, scope);
           return this.tenantContext.run(
             {
-              departmentId: scope.departmentId,
               manager,
               organizationId: scope.organizationId,
               scopeLevel: scope.scopeLevel,
               tenantId,
             },
-            () => lastValueFrom(next.handle()),
+            async () => {
+              await assertTenantOnboardingAccess(manager, tenantId, request);
+              return lastValueFrom(next.handle());
+            },
           );
         }),
       ),
@@ -59,11 +71,10 @@ export class TenantTransactionInterceptor implements NestInterceptor {
   }
 }
 
-async function configureRlsContext(
+export async function configureRlsContext(
   manager: EntityManager,
   tenantId: string,
   scope: {
-    departmentId: string | null;
     organizationId: string | null;
     scopeLevel: RequestScopeLevel;
   },
@@ -72,72 +83,73 @@ async function configureRlsContext(
     `SELECT
       set_config('${TENANT_DATABASE_GUCS.tenantId}', $1, true),
       set_config('${TENANT_DATABASE_GUCS.scopeLevel}', $2, true),
-      set_config('${TENANT_DATABASE_GUCS.organizationId}', $3, true),
-      set_config('${TENANT_DATABASE_GUCS.departmentId}', $4, true)`,
+      set_config('${TENANT_DATABASE_GUCS.organizationId}', $3, true)`,
     [
       tenantId,
       scope.scopeLevel,
       scope.organizationId ?? "",
-      scope.departmentId ?? "",
     ],
   );
 }
 
 export function resolveTenantRequestScope(request: ScopedRequest) {
-  const scopeLevel = normalizeScope(getHeader(request, "x-scope-level"));
+  const authorizedScope = request.accessAudit?.scope;
+  const authorizedScopeLevel = authorizedScope?.scopeLevel;
+  if (authorizedScope && authorizedScopeLevel) {
+    return normalizeAuthorizedScope({
+      ...authorizedScope,
+      scopeLevel: authorizedScopeLevel,
+    });
+  }
+
   const pathOrganizationId = normalizeValue(request.params?.organizationId);
-  const pathDepartmentId = normalizeValue(request.params?.departmentId);
-  const headerOrganizationId = normalizeValue(getHeader(request, "organization-id"));
-  const headerDepartmentId = normalizeValue(getHeader(request, "department-id"));
-
-  if (
-    pathOrganizationId &&
-    headerOrganizationId &&
-    pathOrganizationId !== headerOrganizationId
-  ) {
-    throw new BadRequestException("organizationId 与请求头作用域不一致");
-  }
-  if (
-    pathDepartmentId &&
-    headerDepartmentId &&
-    pathDepartmentId !== headerDepartmentId
-  ) {
-    throw new BadRequestException("departmentId 与请求头作用域不一致");
-  }
-  const organizationId = pathOrganizationId ?? headerOrganizationId;
-  const departmentId = pathDepartmentId ?? headerDepartmentId;
-
-  if (scopeLevel === "tenant") {
-    if (organizationId || departmentId) {
-      throw new BadRequestException("租户作用域不能携带组织或部门");
-    }
-    return { departmentId: null, organizationId: null, scopeLevel };
-  }
-  if (!organizationId) throw new BadRequestException("请求缺少 Organization-Id");
-  if (scopeLevel === "organization") {
-    if (departmentId) throw new BadRequestException("组织作用域不能携带 Department-Id");
-    return { departmentId: null, organizationId, scopeLevel };
-  }
-  if (!departmentId) throw new BadRequestException("请求缺少 Department-Id");
-  return { departmentId, organizationId, scopeLevel };
+  return pathOrganizationId
+    ? { organizationId: pathOrganizationId, scopeLevel: "organization" as const }
+    : { organizationId: null, scopeLevel: "tenant" as const };
 }
 
-function normalizeScope(value: string | string[] | undefined): RequestScopeLevel {
-  const normalized = normalizeValue(value);
-  if (!normalized || normalized === "tenant") return "tenant";
-  if (normalized === "organization" || normalized === "department") return normalized;
+function normalizeAuthorizedScope(scope: {
+  organizationId?: string | null;
+  scopeLevel: RequestScopeLevel;
+}) {
+  if (scope.scopeLevel === "tenant") {
+    return {
+      organizationId: null,
+      scopeLevel: scope.scopeLevel,
+    };
+  }
+
+  const organizationId = normalizeValue(scope.organizationId);
+  if (!organizationId) throw new BadRequestException("请求缺少 Organization-Id");
+  if (scope.scopeLevel === "organization") {
+    return {
+      organizationId,
+      scopeLevel: scope.scopeLevel,
+    };
+  }
+
   throw new BadRequestException("请求作用域无效");
 }
 
-function getHeader(request: ScopedRequest, name: string) {
-  return request.headers?.[name] ?? request.headers?.[toTitleCase(name)];
-}
-
-function toTitleCase(name: string) {
-  return name
-    .split("-")
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join("-");
+async function assertTenantOnboardingAccess(
+  manager: EntityManager,
+  tenantId: string,
+  request: ScopedRequest,
+) {
+  const tenant = await manager.findOne(Tenant, { where: { id: tenantId } });
+  if (!tenant || tenant.status !== "provisioning") return;
+  const rootExists = await manager.exists(Organization, {
+    where: { parentOrganizationId: IsNull(), tenantId },
+  });
+  if (rootExists) return;
+  const url = request.originalUrl ?? request.url ?? "";
+  if (
+    /\/admin\/auth\/me(?:[/?]|$)/.test(url) ||
+    /\/admin\/tenant\/onboarding\/root-organization(?:[/?]|$)/.test(url)
+  ) {
+    return;
+  }
+  throw new ForbiddenException("请先创建根组织完成工作空间初始化");
 }
 
 function normalizeValue(value: string | string[] | undefined | null) {

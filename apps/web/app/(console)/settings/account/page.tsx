@@ -12,6 +12,7 @@ import {
 import { useAdminShell } from "@/components/admin-shell";
 import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
+import { InlineNotice } from "@/components/inline-notice";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -134,7 +135,7 @@ export default function AccountPage() {
 
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
-      const updated = await updateUser(token, user.id, {
+      const updated = await updateUser(token, {
         displayName: profile.displayName,
         email: profile.email,
         firstName: profile.firstName || null,
@@ -167,7 +168,7 @@ export default function AccountPage() {
       if (!imageUrl) {
         throw new Error(tr("上传成功但未返回图片地址"));
       }
-      const updated = await updateUser(token, user.id, {
+      const updated = await updateUser(token, {
         imageUrl,
       });
       setUser(updated);
@@ -200,7 +201,7 @@ export default function AccountPage() {
 
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
-      await updateUserPassword(token, user.id, {
+      await updateUserPassword(token, {
         currentPassword: password.currentPassword,
         password: password.password,
       });
@@ -246,7 +247,7 @@ export default function AccountPage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <input
+            <Input
               accept="image/*"
               className="hidden"
               onChange={onAvatarChange}
@@ -279,11 +280,7 @@ export default function AccountPage() {
         </CardContent>
       </Card>
 
-      {error && (
-        <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <InlineNotice tone="error">{error}</InlineNotice>}
       <Tabs defaultValue="profile">
         <TabsList className="w-fit">
           <TabsTrigger value="profile">{tr("个人资料")}</TabsTrigger>

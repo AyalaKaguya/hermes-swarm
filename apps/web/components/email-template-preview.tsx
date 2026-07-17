@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { InlineNotice } from "@/components/inline-notice";
 import { Spinner } from "@/components/ui/spinner";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { previewEmailTemplate } from "@/lib/admin-api";
@@ -9,11 +10,11 @@ import { getAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 
 export function EmailTemplatePreview({
   hbs,
-  organizationId,
+  scope = "tenant",
   subject,
 }: {
   hbs: string;
-  organizationId?: string | null;
+  scope?: "platform" | "tenant";
   subject: string;
 }) {
   const tr = useTextTranslation();
@@ -40,7 +41,7 @@ export function EmailTemplatePreview({
         const result = await previewEmailTemplate(
           session,
           { hbs, subject: subject || null },
-          organizationId ?? undefined,
+          scope,
         );
         if (!cancelled) {
           setPreview(result);
@@ -63,7 +64,7 @@ export function EmailTemplatePreview({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [hbs, organizationId, subject, tr]);
+  }, [hbs, scope, subject, tr]);
 
   return (
     <section className="grid min-h-80 overflow-hidden rounded-lg border bg-background">
@@ -84,9 +85,7 @@ export function EmailTemplatePreview({
           </div>
         </div>
         {error ? (
-          <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
+          <InlineNotice className="m-3 w-auto" tone="error">{error}</InlineNotice>
         ) : preview ? (
           <iframe
             className="h-full min-h-64 w-full bg-white"

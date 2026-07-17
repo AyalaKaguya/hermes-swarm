@@ -143,7 +143,7 @@ describe("TenantsService applications", () => {
     assert.equal(created.name, "support-lead");
     assert.equal(created.scope, "tenant");
     assert.equal(state.roles[0]?.organizationId, null);
-    assert.equal(state.roles[0]?.departmentId, null);
+    assert.equal("departmentId" in state.roles[0], false);
   });
 
   it("keeps reserved system role names and tenant context isolated", async () => {
@@ -161,6 +161,39 @@ describe("TenantsService applications", () => {
     );
   });
 
+  it("returns tenant role permissions as the shared role DTO contract", async () => {
+    const state = createTenantRoleState();
+    state.roles.push({
+      id: "role-owner",
+      isSystem: true,
+      label: "Tenant Owner",
+      name: "tenant-owner",
+      rolePermissions: [
+        {
+          enabled: true,
+          id: "role-permission-1",
+          permission: "tenant.tenant_profile.list_roles:tenant",
+          permissionId: "permission-1",
+          roleId: "role-owner",
+        },
+      ],
+      scope: "tenant",
+      tenantId: "tenant-1",
+    });
+
+    const [role] = await state.service.listTenantRoles("tenant-1");
+
+    assert.deepEqual(role.permissions, [
+      {
+        enabled: true,
+        id: "role-permission-1",
+        permission: "tenant.tenant_profile.list_roles:tenant",
+        permissionId: "permission-1",
+        roleId: "role-owner",
+      },
+    ]);
+  });
+
   it("rejects duplicate tenant role renames", async () => {
     const state = createTenantRoleState();
     const first = await state.service.createTenantRole("tenant-1", {
@@ -173,6 +206,61 @@ describe("TenantsService applications", () => {
     });
     await assert.rejects(
       state.service.updateTenantRole("tenant-1", first.id, { name: "second" }),
+      BadRequestException,
+    );
+  });
+
+  it("allows Tenant Owner to replace a system Tenant Member role's permissions", async () => {
+    const state = createTenantRoleState();
+    state.permissions.push({
+      code: "user.tenant_user.list:tenant",
+      id: "permission-list-users",
+      scope: "tenant",
+    });
+    state.roles.push({
+      id: "role-member",
+      isSystem: true,
+      label: "Tenant Member",
+      name: "tenant-member",
+      organizationId: null,
+      rolePermissions: [],
+      scope: "tenant",
+      tenantId: "tenant-1",
+    });
+
+    const updated = await state.service.replaceTenantRolePermissions(
+      "tenant-1",
+      "role-member",
+      {
+        permissions: [
+          { enabled: true, permission: "user.tenant_user.list:tenant" },
+        ],
+      },
+    );
+
+    assert.deepEqual(
+      updated.permissions.map((item: any) => item.permission),
+      ["user.tenant_user.list:tenant"],
+    );
+  });
+
+  it("keeps Tenant Owner's full permission set immutable", async () => {
+    const state = createTenantRoleState();
+    state.roles.push({
+      id: "role-owner",
+      isSystem: true,
+      label: "Tenant Owner",
+      name: "tenant-owner",
+      organizationId: null,
+      rolePermissions: [],
+      scope: "tenant",
+      tenantId: "tenant-1",
+    });
+
+    await assert.rejects(
+      state.service.replaceTenantRolePermissions("tenant-1", "role-owner", {
+        permissions: [],
+      }),
       BadRequestException,
     );
   });
@@ -236,9 +324,6 @@ function createState(options: {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
       {
         send: async (input: any) => {
           sentEmails.push(input);
@@ -252,11 +337,30 @@ function createState(options: {
 
 function createTenantRoleState() {
   const roles: any[] = [];
+  const permissions: any[] = [];
   const tenantContext = {
     current: () => ({
       manager: {
-        delete: async () => ({ affected: 0 }),
-        save: async (_target: unknown, values: unknown) => values,
+        delete: async (target: { name?: string }, where: any) => {
+          if (target.name === "RolePermission") {
+            const role = roles.find((item) => item.id === where.roleId);
+            if (role) role.rolePermissions = [];
+          }
+          return { affected: 0 };
+        },
+        save: async (target: { name?: string }, values: any) => {
+          if (target.name === "RolePermission") {
+            const rows = Array.isArray(values) ? values : [values];
+            const role = roles.find((item) => item.id === rows[0]?.roleId);
+            if (role) {
+              role.rolePermissions = rows.map((row, index) => ({
+                id: `role-permission-${index + 1}`,
+                ...row,
+              }));
+            }
+          }
+          return values;
+        },
       },
       tenantId: "tenant-1",
     }),
@@ -280,15 +384,19 @@ function createTenantRoleState() {
           },
         };
       }
+      if (target.name === "Permission") {
+        return {
+          findOne: async ({ where }: any) =>
+            permissions.find((permission) => permission.code === where.code) ?? null,
+        };
+      }
       return { findOne: async () => null };
     },
   };
   return {
+    permissions,
     roles,
     service: new TenantsService(
-      {} as never,
-      {} as never,
-      {} as never,
       {} as never,
       {} as never,
       {} as never,

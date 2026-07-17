@@ -1,24 +1,15 @@
 import { Column, Entity, Index } from "typeorm";
-import { OrganizationBaseEntity } from "../../identity/entities/organization-base.entity.js";
+import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
 
 @Entity({ name: "email_templates" })
-@Index("UQ_email_templates_platform_name_language", ["name", "languageCode"], {
+@Index("UQ_email_templates_tenant_name_language", ["tenantId", "name", "languageCode"], {
   unique: true,
-  where: "\"organization_id\" IS NULL",
 })
-@Index(
-  "UQ_email_templates_org_name_language",
-  ["organizationId", "name", "languageCode"],
-  {
-    unique: true,
-    where: "\"organization_id\" IS NOT NULL",
-  },
-)
 /**
  * Stores customizable email template content scoped globally or to one
  * organization.
  */
-export class EmailTemplate extends OrganizationBaseEntity {
+export class EmailTemplate extends TenantOwnedBaseEntity {
   /**
    * Stable template name, such as welcome-user or password-reset.
    */

@@ -8,6 +8,7 @@ import { AppIcon } from "@/components/app-icon";
 import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { useNotifications } from "@/components/app-notifications";
 import { Button } from "@/components/ui/button";
+import { InlineNotice } from "@/components/inline-notice";
 import {
   Card,
   CardContent,
@@ -42,7 +43,6 @@ export default function InvitePage() {
   >(null);
   const [error, setError] = useState<string | null>(null);
 
-  const organization = invite?.organization;
   const isDirectedInvite = Boolean(invite?.email);
   const targetEmail = isDirectedInvite ? (invite?.email ?? "") : acceptEmail;
   const requiresRegistration = invite
@@ -114,11 +114,7 @@ export default function InvitePage() {
           </div>
           <CardTitle>{t("invite.title")}</CardTitle>
           <CardDescription>
-            {organization
-              ? t("invite.organizationDescription", {
-                  organization: organization.name,
-                })
-              : t("invite.description")}
+            {t("invite.description")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -128,11 +124,11 @@ export default function InvitePage() {
             </div>
           ) : completedAction ? (
             <div className="grid gap-4">
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <InlineNotice tone="success">
                 {completedAction === "accept"
                   ? t("invite.joinedDescription")
                   : t("invite.declinedDescription")}
-              </div>
+              </InlineNotice>
               {completedAction === "accept" && (
                 <Button asChild>
                   <Link href="/login">{t("auth.goToSignIn")}</Link>
@@ -140,19 +136,15 @@ export default function InvitePage() {
               )}
             </div>
           ) : error ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-              {error}
-            </div>
+            <InlineNotice tone="error">{error}</InlineNotice>
           ) : invite ? (
             <>
-              {organization && (
+              {invite.organizationAssignments.length > 0 && (
                 <div className="rounded-md border bg-background px-3 py-3">
-                  <div className="font-medium">{organization.name}</div>
-                  {organization.shortDescription && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {organization.shortDescription}
-                    </p>
-                  )}
+                  <div className="font-medium">{t("tenantScope.organizations")}</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {invite.organizationAssignments.length} {t("tenantScope.organizations")}
+                  </p>
                 </div>
               )}
               <div className="grid gap-1.5">

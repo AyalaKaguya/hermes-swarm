@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
@@ -5,565 +6,456 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import jwt from "jsonwebtoken";
-import { DataSource, QueryFailedError } from "typeorm";
+import { InjectDataSource } from "@nestjs/typeorm";
 import {
   Invite,
   Organization,
+  PLATFORM_SETTING_KEYS,
   Role,
+  RolePermission,
+  Tenant,
   User,
   UserOrganization,
+  UserOrganizationRole,
+  UserTenantRole,
   type InviteStatus,
 } from "@hermes-swarm/core";
-import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
+import jwt from "jsonwebtoken";
+import { DataSource, In, IsNull, QueryFailedError, type EntityManager } from "typeorm";
 import type {
   AcceptInvitePayload,
-  CreateBulkInvitesPayload,
+  CreateInvitePayload,
   InviteDto,
 } from "../../common/admin-api.types.js";
-import {
-  hashPassword,
-  verifyPassword,
-} from "../../common/security/password-hash.js";
+import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { hashPassword } from "../../common/security/password-hash.js";
 import { EmailSendService } from "../mail/email-send.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
 import { SettingsService } from "../settings/settings.service.js";
-import { toUserDto } from "../users/user-dto.js";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
 
 const INVITE_JWT_SECRET =
-  process.env.INVITE_JWT_SECRET || "hermes-swarm-invite-secret-change-me";
-
-type InviteExpiry = NonNullable<CreateBulkInvitesPayload["expiresIn"]>;
+  process.env.INVITE_JWT_SECRET ?? process.env.JWT_SECRET ?? "dev-invite-secret";
+const ORGANIZATION_MEMBER_CREATE_PERMISSION =
+  "user.organization_member.create:organization";
+type InviteExpiry = "3d" | "7d" | "never";
 
 @Injectable()
 export class InviteService {
   private readonly logger = new Logger(InviteService.name);
 
   constructor(
-    private readonly dataSource: DataSource,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly tenantContext: TenantContextService,
     private readonly emailSendService: EmailSendService,
     private readonly notificationsService: NotificationsService,
     private readonly settingsService: SettingsService,
   ) {}
 
-  /**
-   * Creates email-based invite links. Existing platform users still receive
-   * the email, and also receive an in-app notification.
-   */
-  async createBulkForOrganization(
-    organizationId: string,
-    invitedById: string,
-    payload: CreateBulkInvitesPayload,
-  ): Promise<{ items: InviteDto[]; total: number; ignored: number }> {
-    const input = requirePayload(payload);
-    const organization = await this.getOrganizationOrThrow(organizationId);
-    const expiresIn = normalizeExpiry(input.expiresIn);
-    const requestedEmails = normalizeEmailList(input.emailIds)
-      .map(normalizeEmail)
-      .filter((email): email is string => Boolean(email));
+  async list(): Promise<InviteDto[]> {
+    const invites = await this.invites.find({
+      order: { createdAt: "DESC" },
+      relations: { invitedBy: true },
+      where: { tenantId: this.tenantId },
+    });
+    return Promise.all(invites.map((invite) => this.toDto(invite)));
+  }
 
-    const emails = [
-      ...new Set(
-        requestedEmails,
-      ),
-    ];
-
-    const requestedRoleId = normalizeOptionalText(input.roleId, "角色");
-    const roleId = requestedRoleId
-      ? await this.resolveAssignableRoleId(organizationId, requestedRoleId)
-      : null;
-
-    if (!emails.length) {
-      const invite = this.invites.create({
-        acceptedCount: 0,
-        actionDate: null,
-        acceptedUserId: null,
-        closedAt: null,
-        email: null,
-        expireDate: computeExpireDate(expiresIn),
-        invitedById,
-        organizationId,
-        roleId,
-        status: "invited",
-        tenantId: this.tenantId,
-        token: signInviteToken(null, organizationId, this.tenantId, expiresIn),
-      });
-      const saved = await this.invites.save(invite);
-      return {
-        ignored: 0,
-        items: [await this.toInviteDto(saved)],
-        total: 1,
-      };
+  async create(invitedById: string, payload: CreateInvitePayload): Promise<InviteDto> {
+    const input = parseCreatePayload(payload);
+    const assignments = await this.validateAssignments(
+      input.workspaceRoleId,
+      input.organizations,
+    );
+    await this.assertInviterCanAssignOrganizations(invitedById, assignments);
+    const existing = await this.invites.findOne({
+      where: { email: input.email, status: "invited", tenantId: this.tenantId },
+    });
+    if (existing && deriveInviteStatus(existing) === "invited") {
+      throw new ConflictException("该邮箱已有待处理邀请");
     }
 
-    const existingInvites = await this.invites
-      .createQueryBuilder("invite")
-      .select("invite.email", "email")
-      .where("invite.organizationId = :orgId", { orgId: organizationId })
-      .andWhere("invite.tenantId = :tenantId", { tenantId: this.tenantId })
-      .andWhere("invite.email IN (:...emails)", { emails })
-      .andWhere("invite.status = :status", { status: "invited" })
-      .andWhere("invite.closedAt IS NULL")
-      .andWhere("(invite.expireDate IS NULL OR invite.expireDate >= :now)", {
-        now: new Date(),
-      })
-      .getRawMany<{ email: string }>();
-
-    const existingMemberships = await this.memberships
-      .createQueryBuilder("membership")
-      .innerJoin(User, "user", "user.id = membership.userId")
-      .select("user.email", "email")
-      .where("membership.organizationId = :orgId", { orgId: organizationId })
-      .andWhere("membership.tenantId = :tenantId", { tenantId: this.tenantId })
-      .andWhere("user.tenantId = :tenantId", { tenantId: this.tenantId })
-      .andWhere("user.email IN (:...emails)", { emails })
-      .getRawMany<{ email: string }>();
-
-    const blockedEmails = new Set([
-      ...existingInvites.map((invite) => invite.email),
-      ...existingMemberships.map((membership) => membership.email),
-    ]);
-    const emailsToCreate = emails.filter((email) => !blockedEmails.has(email));
-    const reusableInvites = emailsToCreate.length
-      ? await this.invites.find({
-          where: emailsToCreate.map((email) => ({
-            email,
-            organizationId,
-            tenantId: this.tenantId,
-          })),
-        })
-      : [];
-    const reusableByEmail = new Map(
-      reusableInvites.map((invite) => [invite.email, invite]),
-    );
-
-    const invites = emailsToCreate.map((email) => {
-      const expireDate = computeExpireDate(expiresIn);
-      const invite =
-        reusableByEmail.get(email) ??
-        this.invites.create({
-          email,
-          organizationId,
-          tenantId: this.tenantId,
-        });
-      invite.actionDate = null;
-      invite.acceptedUserId = null;
-      invite.closedAt = null;
-      invite.email = email;
-      invite.expireDate = expireDate;
-      invite.invitedById = invitedById;
-      invite.roleId = roleId || null;
-      invite.status = "invited";
-      invite.token = signInviteToken(
-        email,
-        organizationId,
-        this.tenantId,
-        expiresIn,
-      );
-      return invite;
+    const invite = this.invites.create({
+      acceptedCount: 0,
+      acceptedUserId: null,
+      actionDate: null,
+      closedAt: null,
+      email: input.email,
+      expireDate: computeExpireDate(input.expiresIn),
+      invitedById,
+      organizationAssignments: assignments,
+      status: "invited",
+      tenantId: this.tenantId,
+      workspaceRoleId: input.workspaceRoleId,
+      token: signInviteToken(input.email, this.tenantId, input.expiresIn),
     });
-
-    const saved = invites.length ? await this.invites.save(invites) : [];
-    await Promise.all(
-      saved.map((invite) =>
-        this.notifyInvitee({
-          invite,
-          invitedById,
-          organization,
-        }),
-      ),
-    );
-
-    return {
-      ignored: requestedEmails.length - saved.length,
-      items: await Promise.all(saved.map((invite) => this.toInviteDto(invite))),
-      total: saved.length,
-    };
-  }
-
-  /**
-   * Validates an invite token and returns organization context for the invite
-   * confirmation page.
-   */
-  async validateByToken(
-    email: string | undefined,
-    token: string | undefined,
-  ): Promise<InviteDto> {
-    const decoded = verifyInviteToken(token);
-    return this.runInTenant(decoded.tenantId, async () => {
-      const invite = await this.getActiveInviteOrThrow(email, token, decoded);
-      return this.toInviteDto(invite, { includeOrganization: true });
-    });
-  }
-
-  /**
-   * Accepts or declines an invite. Existing platform users can join with the
-   * invite token; new users must provide profile and password fields.
-   */
-  async accept(payload: AcceptInvitePayload): Promise<InviteDto> {
-    const input = requirePayload(payload);
-    normalizeInviteAction(input.action);
-    const decoded = verifyInviteToken(input.token);
-    return this.runInTenant(decoded.tenantId, () => this.acceptInTenant(input, decoded));
-  }
-
-  private async acceptInTenant(
-    input: AcceptInvitePayload,
-    decoded: InviteTokenPayload,
-  ): Promise<InviteDto> {
-    const action = normalizeInviteAction(input.action);
-    if (action === "decline") {
-      return this.decline(input, decoded);
-    }
-
-    const inviteEntity = await this.getActiveInviteOrThrow(
-      input.email,
-      input.token,
-      decoded,
-    );
-    const organizationId = requireOrganizationId(inviteEntity);
-    const organization = await this.getOrganizationOrThrow(organizationId);
-
-    let user: User;
-    let invite: Invite;
+    let saved: Invite;
     try {
-      ({ invite, user } = await (async (manager) => {
-          const lockedInvite = await manager.findOne(Invite, {
-            lock: { mode: "pessimistic_write" },
-            where: { id: inviteEntity.id, tenantId: this.tenantId },
-          });
-          if (!lockedInvite || deriveInviteStatus(lockedInvite) !== "invited") {
-            throw new BadRequestException("邀请链接无效或已过期");
-          }
-
-          const targetEmail = resolveAcceptanceEmail(lockedInvite, input.email);
-          let user = await manager.findOne(User, {
-            where: { email: targetEmail, tenantId: this.tenantId },
-          });
-          if (user) {
-            const existingMembership = await manager.findOne(UserOrganization, {
-              where: {
-                organizationId,
-                tenantId: this.tenantId,
-                userId: user.id,
-              },
-            });
-            if (existingMembership) {
-              throw new ConflictException("该邮箱已加入组织");
-            }
-            if (!lockedInvite.email) {
-              const password = requirePassword(input.password);
-              if (!verifyPassword(password, user.passwordHash)) {
-                throw new BadRequestException("邮箱或密码不正确");
-              }
-            }
-          }
-
-          if (!user) {
-            const displayName = requireText(input.displayName, "用户名称");
-            const password = requirePassword(input.password);
-            user = await manager.save(
-              User,
-              this.users.create({
-                displayName,
-                email: targetEmail,
-                emailVerified: true,
-                nickname: displayName,
-                passwordHash: hashPassword(password),
-                preferredLanguage: "zh-CN",
-                status: "active",
-                tenantId: this.tenantId,
-                type: "user",
-              }),
-            );
-          }
-
-          await manager.save(
-            UserOrganization,
-              this.memberships.create({
-              displayName: input.displayName?.trim() || user.displayName || null,
-              joinedAt: new Date(),
-              organizationId,
-              roleId: lockedInvite.roleId,
-              status: "active",
-              tenantId: this.tenantId,
-              userId: user.id,
-            }),
-          );
-
-          lockedInvite.acceptedCount = (lockedInvite.acceptedCount ?? 0) + 1;
-          lockedInvite.acceptedUserId = user.id;
-          lockedInvite.actionDate = new Date();
-          if (lockedInvite.email) {
-            lockedInvite.status = "accepted";
-          }
-          invite = await manager.save(Invite, lockedInvite);
-          return { invite, user };
-        })(this.manager));
+      saved = await this.invites.save(invite);
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        throw new ConflictException("该邮箱已加入组织");
+        throw new ConflictException("该邮箱已有待处理邀请");
       }
       throw error;
     }
-
-    await this.notifyInviteAccepted({ invite, organization, user });
-
-    return this.toInviteDto(invite, { includeOrganization: true });
+    await this.notifyInvitee(saved);
+    return this.toDto(saved);
   }
 
-  private async decline(
-    payload: AcceptInvitePayload,
-    decoded: InviteTokenPayload,
-  ): Promise<InviteDto> {
-    const inviteEntity = await this.getActiveInviteOrThrow(
-      payload.email,
-      payload.token,
-      decoded,
-    );
-    const invite = await (async (manager) => {
-        const lockedInvite = await manager.findOne(Invite, {
-          lock: { mode: "pessimistic_write" },
-          where: { id: inviteEntity.id, tenantId: this.tenantId },
-        });
-        if (!lockedInvite || deriveInviteStatus(lockedInvite) !== "invited") {
-          throw new BadRequestException("邀请链接无效或已过期");
-        }
-        if (!lockedInvite.email) return lockedInvite;
-
-        lockedInvite.actionDate = new Date();
-        lockedInvite.status = "declined";
-        return manager.save(Invite, lockedInvite);
-      })(this.manager);
-    return this.toInviteDto(invite, { includeOrganization: true });
-  }
-
-  async listForOrganization(organizationId: string): Promise<InviteDto[]> {
-    await this.getOrganizationOrThrow(organizationId);
-    const invites = await this.invites.find({
-      order: { createdAt: "DESC" },
-      relations: { invitedBy: true, role: true },
-      where: { organizationId, tenantId: this.tenantId },
+  async resend(inviteId: string, invitedById: string): Promise<InviteDto> {
+    const invite = await this.manager.transaction(async (manager) => {
+      const locked = await manager.findOne(Invite, {
+        lock: { mode: "pessimistic_write" },
+        where: { id: inviteId, tenantId: this.tenantId },
+      });
+      if (!locked) throw new NotFoundException("邀请不存在");
+      if (deriveInviteStatus(locked) === "accepted") {
+        throw new BadRequestException("已接受的邀请不能重发");
+      }
+      const expiresIn: InviteExpiry = locked.expireDate === null ? "never" : "3d";
+      locked.actionDate = null;
+      locked.closedAt = null;
+      locked.expireDate = computeExpireDate(expiresIn);
+      locked.invitedById = invitedById;
+      locked.status = "invited";
+      if (!locked.email) throw new BadRequestException("邀请缺少邮箱");
+      locked.token = signInviteToken(locked.email, locked.tenantId, expiresIn);
+      return manager.save(Invite, locked);
     });
-    return Promise.all(invites.map((invite) => this.toInviteDto(invite)));
+    await this.notifyInvitee(invite);
+    return this.toDto(invite);
   }
 
-  /**
-   * Closes an invite link. We keep the record so the members page can show
-   * link history and join counts.
-   */
-  async deleteForOrganization(
-    organizationId: string,
-    inviteId: string,
-  ): Promise<void> {
-    {
-      const manager = this.manager;
+  async revoke(inviteId: string): Promise<void> {
+    await this.manager.transaction(async (manager) => {
       const invite = await manager.findOne(Invite, {
         lock: { mode: "pessimistic_write" },
-        where: { id: inviteId, organizationId, tenantId: this.tenantId },
+        where: { id: inviteId, tenantId: this.tenantId },
       });
       if (!invite) throw new NotFoundException("邀请不存在");
-
-      const status = deriveInviteStatus(invite);
-      if (status === "accepted") {
-        throw new BadRequestException("已接受的邀请不能关闭");
+      if (deriveInviteStatus(invite) === "accepted") {
+        throw new BadRequestException("已接受的邀请不能撤销");
       }
-      if (status === "revoked") return;
-
+      if (invite.status === "revoked") return;
       invite.actionDate = new Date();
       invite.closedAt = new Date();
       invite.status = "revoked";
       await manager.save(Invite, invite);
-    }
+    });
   }
 
-  async resendForOrganization(
-    organizationId: string,
-    invitedById: string,
-    inviteId: string,
+  async validateByToken(email?: string, token?: string): Promise<InviteDto> {
+    const decoded = verifyInviteToken(token);
+    return this.runInTenant(decoded.tenantId, async () => {
+      const invite = await this.getActiveInvite(email, token);
+      return this.toDto(invite);
+    });
+  }
+
+  async accept(payload: AcceptInvitePayload): Promise<InviteDto> {
+    const decoded = verifyInviteToken(payload?.token);
+    return this.runInTenant(decoded.tenantId, async () => {
+      const invite = await this.getActiveInvite(payload.email, payload.token);
+      if (payload.action === "decline") return this.decline(invite);
+      return this.acceptInTransaction(invite, payload);
+    });
+  }
+
+  private async acceptInTransaction(
+    invite: Invite,
+    payload: AcceptInvitePayload,
   ): Promise<InviteDto> {
-    const organization = await this.getOrganizationOrThrow(organizationId);
-    const invite = await (async (manager) => {
-        const lockedInvite = await manager.findOne(Invite, {
+    let acceptedUser!: User;
+    let savedInvite!: Invite;
+    try {
+      await this.manager.transaction(async (manager) => {
+        const locked = await manager.findOne(Invite, {
           lock: { mode: "pessimistic_write" },
-          where: { id: inviteId, organizationId, tenantId: this.tenantId },
+          where: { id: invite.id, tenantId: this.tenantId },
         });
-        if (!lockedInvite) throw new NotFoundException("邀请不存在");
-        if (deriveInviteStatus(lockedInvite) === "accepted") {
-          throw new BadRequestException("已接受的邀请不能重发");
+        if (!locked || deriveInviteStatus(locked) !== "invited" || !locked.email) {
+          throw new BadRequestException("邀请链接无效或已过期");
         }
-
-        const expiresIn = lockedInvite.expireDate === null ? "never" : "3d";
-        lockedInvite.actionDate = null;
-        lockedInvite.closedAt = null;
-        lockedInvite.expireDate = computeExpireDate(expiresIn);
-        lockedInvite.invitedById = invitedById;
-        lockedInvite.status = "invited";
-        lockedInvite.token = signInviteToken(
-          lockedInvite.email,
-          organizationId,
-          this.tenantId,
-          expiresIn,
+        await this.validateAssignmentsWithManager(
+          manager,
+          locked.workspaceRoleId,
+          locked.organizationAssignments,
         );
-        return manager.save(Invite, lockedInvite);
-      })(this.manager);
 
-    if (invite.email) {
-      await this.notifyInvitee({ invite, invitedById, organization });
+        acceptedUser =
+          (await manager.findOne(User, {
+            where: { email: locked.email, tenantId: this.tenantId },
+          })) ??
+          (await manager.save(
+            User,
+            manager.create(User, {
+              displayName: requireText(payload.displayName, "用户名称"),
+              email: locked.email,
+              emailVerified: true,
+              nickname: requireText(payload.displayName, "用户名称"),
+              passwordHash: hashPassword(requirePassword(payload.password)),
+              preferredLanguage: "zh-CN",
+              status: "active",
+              tenantId: this.tenantId,
+              type: "user",
+            }),
+          ));
+
+        if (acceptedUser.status !== "active") {
+          throw new BadRequestException("账号不可用");
+        }
+        await this.assignTenantRole(manager, acceptedUser.id, locked.workspaceRoleId);
+        await this.assignOrganizations(
+          manager,
+          acceptedUser,
+          locked.organizationAssignments,
+        );
+
+        locked.acceptedCount += 1;
+        locked.acceptedUserId = acceptedUser.id;
+        locked.actionDate = new Date();
+        locked.status = "accepted";
+        savedInvite = await manager.save(Invite, locked);
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException("邀请分配与现有账号状态冲突");
+      }
+      throw error;
     }
-    return this.toInviteDto(invite);
+
+    await this.notificationsService
+      .createForUser({
+        actorUserId: savedInvite.invitedById,
+        body: "你已加入当前工作空间。",
+        kind: "success",
+        payload: { inviteId: savedInvite.id },
+        recipientUserId: acceptedUser.id,
+        sourceId: savedInvite.id,
+        sourceType: "workspace-invite",
+        title: "工作空间邀请已接受",
+      })
+      .catch((error) => this.logger.warn(`invite notification failed: ${String(error)}`));
+    return this.toDto(savedInvite);
   }
 
-  private async getActiveInviteOrThrow(
-    email: string | undefined,
-    token: string | undefined,
-    payload = verifyInviteToken(token),
+  private async decline(invite: Invite): Promise<InviteDto> {
+    invite.actionDate = new Date();
+    invite.status = "declined";
+    return this.toDto(await this.invites.save(invite));
+  }
+
+  private async assignTenantRole(
+    manager: EntityManager,
+    userId: string,
+    roleId: string,
   ) {
-    const normalizedEmail = normalizeEmail(email);
-    if (!token) {
-      throw new BadRequestException("令牌不能为空");
-    }
+    await manager.delete(UserTenantRole, { tenantId: this.tenantId, userId });
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(UserTenantRole)
+      .values({ roleId, tenantId: this.tenantId, userId })
+      .execute();
+  }
 
-    if (payload.email && normalizedEmail && payload.email !== normalizedEmail) {
+  private async assignOrganizations(
+    manager: EntityManager,
+    user: User,
+    assignments: Invite["organizationAssignments"],
+  ) {
+    const defaultAssignment = assignments.find((assignment) => assignment.isDefault);
+    if (defaultAssignment) {
+      await manager.update(
+        UserOrganization,
+        { tenantId: this.tenantId, userId: user.id },
+        { isDefault: false },
+      );
+    }
+    for (const assignment of assignments) {
+      let membership = await manager.findOne(UserOrganization, {
+        where: {
+          organizationId: assignment.organizationId,
+          tenantId: this.tenantId,
+          userId: user.id,
+        },
+      });
+      membership ??= manager.create(UserOrganization, {
+        organizationId: assignment.organizationId,
+        tenantId: this.tenantId,
+        userId: user.id,
+      });
+      Object.assign(membership, {
+        displayName: membership.displayName ?? user.displayName,
+        isDefault: Boolean(assignment.isDefault),
+        joinedAt: membership.joinedAt ?? new Date(),
+        status: "active",
+      });
+      membership = await manager.save(UserOrganization, membership);
+      await manager.delete(UserOrganizationRole, {
+        membershipId: membership.id,
+        tenantId: this.tenantId,
+      });
+      await manager.insert(UserOrganizationRole, {
+        membershipId: membership.id,
+        organizationId: assignment.organizationId,
+        roleId: assignment.roleId,
+        tenantId: this.tenantId,
+      });
+    }
+  }
+
+  private validateAssignments(
+    workspaceRoleId: string,
+    assignments: Invite["organizationAssignments"],
+  ) {
+    return this.validateAssignmentsWithManager(this.manager, workspaceRoleId, assignments);
+  }
+
+  private async validateAssignmentsWithManager(
+    manager: EntityManager,
+    workspaceRoleId: string,
+    assignments: Invite["organizationAssignments"],
+  ) {
+    if (assignments.filter((assignment) => assignment.isDefault).length > 1) {
+      throw new BadRequestException("只能指定一个默认组织");
+    }
+    const organizationIds = assignments.map((assignment) => assignment.organizationId);
+    if (new Set(organizationIds).size !== organizationIds.length) {
+      throw new BadRequestException("组织分配不能重复");
+    }
+    if (organizationIds.length > 0) {
+      const organizations = await manager.find(Organization, {
+        where: { id: In(organizationIds), status: "active", tenantId: this.tenantId },
+      });
+      if (organizations.length !== organizationIds.length) {
+        throw new BadRequestException("邀请包含无效组织");
+      }
+    }
+    await this.requireWorkspaceRole(manager, workspaceRoleId);
+    for (const assignment of assignments) {
+      const role = await manager.findOne(Role, {
+        where: {
+          id: assignment.roleId,
+          organizationId: assignment.organizationId,
+          scope: "organization",
+          tenantId: this.tenantId,
+        },
+      });
+      if (!role) throw new BadRequestException("邀请包含无效组织角色");
+    }
+    return assignments;
+  }
+
+  private async requireWorkspaceRole(manager: EntityManager, roleId: string) {
+    const role = await manager.findOne(Role, {
+      where: { id: roleId, organizationId: IsNull(), scope: "tenant", tenantId: this.tenantId },
+    });
+    if (!role) throw new BadRequestException("邀请包含无效工作空间角色");
+  }
+
+  private async assertInviterCanAssignOrganizations(
+    invitedById: string,
+    assignments: Invite["organizationAssignments"],
+  ) {
+    for (const assignment of assignments) {
+      const membership = await this.manager.findOne(UserOrganization, {
+        where: {
+          organizationId: assignment.organizationId,
+          status: "active",
+          tenantId: this.tenantId,
+          userId: invitedById,
+        },
+      });
+      if (!membership) {
+        throw new BadRequestException("没有目标组织的成员管理权限");
+      }
+      const roleAssignment = await this.manager.findOne(UserOrganizationRole, {
+        where: {
+          membershipId: membership.id,
+          organizationId: assignment.organizationId,
+          tenantId: this.tenantId,
+        },
+      });
+      const allowed = roleAssignment
+        ? await this.manager.findOne(RolePermission, {
+            where: {
+              enabled: true,
+              permission: ORGANIZATION_MEMBER_CREATE_PERMISSION,
+              roleId: roleAssignment.roleId,
+              tenantId: this.tenantId,
+            },
+          })
+        : null;
+      if (!allowed) {
+        throw new BadRequestException("没有目标组织的成员管理权限");
+      }
+    }
+  }
+
+  private async getActiveInvite(email?: string, token?: string) {
+    const decoded = verifyInviteToken(token);
+    const normalizedEmail = normalizeEmail(email ?? decoded.email);
+    if (!normalizedEmail || normalizedEmail !== decoded.email) {
       throw new BadRequestException("邮箱与邀请不匹配");
-    }
-
-    if (payload.tenantId !== this.tenantId) {
-      throw new BadRequestException("邀请链接无效或已过期");
     }
     const invite = await this.invites.findOne({
       where: { tenantId: this.tenantId, token },
     });
-    if (!invite) throw new BadRequestException("邀请链接无效或已过期");
-    if (invite.email && normalizedEmail && invite.email !== normalizedEmail) {
-      throw new BadRequestException("邮箱与邀请不匹配");
-    }
-    if (deriveInviteStatus(invite) !== "invited") {
+    if (
+      !invite ||
+      invite.email !== normalizedEmail ||
+      deriveInviteStatus(invite) !== "invited"
+    ) {
       throw new BadRequestException("邀请链接无效或已过期");
     }
     return invite;
   }
 
-  private async getOrganizationOrThrow(organizationId: string) {
-    const organization = await this.organizations.findOne({
-      where: { id: organizationId, tenantId: this.tenantId },
-    });
-    if (!organization) throw new NotFoundException("组织不存在");
-    return organization;
-  }
-
-  private async resolveAssignableRoleId(organizationId: string, roleId: string) {
-    const role = await this.roles.findOne({
-      where: {
-        id: roleId,
-        organizationId,
-        scope: "organization",
-        tenantId: this.tenantId,
-      },
-    });
-    if (!role) throw new BadRequestException("角色不属于该组织");
-    return role.id;
-  }
-
-  private async notifyInvitee(input: {
-    invite: Invite;
-    invitedById: string;
-    organization: Organization;
-  }) {
-    if (!input.invite.email) return;
-    const link = await this.buildInviteLink(input.invite);
-    const existingUser = await this.users.findOne({
-      where: { email: input.invite.email, tenantId: this.tenantId },
-    });
-
-    if (existingUser) {
-      try {
-        await this.notificationsService.createForUser({
-          actorUserId: input.invitedById,
-          body: `${input.organization.name} 邀请你加入组织。`,
-          kind: "info",
-          organizationId: input.organization.id,
-          payload: {
-            email: input.invite.email,
-            inviteId: input.invite.id,
-            link,
-            organizationId: input.organization.id,
-          },
-          recipientUserId: existingUser.id,
-          sourceId: input.invite.id,
-          sourceType: "organization-invite",
-          title: "新的组织邀请",
-        });
-      } catch (error) {
-        this.logger.warn(
-          `invite notification failed for invite ${input.invite.id}: ${getErrorMessage(error)}`,
-        );
-      }
-    }
-
+  private async notifyInvitee(invite: Invite) {
+    if (!invite.email) return;
     try {
       await this.emailSendService.send({
-        email: input.invite.email,
-        organizationId: input.organization.id,
-        templateName: "organization-invite",
+        email: invite.email,
         locals: {
-          email: input.invite.email,
-          expiresAt: input.invite.expireDate
-            ? input.invite.expireDate.toISOString()
-            : "永久有效",
-          inviteLink: link,
-          organizationName: input.organization.name,
+          email: invite.email,
+          expiresAt: invite.expireDate?.toISOString() ?? "永久有效",
+          inviteLink: await this.buildInviteLink(invite),
+          organizationNames: await this.resolveOrganizationNames(invite),
         },
+        templateName: "organization-invite",
       });
     } catch (error) {
-      this.logger.warn(
-        `invite email failed for invite ${input.invite.id}: ${getErrorMessage(error)}`,
-      );
+      this.logger.warn(`invite email failed for ${invite.id}: ${String(error)}`);
     }
   }
 
-  private async notifyInviteAccepted(input: {
-    invite: Invite;
-    organization: Organization;
-    user: User;
-  }) {
-    try {
-      await this.notificationsService.createForUser({
-        actorUserId: input.invite.invitedById,
-        body: `你已加入组织 ${input.organization.name}。`,
-        kind: "success",
-        organizationId: input.organization.id,
-        payload: { organizationId: input.organization.id },
-        recipientUserId: input.user.id,
-        sourceId: input.invite.id,
-        sourceType: "organization-invite",
-        title: "组织邀请已接受",
-      });
-    } catch (error) {
-      this.logger.warn(
-        `invite accepted notification failed for invite ${input.invite.id}: ${getErrorMessage(error)}`,
-      );
-    }
+  private async resolveOrganizationNames(invite: Invite) {
+    const ids = invite.organizationAssignments.map((assignment) => assignment.organizationId);
+    if (ids.length === 0) return [];
+    return (
+      await this.organizations.find({
+        select: { name: true },
+        where: { id: In(ids), tenantId: this.tenantId },
+      })
+    ).map((organization) => organization.name);
   }
 
-  private async toInviteDto(
-    invite: Invite,
-    options: { includeOrganization?: boolean } = {},
-  ): Promise<InviteDto> {
-    const existingUser = invite.email
-      ? await this.users.findOne({
-          where: { email: invite.email, tenantId: this.tenantId },
-        })
-      : null;
-    const role =
-      invite.role ??
-      (invite.roleId
-        ? await this.roles.findOne({
-            where: { id: invite.roleId, tenantId: this.tenantId },
-          })
-        : null);
+  private async buildInviteLink(invite: Invite) {
+    const baseUrl = await this.settingsService.getPlatformValue(
+      PLATFORM_SETTING_KEYS.publicBaseUrl,
+      "http://localhost:3100",
+    );
+    const tenant = await this.manager.findOne(Tenant, {
+      where: { id: invite.tenantId },
+    });
+    const url = new URL("/invite", baseUrl ?? "http://localhost:3100");
+    url.searchParams.set("email", invite.email ?? "");
+    url.searchParams.set("token", invite.token);
+    if (tenant?.slug) url.searchParams.set("workspace", tenant.slug);
+    return url.toString();
+  }
+
+  private async toDto(invite: Invite): Promise<InviteDto> {
     const invitedBy =
       invite.invitedBy ??
       (invite.invitedById
@@ -571,53 +463,38 @@ export class InviteService {
             where: { id: invite.invitedById, tenantId: this.tenantId },
           })
         : null);
-    const organization =
-      options.includeOrganization && invite.organizationId
-        ? await this.organizations.findOne({
-            where: { id: invite.organizationId, tenantId: this.tenantId },
-          })
-        : null;
-
     return {
-      acceptedCount: invite.acceptedCount ?? 0,
-      acceptedUserId: invite.acceptedUserId ?? null,
+      acceptedCount: invite.acceptedCount,
+      acceptedUserId: invite.acceptedUserId,
       actionDate: invite.actionDate,
-      closedAt: invite.closedAt ?? null,
+      closedAt: invite.closedAt,
       createdAt: invite.createdAt,
       email: invite.email,
-      existingUser: Boolean(existingUser),
+      existingUser: Boolean(
+        invite.email &&
+          (await this.users.findOne({
+            select: { id: true },
+            where: { email: invite.email, tenantId: this.tenantId },
+          })),
+      ),
       expireDate: invite.expireDate,
       id: invite.id,
-      invitedBy: invitedBy ? toInviteUserDto(invitedBy) : null,
+      invitedBy: invitedBy
+        ? {
+            avatarUrl: invitedBy.avatarUrl,
+            displayName: invitedBy.displayName,
+            email: invitedBy.email,
+            id: invitedBy.id,
+            imageUrl: invitedBy.imageUrl,
+            username: invitedBy.username,
+          }
+        : null,
       invitedById: invite.invitedById,
       link: await this.buildInviteLink(invite),
-      organization: organization
-        ? {
-            id: organization.id,
-            imageUrl: organization.imageUrl,
-            logoUrl: organization.logoUrl,
-            name: organization.name,
-            shortDescription: organization.shortDescription,
-            slug: organization.slug,
-          }
-        : undefined,
-      role: role ? toInviteRoleDto(role) : null,
-      roleId: invite.roleId,
+      organizationAssignments: invite.organizationAssignments,
       status: deriveInviteStatus(invite),
+      workspaceRoleId: invite.workspaceRoleId,
     };
-  }
-
-  private async buildInviteLink(invite: Invite) {
-    const baseUrl = await this.settingsService.getPlatformValue(
-      PLATFORM_SETTING_KEYS.publicBaseUrl,
-      resolvePublicBaseUrl(),
-    );
-    const url = new URL("/invite", baseUrl || resolvePublicBaseUrl());
-    if (invite.email) {
-      url.searchParams.set("email", invite.email);
-    }
-    url.searchParams.set("token", invite.token);
-    return url.toString();
   }
 
   private runInTenant<T>(tenantId: string, work: () => Promise<T>) {
@@ -630,17 +507,11 @@ export class InviteService {
     }
     return this.dataSource.transaction(async (manager) => {
       await manager.query(
-        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', 'tenant', true)",
+        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', 'tenant', true), set_config('app.organization_id', '', true)",
         [tenantId],
       );
       return this.tenantContext.run(
-        {
-          departmentId: null,
-          manager,
-          organizationId: null,
-          scopeLevel: "tenant",
-          tenantId,
-        },
+        { manager, organizationId: null, scopeLevel: "tenant", tenantId },
         work,
       );
     });
@@ -665,77 +536,25 @@ export class InviteService {
   private get organizations() {
     return this.tenantContext.repository(Organization);
   }
-
-  private get roles() {
-    return this.tenantContext.repository(Role);
-  }
-
-  private get memberships() {
-    return this.tenantContext.repository(UserOrganization);
-  }
 }
 
-function requirePayload<T extends CreateBulkInvitesPayload | AcceptInvitePayload>(
-  value: T,
-): T {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+function parseCreatePayload(payload: CreateInvitePayload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new BadRequestException("请求内容无效");
   }
-  return value;
-}
-
-function toInviteRoleDto(role: Role) {
+  const organizations = Array.isArray(payload.organizations)
+    ? payload.organizations.map((assignment) => ({
+        isDefault: Boolean(assignment?.isDefault),
+        organizationId: requireText(assignment?.organizationId, "组织"),
+        roleId: requireText(assignment?.roleId, "组织角色"),
+      }))
+    : [];
   return {
-    color: role.color,
-    displayName: role.displayName,
-    id: role.id,
-    isSystem: role.isSystem,
-    label: role.label,
-    name: role.name,
+    email: requireEmail(payload.email),
+    expiresIn: normalizeExpiry(payload.expiresIn),
+    organizations,
+    workspaceRoleId: requireText(payload.workspaceRoleId, "工作空间角色"),
   };
-}
-
-function toInviteUserDto(user: User) {
-  const dto = toUserDto(user);
-  return {
-    avatarUrl: dto.avatarUrl,
-    displayName: dto.displayName,
-    email: dto.email,
-    id: dto.id,
-    imageUrl: dto.imageUrl,
-    username: dto.username,
-  };
-}
-
-function resolvePublicBaseUrl() {
-  return (
-    process.env.WEB_PUBLIC_URL ||
-    process.env.APP_PUBLIC_URL ||
-    process.env.PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3100"
-  );
-}
-
-function normalizeEmail(email: unknown) {
-  if (email === null || email === undefined) return null;
-  if (typeof email !== "string") {
-    throw new BadRequestException("邮箱格式不正确");
-  }
-  const value = email.trim().toLowerCase();
-  if (!value) return null;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-    throw new BadRequestException("邮箱格式不正确");
-  }
-  return value;
-}
-
-function normalizeEmailList(value: unknown) {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    throw new BadRequestException("邮箱列表无效");
-  }
-  return value;
 }
 
 function normalizeExpiry(value: unknown): InviteExpiry {
@@ -744,53 +563,27 @@ function normalizeExpiry(value: unknown): InviteExpiry {
   throw new BadRequestException("邀请有效期无效");
 }
 
-function normalizeInviteAction(value: unknown): "accept" | "decline" {
-  if (value === undefined || value === null || value === "accept") {
-    return "accept";
-  }
-  if (value === "decline") return "decline";
-  throw new BadRequestException("邀请操作无效");
-}
-
-function normalizeOptionalText(value: unknown, label: string) {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") {
-    throw new BadRequestException(`${label}无效`);
-  }
-  const text = value.trim();
-  return text || null;
-}
-
 function computeExpireDate(expiresIn: InviteExpiry) {
   if (expiresIn === "never") return null;
-  const days = expiresIn === "7d" ? 7 : 3;
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return new Date(Date.now() + (expiresIn === "7d" ? 7 : 3) * 24 * 60 * 60 * 1000);
 }
 
-function signInviteToken(
-  email: string | null,
-  organizationId: string,
-  tenantId: string,
-  expiresIn: InviteExpiry,
-) {
-  const payload = { email, organizationId, tenantId };
+function signInviteToken(email: string, tenantId: string, expiresIn: InviteExpiry) {
+  const payload = { email, nonce: randomUUID(), tenantId };
   return expiresIn === "never"
     ? jwt.sign(payload, INVITE_JWT_SECRET)
     : jwt.sign(payload, INVITE_JWT_SECRET, { expiresIn });
 }
 
-type InviteTokenPayload = {
-  email?: string | null;
-  organizationId: string;
-  tenantId: string;
-};
-
-function verifyInviteToken(token: string | undefined): InviteTokenPayload {
+function verifyInviteToken(token?: string) {
   if (!token) throw new BadRequestException("令牌不能为空");
   try {
-    const payload = jwt.verify(token, INVITE_JWT_SECRET) as InviteTokenPayload;
-    if (!payload.tenantId || !payload.organizationId) throw new Error("invalid");
-    return payload;
+    const decoded = jwt.verify(token, INVITE_JWT_SECRET) as {
+      email?: string;
+      tenantId?: string;
+    };
+    if (!decoded.tenantId || !decoded.email) throw new Error("invalid");
+    return { email: requireEmail(decoded.email), tenantId: decoded.tenantId };
   } catch {
     throw new BadRequestException("邀请链接无效或已过期");
   }
@@ -799,31 +592,29 @@ function verifyInviteToken(token: string | undefined): InviteTokenPayload {
 function deriveInviteStatus(invite: Invite): InviteStatus {
   if (invite.status !== "invited") return invite.status;
   if (invite.closedAt) return "revoked";
-  if (invite.expireDate && invite.expireDate.getTime() < Date.now()) {
-    return "expired";
+  return invite.expireDate && invite.expireDate.getTime() < Date.now()
+    ? "expired"
+    : "invited";
+}
+
+function requireEmail(value: unknown) {
+  const email = normalizeEmail(value);
+  if (!email) throw new BadRequestException("邮箱不能为空");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new BadRequestException("邮箱格式不正确");
   }
-  return "invited";
+  return email;
 }
 
-function requireOrganizationId(invite: Invite) {
-  if (!invite.organizationId) throw new BadRequestException("邀请缺少组织信息");
-  return invite.organizationId;
-}
-
-function resolveAcceptanceEmail(invite: Invite, payloadEmail: string | undefined) {
-  if (invite.email) return invite.email;
-  const normalizedEmail = normalizeEmail(payloadEmail);
-  if (!normalizedEmail) throw new BadRequestException("邮箱不能为空");
-  return normalizedEmail;
+function normalizeEmail(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() || null : null;
 }
 
 function requireText(value: unknown, label: string) {
-  if (typeof value !== "string") {
-    throw new BadRequestException(`${label}格式不正确`);
+  if (typeof value !== "string" || !value.trim()) {
+    throw new BadRequestException(`${label}不能为空`);
   }
-  const text = value.trim();
-  if (!text) throw new BadRequestException(`${label}不能为空`);
-  return text;
+  return value.trim();
 }
 
 function requirePassword(value: unknown) {
@@ -834,10 +625,5 @@ function requirePassword(value: unknown) {
 
 function isUniqueConstraintError(error: unknown) {
   if (!(error instanceof QueryFailedError)) return false;
-  const driverError = error.driverError as { code?: string } | undefined;
-  return driverError?.code === "23505";
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  return (error.driverError as { code?: string } | undefined)?.code === "23505";
 }

@@ -70,7 +70,7 @@ RBAC 新增权限：
 新增 `FeatureAccessService`：
 
 - `isFeatureEnabledForUser(organizationId, featureKey, userId)`
-  - 先读取组织有效设置：`SettingsService.getOrganizationValue(...)`
+  - 先读取工作空间有效设置：`SettingsService.getTenantValue(...)`
   - feature 开关不是 `"true"` 时返回 false
   - 没有用户组限制时返回 true
   - 有用户组限制时，普通成员必须命中允许组

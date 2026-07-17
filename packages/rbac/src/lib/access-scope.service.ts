@@ -32,7 +32,7 @@ export class AccessScopeService {
 
     const defaultParam = scope === "own" ? "userId" : `${scope}Id`;
     const param = metadata?.param ?? defaultParam;
-    const value = resolveScopedValue(request, param, headerForScope(scope));
+    const value = normalizeValue(request.params?.[param]);
 
     if (scope === "own") {
       return {
@@ -43,67 +43,21 @@ export class AccessScopeService {
     }
     if (scope === "tenant") return { scopeLevel: "tenant", tenantId };
 
-    const organizationId =
-      scope === "organization"
-        ? value
-        : resolveScopedValue(
-            request,
-            "organizationId",
-            "organization-id",
-          );
+    const organizationId = value;
     if (!organizationId) {
       throw new BadRequestException("请求缺少 Organization-Id");
     }
     if (scope === "organization") {
-      rejectUnexpectedHeader(request, "department-id", "组织作用域不能携带 Department-Id");
       return { organizationId, scopeLevel: "organization", tenantId };
     }
-
-    if (!value) throw new BadRequestException("请求缺少 Department-Id");
-    return {
-      departmentId: value,
-      organizationId,
-      scopeLevel: "department",
-      tenantId,
-    };
+    throw new BadRequestException("不支持的请求作用域");
   }
-}
-
-function headerForScope(scope: string) {
-  if (scope === "organization") return "organization-id";
-  if (scope === "department") return "department-id";
-  return null;
-}
-
-function resolveScopedValue(
-  request: AccessRequest,
-  param: string,
-  headerName: string | null,
-) {
-  const pathValue = normalizeValue(request.params?.[param]);
-  const headerValue = headerName
-    ? normalizeValue(getHeader(request, headerName))
-    : null;
-  if (pathValue && headerValue && pathValue !== headerValue) {
-    throw new BadRequestException(`${param} 与请求头作用域不一致`);
-  }
-  return pathValue ?? headerValue;
 }
 
 function rejectTenantOverride(request: AccessRequest, tenantId: string) {
   const supplied = normalizeValue(getHeader(request, "tenant-id"));
-  if (supplied && supplied !== tenantId) {
-    throw new BadRequestException("Tenant-Id 不能覆盖登录会话租户");
-  }
-}
-
-function rejectUnexpectedHeader(
-  request: AccessRequest,
-  name: string,
-  message: string,
-) {
-  if (normalizeValue(getHeader(request, name))) {
-    throw new BadRequestException(message);
+  if (supplied) {
+    throw new BadRequestException("Tenant-Id 不接受客户端传入");
   }
 }
 

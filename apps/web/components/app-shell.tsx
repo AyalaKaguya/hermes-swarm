@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppIcon, type AppIconName } from "@/components/app-icon";
 import { NotificationCenter } from "@/components/notification-center";
@@ -33,13 +33,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { useRequestScope } from "@/components/scope-provider";
-import type {
-  DepartmentMembership,
-  Organization,
-  Tenant,
-  User,
-} from "@/lib/admin-api";
+import { useOrganizationContext } from "@/components/organization-context-provider";
+import type { Organization, Tenant, User } from "@/lib/admin-api";
 import { cn } from "@/lib/utils";
 
 const MAIN_SIDEBAR_STATE_KEY = "sidebar_state";
@@ -66,7 +61,6 @@ export function AppShell({
   children,
   contentClassName,
   currentOrganizationId,
-  departmentMemberships,
   footerNavItems,
   homeHref,
   homeLabel,
@@ -87,13 +81,12 @@ export function AppShell({
   children: ReactNode;
   contentClassName?: string;
   currentOrganizationId?: string | null;
-  departmentMemberships?: DepartmentMembership[];
   footerNavItems?: AppShellNavItem[];
   homeHref?: string;
   homeLabel?: string;
   navSections?: AppShellNavSection[];
   onNavigate?: (item: AppShellNavItem) => void;
-  onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
+  onOrganizationSwitch?: (organizationId: string | null) => void | Promise<void>;
   onUserUpdated?: () => Promise<void>;
   organizationName?: string | null;
   organizations?: Organization[];
@@ -165,7 +158,6 @@ export function AppShell({
 
           <ScopeSwitcher
             currentOrganizationId={currentOrganizationId}
-            departmentMemberships={departmentMemberships ?? []}
             onOrganizationSwitch={onOrganizationSwitch}
             organizationName={organizationName}
             organizations={organizations ?? []}
@@ -307,51 +299,24 @@ function writeStoredSidebarState(open: boolean) {
 
 function ScopeSwitcher({
   currentOrganizationId,
-  departmentMemberships,
   onOrganizationSwitch,
   organizationName,
   organizations,
   tenant,
 }: {
   currentOrganizationId?: string | null;
-  departmentMemberships: DepartmentMembership[];
-  onOrganizationSwitch?: (organizationId: string) => void | Promise<void>;
+  onOrganizationSwitch?: (organizationId: string | null) => void | Promise<void>;
   organizationName?: string | null;
   organizations: Organization[];
   tenant?: Tenant | null;
 }) {
   const t = useTranslations();
-  const router = useRouter();
-  const { scope, switchScope } = useRequestScope();
-  const activeDepartment = departmentMemberships.find(
-    (membership) => membership.departmentId === scope?.departmentId,
-  )?.department;
+  const { activeOrganizationId } = useOrganizationContext();
   const currentLabel =
-    scope?.level === "tenant"
-      ? tenant?.name ?? t("tenantScope.tenantConsole")
-      : scope?.level === "department"
-        ? activeDepartment?.name ?? t("tenantScope.departments")
-        : organizationName ?? t("shell.console");
-  const canSwitch = Boolean(
-    tenant || organizations.length > 0 || departmentMemberships.length > 0,
-  );
-
-  async function selectTenant() {
-    await switchScope({ level: "tenant" });
-    router.push("/settings/tenant");
-  }
-
-  async function selectDepartment(membership: DepartmentMembership) {
-    if (membership.organizationId !== currentOrganizationId) {
-      await onOrganizationSwitch?.(membership.organizationId);
-    }
-    await switchScope({
-      departmentId: membership.departmentId,
-      level: "department",
-      organizationId: membership.organizationId,
-    });
-    router.push("/settings/organization/departments");
-  }
+    activeOrganizationId === null
+      ? t("tenantScope.allOrganizations")
+      : organizationName ?? t("shell.console");
+  const canSwitch = Boolean(tenant || organizations.length > 0);
 
   return (
     <SidebarMenu>
@@ -388,11 +353,11 @@ function ScopeSwitcher({
               <>
                 <DropdownMenuLabel>{t("tenantScope.tenantConsole")}</DropdownMenuLabel>
                 <DropdownMenuItem
-                  disabled={scope?.level === "tenant"}
-                  onClick={() => void selectTenant()}
+                  disabled={activeOrganizationId === null}
+                  onClick={() => void onOrganizationSwitch?.(null)}
                 >
                   <AppIcon className="size-4" name="layers" />
-                  <span className="truncate">{tenant.name}</span>
+                  <span className="truncate">{t("tenantScope.allOrganizations")}</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -405,9 +370,7 @@ function ScopeSwitcher({
               </DropdownMenuItem>
             ) : (
               organizations.map((organization) => {
-                const active =
-                  scope?.level === "organization" &&
-                  organization.id === currentOrganizationId;
+                const active = organization.id === activeOrganizationId;
                 return (
                   <DropdownMenuItem
                     className="items-start gap-2 py-2"
@@ -436,34 +399,6 @@ function ScopeSwitcher({
                   </DropdownMenuItem>
                 );
               })
-            )}
-            {departmentMemberships.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>{t("tenantScope.departments")}</DropdownMenuLabel>
-                {departmentMemberships
-                  .filter((membership) => membership.status === "active")
-                  .map((membership) => {
-                    const active =
-                      scope?.level === "department" &&
-                      scope.departmentId === membership.departmentId;
-                    return (
-                      <DropdownMenuItem
-                        disabled={active}
-                        key={membership.id}
-                        onClick={() => void selectDepartment(membership)}
-                      >
-                        <AppIcon className="size-4" name="layers" />
-                        <span className="min-w-0 flex-1 truncate">
-                          {membership.department.name}
-                        </span>
-                        {active && (
-                          <span className="text-xs">{t("shell.current")}</span>
-                        )}
-                      </DropdownMenuItem>
-                    );
-                  })}
-              </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

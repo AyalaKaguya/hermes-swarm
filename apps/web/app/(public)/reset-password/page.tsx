@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { PublicLanguageSwitcher } from "@/components/public-language-switcher";
 import { Button } from "@/components/ui/button";
+import { InlineNotice } from "@/components/inline-notice";
 import {
   Card,
   CardContent,
@@ -56,9 +57,7 @@ export default function ResetPasswordPage() {
         <CardContent className="grid gap-4">
           {done ? (
             <>
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                {t("resetPasswordSuccess")}
-              </div>
+              <InlineNotice tone="success">{t("resetPasswordSuccess")}</InlineNotice>
               <Button asChild>
                 <Link href="/login">{t("backToSignIn")}</Link>
               </Button>
@@ -89,11 +88,7 @@ export default function ResetPasswordPage() {
                   value={confirmPassword}
                 />
               </div>
-              {error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-                  {error}
-                </div>
-              )}
+              {error && <InlineNotice tone="error">{error}</InlineNotice>}
               <Button
                 disabled={
                   loading ||

@@ -1,30 +1,24 @@
 import { Check, Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from "typeorm";
-import type { Department } from "./department.entity.js";
 import type { Organization } from "./organization.entity.js";
 import type { RolePermission } from "./role-permission.entity.js";
 import type { UserOrganization } from "./user-organization.entity.js";
 import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
-export type RoleScope = "tenant" | "organization" | "department";
+export type RoleScope = "tenant" | "organization";
 
 @Entity({ name: "roles" })
 @Index("UQ_roles_tenant_name", ["tenantId", "name"], {
   unique: true,
-  where: "scope = 'tenant' AND organization_id IS NULL AND department_id IS NULL",
+  where: "scope = 'tenant' AND organization_id IS NULL",
 })
 @Index("UQ_roles_organization_name", ["tenantId", "organizationId", "name"], {
   unique: true,
-  where: "scope = 'organization' AND department_id IS NULL",
+  where: "scope = 'organization' AND organization_id IS NOT NULL",
 })
-@Index("UQ_roles_department_name", ["tenantId", "departmentId", "name"], {
-  unique: true,
-  where: "scope = 'department'",
-})
+@Index("UQ_roles_tenant_organization_identity", ["tenantId", "organizationId", "id"], { unique: true })
 @Check(
-  "CHK_roles_scope_columns",
-  "(scope = 'tenant' AND organization_id IS NULL AND department_id IS NULL) OR " +
-    "(scope = 'organization' AND organization_id IS NOT NULL AND department_id IS NULL) OR " +
-    "(scope = 'department' AND organization_id IS NOT NULL AND department_id IS NOT NULL)",
+  "CHK_roles_scope_owner",
+  "(scope = 'tenant' AND organization_id IS NULL) OR (scope = 'organization' AND organization_id IS NOT NULL)",
 )
 export class Role extends TenantOwnedBaseEntity {
   @Column({ type: "varchar", length: 24, default: "tenant" })
@@ -34,17 +28,9 @@ export class Role extends TenantOwnedBaseEntity {
   @Index()
   organizationId!: string | null;
 
-  @ManyToOne("Organization", "roles", { nullable: true, onDelete: "RESTRICT" })
+  @ManyToOne("Organization", { nullable: true, onDelete: "CASCADE" })
   @JoinColumn({ name: "organization_id" })
   organization!: Organization | null;
-
-  @Column({ name: "department_id", type: "uuid", nullable: true })
-  @Index()
-  departmentId!: string | null;
-
-  @ManyToOne("Department", { nullable: true, onDelete: "RESTRICT" })
-  @JoinColumn({ name: "department_id" })
-  department!: Department | null;
 
   @Column({ type: "varchar", length: 80 })
   name!: string;
@@ -66,8 +52,5 @@ export class Role extends TenantOwnedBaseEntity {
 
   @OneToMany("RolePermission", "role")
   rolePermissions!: RolePermission[];
-
-  @OneToMany("UserOrganization", "role")
-  organizationMembers!: UserOrganization[];
 
 }

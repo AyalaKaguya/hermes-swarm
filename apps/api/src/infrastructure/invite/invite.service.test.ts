@@ -1,742 +1,196 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BadRequestException } from "@nestjs/common";
-import { hashPassword } from "../../common/security/password-hash.js";
+import { BadRequestException, ConflictException } from "@nestjs/common";
+import {
+  Invite,
+  Organization,
+  Role,
+  RolePermission,
+  Tenant,
+  User,
+  UserOrganization,
+  UserOrganizationRole,
+} from "@hermes-swarm/core";
 import { InviteService } from "./invite.service.js";
 
-const ORGANIZATION_ID = "org-1";
-const INVITER_ID = "user-inviter";
-const ROLE_ID = "role-member";
-const TENANT_ID = "tenant-1";
-
-describe("InviteService", () => {
-  it("rejects malformed invite payloads with controlled errors", async () => {
-    const state = createInviteService();
-
-    await assert.rejects(
-      () =>
-        state.service.createBulkForOrganization(
-          ORGANIZATION_ID,
-          INVITER_ID,
-          null as any,
-        ),
-      { message: "请求内容无效" },
-    );
-    await assert.rejects(
-      () =>
-        state.service.createBulkForOrganization(
-          ORGANIZATION_ID,
-          INVITER_ID,
-          { emailIds: "member@example.com" } as any,
-        ),
-      { message: "邮箱列表无效" },
-    );
-    await assert.rejects(
-      () =>
-        state.service.createBulkForOrganization(
-          ORGANIZATION_ID,
-          INVITER_ID,
-          { emailIds: [42] } as any,
-        ),
-      { message: "邮箱格式不正确" },
-    );
-    await assert.rejects(
-      () =>
-        state.service.createBulkForOrganization(
-          ORGANIZATION_ID,
-          INVITER_ID,
-          { emailIds: ["member@example.com"], expiresIn: "soon" as any },
-        ),
-      { message: "邀请有效期无效" },
-    );
-    await assert.rejects(
-      () => state.service.accept(null as any),
-      { message: "请求内容无效" },
-    );
-    await assert.rejects(
-      () => state.service.accept({ action: "archive" } as any),
-      { message: "邀请操作无效" },
-    );
-  });
-
-  it("deduplicates normalized invite emails while reporting ignored originals", async () => {
-    const state = createInviteService();
-
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      {
-        emailIds: [" Member@Example.com ", "member@example.com"],
-        expiresIn: "3d",
-        roleId: ROLE_ID,
-      },
-    );
-
-    assert.equal(created.total, 1);
-    assert.equal(created.ignored, 1);
-    assert.equal(created.items[0].email, "member@example.com");
-    assert.equal(state.invites.length, 1);
+describe("InviteService workspace invitation contract", () => {
+  it("creates one invitation with workspace and multiple organization assignments", async () => {
+    const state = createState();
+    const invite = await state.service.create("owner-a", {
+      email: " Member@Example.com ",
+      workspaceRoleId: "tenant-member",
+      organizations: [
+        { isDefault: true, organizationId: "org-a", roleId: "organization-member-a" },
+        { organizationId: "org-b", roleId: "organization-viewer-b" },
+      ],
+    });
+    assert.equal(invite.email, "member@example.com");
+    assert.equal(invite.organizationAssignments.length, 2);
+    assert.equal(invite.workspaceRoleId, "tenant-member");
+    assert.match(invite.link ?? "", /workspace=workspace-a/);
     assert.equal(state.sentEmails.length, 1);
   });
 
-  it("creates reusable public invite links and keeps counting accepted users", async () => {
-    const state = createInviteService();
-
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: [], expiresIn: "7d", roleId: ROLE_ID },
-    );
-
-    assert.equal(created.total, 1);
-    assert.equal(created.items[0].email, null);
-    assert.equal(created.items[0].acceptedCount, 0);
-    assert.ok(created.items[0].link?.includes("token="));
-    assert.equal(created.items[0].link?.includes("email="), false);
-    assert.equal(state.sentEmails.length, 0);
-    assert.equal(state.notifications.length, 0);
-
-    const token = tokenFromLink(created.items[0].link);
-    const validated = await state.service.validateByToken(undefined, token);
-    assert.equal(validated.organization?.id, ORGANIZATION_ID);
-    assert.equal(validated.email, null);
-
-    const accepted = await state.service.accept({
-      action: "accept",
-      displayName: "External User",
-      email: "external@example.com",
-      password: "password-123",
-      token,
-    });
-
-    assert.equal(accepted.status, "invited");
-    assert.equal(accepted.acceptedCount, 1);
-    assert.equal(state.memberships.length, 1);
-    assert.equal(state.memberships[0].userId, "user-2");
-    assert.equal(state.memberships[0].roleId, ROLE_ID);
-    assert.equal(state.notifications.at(-1)?.recipientUserId, "user-2");
-  });
-
-  it("sends email and in-app notification for directed invites to existing users", async () => {
-    const state = createInviteService({
-      users: [
-        userRecord({
-          email: "member@example.com",
-          id: "user-member",
-          passwordHash: hashPassword("current-password"),
-        }),
-      ],
-    });
-
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: [" Member@Example.com "], expiresIn: "3d", roleId: ROLE_ID },
-    );
-
-    assert.equal(created.total, 1);
-    assert.equal(created.items[0].email, "member@example.com");
-    assert.equal(created.items[0].existingUser, true);
-    assert.ok(created.items[0].link?.includes("email=member%40example.com"));
-    assert.equal(state.sentEmails.length, 1);
-    assert.equal(state.sentEmails[0].email, "member@example.com");
-    assert.equal(state.notifications.length, 1);
-    assert.equal(state.notifications[0].recipientUserId, "user-member");
-
-    const token = tokenFromLink(created.items[0].link);
+  it("rejects cross-tenant organizations, wrong role scopes and multiple defaults", async () => {
+    const state = createState();
     await assert.rejects(
-      () => state.service.validateByToken("other@example.com", token),
-      BadRequestException,
-    );
-
-    const accepted = await state.service.accept({
-      action: "accept",
-      email: "member@example.com",
-      token,
-    });
-
-    assert.equal(accepted.status, "accepted");
-    assert.equal(accepted.acceptedCount, 1);
-    assert.equal(state.memberships.length, 1);
-    assert.equal(state.memberships[0].userId, "user-member");
-  });
-
-  it("keeps directed invite creation successful when invite notification fails", async () => {
-    const state = createInviteService({
-      failNotification: true,
-      users: [
-        userRecord({
-          email: "member@example.com",
-          id: "user-member",
-          passwordHash: hashPassword("current-password"),
-        }),
-      ],
-    });
-
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: ["member@example.com"], expiresIn: "3d", roleId: ROLE_ID },
-    );
-
-    assert.equal(created.total, 1);
-    assert.equal(state.invites.length, 1);
-    assert.equal(state.sentEmails.length, 1);
-    assert.equal(state.notifications.length, 0);
-  });
-
-  it("keeps directed invite creation successful when invite email fails", async () => {
-    const state = createInviteService({
-      failEmailSend: true,
-      users: [
-        userRecord({
-          email: "member@example.com",
-          id: "user-member",
-          passwordHash: hashPassword("current-password"),
-        }),
-      ],
-    });
-
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: ["member@example.com"], expiresIn: "3d", roleId: ROLE_ID },
-    );
-
-    assert.equal(created.total, 1);
-    assert.equal(state.invites.length, 1);
-    assert.equal(state.sentEmails.length, 0);
-    assert.equal(state.notifications.length, 1);
-  });
-
-  it("requires password verification when a public link is used by an existing account", async () => {
-    const state = createInviteService({
-      users: [
-        userRecord({
-          email: "existing@example.com",
-          id: "user-existing",
-          passwordHash: hashPassword("correct-password"),
-        }),
-      ],
-    });
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: [], expiresIn: "3d", roleId: ROLE_ID },
-    );
-    const token = tokenFromLink(created.items[0].link);
-
-    await assert.rejects(
-      () =>
-        state.service.accept({
-          action: "accept",
-          email: "existing@example.com",
-          password: "wrong-password",
-          token,
-        }),
-      BadRequestException,
-    );
-
-    const accepted = await state.service.accept({
-      action: "accept",
-      email: "existing@example.com",
-      password: "correct-password",
-      token,
-    });
-
-    assert.equal(accepted.acceptedUserId, "user-existing");
-    assert.equal(state.memberships.length, 1);
-  });
-
-  it("rejects malformed public invite acceptance fields without creating rows", async () => {
-    const state = createInviteService();
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: [], expiresIn: "3d", roleId: ROLE_ID },
-    );
-    const token = tokenFromLink(created.items[0].link);
-
-    await assert.rejects(
-      () =>
-        state.service.accept({
-          action: "accept",
-          displayName: 42 as any,
-          email: "external@example.com",
-          password: "password-123",
-          token,
-        }),
-      { message: "用户名称格式不正确" },
-    );
-    await assert.rejects(
-      () =>
-        state.service.accept({
-          action: "accept",
-          displayName: "External User",
-          email: "external@example.com",
-          password: 12345678 as any,
-          token,
-        }),
-      { message: "密码格式不正确" },
-    );
-
-    assert.equal(state.users.some((user) => user.email === "external@example.com"), false);
-    assert.equal(state.memberships.length, 0);
-    assert.equal(state.invites[0].acceptedCount, 0);
-  });
-
-  it("keeps invite acceptance successful when accepted notification fails", async () => {
-    const state = createInviteService({ failNotification: true });
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: [], expiresIn: "3d", roleId: ROLE_ID },
-    );
-    const token = tokenFromLink(created.items[0].link);
-
-    const accepted = await state.service.accept({
-      action: "accept",
-      displayName: "External User",
-      email: "external@example.com",
-      password: "password-123",
-      token,
-    });
-
-    assert.equal(accepted.acceptedCount, 1);
-    assert.equal(state.memberships.length, 1);
-    assert.equal(state.notifications.length, 0);
-  });
-
-  it("does not close or resend already accepted directed invites", async () => {
-    const state = createInviteService({
-      users: [
-        userRecord({
-          email: "member@example.com",
-          id: "user-member",
-          passwordHash: hashPassword("current-password"),
-        }),
-      ],
-    });
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: ["member@example.com"], expiresIn: "3d", roleId: ROLE_ID },
-    );
-    const inviteId = created.items[0].id;
-    const token = tokenFromLink(created.items[0].link);
-
-    const accepted = await state.service.accept({
-      action: "accept",
-      email: "member@example.com",
-      token,
-    });
-
-    assert.equal(accepted.status, "accepted");
-    await assert.rejects(
-      () => state.service.deleteForOrganization(ORGANIZATION_ID, inviteId),
-      BadRequestException,
-    );
-    await assert.rejects(
-      () =>
-        state.service.resendForOrganization(
-          ORGANIZATION_ID,
-          INVITER_ID,
-          inviteId,
-        ),
-      BadRequestException,
-    );
-    assert.equal(state.invites[0].status, "accepted");
-    assert.equal(state.invites[0].closedAt, null);
-    assert.equal(state.memberships.length, 1);
-  });
-
-  it("rolls back user and membership creation when invite acceptance update fails", async () => {
-    const state = createInviteService({ failTransactionalInviteSave: true });
-    const created = await state.service.createBulkForOrganization(
-      ORGANIZATION_ID,
-      INVITER_ID,
-      { emailIds: [], expiresIn: "3d", roleId: ROLE_ID },
-    );
-    const token = tokenFromLink(created.items[0].link);
-
-    await assert.rejects(() =>
-      state.service.accept({
-        action: "accept",
-        displayName: "Rollback User",
-        email: "rollback@example.com",
-        password: "password-123",
-        token,
+      state.service.create("owner-a", {
+        email: "member@example.com",
+        workspaceRoleId: "tenant-member",
+        organizations: [{ organizationId: "other-tenant-org", roleId: "organization-member-a" }],
       }),
+      BadRequestException,
     );
+    await assert.rejects(
+      state.service.create("owner-a", {
+        email: "member@example.com",
+        workspaceRoleId: "tenant-member",
+        organizations: [{ organizationId: "org-a", roleId: "tenant-member" }],
+      }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      state.service.create("owner-a", {
+        email: "member@example.com",
+        workspaceRoleId: "tenant-member",
+        organizations: [{ organizationId: "org-a", roleId: "organization-viewer-b" }],
+      }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      state.service.create("owner-a", {
+        email: "member@example.com",
+        workspaceRoleId: "tenant-member",
+        organizations: [
+          { isDefault: true, organizationId: "org-a", roleId: "organization-member-a" },
+          { isDefault: true, organizationId: "org-b", roleId: "organization-viewer-b" },
+        ],
+      }),
+      BadRequestException,
+    );
+  });
 
-    assert.equal(state.users.some((user) => user.email === "rollback@example.com"), false);
-    assert.equal(state.memberships.length, 0);
-    assert.equal(state.notifications.length, 0);
-    assert.equal(state.invites[0].acceptedCount, 0);
-    assert.equal(state.invites[0].acceptedUserId, null);
+  it("keeps one pending invitation per normalized tenant email", async () => {
+    const state = createState();
+    const payload = {
+      email: "member@example.com",
+      organizations: [],
+      workspaceRoleId: "tenant-member",
+    };
+    await state.service.create("owner-a", payload);
+    await assert.rejects(
+      state.service.create("owner-a", { ...payload, email: "MEMBER@example.com" }),
+      ConflictException,
+    );
+  });
+
+  it("requires member-management access in every target organization", async () => {
+    const state = createState();
+    state.organizationPermissions.splice(0, state.organizationPermissions.length);
+    await assert.rejects(
+      state.service.create("owner-a", {
+        email: "member@example.com",
+        organizations: [{ organizationId: "org-a", roleId: "organization-member-a" }],
+        workspaceRoleId: "tenant-member",
+      }),
+      /没有目标组织的成员管理权限/,
+    );
   });
 });
 
-function createInviteService(options: {
-  failEmailSend?: boolean;
-  failNotification?: boolean;
-  failTransactionalInviteSave?: boolean;
-  users?: ReturnType<typeof userRecord>[];
-} = {}) {
-  const invites: any[] = [];
-  const users = [
-    userRecord({ email: "inviter@example.com", id: INVITER_ID }),
-    ...(options.users ?? []),
+function createState() {
+  const invites: Array<Record<string, any>> = [];
+  const sentEmails: unknown[] = [];
+  const organizations = [
+    { id: "org-a", name: "A", status: "active", tenantId: "tenant-a" },
+    { id: "org-b", name: "B", status: "active", tenantId: "tenant-a" },
+    { id: "other-tenant-org", name: "Other", status: "active", tenantId: "tenant-b" },
   ];
-  const memberships: any[] = [];
-  const sentEmails: any[] = [];
-  const notifications: any[] = [];
-  const organization = {
-    id: ORGANIZATION_ID,
-    imageUrl: null,
-    logoUrl: null,
-    name: "Hermes",
-    shortDescription: "Hermes organization",
-    slug: "hermes",
-  };
-  const role = {
-    color: null,
-    displayName: "Member",
-    id: ROLE_ID,
-    isSystem: true,
-    label: "Member",
-    name: "member",
-    organizationId: ORGANIZATION_ID,
-    scope: "organization",
-    tenantId: TENANT_ID,
-  };
-
-  for (const user of users) user.tenantId = TENANT_ID;
-
-  const transactionManager = {
-    async query() {},
-    async findOne(target: { name?: string }, { where }: any) {
-      if (target.name === "Invite") {
-        return invites.find((row) =>
-          Object.entries(where).every(([key, value]) => row[key] === value),
+  const roles = [
+    { id: "tenant-member", organizationId: null, scope: "tenant", tenantId: "tenant-a" },
+    { id: "organization-member-a", organizationId: "org-a", scope: "organization", tenantId: "tenant-a" },
+    { id: "organization-viewer-b", organizationId: "org-b", scope: "organization", tenantId: "tenant-a" },
+  ];
+  const memberships = [
+    { id: "membership-owner-a", organizationId: "org-a", status: "active", tenantId: "tenant-a", userId: "owner-a" },
+    { id: "membership-owner-b", organizationId: "org-b", status: "active", tenantId: "tenant-a", userId: "owner-a" },
+  ];
+  const organizationRoleAssignments = [
+    { membershipId: "membership-owner-a", organizationId: "org-a", roleId: "owner-role-a", tenantId: "tenant-a" },
+    { membershipId: "membership-owner-b", organizationId: "org-b", roleId: "owner-role-b", tenantId: "tenant-a" },
+  ];
+  const organizationPermissions = [
+    { enabled: true, permission: "user.organization_member.create:organization", roleId: "owner-role-a", tenantId: "tenant-a" },
+    { enabled: true, permission: "user.organization_member.create:organization", roleId: "owner-role-b", tenantId: "tenant-a" },
+  ];
+  const manager = {
+    find: async (target: unknown, { where }: any) => {
+      const ids = readInValues(where.id);
+      if (target === Organization) return organizations.filter((item) => ids.includes(item.id) && item.status === where.status && item.tenantId === where.tenantId);
+      if (target === Role) return roles.filter((item) => ids.includes(item.id) && item.scope === where.scope && item.tenantId === where.tenantId);
+      return [];
+    },
+    findOne: async (target: unknown, { where }: any = {}) => {
+      if (target === Tenant) return { id: "tenant-a", slug: "workspace-a" };
+      if (target === Role) {
+        return roles.find((item) =>
+          item.id === where.id &&
+          item.organizationId === (where.organizationId?._type === "isNull" ? null : where.organizationId) &&
+          item.scope === where.scope &&
+          item.tenantId === where.tenantId,
         ) ?? null;
       }
-      if (target.name === "User") {
-        return users.find((row) =>
-          Object.entries(where).every(([key, value]) => row[key] === value),
+      if (target === UserOrganization) {
+        return memberships.find((item) =>
+          item.organizationId === where.organizationId &&
+          item.status === where.status &&
+          item.tenantId === where.tenantId &&
+          item.userId === where.userId,
         ) ?? null;
       }
-      if (target.name === "UserOrganization") {
-        return memberships.find((row) =>
-          Object.entries(where).every(([key, value]) => row[key] === value),
+      if (target === UserOrganizationRole) {
+        return organizationRoleAssignments.find((item) =>
+          item.membershipId === where.membershipId &&
+          item.organizationId === where.organizationId &&
+          item.tenantId === where.tenantId,
+        ) ?? null;
+      }
+      if (target === RolePermission) {
+        return organizationPermissions.find((item) =>
+          item.enabled === where.enabled &&
+          item.permission === where.permission &&
+          item.roleId === where.roleId &&
+          item.tenantId === where.tenantId,
         ) ?? null;
       }
       return null;
     },
-    async save(target: { name?: string }, value: any) {
-      if (target.name === "User") {
-        users.push(value);
-        return value;
-      }
-      if (target.name === "UserOrganization") {
-        memberships.push(value);
-        return value;
-      }
-      if (target.name === "Invite") {
-        if (options.failTransactionalInviteSave) throw new Error("invite save failed");
-        const index = invites.findIndex((invite) => invite.id === value.id);
-        if (index >= 0) invites[index] = value;
-        else invites.push(value);
-      }
-      return value;
-    },
+    transaction: async (work: (manager: unknown) => unknown) => work(manager),
   };
-
-  const inviteRepository = {
-    create(value: any) {
-      return {
-        acceptedCount: 0,
-        actionDate: null,
-        acceptedUserId: null,
-        closedAt: null,
-        createdAt: new Date("2026-01-01T00:00:00Z"),
-        id: `invite-${invites.length + 1}`,
-        invitedBy: null,
-        role: null,
-        ...value,
-      };
-    },
-    createQueryBuilder() {
-      const query: Record<string, any> = {};
-      const builder = {
-        andWhere(_sql: string, params?: Record<string, any>) {
-          Object.assign(query, params);
-          return builder;
-        },
-        getRawMany: async () =>
-          invites
-            .filter(
-              (invite) =>
-                invite.organizationId === query.orgId &&
-                query.emails?.includes(invite.email) &&
-                invite.status === query.status &&
-                !invite.closedAt &&
-                (!invite.expireDate || invite.expireDate >= query.now),
-            )
-            .map((invite) => ({ email: invite.email })),
-        select() {
-          return builder;
-        },
-        where(_sql: string, params?: Record<string, any>) {
-          Object.assign(query, params);
-          return builder;
-        },
-      };
-      return builder;
-    },
-    async find({ where }: any) {
-      const candidates = Array.isArray(where) ? where : [where];
-      return invites.filter((invite) =>
-        candidates.some((candidate) =>
-          Object.entries(candidate).every(
-            ([key, value]) => invite[key] === value,
-          ),
-        ),
-      );
-    },
-    async findOne({ where }: any) {
-      return (
-        invites.find((invite) =>
-          Object.entries(where).every(([key, value]) => invite[key] === value),
-        ) ?? null
-      );
-    },
-    async save(value: any) {
-      if (Array.isArray(value)) {
-        return Promise.all(value.map((item) => this.save(item)));
-      }
-      const index = invites.findIndex((invite) => invite.id === value.id);
-      if (index >= 0) {
-        invites[index] = value;
-      } else {
-        invites.push(value);
-      }
-      return value;
-    },
-    manager: {
-      async transaction(callback: (manager: any) => Promise<unknown>) {
-        const snapshots = {
-          invites: cloneRows(invites),
-          memberships: cloneRows(memberships),
-          users: cloneRows(users),
-        };
-        try {
-          return await callback(transactionManager);
-        } catch (error) {
-          replaceRows(invites, snapshots.invites);
-          replaceRows(memberships, snapshots.memberships);
-          replaceRows(users, snapshots.users);
-          throw error;
-        }
-      },
-    },
-  };
-
-  const userRepository = {
-    create(value: any) {
-      return {
-        avatarUrl: null,
-        createdAt: new Date("2026-01-01T00:00:00Z"),
-        firstName: null,
-        id: `user-${users.length + 1}`,
-        imageUrl: null,
-        lastName: null,
-        mobile: null,
-        nickname: null,
-        timeZone: null,
-        updatedAt: new Date("2026-01-01T00:00:00Z"),
-        username: null,
-        ...value,
-      };
-    },
-    async findOne({ where }: any) {
-      return (
-        users.find((user) =>
-          Object.entries(where).every(([key, value]) => user[key] === value),
-        ) ?? null
-      );
-    },
-    async save(user: any) {
-      users.push(user);
-      return user;
-    },
-  };
-
-  const membershipRepository = {
-    create(value: any) {
-      return { id: `membership-${memberships.length + 1}`, ...value };
-    },
-    createQueryBuilder() {
-      const query: Record<string, any> = {};
-      const builder = {
-        andWhere(_sql: string, params?: Record<string, any>) {
-          Object.assign(query, params);
-          return builder;
-        },
-        getRawMany: async () =>
-          memberships
-            .filter((membership) => membership.organizationId === query.orgId)
-            .map((membership) =>
-              users.find((user) => user.id === membership.userId),
-            )
-            .filter(
-              (user): user is ReturnType<typeof userRecord> =>
-                Boolean(user) && query.emails?.includes(user.email),
-            )
-            .map((user) => ({ email: user.email })),
-        innerJoin() {
-          return builder;
-        },
-        select() {
-          return builder;
-        },
-        where(_sql: string, params?: Record<string, any>) {
-          Object.assign(query, params);
-          return builder;
-        },
-      };
-      return builder;
-    },
-    async findOne({ where }: any) {
-      return (
-        memberships.find((membership) =>
-          Object.entries(where).every(
-            ([key, value]) => membership[key] === value,
-          ),
-        ) ?? null
-      );
-    },
-    async save(membership: any) {
-      memberships.push(membership);
-      return membership;
-    },
-  };
-
-  const organizationRepository = {
-      async findOne({ where }: any) {
-        return where.id === organization.id && where.tenantId === TENANT_ID
-          ? { ...organization, tenantId: TENANT_ID }
-          : null;
-      },
-    } as any;
-  const roleRepository = {
-      async findOne({ where }: any) {
-        return where.id === role.id &&
-          where.organizationId === role.organizationId &&
-          where.scope === role.scope
-          ? role
-          : null;
-      },
-    } as any;
-  let activeContext: any = null;
-  const baseContext = { manager: transactionManager, tenantId: TENANT_ID };
+  const repositories = new Map<any, any>([
+    [Invite, {
+      create: (value: any) => ({ id: `invite-${invites.length + 1}`, createdAt: new Date(), invitedBy: null, ...value }),
+      find: async () => invites,
+      findOne: async ({ where }: any) => invites.find((item) => item.email === where.email && item.status === where.status && item.tenantId === where.tenantId) ?? null,
+      save: async (value: any) => { invites.push(value); return value; },
+    }],
+    [User, { findOne: async () => null }],
+    [Organization, { find: async ({ where }: any) => organizations.filter((item) => readInValues(where.id).includes(item.id) && item.tenantId === where.tenantId) }],
+  ]);
   const tenantContext = {
-    current(required = true) {
-      if (activeContext) return activeContext;
-      return required ? baseContext : null;
-    },
-    repository(target: { name?: string }) {
-      if (target.name === "Invite") return inviteRepository;
-      if (target.name === "User") return userRepository;
-      if (target.name === "Organization") return organizationRepository;
-      if (target.name === "Role") return roleRepository;
-      return membershipRepository;
-    },
-    run(context: any, work: () => unknown) {
-      activeContext = context;
-      return Promise.resolve(work()).finally(() => {
-        activeContext = null;
-      });
-    },
-  } as any;
-  const dataSource = {
-    transaction: inviteRepository.manager.transaction,
-  } as any;
+    current: () => ({ manager, tenantId: "tenant-a" }),
+    repository: (target: unknown) => repositories.get(target),
+  };
   const service = new InviteService(
-    dataSource,
-    tenantContext,
-    {
-      async send(payload: any) {
-        if (options.failEmailSend) {
-          throw new Error("email failed");
-        }
-        sentEmails.push(payload);
-      },
-    } as any,
-    {
-      async createForUser(payload: any) {
-        if (options.failNotification) {
-          throw new Error("notification failed");
-        }
-        notifications.push(payload);
-      },
-    } as any,
-    {
-      async getPlatformValue(_key: string, fallback: string) {
-        return fallback;
-      },
-    } as any,
+    {} as never,
+    tenantContext as never,
+    { send: async (input: unknown) => { sentEmails.push(input); return { sent: true }; } } as never,
+    {} as never,
+    { getPlatformValue: async () => "http://localhost:3100" } as never,
   );
-
-  return {
-    invites,
-    memberships,
-    notifications,
-    sentEmails,
-    service,
-    users,
-  };
+  return { organizationPermissions, sentEmails, service };
 }
 
-function userRecord(input: {
-  email: string;
-  id: string;
-  passwordHash?: string;
-}) {
-  return {
-    avatarUrl: null,
-    createdAt: new Date("2026-01-01T00:00:00Z"),
-    displayName: input.email.split("@")[0],
-    email: input.email,
-    emailVerified: true,
-    firstName: null,
-    id: input.id,
-    imageUrl: null,
-    lastName: null,
-    mobile: null,
-    nickname: null,
-    passwordHash: input.passwordHash ?? hashPassword("password-123"),
-    preferredLanguage: "zh-CN",
-    status: "active",
-    tenantId: TENANT_ID,
-    timeZone: null,
-    type: "user",
-    updatedAt: new Date("2026-01-01T00:00:00Z"),
-    username: null,
-  };
-}
-
-function tokenFromLink(link: string | null | undefined) {
-  assert.ok(link);
-  const token = new URL(link).searchParams.get("token");
-  assert.ok(token);
-  return token;
-}
-
-function cloneRows<T extends Record<string, unknown>>(rows: T[]) {
-  return rows.map((row) => ({ ...row }));
-}
-
-function replaceRows<T>(target: T[], rows: T[]) {
-  target.splice(0, target.length, ...rows);
+function readInValues(value: any): string[] {
+  return value?._value ?? value?.value ?? [];
 }

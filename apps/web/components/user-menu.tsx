@@ -78,7 +78,7 @@ export function UserMenu({
 
     setSavingLanguage(true);
     try {
-      await updateUserPreferredLanguage(token, user.id, normalized);
+      await updateUserPreferredLanguage(token, normalized);
       await onUserUpdated?.();
     } catch (err) {
       notifications.error(

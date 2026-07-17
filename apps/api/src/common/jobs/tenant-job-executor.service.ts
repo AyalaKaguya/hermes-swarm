@@ -93,7 +93,6 @@ function requireJobText(value: unknown, field: string) {
 
 function tenantJobContext(manager: EntityManager, tenantId: string) {
   return {
-    departmentId: null,
     manager,
     organizationId: null,
     scopeLevel: "tenant" as RequestScopeLevel,
@@ -106,8 +105,7 @@ async function configureTenantJobRls(manager: EntityManager, tenantId: string) {
     `SELECT
       set_config('${TENANT_DATABASE_GUCS.tenantId}', $1, true),
       set_config('${TENANT_DATABASE_GUCS.scopeLevel}', 'tenant', true),
-      set_config('${TENANT_DATABASE_GUCS.organizationId}', '', true),
-      set_config('${TENANT_DATABASE_GUCS.departmentId}', '', true)`,
+      set_config('${TENANT_DATABASE_GUCS.organizationId}', '', true)`,
     [tenantId],
   );
 }

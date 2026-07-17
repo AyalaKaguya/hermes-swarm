@@ -1,5 +1,5 @@
 import { Column, Entity, Index } from "typeorm";
-import { OrganizationBaseEntity } from "../../identity/entities/organization-base.entity.js";
+import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
 
 /**
  * Delivery states tracked for sent-email history.
@@ -7,11 +7,11 @@ import { OrganizationBaseEntity } from "../../identity/entities/organization-bas
 export type EmailDeliveryStatus = "queued" | "sent" | "failed" | "skipped";
 
 @Entity({ name: "email_sent" })
-@Index(["organizationId", "createdAt"])
+@Index(["tenantId", "createdAt"])
 /**
  * Records mail workflow attempts for audit and administration views.
  */
-export class EmailLog extends OrganizationBaseEntity {
+export class EmailLog extends TenantOwnedBaseEntity {
   /**
    * Template name used to produce the message.
    */

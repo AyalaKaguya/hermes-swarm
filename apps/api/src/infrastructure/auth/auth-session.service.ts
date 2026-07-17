@@ -14,8 +14,6 @@ import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   IntegrationToken,
-  Department,
-  Organization,
   PlatformUser,
   User,
 } from "@hermes-swarm/core";
@@ -59,9 +57,7 @@ export type AuthSessionRecord = {
 
 export type ValidatedAuthSession = {
   integrationToken?: {
-    departmentId?: string | null;
     id: string;
-    organizationId: string | null;
     permissions: string[];
     scope: IntegrationToken["scope"];
     tenantId: string;
@@ -99,8 +95,6 @@ export class AuthSessionService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
     private readonly platformUserRepository: Repository<PlatformUser>,
-    @InjectRepository(Organization)
-    private readonly organizationRepository: Repository<Organization>,
     private readonly dataSource: DataSource,
     private readonly tenantContext: TenantContextService,
     private readonly configService: ConfigService,
@@ -558,8 +552,6 @@ export class AuthSessionService {
         if (tenantId !== payload.tenantId) {
           throw new UnauthorizedException("登录已失效，请重新登录");
         }
-        await this.ensureActiveOrganizationWithManager(manager, record);
-
         const lastUsedAt = new Date();
         const updateResult = await repository.update(
           {
@@ -582,9 +574,7 @@ export class AuthSessionService {
 
     return {
       integrationToken: {
-        departmentId: record.departmentId,
         id: record.id,
-        organizationId: record.organizationId,
         permissions: record.permissions ?? [],
         scope: record.scope,
         tenantId,
@@ -706,7 +696,10 @@ export class AuthSessionService {
       throw new UnauthorizedException("用户不可用");
     }
     const tenant = (user as User & { tenant?: { status?: string } }).tenant;
-    if (!tenant || tenant.status !== "active") {
+    if (
+      !tenant ||
+      (tenant.status !== "active" && tenant.status !== "provisioning")
+    ) {
       throw new UnauthorizedException("租户不可用");
     }
     return user;
@@ -723,7 +716,6 @@ export class AuthSessionService {
       );
       return this.tenantContext.run(
         {
-          departmentId: null,
           manager,
           organizationId: null,
           scopeLevel: "tenant",
@@ -755,41 +747,6 @@ export class AuthSessionService {
     }
     if (!tenantId) throw new UnauthorizedException("登录会话缺少租户上下文");
     return this.ensureActiveUser(userId, tenantId);
-  }
-
-  private async ensureActiveOrganization(record: IntegrationToken) {
-    if (record.scope !== "organization" && record.scope !== "department") return;
-    await this.runInTenantContext(record.tenantId, (manager) =>
-      this.ensureActiveOrganizationWithManager(manager, record),
-    );
-  }
-
-  private async ensureActiveOrganizationWithManager(
-    manager: EntityManager,
-    record: IntegrationToken,
-  ) {
-    if (record.scope !== "organization" && record.scope !== "department") return;
-    const organization = record.organizationId
-        ? await manager.getRepository(Organization).findOne({
-            where: { id: record.organizationId, tenantId: record.tenantId },
-          })
-        : null;
-    if (!organization || organization.status !== "active") {
-      throw new UnauthorizedException("组织不可用");
-    }
-    if (record.scope === "department") {
-      const department = record.departmentId
-          ? await manager.getRepository(Department).findOne({
-              where: {
-                id: record.departmentId,
-                organizationId: organization.id,
-                status: "active",
-                tenantId: record.tenantId,
-              },
-            })
-          : null;
-      if (!department) throw new UnauthorizedException("部门不可用");
-    }
   }
 
   private async waitForRefreshRotation(

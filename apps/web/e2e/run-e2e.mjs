@@ -4,513 +4,193 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright";
 
-const baseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100";
-const sessionKey = "hermes-swarm.admin-session";
+const baseUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 const webSessionCookieName = "hermes_web_session";
 
 const user = {
   avatarUrl: null,
-  createdAt: "2026-01-01T00:00:00.000Z",
-  displayName: "Admin User",
-  email: "admin@hermes.local",
+  createdAt: "2026-07-15T00:00:00.000Z",
+  displayName: "Tenant Owner",
+  email: "owner@hermes.local",
   emailVerified: true,
-  firstName: "Admin",
-  id: "user-admin",
+  firstName: null,
+  id: "user-owner",
   imageUrl: null,
-  lastName: "User",
+  lastName: null,
   mobile: null,
-  nickname: null,
-  preferredLanguage: "zh-CN",
+  nickname: "Tenant Owner",
+  preferredLanguage: "zh-Hans",
   status: "active",
-  timeZone: "Asia/Shanghai",
+  timeZone: "Asia/Hong_Kong",
   type: "user",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-  username: "admin",
+  updatedAt: "2026-07-15T00:00:00.000Z",
+  username: "owner",
 };
 
-const organization = {
-  banner: null,
-  brandColor: null,
-  clientFocus: null,
-  createdByUserId: user.id,
-  currency: "CNY",
-  dateFormat: "YYYY-MM-DD",
-  id: "org-hermes",
-  imageUrl: null,
-  isDefault: true,
-  logoUrl: null,
-  name: "Hermes",
-  officialName: "Hermes",
-  overview: null,
-  preferredLanguage: "zh-CN",
-  profileLink: null,
-  regionCode: "CN",
-  shortDescription: null,
-  slug: "hermes",
+const rootOrganization = {
+  id: "org-root",
+  name: "Hermes Development",
+  parentOrganizationId: null,
+  slug: "hermes-development",
   status: "active",
-  subdomain: "hermes",
-  timeZone: "Asia/Shanghai",
-  totalEmployees: null,
-  website: null,
 };
 
-const platformPermissions = [
-  "page.settings.platform.access:platform",
-];
+const childOrganization = {
+  id: "org-support",
+  name: "Support",
+  parentOrganizationId: rootOrganization.id,
+  slug: "support",
+  status: "active",
+};
 
-const tenantAdminPermissions = [
+const tenantRole = {
+  id: "role-owner",
+  isSystem: true,
+  label: "Tenant Owner",
+  displayName: "Tenant Owner",
+  name: "tenant-owner",
+  scope: "tenant",
+};
+
+const organizationRole = {
+  id: "role-org-admin",
+  isSystem: true,
+  label: "Organization Admin",
+  displayName: "Organization Admin",
+  name: "admin",
+  organizationId: rootOrganization.id,
+  permissions: [
+    rolePermission("page.settings.organization.access:organization"),
+    rolePermission("page.settings.organization.members.access:organization"),
+    rolePermission("page.settings.organization.roles.access:organization"),
+    rolePermission("user.organization_member.create:organization"),
+  ],
+  scope: "organization",
+};
+
+const permissions = [
   "page.settings.account.access:own",
   "page.settings.sessions.access:own",
-  "page.settings.integrations.access:tenant",
-  "page.settings.organization.access:organization",
-  "page.settings.custom-smtp.access:organization",
-  "page.settings.email-templates.access:organization",
-  "page.settings.notification-destinations.access:organization",
-  "page.settings.features.access:organization",
-  "page.settings.groups.access:organization",
-  "page.settings.roles.access:organization",
-  "page.settings.organization-integrations.access:organization",
+  "page.settings.tenant.access:tenant",
   "page.settings.organizations.access:tenant",
+  "page.settings.users.access:tenant",
+  "page.settings.invites.access:tenant",
+  "page.settings.email-templates.access:tenant",
+  "page.settings.api-tokens.access:own",
+  "page.settings.workspace-access.access:tenant",
+  "workspace.console.access:tenant",
   "organization.tenant_organization.list:tenant",
-  "organization.tenant_organization.create:tenant",
-  "organization.tenant_organization.delete:tenant",
-  "organization.profile.view:organization",
-  "integration_token.organization_integration.list:organization",
-  "integration_token.organization_integration.revoke:organization",
-  "setting.organization_config.list:organization",
-  "user.organization_member.list:organization",
-  "role.organization_role.list:organization",
+  "user.tenant_user.list:tenant",
+  "user.tenant_user.create:tenant",
+  "user.tenant_user.update_basic:tenant",
+  "user.tenant_user.replace_roles:tenant",
+  "user.tenant_user.delete:tenant",
+  "invite.workspace_invite.list:tenant",
+  "invite.workspace_invite.create:tenant",
+  "invite.workspace_invite.resend:tenant",
+  "invite.workspace_invite.delete:tenant",
+  "role.workspace_role.list:tenant",
 ];
 
-const orgScopedPermissions = [
-  "page.settings.account.access:own",
-  "page.settings.integrations.access:tenant",
-  "page.settings.organization.access:organization",
-  "page.settings.organization-integrations.access:organization",
-  "organization.profile.view:organization",
-  "integration_token.organization_integration.list:organization",
-  "setting.organization_config.list:organization",
-  "user.organization_member.list:organization",
-  "role.organization_role.list:organization",
-];
+const membership = {
+  displayName: user.displayName,
+  id: "membership-owner",
+  isDefault: true,
+  joinedAt: "2026-07-15T00:00:00.000Z",
+  organization: rootOrganization,
+  organizationId: rootOrganization.id,
+  role: organizationRole,
+  status: "active",
+  user,
+  userId: user.id,
+};
 
-const ordinaryPermissions = ["page.settings.account.access:own"];
-
-const personas = {
-  tenantAdmin: {
-    displayName: "Tenant Admin",
-    permissions: tenantAdminPermissions,
-    roleName: "tenant-admin",
-    scope: "tenant",
-  },
-  platformAdmin: {
-    displayName: "Admin User",
-    permissions: platformPermissions,
-    roleName: "platform-admin",
-    scope: "platform",
-  },
-  orgScopedUser: {
-    displayName: "Org Scoped User",
-    permissions: orgScopedPermissions,
-    roleName: "member",
-    scope: "organization",
-  },
-  ordinaryUser: {
-    displayName: "Ordinary User",
-    permissions: ordinaryPermissions,
-    roleName: "viewer",
-    scope: "organization",
-  },
-  noManagementUser: {
-    displayName: "No Management User",
-    permissions: [],
-    roleName: "guest",
-    scope: "organization",
+const supportMembership = {
+  ...membership,
+  id: "membership-support-owner",
+  isDefault: false,
+  organization: childOrganization,
+  organizationId: childOrganization.id,
+  role: {
+    ...organizationRole,
+    id: "role-org-admin-support",
+    organizationId: childOrganization.id,
   },
 };
 
-function roleFor(personaName) {
-  const persona = personas[personaName] ?? personas.tenantAdmin;
-  return {
-    id: `role-${persona.roleName}`,
-    isSystem: persona.roleName === "platform-admin",
-    label: persona.displayName,
-    name: persona.roleName,
-    organizationId: persona.scope === "platform" ? null : organization.id,
-    permissions: persona.permissions.map((permission, index) => ({
-      enabled: true,
-      id: `${persona.roleName}-permission-${index}`,
-      organizationId: persona.scope === "platform" ? null : organization.id,
-      permission,
-      roleId: `role-${persona.roleName}`,
-    })),
-    scope: persona.scope === "platform" ? "platform" : "organization",
-  };
-}
-
-let organizations = [
-  organization,
-  {
-    ...organization,
-    id: "org-acme",
-    isDefault: false,
-    name: "Acme Labs",
-    officialName: "Acme Labs",
-    slug: "acme",
-    subdomain: "acme",
-  },
-];
-
-const systemSettings = [
-  {
-    id: "setting-platform-title",
-    name: "platform.title",
-    value: "Hermes Swarm",
-    valueOptions: null,
-    valueType: "string",
-  },
-];
-
-const organizationMemberships = [
-  {
-    displayName: user.displayName,
-    groupIds: [],
-    groups: [],
-    id: "membership-admin",
-    joinedAt: "2026-01-01T00:00:00.000Z",
-    organization,
-    organizationId: organization.id,
-    role: roleFor("tenantAdmin"),
-    roleId: "role-tenant-admin",
+const snapshot = {
+  defaultOrganizationId: rootOrganization.id,
+  memberships: [membership, supportMembership],
+  onboarding: { rootOrganizationRequired: false },
+  permissions,
+  principalType: "tenant",
+  tenant: {
+    id: "tenant-hermes",
+    name: "Hermes Development",
+    slug: "hermes-dev",
     status: "active",
-    user,
-    userId: user.id,
   },
-];
-
-const organizationRoles = [roleFor("tenantAdmin"), roleFor("orgScopedUser")];
-
-const personalIntegrationTokens = [
-  {
-    createdAt: "2026-07-07T00:00:00.000Z",
-    departmentId: null,
-    departmentName: null,
-    expiresAt: "2026-08-07T00:00:00.000Z",
-    id: "token-personal-org",
-    isExpired: false,
-    lastUsedAt: null,
-    note: "Personal org token",
-    organizationId: organization.id,
-    organizationName: organization.name,
-    owner: null,
-    ownerUserId: user.id,
-    permissions: ["ticket.conversation.list_organization:organization"],
-    revokedAt: null,
-    scope: "organization",
-    tenantId: "tenant-hermes",
-    tokenPrefix: "v1.personal",
-    updatedAt: "2026-07-07T00:00:00.000Z",
-  },
-];
-
-const organizationIntegrationTokens = [
-  {
-    ...personalIntegrationTokens[0],
-    id: "token-organization-managed",
-    note: "Organization managed token",
-    owner: {
-      avatarUrl: null,
-      displayName: "Org Operator",
-      email: "operator@hermes.local",
-      id: "user-operator",
-      imageUrl: null,
-      username: "operator",
-    },
-    ownerUserId: "user-operator",
-    tokenPrefix: "v1.organization",
-  },
-];
-
-const authSession = {
-  expiresAt: "2099-01-01T00:00:00.000Z",
-  sessionId: "session-e2e",
+  tenantId: "tenant-hermes",
+  tenantRole,
+  user,
 };
-
-function principal(personaName = "tenantAdmin") {
-  const persona = personas[personaName] ?? personas.tenantAdmin;
-  const role = roleFor(personaName);
-  const principalUser = {
-    ...user,
-    displayName: persona.displayName,
-    tenantId: "tenant-hermes",
-  };
-  if (persona.scope === "platform") {
-    return {
-      platformUser: {
-        displayName: persona.displayName,
-        email: principalUser.email,
-        id: principalUser.id,
-        preferredLanguage: principalUser.preferredLanguage,
-        roles: [role],
-        status: "active",
-      },
-      principalType: "platform",
-      systemSettings,
-    };
-  }
-  return {
-    allowedScopes: ["tenant", "organization"],
-    defaultScope: {
-      departmentId: null,
-      level: "organization",
-      organizationId: organization.id,
-    },
-    memberships: [
-      {
-        displayName: persona.displayName,
-        groupIds: [],
-        groups: [],
-        id: `membership-${persona.roleName}`,
-        joinedAt: "2026-01-01T00:00:00.000Z",
-        organization,
-        organizationId: organization.id,
-        role,
-        roleId: role.id,
-        status: "active",
-        user: principalUser,
-        userId: principalUser.id,
-      },
-    ],
-    organization,
-    permissions: persona.permissions,
-    principalType: "tenant",
-    role,
-    scope: {
-      level: "organization",
-      organizationId: organization.id,
-    },
-    systemSettings,
-    tenant: {
-      id: "tenant-hermes",
-      name: "Hermes Tenant",
-      slug: "hermes",
-      status: "active",
-    },
-    tenantId: "tenant-hermes",
-    tenantRoles: [role],
-    user: principalUser,
-  };
-}
 
 const tests = [
   {
-    name: "login creates a web session without exposing access tokens",
+    name: "workspace navigation contains only the reduced tenant model",
     run: async ({ page }) => {
-      await installApiMocks(page, { onboardingRequired: false });
-      await page.goto(`${baseUrl}/login`);
-      await page.getByRole("button", { name: "登录" }).waitFor({
-        state: "visible",
-        timeout: 10_000,
-      });
-      await page.getByLabel("邮箱").fill("admin@hermes.local");
-      await page.getByLabel("密码").fill("admin123456");
-      const loginResponses = [];
-      page.on("response", async (response) => {
-        if (response.url().includes("/api/admin/auth/login")) {
-          loginResponses.push(await response.json().catch(() => null));
-        }
-      });
-      await page.locator("form").evaluate((form) => form.requestSubmit());
-
-      await page.waitForURL("**/home");
-      assert.equal(
-        await page.evaluate((key) => localStorage.getItem(key), sessionKey),
-        null,
-      );
-      assert.equal(
-        await page.evaluate(() => JSON.stringify(localStorage).includes("accessToken")),
-        false,
-      );
-      const cookies = await page.context().cookies(baseUrl);
-      assert.equal(
-        cookies.some((cookie) => cookie.name === webSessionCookieName && cookie.httpOnly),
-        true,
-      );
-      assert.equal(
-        loginResponses.some((body) => body && "accessToken" in body),
-        false,
-      );
+      await installApiMocks(page);
+      await seedSession(page, { allOrganizations: true });
+      await page.goto(`${baseUrl}/settings/tenant`);
+      await expectVisibleText(page, "工作空间");
+      await expectVisibleText(page, "组织");
+      await expectVisibleText(page, "用户");
+      await expectVisibleText(page, "邀请");
+      await expectHiddenText(page, "部门");
+      await expectHiddenText(page, "用户组");
+      await expectHiddenText(page, "平台基础设施");
     },
   },
   {
-    name: "onboarding creates a web session without exposing access tokens",
+    name: "organization-to-user navigation stays client-side and user roles render",
     run: async ({ page }) => {
-      await installApiMocks(page, { onboardingRequired: true });
-      await page.goto(`${baseUrl}/onboarding`);
-      await expectVisibleText(page, "初始化");
-
-      await page.getByLabel("组织名称").fill("Launch Org");
-      await page.getByLabel("组织标识").fill("launch");
-      await page.locator("form").evaluate((form) => form.requestSubmit());
-      await page.waitForURL("**/home");
-    },
-  },
-  {
-    name: "ordinary users without management permissions cannot enter the admin shell",
-    run: async ({ page }) => {
-      await installApiMocks(page, {
-        onboardingRequired: false,
-        persona: "noManagementUser",
-      });
-      await page.goto(`${baseUrl}/login`);
-      await page.locator("form").evaluate((form) => form.requestSubmit());
-
-      await expectVisibleText(page, "当前用户没有管理端访问权限");
-      assert.equal(page.url().endsWith("/login"), true);
-    },
-  },
-  {
-    name: "authenticated account settings validate password changes",
-    run: async ({ page }) => {
-      await installApiMocks(page, { onboardingRequired: false });
-      await seedSession(page);
-      await page.goto(`${baseUrl}/settings/account`);
-
-      await expectVisibleText(page, "个人资料");
-      await expectVisibleText(page, "Admin User");
-      await page.getByRole("tab", { name: "密码" }).click();
-      await page.getByLabel("当前密码").fill("admin123456");
-      await page.getByLabel("新密码").fill("new-password");
-      await page.getByLabel("确认密码").fill("different-password");
-      await page.getByRole("button", { name: "修改密码" }).click();
-      await expectVisibleText(page, "两次输入的密码不一致");
-    },
-  },
-  {
-    name: "tenant admins can see organization management entry points",
-    run: async ({ page }) => {
-      organizations = [organization, { ...organizations[1] }];
-      await installApiMocks(page, { onboardingRequired: false });
-      await seedSession(page);
+      await installApiMocks(page);
+      await seedSession(page, { allOrganizations: true });
       await page.goto(`${baseUrl}/settings/organizations`);
-
-      await expectVisibleText(page, "组织列表");
-      await expectVisibleText(page, "Acme Labs");
-      await page.locator('input[placeholder="搜索组织..."]:visible').fill("hermes");
-      await expectVisibleText(page, "Hermes");
-      await expectHiddenText(page, "Acme Labs");
-      await expectEnabled(page.getByRole("button", { name: "新建组织" }));
-    },
-  },
-  {
-    name: "organization creation settings live under platform default controls",
-    run: async ({ page }) => {
-      await installApiMocks(page, {
-        onboardingRequired: false,
-        persona: "platformAdmin",
+      await expectVisibleText(page, "Hermes Development");
+      let documentRequests = 0;
+      page.on("request", (request) => {
+        if (request.resourceType() === "document") documentRequests += 1;
       });
-      await seedSession(page);
-
-      await page.goto(`${baseUrl}/settings/platform?tab=defaults`);
-      await expectVisibleText(page, "默认控制项");
-      await expectVisibleText(page, "允许创建组织");
-      await expectVisibleText(page, "新组织默认状态");
-      await expectHiddenText(page, "组织创建");
-      await expectHiddenText(page, "组织配置");
-      await expectHiddenText(page, "活跃组织");
-
-      await page.goto(`${baseUrl}/settings/platform?tab=organization`);
-      await expectVisibleText(page, "默认控制项");
-      await expectVisibleText(page, "允许创建组织");
-      await expectHiddenText(page, "组织创建设置");
+      await page.getByRole("link", { name: "用户", exact: true }).click();
+      await page.waitForURL("**/settings/users");
+      await expectVisibleText(page, "owner@hermes.local");
+      await expectVisibleText(page, "Tenant Owner");
+      assert.equal(documentRequests, 0);
     },
   },
   {
-    name: "integration management is split between tenant account and organization pages",
-    run: async ({ page }) => {
-      await installApiMocks(page, { onboardingRequired: false });
-      await seedSession(page);
-
-      await page.goto(`${baseUrl}/settings/integrations`);
-      await expectVisibleText(page, "Personal org token");
-      await expectVisibleText(page, "创建 Token");
-      await expectHiddenText(page, "组织集成");
-      await expectHiddenText(page, "Organization managed token");
-
-      await page.goto(`${baseUrl}/settings/organization-integrations`);
-      await expectVisibleText(page, "组织集成");
-      await expectVisibleText(page, "Organization managed token");
-      await expectVisibleText(page, "Org Operator");
-      await expectHiddenText(page, "创建 Token");
-
-      await page.goto(`${baseUrl}/settings/platform-integrations`);
-      await page.waitForURL("**/settings/platform");
-    },
-  },
-  {
-    name: "regular organization users cannot open platform-only pages",
-    run: async ({ page }) => {
-      await installApiMocks(page, {
-        onboardingRequired: false,
-        persona: "orgScopedUser",
-      });
-      await seedSession(page);
-      await page.goto(`${baseUrl}/settings/platform`);
-
-      await expectVisibleText(page, "没有页面访问权限");
-      await expectVisibleText(page, "page.settings.platform.access:platform");
-    },
-  },
-  {
-    name: "resource-scoped users cannot open platform organization management",
-    run: async ({ page }) => {
-      await installApiMocks(page, {
-        onboardingRequired: false,
-        persona: "orgScopedUser",
-      });
-      await seedSession(page);
-      await page.goto(`${baseUrl}/settings/organizations`);
-
-      await expectVisibleText(page, "没有页面访问权限");
-      await expectVisibleText(page, "page.settings.organizations.access:tenant");
-      await expectHiddenText(page, "新建组织");
-    },
-  },
-  {
-    name: "organization read-only users can view org settings but mutation controls stay disabled",
-    run: async ({ page }) => {
-      await installApiMocks(page, {
-        onboardingRequired: false,
-        persona: "orgScopedUser",
-      });
-      await seedSession(page);
-      await page.goto(`${baseUrl}/settings/organization`);
-
-      await expectVisibleText(page, "组织信息");
-      await expectVisibleText(page, "Hermes");
-      await expectHiddenText(page, "平台设置");
-      await expectHiddenText(page, "组织列表");
-      await expectDisabled(page.locator("#organization-name").first());
-      await expectDisabled(page.getByRole("button", { name: "上传 Logo" }));
-      await expectDisabled(page.getByRole("button", { name: "保存" }).last());
-
-      await page.goto(`${baseUrl}/settings/organization?tab=members`);
-      await expectVisibleText(page, "组织成员");
-      await expectDisabled(page.getByRole("button", { name: "添加成员" }));
-    },
-  },
-  {
-    name: "ordinary users cannot open organization resource pages without page permission",
-    run: async ({ page }) => {
-      await installApiMocks(page, {
-        onboardingRequired: false,
-        persona: "ordinaryUser",
-      });
-      await seedSession(page);
-      await page.goto(`${baseUrl}/settings/organization`);
-
-      await expectVisibleText(page, "没有页面访问权限");
-      await expectVisibleText(page, "page.settings.organization.access:organization");
+    name: "workspace invite form supports tenant and multiple organization assignments",
+    run: async ({ page, state }) => {
+      await installApiMocks(page, state);
+      await seedSession(page, { allOrganizations: true });
+      await page.goto(`${baseUrl}/settings/invites`);
+      await expectVisibleText(page, "member@example.com");
+      await page.getByRole("button", { name: "创建邀请" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel("邮箱").fill("new@example.com");
+      await dialog.getByRole("combobox").nth(1).click();
+      await page.getByRole("option", { name: "Tenant Owner" }).click();
+      await dialog.getByText("Hermes Development", { exact: true }).click();
+      await dialog.getByRole("combobox").last().click();
+      await page.getByRole("option", { name: "Organization Admin" }).click();
+      await dialog.getByText("Support", { exact: true }).click();
+      await dialog.getByRole("combobox").last().click();
+      await page.getByRole("option", { name: "Organization Admin" }).click();
+      await dialog.getByRole("button", { name: "创建邀请" }).click();
+      await page.waitForFunction(() => !document.body.innerText.includes("受邀用户接受后"));
+      assert.equal(state.createdInvite?.email, "new@example.com");
+      assert.equal(state.createdInvite?.organizations.length, 2);
     },
   },
 ];
@@ -519,16 +199,13 @@ async function main() {
   const server = await ensureServer();
   const browser = await launchBrowser();
   const failures = [];
-
   try {
     for (const test of tests) {
-      const context = await browser.newContext({
-        baseURL: baseUrl,
-        viewport: { height: 900, width: 1440 },
-      });
+      const context = await browser.newContext({ baseURL: baseUrl, viewport: { height: 900, width: 1440 } });
       const page = await context.newPage();
+      const state = { createdInvite: null };
       try {
-        await test.run({ page });
+        await test.run({ page, state });
         console.log(`✓ ${test.name}`);
       } catch (error) {
         failures.push({ error, name: test.name });
@@ -540,66 +217,127 @@ async function main() {
     }
   } finally {
     await browser.close();
-    if (server.started) {
-      server.process.kill();
-    }
+    if (server.started) server.process.kill();
   }
+  if (failures.length) throw new Error(`${failures.length} e2e scenario(s) failed`);
+}
 
-  if (failures.length > 0) {
-    throw new Error(`${failures.length} e2e scenario(s) failed`);
+async function installApiMocks(page, state = { createdInvite: null }) {
+  await page.route("**/api/admin/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname.replace(/^\/api\/admin/, "");
+    const method = request.method();
+    if (method === "OPTIONS") return json(route, null, 204);
+    if (method === "GET" && path === "/auth/me") return json(route, snapshot);
+    if (method === "GET" && path === "/organizations") return json(route, [rootOrganization, childOrganization]);
+    if (method === "GET" && path === "/users") return json(route, [{ ...user, tenantRole }]);
+    if (method === "GET" && path === "/roles") {
+      return json(route, [tenantRole]);
+    }
+    if (method === "GET" && /^\/organizations\/[^/]+\/roles$/.test(path)) {
+      const organizationId = path.split("/")[2];
+      return json(route, [{ ...organizationRole, id: `role-admin-${organizationId}`, organizationId }]);
+    }
+    if (method === "GET" && path === "/invites") {
+      return json(route, [{
+        acceptedCount: 0,
+        acceptedUserId: null,
+        actionDate: null,
+        closedAt: null,
+        createdAt: "2026-07-15T00:00:00.000Z",
+        email: "member@example.com",
+        existingUser: false,
+        expireDate: "2026-07-18T00:00:00.000Z",
+        id: "invite-1",
+        invitedById: user.id,
+        organizationAssignments: [{ isDefault: true, organizationId: rootOrganization.id, roleId: organizationRole.id }],
+        status: "invited",
+        workspaceRoleId: tenantRole.id,
+      }]);
+    }
+    if (method === "POST" && path === "/invites") {
+      state.createdInvite = request.postDataJSON();
+      return json(route, { id: "invite-created", ...state.createdInvite }, 201);
+    }
+    if (method === "GET" && path === "/tenant") return json(route, snapshot.tenant);
+    return json(route, { message: `Unhandled e2e mock: ${method} ${path}` }, 404);
+  });
+}
+
+async function seedSession(page, { allOrganizations = false } = {}) {
+  await page.context().addCookies([{
+    domain: new URL(baseUrl).hostname,
+    expires: Math.floor(Date.now() / 1000) + 3600,
+    httpOnly: true,
+    name: webSessionCookieName,
+    path: "/",
+    sameSite: "Lax",
+    secure: baseUrl.startsWith("https://"),
+    value: "e2e-web-session",
+  }]);
+  if (allOrganizations) {
+    await page.addInitScript(({ key }) => {
+      window.localStorage.setItem(key, "__all__");
+    }, { key: `${snapshot.tenantId}:${user.id}:organization` });
   }
+}
+
+function rolePermission(permission) {
+  return {
+    enabled: true,
+    id: `role-permission-${permission}`,
+    permission,
+    roleId: "role-org-admin",
+  };
+}
+
+async function json(route, body, status = 200) {
+  await route.fulfill({
+    body: status === 204 ? "" : JSON.stringify(body),
+    headers: { "content-type": "application/json" },
+    status,
+  });
+}
+
+async function expectVisibleText(page, text) {
+  await page.waitForFunction((value) => document.body.innerText.includes(value), text, { timeout: 10_000 });
+}
+
+async function expectHiddenText(page, text) {
+  await page.waitForFunction((value) => !document.body.innerText.includes(value), text, { timeout: 10_000 });
 }
 
 async function launchBrowser() {
   try {
     return await chromium.launch({ headless: true });
   } catch (error) {
-    if (!String(error).includes("Executable doesn't exist")) {
-      throw error;
-    }
+    if (!String(error).includes("Executable doesn't exist")) throw error;
   }
-
   for (const channel of ["chrome", "msedge"]) {
     try {
       return await chromium.launch({ channel, headless: true });
-    } catch {
-      // Try the next installed browser channel.
-    }
+    } catch {}
   }
-
-  throw new Error(
-    "No Playwright browser is installed. Run `pnpm exec playwright install chromium` or install Chrome/Edge.",
-  );
+  throw new Error("No Playwright browser is installed");
 }
 
 async function ensureServer() {
-  if (await isServerReady()) {
-    return { started: false };
-  }
-
-  const nextBin = fileURLToPath(
-    new URL("../node_modules/next/dist/bin/next", import.meta.url),
-  );
+  if (await isServerReady()) return { started: false };
+  const nextBin = fileURLToPath(new URL("../node_modules/next/dist/bin/next", import.meta.url));
   const child = spawn(process.execPath, [nextBin, "start", "--port", "3100"], {
     cwd: new URL("..", import.meta.url),
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
   });
-
   child.stdout.on("data", (chunk) => process.stdout.write(chunk));
   child.stderr.on("data", (chunk) => process.stderr.write(chunk));
-
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (await isServerReady()) {
-      return { process: child, started: true };
-    }
-    if (child.exitCode !== null) {
-      throw new Error(`Next server exited with code ${child.exitCode}`);
-    }
+    if (await isServerReady()) return { process: child, started: true };
+    if (child.exitCode !== null) throw new Error(`Next server exited with code ${child.exitCode}`);
     await delay(500);
   }
-
   child.kill();
   throw new Error(`Timed out waiting for ${baseUrl}`);
 }
@@ -611,290 +349,6 @@ async function isServerReady() {
   } catch {
     return false;
   }
-}
-
-async function installApiMocks(page, options) {
-  const personaName = options.persona ?? "tenantAdmin";
-  const persona = personas[personaName] ?? personas.tenantAdmin;
-  const can = (permission) => persona.permissions.includes(permission);
-  await page.route("**/api/admin/**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const path = url.pathname.replace("/api/admin", "");
-    const method = request.method();
-    if (request.headers().authorization) {
-      throw new Error(`Browser request unexpectedly sent Authorization for ${method} ${path}`);
-    }
-
-    if (method === "OPTIONS") {
-      await route.fulfill({ headers: corsHeaders(request), status: 204 });
-      return;
-    }
-
-    if (method === "GET" && path === "/bootstrap") {
-      await json(route, {
-        onboardingRequired: options.onboardingRequired,
-        organizations,
-        systemSettings,
-      });
-      return;
-    }
-
-    if (method === "POST" && path === "/auth/login") {
-      await json(route, { ...authSession, snapshot: principal(personaName) }, 200, {
-        "set-cookie": `${webSessionCookieName}=e2e-web-session; Path=/; HttpOnly; SameSite=Lax`,
-      });
-      return;
-    }
-
-    if (method === "POST" && path === "/onboarding") {
-      await json(route, { ...authSession, snapshot: principal(personaName) }, 200, {
-        "set-cookie": `${webSessionCookieName}=e2e-web-session; Path=/; HttpOnly; SameSite=Lax`,
-      });
-      return;
-    }
-
-    if (method === "POST" && path === "/auth/refresh") {
-      await json(route, authSession);
-      return;
-    }
-
-    if (method === "GET" && path === "/auth/me") {
-      await json(route, principal(personaName));
-      return;
-    }
-
-    if (
-      method === "GET" &&
-      path === `/users/${user.id}/integration-tokens/capabilities`
-    ) {
-      await json(route, {
-        scopes: [
-          {
-            departmentId: null,
-            departmentName: null,
-            organizationId: organization.id,
-            organizationName: organization.name,
-            permissions: [
-              {
-                description: "查看组织工单。",
-                entity: "ticket",
-                entityLabel: "工单",
-                entityOrder: 10,
-                isDangerous: false,
-                label: "查看组织工单",
-                operation: "list_organization",
-                operationOrder: 10,
-                permission: "ticket.conversation.list_organization:organization",
-                purpose: "conversation",
-                purposeLabel: "会话",
-                purposeOrder: 10,
-              },
-            ],
-            scope: "organization",
-          },
-        ],
-      });
-      return;
-    }
-
-    if (method === "GET" && path === `/users/${user.id}/integration-tokens`) {
-      await json(route, personalIntegrationTokens);
-      return;
-    }
-
-    if (
-      method === "GET" &&
-      path === `/organizations/${organization.id}/integration-tokens`
-    ) {
-      if (!can("integration_token.organization_integration.list:organization")) {
-        await forbidden(route);
-        return;
-      }
-      await json(route, organizationIntegrationTokens);
-      return;
-    }
-
-    if (method === "PATCH" && path === `/users/${user.id}`) {
-      const body = await request.postDataJSON();
-      Object.assign(user, body, { updatedAt: "2026-01-02T00:00:00.000Z" });
-      await json(route, user);
-      return;
-    }
-
-    if (method === "GET" && path === "/organizations") {
-      if (!can("organization.tenant_organization.list:tenant")) {
-        await forbidden(route);
-        return;
-      }
-      await json(route, organizations);
-      return;
-    }
-
-    if (method === "POST" && path === "/organizations") {
-      if (!can("organization.tenant_organization.create:tenant")) {
-        await forbidden(route);
-        return;
-      }
-      const body = await request.postDataJSON();
-      const created = {
-        ...organization,
-        id: `org-${body.slug || "created"}`,
-        isDefault: false,
-        name: body.name,
-        officialName: body.name,
-        slug: body.slug || String(body.name).toLowerCase().replace(/\s+/g, "-"),
-        subdomain: body.subdomain ?? null,
-      };
-      organizations = [...organizations, created];
-      await json(route, created);
-      return;
-    }
-
-    const organizationMatch = path.match(/^\/organizations\/([^/]+)$/);
-    if (method === "GET" && organizationMatch) {
-      if (!can("organization.profile.view:organization")) {
-        await forbidden(route);
-        return;
-      }
-      await json(
-        route,
-        organizations.find((item) => item.id === organizationMatch[1]) ?? organization,
-      );
-      return;
-    }
-
-    if (
-      method === "GET" &&
-      path.match(/^\/organizations\/([^/]+)\/settings$/)
-    ) {
-      if (!can("setting.organization_config.list:organization")) {
-        await forbidden(route);
-        return;
-      }
-      await json(route, []);
-      return;
-    }
-
-    if (
-      method === "GET" &&
-      path.match(/^\/organizations\/([^/]+)\/members$/)
-    ) {
-      if (!can("user.organization_member.list:organization")) {
-        await forbidden(route);
-        return;
-      }
-      await json(route, organizationMemberships);
-      return;
-    }
-
-    if (
-      method === "GET" &&
-      path.match(/^\/organizations\/([^/]+)\/roles$/)
-    ) {
-      if (!can("role.organization_role.list:organization")) {
-        await forbidden(route);
-        return;
-      }
-      await json(route, organizationRoles);
-      return;
-    }
-
-    await json(route, { message: `Unhandled e2e mock: ${method} ${path}` }, 404);
-  });
-}
-
-async function seedSession(page) {
-  await page.context().addCookies([
-    {
-      domain: new URL(baseUrl).hostname,
-      expires: Math.floor(Date.now() / 1000) + 3600,
-      httpOnly: true,
-      name: webSessionCookieName,
-      path: "/",
-      sameSite: "Lax",
-      secure: baseUrl.startsWith("https://"),
-      value: "e2e-web-session",
-    },
-  ]);
-}
-
-async function json(route, body, status = 200, headers = {}) {
-  await route.fulfill({
-    body: JSON.stringify(body),
-    headers: {
-      ...corsHeaders(route.request()),
-      "content-type": "application/json",
-      ...headers,
-    },
-    status,
-  });
-}
-
-async function forbidden(route) {
-  await json(route, { message: "权限不足" }, 403);
-}
-
-function corsHeaders(request) {
-  const origin = request.headers().origin ?? baseUrl;
-  return {
-    "access-control-allow-headers": "authorization,content-type",
-    "access-control-allow-credentials": "true",
-    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    "access-control-allow-origin": origin,
-  };
-}
-
-async function expectVisibleText(page, text) {
-  await page.waitForFunction(
-    (expected) => document.body.innerText.includes(expected),
-    text,
-    { timeout: 10_000 },
-  );
-}
-
-async function expectHiddenText(page, text) {
-  await page.waitForFunction(
-    (expected) => !document.body.innerText.includes(expected),
-    text,
-    { timeout: 10_000 },
-  );
-}
-
-async function waitForEnabled(locator) {
-  await locator.waitFor({ state: "visible", timeout: 10_000 });
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const disabled = await locator.evaluate(
-      (element) => element instanceof HTMLButtonElement && element.disabled,
-    );
-    if (!disabled) return;
-    await delay(100);
-  }
-  throw new Error("Control is still disabled");
-}
-
-async function expectEnabled(locator) {
-  await locator.waitFor({ state: "visible", timeout: 10_000 });
-  assert.equal(await isDisabled(locator), false);
-}
-
-async function expectDisabled(locator) {
-  await locator.waitFor({ state: "visible", timeout: 10_000 });
-  assert.equal(await isDisabled(locator), true);
-}
-
-async function isDisabled(locator) {
-  return locator.evaluate((element) => {
-    if (
-      element instanceof HTMLButtonElement ||
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLSelectElement ||
-      element instanceof HTMLTextAreaElement
-    ) {
-      return element.disabled;
-    }
-    return element.getAttribute("aria-disabled") === "true";
-  });
 }
 
 main().catch((error) => {

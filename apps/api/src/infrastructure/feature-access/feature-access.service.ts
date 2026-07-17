@@ -1,5 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Organization } from "@hermes-swarm/core";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   FEATURE_SETTING_DEFINITIONS,
   getFeatureSettingDefaultValue,
@@ -16,7 +15,7 @@ export class FeatureAccessService {
 
   async isFeatureEnabled(
     featureKey: string,
-    scope: { organizationId?: string; tenantId?: string } = {},
+    scope: { tenantId?: string } = {},
   ) {
     const definition = requireFeatureDefinition(featureKey);
     const tenantId =
@@ -26,26 +25,12 @@ export class FeatureAccessService {
 
     if (definition.scope === "platform") {
       value = await this.settingsService.getPlatformValue(definition.key, fallback);
-    } else if (definition.scope === "tenant") {
+    } else {
       if (!tenantId) throw new BadRequestException("功能访问缺少租户上下文");
       value = await this.settingsService.getTenantValue(
         tenantId,
         definition.key,
         fallback,
-      );
-    } else {
-      const organizationId = scope.organizationId?.trim();
-      if (!tenantId) throw new BadRequestException("功能访问缺少租户上下文");
-      if (!organizationId) throw new BadRequestException("功能访问缺少组织上下文");
-      const organization = await this.tenantContext.repository(Organization).findOne({
-        where: { id: organizationId, tenantId },
-      });
-      if (!organization) throw new NotFoundException("组织不存在");
-      value = await this.settingsService.getOrganizationValue(
-        organizationId,
-        definition.key,
-        fallback,
-        tenantId,
       );
     }
     return value === "true";

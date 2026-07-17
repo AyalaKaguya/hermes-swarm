@@ -1,8 +1,54 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AccessCatalogService } from "./access-catalog.service.js";
+import {
+  AccessCatalogService,
+  resolveAccessDefinition,
+} from "./access-catalog.service.js";
 
 describe("AccessCatalogService catalog sync", () => {
+  it("assigns tenant fallback operations to tenant roles", () => {
+    const definition = resolveAccessDefinition(
+      {
+        entity: "user",
+        entityLabel: "用户",
+        purpose: "tenant_user",
+        purposeLabel: "租户用户",
+        scope: "tenant",
+      },
+      {
+        label: "查看用户列表",
+        operation: "list",
+      },
+    );
+
+    assert.deepEqual(definition?.defaultRoles, [
+      "tenant-owner",
+      "tenant-admin",
+    ]);
+  });
+
+  it("assigns own-resource operations only to workspace roles", () => {
+    const definition = resolveAccessDefinition(
+      {
+        entity: "ticket",
+        entityLabel: "工单",
+        purpose: "conversation",
+        purposeLabel: "工单会话",
+        scope: "organization",
+      },
+      {
+        label: "查看工单消息",
+        operation: "list_messages",
+        scope: "own",
+      },
+    );
+
+    assert.ok(definition?.defaultRoles.includes("tenant-owner"));
+    assert.ok(definition?.defaultRoles.includes("tenant-member"));
+    assert.equal(definition?.defaultRoles.includes("owner"), false);
+    assert.equal(definition?.defaultRoles.includes("member"), false);
+  });
+
   it("removes stale controller and navigation permissions before rebuilding defaults", async () => {
     const deletedRolePermissions: unknown[] = [];
     const deletedPermissions: unknown[] = [];

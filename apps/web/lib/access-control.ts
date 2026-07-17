@@ -42,9 +42,7 @@ export function hasPageAccess(
   }
 
   if (definition.scope === "own" || definition.scope === "tenant") {
-    if (definition.scope === "tenant" && principal.principalType !== "tenant") {
-      return false;
-    }
+    if (principal.principalType !== "tenant") return false;
     return hasPermission(principal, definition.permission);
   }
 
@@ -57,7 +55,12 @@ export function hasPageAccess(
       )
     : null;
 
-  return roleHasPermission(membership?.role?.permissions, definition.permission);
+  return (
+    Boolean(
+      membership?.role &&
+        roleHasPermission(membership.role.permissions, definition.permission),
+    )
+  );
 }
 
 function roleHasPermission(

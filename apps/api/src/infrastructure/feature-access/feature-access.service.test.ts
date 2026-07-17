@@ -20,16 +20,14 @@ describe("FeatureAccessService", () => {
     assert.deepEqual(calls, ["tenant:tenant-1:feature:password-reset:enabled"]);
   });
 
-  it("resolves organization features with a tenant-bound organization lookup", async () => {
+  it("resolves email features at workspace scope without an organization lookup", async () => {
     const calls: string[] = [];
     const service = createService(calls);
     assert.equal(
-      await service.isFeatureEnabled("feature:email:enabled", {
-        organizationId: "org-1",
-      }),
+      await service.isFeatureEnabled("feature:email:enabled"),
       true,
     );
-    assert.deepEqual(calls, ["organization:tenant-1:org-1:feature:email:enabled"]);
+    assert.deepEqual(calls, ["tenant:tenant-1:feature:email:enabled"]);
   });
 });
 
@@ -43,24 +41,9 @@ function createService(calls: string[]) {
       calls.push(`tenant:${tenantId}:${name}`);
       return "true";
     },
-    async getOrganizationValue(
-      organizationId: string,
-      name: string,
-      _fallback: string,
-      tenantId: string,
-    ) {
-      calls.push(`organization:${tenantId}:${organizationId}:${name}`);
-      return "true";
-    },
   };
   const tenantContext = {
     current: () => ({ tenantId: "tenant-1" }),
-    repository: () => ({
-      findOne: async ({ where }: { where: { id: string; tenantId: string } }) =>
-        where.id === "org-1" && where.tenantId === "tenant-1"
-          ? { id: where.id, tenantId: where.tenantId }
-          : null,
-    }),
   };
   return new FeatureAccessService(settings as never, tenantContext as never);
 }

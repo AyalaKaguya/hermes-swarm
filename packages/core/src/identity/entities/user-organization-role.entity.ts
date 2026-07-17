@@ -4,7 +4,7 @@ import type { UserOrganization } from "./user-organization.entity.js";
 import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 @Entity({ name: "user_organization_roles" })
-@Index("UQ_user_organization_roles", ["tenantId", "membershipId", "roleId"], {
+@Index("UQ_user_organization_roles_membership", ["tenantId", "membershipId"], {
   unique: true,
 })
 export class UserOrganizationRole extends TenantOwnedBaseEntity {
@@ -24,7 +24,11 @@ export class UserOrganizationRole extends TenantOwnedBaseEntity {
   @Index()
   roleId!: string;
 
-  @ManyToOne("Role", { onDelete: "CASCADE" })
-  @JoinColumn({ name: "role_id" })
+  @ManyToOne("Role", { onDelete: "RESTRICT" })
+  @JoinColumn([
+    { name: "tenant_id", referencedColumnName: "tenantId" },
+    { name: "organization_id", referencedColumnName: "organizationId" },
+    { name: "role_id", referencedColumnName: "id" },
+  ])
   role!: Role;
 }

@@ -4,7 +4,6 @@ export const PERMISSION_SCOPES = [
   "platform",
   "tenant",
   "organization",
-  "department",
   "own",
 ] as const;
 

@@ -21,6 +21,26 @@ afterEach(() => {
 });
 
 describe("admin BFF refresh single-flight", () => {
+  it("forwards the browser host for public tenant discovery and overwrites spoofed values", async () => {
+    globalThis.fetch = async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("x-forwarded-host"), "acme.example.com");
+      assert.equal(headers.has("authorization"), false);
+      return Response.json({ source: "host", tenant: { name: "Acme", slug: "acme" } });
+    };
+    const request = new NextRequest(
+      "http://acme.example.com/api/admin/auth/tenant-context",
+      {
+        headers: { "x-forwarded-host": "spoofed.example.com" },
+        method: "POST",
+      },
+    );
+    const response = await POST(request, {
+      params: Promise.resolve({ path: ["auth", "tenant-context"] }),
+    });
+    assert.equal(response.status, 200);
+  });
+
   it("uses the isolated platform refresh endpoint for platform sessions", async () => {
     process.env.WEB_SESSION_SECRET = "test-secret";
     const session = createSession({ principalType: "platform" });

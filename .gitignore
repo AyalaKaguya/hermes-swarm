@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .next/
+apps/web/.next-dev/
 .pnpm-store/
 *.log
 .DS_Store

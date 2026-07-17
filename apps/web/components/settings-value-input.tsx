@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { InlineNotice } from "@/components/inline-notice";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,7 +42,7 @@ import type {
   SettingPayloadValue,
 } from "@/lib/admin-api";
 
-export type CustomSettingScope = "organization" | "platform";
+export type CustomSettingScope = "platform" | "tenant";
 
 export type CustomSettingSubmit = SettingPayloadEntry & {
   scope?: CustomSettingScope;
@@ -306,7 +307,7 @@ export function CustomSettingForm({
   onSubmitted,
   saving,
   scopeOptions = [
-    { label: "组织", value: "organization" },
+    { label: "工作空间", value: "tenant" },
     { label: "平台", value: "platform" },
   ],
   showScope = false,
@@ -327,7 +328,7 @@ export function CustomSettingForm({
   const [localSaving, setLocalSaving] = useState(false);
   const [name, setName] = useState("");
   const [scope, setScope] = useState<CustomSettingScope>(
-    scopeOptions[0]?.value ?? "organization",
+    scopeOptions[0]?.value ?? "tenant",
   );
   const [value, setValue] = useState<SettingPayloadValue>("");
   const formSecretValueRef = useRef("");
@@ -382,7 +383,7 @@ export function CustomSettingForm({
         valueType,
       });
       setName("");
-      setScope(scopeOptions[0]?.value ?? "organization");
+      setScope(scopeOptions[0]?.value ?? "tenant");
       setValue("");
       formSecretValueRef.current = "";
       setValueOptions(makeDefaultEnumOptions(tr));
@@ -590,11 +591,7 @@ export function CustomSettingForm({
         />
       </div>
 
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <InlineNotice tone="error">{error}</InlineNotice>}
 
       <div className="flex justify-end">
         <Button disabled={busy || !name.trim()} type="submit">
@@ -921,11 +918,7 @@ export function SettingEditDialog({
             />
           </div>
 
-          {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
-              {error}
-            </div>
-          )}
+          {error && <InlineNotice tone="error">{error}</InlineNotice>}
 
           <div className="flex justify-end">
             <Button disabled={busy} type="submit">

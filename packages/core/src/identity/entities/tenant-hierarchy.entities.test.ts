@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { getMetadataArgsStorage } from "typeorm";
-import { DepartmentDispatchRelation } from "./department-dispatch-relation.entity.js";
 import { Organization } from "./organization.entity.js";
 import { Role } from "./role.entity.js";
 import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
-import { UserDepartment } from "./user-department.entity.js";
-import { UserDepartmentRole } from "./user-department-role.entity.js";
 import { UserOrganization } from "./user-organization.entity.js";
 import { UserOrganizationRole } from "./user-organization-role.entity.js";
 import { User } from "./user.entity.js";
@@ -37,50 +34,25 @@ describe("tenant hierarchy entity metadata", () => {
     );
   });
 
-  it("locks role scope columns to tenant, organization or department", () => {
-    const check = getMetadataArgsStorage().checks.find(
-      (candidate) =>
-        candidate.target === Role && candidate.name === "CHK_roles_scope_columns",
-    );
-
-    assert.ok(check);
-    assert.match(String(check.expression), /scope = 'tenant'/);
-    assert.match(String(check.expression), /scope = 'department'/);
-  });
-
-  it("requires department membership to pass through an organization membership", () => {
-    const membershipColumn = getMetadataArgsStorage().columns.find(
+  it("models a single-root organization tree", () => {
+    const parentColumn = getMetadataArgsStorage().columns.find(
       (column) =>
-        column.target === UserDepartment && column.propertyName === "membershipId",
+        column.target === Organization &&
+        column.propertyName === "parentOrganizationId",
     );
-    const relation = getMetadataArgsStorage().relations.find(
-      (candidate) =>
-        candidate.target === UserDepartment &&
-        candidate.propertyName === "membership",
-    );
-    const organizationColumn = getMetadataArgsStorage().columns.find(
-      (column) =>
-        column.target === UserDepartment &&
-        column.propertyName === "organizationId",
+    const rootIndex = getMetadataArgsStorage().indices.find(
+      (index) =>
+        index.target === Organization &&
+        index.name === "UQ_organizations_single_root",
     );
 
-    assert.ok(membershipColumn);
-    assert.notEqual(membershipColumn.options.nullable, true);
-    assert.ok(relation);
-    assert.ok(organizationColumn);
+    assert.ok(parentColumn);
+    assert.equal(parentColumn.options.nullable, true);
+    assert.ok(rootIndex);
+    assert.equal(rootIndex.unique, true);
   });
 
-  it("prevents a department dispatch edge from targeting itself", () => {
-    const check = getMetadataArgsStorage().checks.find(
-      (candidate) =>
-        candidate.target === DepartmentDispatchRelation &&
-        candidate.name === "CHK_department_dispatch_not_self",
-    );
-
-    assert.ok(check);
-  });
-
-  it("persists organization and department scope on role assignments", () => {
+  it("persists exact organization scope on role assignments", () => {
     const columns = getMetadataArgsStorage().columns;
     const hasRequiredColumn = (target: Function, propertyName: string) => {
       const column = columns.find(
@@ -94,13 +66,19 @@ describe("tenant hierarchy entity metadata", () => {
       hasRequiredColumn(UserOrganizationRole, "organizationId"),
       true,
     );
+  });
+
+  it("binds organization roles to an explicit organization owner", () => {
+    const columns = getMetadataArgsStorage().columns.filter(
+      (column) => column.target === Role,
+    );
     assert.equal(
-      hasRequiredColumn(UserDepartmentRole, "organizationId"),
+      columns.some((column) => column.propertyName === "organizationId"),
       true,
     );
     assert.equal(
-      hasRequiredColumn(UserDepartmentRole, "departmentId"),
-      true,
+      columns.some((column) => column.propertyName === "departmentId"),
+      false,
     );
   });
 });

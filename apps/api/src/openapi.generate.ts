@@ -3,7 +3,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./app.module.js";
 import { createOpenApiDocument } from "./common/openapi/openapi.js";
 
 const workspaceRoot = path.resolve(
@@ -15,10 +14,14 @@ const outputPath =
   path.resolve(workspaceRoot, "docs/api/openapi.admin.json");
 
 async function generateOpenApi() {
-  const app = await NestFactory.create(AppModule, { logger: false });
+  preparePreviewEnvironment();
+  const { AppModule } = await import("./app.module.js");
+  const app = await NestFactory.create(AppModule, {
+    logger: ["error", "warn"],
+    preview: true,
+  });
   try {
     app.setGlobalPrefix("api");
-    await app.init();
 
     const document = createOpenApiDocument(app);
     await mkdir(path.dirname(outputPath), { recursive: true });
@@ -28,6 +31,15 @@ async function generateOpenApi() {
   } finally {
     await app.close();
   }
+}
+
+function preparePreviewEnvironment() {
+  // Preview mode does not instantiate database providers, but AppModule config
+  // validation still requires the two isolated runtime identities.
+  process.env.POSTGRES_TENANT_URL ??=
+    "postgresql://hermes_tenant_app:openapi@localhost:5432/hermes_openapi";
+  process.env.POSTGRES_PLATFORM_URL ??=
+    "postgresql://hermes_platform:openapi@localhost:5432/hermes_openapi";
 }
 
 generateOpenApi().catch((error) => {

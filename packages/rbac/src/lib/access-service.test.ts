@@ -38,41 +38,31 @@ describe("AccessService hierarchical authorization", () => {
     );
   });
 
-  it("unions tenant, organization and department roles at department scope", async () => {
-    const permission = definition("ticket.dispatch.handle:department", "department");
+  it("uses only the exact organization role at organization scope", async () => {
+    const permission = definition("ticket.handle:organization", "organization");
     const service = createService({
-      departmentMemberships: [
-        {
-          departmentId: "dept-1",
-          id: "user-dept-1",
-          membershipId: "membership-1",
-          status: "active",
-          tenantId: "tenant-1",
-        },
-      ],
-      departmentRoles: [
-        {
-          role: { scope: "department" },
-          roleId: "role-department",
-          tenantId: "tenant-1",
-          userDepartmentId: "user-dept-1",
-        },
-      ],
       memberships: [
         {
           id: "membership-1",
           organizationId: "org-1",
-          roleId: null,
           status: "active",
           tenantId: "tenant-1",
           userId: "user-1",
+        },
+      ],
+      organizationRoles: [
+        {
+          membershipId: "membership-1",
+          role: { organizationId: "org-1", scope: "organization" },
+          roleId: "role-organization",
+          tenantId: "tenant-1",
         },
       ],
       rolePermissions: [
         {
           enabled: true,
           permission: permission.id,
-          roleId: "role-department",
+          roleId: "role-organization",
           tenantId: "tenant-1",
         },
       ],
@@ -80,7 +70,6 @@ describe("AccessService hierarchical authorization", () => {
 
     assert.equal(
       await service.can("user-1", permission, {
-        departmentId: "dept-1",
         organizationId: "org-1",
         principalType: "tenant",
         tenantId: "tenant-1",
@@ -96,10 +85,17 @@ describe("AccessService hierarchical authorization", () => {
         {
           id: "membership-1",
           organizationId: "org-1",
-          roleId: "role-org",
           status: "active",
           tenantId: "tenant-1",
           userId: "user-1",
+        },
+      ],
+      organizationRoles: [
+        {
+          membershipId: "membership-1",
+          role: { organizationId: "org-1", scope: "organization" },
+          roleId: "role-org",
+          tenantId: "tenant-1",
         },
       ],
       rolePermissions: [
@@ -160,13 +156,52 @@ describe("AccessService hierarchical authorization", () => {
       false,
     );
   });
+
+  it("does not use organization roles for own-scoped resources", async () => {
+    const permission = definition("ticket.conversation.list_messages:own", "own");
+    const service = createService({
+      memberships: [
+        {
+          id: "membership-1",
+          organizationId: "org-1",
+          status: "active",
+          tenantId: "tenant-1",
+          userId: "user-1",
+        },
+      ],
+      organizationRoles: [
+        {
+          membershipId: "membership-1",
+          role: { organizationId: "org-1", scope: "organization" },
+          roleId: "role-org",
+          tenantId: "tenant-1",
+        },
+      ],
+      rolePermissions: [
+        {
+          enabled: true,
+          permission: permission.id,
+          roleId: "role-org",
+          tenantId: "tenant-1",
+        },
+      ],
+    });
+
+    assert.equal(
+      await service.can("user-1", permission, {
+        organizationId: "org-1",
+        principalType: "tenant",
+        targetUserId: "user-1",
+        tenantId: "tenant-1",
+      }),
+      false,
+    );
+  });
 });
 
 function createService(options: Record<string, any[]> = {}) {
   const repositories = {
     RolePermission: repository(options.rolePermissions ?? []),
-    UserDepartment: repository(options.departmentMemberships ?? []),
-    UserDepartmentRole: repository(options.departmentRoles ?? []),
     UserOrganization: repository(options.memberships ?? []),
     UserOrganizationRole: repository(options.organizationRoles ?? []),
     UserTenantRole: repository(options.tenantRoles ?? []),
@@ -177,8 +212,6 @@ function createService(options: Record<string, any[]> = {}) {
     repositories.UserTenantRole,
     repositories.UserOrganization,
     repositories.UserOrganizationRole,
-    repositories.UserDepartment,
-    repositories.UserDepartmentRole,
     repositories.RolePermission,
     {
       transaction: async (work: any) =>

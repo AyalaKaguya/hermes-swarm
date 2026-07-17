@@ -19,6 +19,7 @@ const REFRESH_COOKIE_NAME =
 const PUBLIC_ADMIN_PATHS = new Set([
   "/bootstrap",
   "/auth/login",
+  "/auth/tenant-context",
   "/auth/request-password",
   "/auth/reset-password",
   "/invites/accept",
@@ -245,7 +246,12 @@ async function forwardToNest(
   search: string,
   accessToken?: string,
 ) {
-  const headers = buildForwardHeaders(request.headers, accessToken);
+  const originalHost = new URL(request.url).host;
+  const headers = buildForwardHeaders(
+    request.headers,
+    accessToken,
+    originalHost,
+  );
   const init: RequestInit & { duplex?: "half" } = {
     headers,
     method: request.method,
@@ -258,7 +264,11 @@ async function forwardToNest(
   return fetch(`${getInternalBaseUrl()}${path}${search}`, init);
 }
 
-function buildForwardHeaders(source: Headers, accessToken?: string) {
+function buildForwardHeaders(
+  source: Headers,
+  accessToken?: string,
+  originalHost?: string,
+) {
   const headers = new Headers();
   for (const [key, value] of source.entries()) {
     const normalized = key.toLowerCase();
@@ -268,6 +278,7 @@ function buildForwardHeaders(source: Headers, accessToken?: string) {
       normalized === "content-length" ||
       normalized === "cookie" ||
       normalized === "host" ||
+      normalized === "x-forwarded-host" ||
       normalized === "set-cookie" ||
       normalized === "transfer-encoding"
     ) {
@@ -275,6 +286,7 @@ function buildForwardHeaders(source: Headers, accessToken?: string) {
     }
     headers.set(key, value);
   }
+  if (originalHost) headers.set("X-Forwarded-Host", originalHost);
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }

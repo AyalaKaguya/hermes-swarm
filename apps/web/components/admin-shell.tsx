@@ -13,12 +13,18 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppShell } from "@/components/app-shell";
-import { ScopeProvider, useRequestScope } from "@/components/scope-provider";
+import { RealtimeProvider } from "@/components/realtime-provider";
+import { Button } from "@/components/ui/button";
+import {
+  OrganizationContextProvider,
+  useOrganizationContext,
+} from "@/components/organization-context-provider";
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import {
   fetchMe,
   isUnauthorizedApiError,
+  type Role,
   type Snapshot,
 } from "@/lib/admin-api";
 import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/session";
@@ -27,11 +33,10 @@ import { resolveHostOrganizationIdFromPrincipal } from "@/lib/host-organization"
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 import { resolvePrincipalRoute } from "@/lib/principal-route";
 import {
-  commitRequestScope,
-  getActiveRequestScope,
-  resolveInitialRequestScope,
-  storeRequestScope,
-} from "@/lib/request-scope";
+  commitOrganizationSelection,
+  initializeOrganizationSelection,
+  resolveInitialOrganizationSelection,
+} from "@/lib/organization-context";
 
 type AdminShellContextValue = {
   loading: boolean;
@@ -49,6 +54,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const loadingSessionFailedMessageRef = useRef(
     t("shell.loadingSessionFailed"),
   );
+  const pathnameRef = useRef(pathname);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [resolvedSession, setResolvedSession] =
     useState<ResolvedSession | null>(null);
@@ -60,6 +66,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     loadingSessionFailedMessageRef.current = t("shell.loadingSessionFailed");
   }, [t]);
 
+  pathnameRef.current = pathname;
+
   const loadSnapshot = useCallback(
     async (options: { showLoading?: boolean } = {}) => {
       if (options.showLoading ?? true) {
@@ -68,27 +76,24 @@ export function AdminShell({ children }: { children: ReactNode }) {
       }
       try {
         const principal = await fetchMe();
-        const redirectPath = resolvePrincipalRoute(
-          principal.principalType,
-          pathname,
-        );
-        if (redirectPath) {
-          router.replace(redirectPath);
-          return;
-        }
-        const initialScope =
+        const initialSelection =
           principal.principalType === "tenant"
-            ? resolveInitialRequestScope(principal)
+            ? resolveInitialOrganizationSelection(principal)
             : null;
-        commitRequestScope(initialScope);
+        initializeOrganizationSelection(initialSelection);
         const data = createShellSnapshot(
           principal,
-          initialScope?.organizationId ?? undefined,
+          initialSelection?.activeOrganizationId ?? undefined,
         );
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
         setLoadError(null);
-        setRedirectingToLogin(false);
+        const redirectPath = resolvePrincipalRoute(
+          principal.principalType,
+          pathnameRef.current,
+        );
+        setRedirectingToLogin(Boolean(redirectPath));
+        if (redirectPath) router.replace(redirectPath);
       } catch (error) {
         if (isUnauthorizedApiError(error)) {
           clearStoredSession();
@@ -109,34 +114,33 @@ export function AdminShell({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [pathname, router],
+    [router],
   );
 
   useEffect(() => {
     void loadSnapshot({ showLoading: true });
   }, [loadSnapshot]);
 
-  async function switchOrganization(organizationId: string) {
+  useEffect(() => {
+    if (!snapshot) return;
+    const redirectPath = resolvePrincipalRoute(snapshot.principalType, pathname);
+    setRedirectingToLogin(Boolean(redirectPath));
+    if (redirectPath) router.replace(redirectPath);
+  }, [pathname, router, snapshot]);
+
+  async function switchOrganization(organizationId: string | null) {
     const currentSnapshot = snapshot;
     if (!currentSnapshot || currentSnapshot.principalType !== "tenant") {
       return;
     }
-    const tenantId =
-      currentSnapshot.tenantId ?? currentSnapshot.user.tenantId ?? null;
-    const nextScope = commitRequestScope({
-      departmentId: null,
-      level: "organization",
-      organizationId,
-      tenantId,
-    });
-    if (nextScope) {
-      storeRequestScope(window.localStorage, currentSnapshot.user.id, nextScope);
-    }
+    commitOrganizationSelection(currentSnapshot, organizationId);
     const result = selectSnapshotOrganization(currentSnapshot, organizationId);
     setSnapshot(result);
     setResolvedSession(resolveSession(result));
-    if (pathname.startsWith("/settings/organizations/")) {
-      router.replace(`/settings/organizations/${organizationId}`);
+    if (pathname.startsWith("/settings")) {
+      router.replace(
+        organizationId ? "/settings/organization" : "/settings/tenant",
+      );
     }
   }
 
@@ -156,13 +160,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <div className="grid max-w-sm gap-3 text-center">
           <div className="text-sm font-medium">{t("shell.loadSessionFailed")}</div>
           <div className="text-xs text-muted-foreground">{loadError}</div>
-          <button
-            className="mx-auto h-8 rounded-md border px-3 text-sm transition-colors hover:bg-muted"
+          <Button
+            className="mx-auto"
             onClick={() => loadSnapshot({ showLoading: true })}
             type="button"
+            variant="outline"
           >
             {t("common.retry")}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -188,11 +193,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const ticketAccess = buildTicketAccess(resolvedSession, snapshot);
 
   return (
-    <ScopeProvider principal={snapshot}>
-      <AppShell
+    <OrganizationContextProvider principal={snapshot}>
+      <RealtimeProvider
+        connectionKey={`${snapshot.tenant?.id ?? "platform"}:${resolvedSession.user.id}`}
+        enabled={snapshot.principalType === "tenant"}
+      >
+        <AppShell
       contentClassName={pathname.startsWith("/settings") ? "p-0" : undefined}
       currentOrganizationId={snapshot.organization?.id}
-      departmentMemberships={snapshot.departmentMemberships}
       homeHref={
         snapshot.principalType === "platform" ? "/platform/tenants" : "/home"
       }
@@ -215,26 +223,22 @@ export function AdminShell({ children }: { children: ReactNode }) {
           : "/settings/account"
       }
       ticketAccess={ticketAccess}
-      tenant={snapshot.tenant}
+      tenant={snapshot.permissions.includes("workspace.console.access:tenant") ? snapshot.tenant : null}
       user={resolvedSession.user}
-      >
-        <AdminShellContext.Provider value={contextValue}>
-          <ScopeEpochBoundary>{children}</ScopeEpochBoundary>
-        </AdminShellContext.Provider>
-      </AppShell>
-    </ScopeProvider>
+        >
+          <AdminShellContext.Provider value={contextValue}>
+            <OrganizationEpochBoundary>{children}</OrganizationEpochBoundary>
+          </AdminShellContext.Provider>
+        </AppShell>
+      </RealtimeProvider>
+    </OrganizationContextProvider>
   );
 }
 
-function ScopeEpochBoundary({ children }: { children: ReactNode }) {
-  const { scope } = useRequestScope();
+function OrganizationEpochBoundary({ children }: { children: ReactNode }) {
+  useOrganizationContext();
   return (
-    <div
-      className="contents"
-      key={`${scope?.scopeKey ?? "platform"}:${scope?.epoch ?? 0}`}
-    >
-      {children}
-    </div>
+    <div className="contents">{children}</div>
   );
 }
 
@@ -280,7 +284,6 @@ export function createShellSnapshot(
         role: roles[0] ?? null,
         user,
       },
-      departmentMemberships: [],
       isPlatformAdmin,
       memberships: [],
       organization: null,
@@ -291,8 +294,6 @@ export function createShellSnapshot(
       role: roles[0] ?? null,
       rolePermissions: roles.flatMap((role) => role.permissions ?? []),
       roles,
-      scope: { departmentId: null, level: "platform", organizationId: null },
-      settings: [],
       systemSettings: principal.systemSettings ?? [],
       tenant: null,
       tenantId: null,
@@ -316,10 +317,12 @@ export function createShellSnapshot(
     memberships[0] ??
     null;
   const organization = activeMembership?.organization ?? organizations[0] ?? null;
-  const role = activeMembership?.role ?? principal.tenantRoles?.[0] ?? null;
-  const activePermissions = principal.permissions;
+  const role = activeMembership?.role ?? principal.tenantRole ?? null;
+  const activePermissions = resolveTenantPermissions(
+    principal.permissions,
+    activeMembership?.role ?? null,
+  );
   const isPlatformAdmin = false;
-  const activeScope = getActiveRequestScope();
 
   return {
     ...principal,
@@ -339,13 +342,6 @@ export function createShellSnapshot(
     permissions: activePermissions,
     rolePermissions: role?.permissions ?? [],
     roles: role ? [role] : [],
-    scope: {
-      departmentId: activeScope?.departmentId ?? null,
-      level: activeScope?.level ?? (organization ? "organization" : "platform"),
-      organizationId:
-        activeScope?.organizationId ?? organization?.id ?? null,
-    },
-    settings: [],
     systemSettings: principal.systemSettings ?? [],
     users: [],
   };
@@ -362,8 +358,23 @@ function resolveHostOrganizationId(principal: Awaited<ReturnType<typeof fetchMe>
 
 function selectSnapshotOrganization(
   snapshot: Snapshot,
-  organizationId: string,
+  organizationId: string | null,
 ): Snapshot {
+  if (!organizationId) {
+    const role = snapshot.tenantRole ?? null;
+    const permissions = snapshot.currentUser.permissions.filter((permission) =>
+      !permission.endsWith(":organization"),
+    );
+    return {
+      ...snapshot,
+      currentUser: { ...snapshot.currentUser, organization: null, permissions, role },
+      organization: null,
+      permissions,
+      role,
+      rolePermissions: role?.permissions ?? [],
+      roles: role ? [role] : [],
+    };
+  }
   const activeMembership =
     snapshot.memberships.find(
       (membership) =>
@@ -371,20 +382,37 @@ function selectSnapshotOrganization(
         membership.status === "active",
     ) ?? null;
   if (!activeMembership?.organization) return snapshot;
-  const role = activeMembership.role ?? snapshot.tenantRoles?.[0] ?? null;
+  const role = activeMembership.role ?? null;
+  const permissions = resolveTenantPermissions(
+    snapshot.currentUser.permissions,
+    role,
+  );
 
   return {
     ...snapshot,
     currentUser: {
       ...snapshot.currentUser,
       organization: activeMembership.organization,
+      permissions,
       role,
     },
     organization: activeMembership.organization,
+    permissions,
     role,
     rolePermissions: role?.permissions ?? [],
     roles: role ? [role] : [],
   };
+}
+
+function resolveTenantPermissions(base: string[], role: Role | null) {
+  return [
+    ...new Set([
+      ...base.filter((permission) => !permission.endsWith(":organization")),
+      ...(role?.permissions ?? [])
+        .filter((permission) => permission.enabled)
+        .map((permission) => permission.permission),
+    ]),
+  ];
 }
 
 function resolvePlatformPermissions(roles: Snapshot["roles"]) {

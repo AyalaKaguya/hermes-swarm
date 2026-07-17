@@ -5,31 +5,31 @@ import {
   Permission,
   Role,
   RolePermission,
+  Ticket,
   UserOrganization,
+  UserOrganizationRole,
 } from "@hermes-swarm/core";
-import { AuthModule } from "../auth/auth.module.js";
 import { OrganizationsController } from "./organizations.controller.js";
 import { OrganizationsService } from "./organizations.service.js";
-import { SettingsModule } from "../settings/settings.module.js";
-import { MailModule } from "../mail/mail.module.js";
+import { OrganizationRolesController } from "./organization-roles.controller.js";
+import { OrganizationRolesService } from "./organization-roles.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
 
 @Module({
   imports: [
-    AuthModule,
     DatabaseModule,
-    MailModule,
-    SettingsModule,
     TypeOrmModule.forFeature([
       Organization,
       Permission,
       Role,
       RolePermission,
+      Ticket,
       UserOrganization,
+      UserOrganizationRole,
     ]),
   ],
-  controllers: [OrganizationsController],
-  providers: [OrganizationsService],
-  exports: [OrganizationsService],
+  controllers: [OrganizationRolesController, OrganizationsController],
+  providers: [OrganizationRolesService, OrganizationsService],
+  exports: [OrganizationRolesService, OrganizationsService],
 })
 export class OrganizationsModule {}

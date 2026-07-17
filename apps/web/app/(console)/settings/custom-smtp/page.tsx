@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAdminShell } from "@/components/admin-shell";
+import { InlineNotice } from "@/components/inline-notice";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,8 +27,6 @@ import { useTextTranslation } from "@/hooks/use-text-translation";
 
 export default function CustomSmtpPage() {
   const tr = useTextTranslation();
-  const { snapshot } = useAdminShell();
-  const organizationId = snapshot?.organization?.id ?? null;
   const [config, setConfig] = useState<SmtpConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,12 +43,12 @@ export default function CustomSmtpPage() {
 
   const load = useCallback(async () => {
     const token = await getAuthenticatedAdminSessionMarker();
-    if (!token || !organizationId) {
+    if (!token) {
       setLoading(false);
       return;
     }
     try {
-      const c = await getSmtpConfig(token, { organizationId });
+      const c = await getSmtpConfig(token);
       setConfig(c);
       if (c) {
         setHost(c.host ?? "");
@@ -64,7 +62,7 @@ export default function CustomSmtpPage() {
     } finally {
       setLoading(false);
     }
-  }, [organizationId, tr]);
+  }, [tr]);
 
   useEffect(() => {
     void load();
@@ -74,10 +72,6 @@ export default function CustomSmtpPage() {
     setSaving(true);
     setError(null);
     setMsg("");
-    if (!organizationId) {
-      setSaving(false);
-      return;
-    }
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
       await saveSmtpConfig(
@@ -90,7 +84,6 @@ export default function CustomSmtpPage() {
           password: password || null,
           fromAddress: fromAddress.trim() || null,
         },
-        { organizationId },
       );
       setMsg(tr("保存成功"));
       await load();
@@ -105,10 +98,6 @@ export default function CustomSmtpPage() {
     setValidating(true);
     setError(null);
     setMsg("");
-    if (!organizationId) {
-      setValidating(false);
-      return;
-    }
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
       await validateSmtpConfig(
@@ -120,7 +109,6 @@ export default function CustomSmtpPage() {
           username: username.trim() || null,
           fromAddress: fromAddress.trim() || null,
         },
-        { organizationId },
       );
       setMsg(tr("配置验证通过"));
     } catch (err) {
@@ -143,7 +131,7 @@ export default function CustomSmtpPage() {
         <div>
           <CardTitle>{tr("自定义 SMTP")}</CardTitle>
           <CardDescription>
-            {tr("配置组织级别的邮件发送服务器")}
+            {tr("配置工作空间邮件发送服务器")}
           </CardDescription>
         </div>
         {config?.isValidated && (
@@ -153,16 +141,8 @@ export default function CustomSmtpPage() {
         )}
       </CardHeader>
       <CardContent>
-        {error && (
-          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
-            {error}
-          </div>
-        )}
-        {msg && !error && (
-          <div className="mb-4 rounded-md border bg-muted/40 px-4 py-2 text-sm">
-            {msg}
-          </div>
-        )}
+        {error && <InlineNotice className="mb-4" tone="error">{error}</InlineNotice>}
+        {msg && !error && <InlineNotice className="mb-4" tone="success">{msg}</InlineNotice>}
         <div className="grid max-w-xl gap-4">
           <div className="grid gap-2">
             <Label>{tr("SMTP 服务器")}</Label>

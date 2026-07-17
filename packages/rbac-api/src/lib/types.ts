@@ -2,11 +2,10 @@ export type PermissionScope =
   | "platform"
   | "tenant"
   | "organization"
-  | "department"
   | "own";
 
 /** Data-plane request scope. Platform access uses a separate principal. */
-export type RequestScopeLevel = "tenant" | "organization" | "department";
+export type RequestScopeLevel = "tenant" | "organization";
 
 export type AccessMode = "all" | "any";
 
@@ -15,7 +14,8 @@ export type PageAccessSection =
   | "infrastructure"
   | "organization"
   | "personal"
-  | "platform";
+  | "platform"
+  | "tenant";
 
 export type PageAccessDefinition = {
   defaultRoles: string[];

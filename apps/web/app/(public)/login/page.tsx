@@ -1,5 +1,6 @@
+import { Suspense } from "react";
 import { LoginPage } from "@/components/login-page";
 
 export default function Page() {
-  return <LoginPage />;
+  return <Suspense><LoginPage /></Suspense>;
 }

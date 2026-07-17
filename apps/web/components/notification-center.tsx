@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { AppIcon } from "@/components/app-icon";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { useRealtime } from "@/components/realtime-provider";
 import {
   dismissNotification,
   dismissReadNotifications,
-  createRealtimeTicket,
-  getRealtimeUrl,
   listUserNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -37,12 +36,52 @@ type NotificationItem = {
 export function NotificationCenter() {
   const t = useTranslations();
   const format = useFormatter();
+  const { connectionEpoch, subscribe } = useRealtime();
   const [items, setItems] = useState<NotificationItem[]>([]);
 
-  useEffect(() => {
-    let socket: WebSocket | null = null;
-    let closed = false;
+  const pushNotification = useCallback((notification: UserNotification) => {
+    setItems((current) => {
+      const next = [
+        {
+          body: notification.body,
+          createdAt: notification.createdAt,
+          id: notification.id,
+          kind: notification.kind,
+          message: notification.title,
+          status: notification.status,
+        },
+        ...current.filter((item) => item.id !== notification.id),
+      ];
+      return next.slice(0, 100);
+    });
+  }, []);
 
+  useEffect(() => {
+    let closed = false;
+    async function loadNotifications() {
+      const token = await getAuthenticatedAdminSessionMarker();
+      if (!token || closed) return;
+      listUserNotifications(token, { take: 50 })
+        .then((notifications) => {
+          if (!closed) setItems(notifications.map(toNotificationItem));
+        })
+        .catch(() => undefined);
+    }
+    void loadNotifications();
+    return () => {
+      closed = true;
+    };
+  }, [connectionEpoch]);
+
+  useEffect(
+    () =>
+      subscribe("notification.created", (event) => {
+        if (isUserNotification(event.payload)) pushNotification(event.payload);
+      }),
+    [pushNotification, subscribe],
+  );
+
+  useEffect(() => {
     function push(message: string) {
       setItems((current) => [
         {
@@ -53,59 +92,6 @@ export function NotificationCenter() {
         ...current.slice(0, 99),
       ]);
     }
-
-    function pushNotification(notification: UserNotification) {
-      setItems((current) => {
-        const next = [
-          {
-            body: notification.body,
-            createdAt: notification.createdAt,
-            id: notification.id,
-            kind: notification.kind,
-            message: notification.title,
-            status: notification.status,
-          },
-          ...current.filter((item) => item.id !== notification.id),
-        ];
-        return next.slice(0, 100);
-      });
-    }
-
-    async function connectNotifications() {
-      const token = await getAuthenticatedAdminSessionMarker();
-      if (!token || closed) return;
-
-      listUserNotifications(token, { take: 50 })
-        .then((notifications) => {
-          if (!closed) setItems(notifications.map(toNotificationItem));
-        })
-        .catch(() => undefined);
-
-      if (closed) return;
-      const ticket = await createRealtimeTicket()
-        .then((response) => response.ticket)
-        .catch(() => null);
-      if (!ticket || closed) return;
-      socket = new WebSocket(getRealtimeUrl(ticket));
-      socket.addEventListener("message", (event) => {
-        try {
-          const message = JSON.parse(event.data as string) as {
-            payload?: unknown;
-            type?: string;
-          };
-          if (
-            message.type === "notification.created" &&
-            isUserNotification(message.payload)
-          ) {
-            pushNotification(message.payload);
-          }
-        } catch {
-          // Ignore malformed realtime messages; the HTTP notification list is authoritative.
-        }
-      });
-    }
-
-    void connectNotifications();
 
     function onError(event: ErrorEvent) {
       push(event.message || t("notifications.runtimeError"));
@@ -129,8 +115,6 @@ export function NotificationCenter() {
     window.addEventListener("unhandledrejection", onUnhandledRejection);
     window.addEventListener("hermes:notification", onCustom);
     return () => {
-      closed = true;
-      socket?.close();
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       window.removeEventListener("hermes:notification", onCustom);
