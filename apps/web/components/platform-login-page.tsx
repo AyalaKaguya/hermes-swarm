@@ -23,7 +23,7 @@ import { platformAuthLogin } from "@/lib/admin-api";
 export function PlatformLoginPage() {
   const router = useRouter();
   const t = useTranslations("platformAuth");
-  const { setLanguage } = useI18n();
+  const { setRuntimePreferences } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -39,7 +39,7 @@ export function PlatformLoginPage() {
       if (response.snapshot.principalType !== "platform") {
         throw new Error(t("wrongPrincipal"));
       }
-      setLanguage(response.snapshot.platformUser.preferredLanguage ?? "zh-CN");
+      setRuntimePreferences(response.snapshot.runtimePreferences);
       router.replace("/platform/tenants");
     } catch (loginError) {
       setError(getErrorMessage(loginError, t("failed")));

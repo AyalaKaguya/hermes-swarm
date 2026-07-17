@@ -175,7 +175,7 @@ export class MembershipsService {
       email,
       emailVerified: false,
       passwordHash: hashPassword(password),
-      preferredLanguage: "zh-CN",
+      preferredLanguage: null,
       status: "active",
       tenantId,
       type: "user",

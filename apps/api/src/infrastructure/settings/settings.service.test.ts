@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { BadRequestException } from "@nestjs/common";
 import { PlatformSetting, TenantSetting } from "@hermes-swarm/core";
 import { SettingsService } from "./settings.service.js";
 
@@ -24,10 +25,113 @@ describe("SettingsService platform-to-tenant fallback", () => {
     const state = createState({ tenantValue: "false" });
     assert.equal("getOrganizationValue" in state.service, false);
   });
+
+  it("marks platform runtime defaults as platform sources", async () => {
+    const state = createState({
+      platformSettings: [
+        {
+          id: "platform-currency",
+          name: "tenant.defaultCurrency",
+          scope: "tenant",
+          value: "HKD",
+          valueOptions: null,
+          valueType: "enum",
+        },
+      ],
+    });
+
+    const preferences = await state.service.resolvePlatformRuntimePreferences(null);
+    assert.equal(preferences.currency, "HKD");
+    assert.equal(preferences.sources.currency, "platform");
+  });
+
+  it("rejects platform-only and unknown workspace overrides", async () => {
+    const state = createState();
+    const manager = {
+      getRepository: () => ({ findOne: async () => null }),
+    };
+    const save = (name: string) =>
+      (state.service as any).saveTenantSettingsInTransaction(
+        manager,
+        "tenant-a",
+        [{ name, value: "changed" }],
+        [
+          {
+            name: "platform.publicBaseUrl",
+            scope: "platform",
+            value: "https://example.com",
+            valueOptions: null,
+            valueType: "string",
+          },
+        ],
+      );
+
+    await assert.rejects(() => save("platform.publicBaseUrl"), BadRequestException);
+    await assert.rejects(() => save("custom.unknown"), BadRequestException);
+  });
+
+  it("allows null to remove a legacy workspace-only setting", async () => {
+    const state = createState();
+    const deleted: unknown[] = [];
+    const manager = {
+      getRepository: () => ({
+        delete: async (where: unknown) => deleted.push(where),
+        findOne: async () => ({ id: "legacy", name: "legacy.key" }),
+      }),
+    };
+    await (state.service as any).saveTenantSettingsInTransaction(
+      manager,
+      "tenant-a",
+      [{ name: "legacy.key", value: null }],
+      [],
+    );
+    assert.deepEqual(deleted, [{ name: "legacy.key", tenantId: "tenant-a" }]);
+  });
+
+  it("rejects null for unknown and platform-only settings", async () => {
+    const state = createState();
+    const manager = {
+      getRepository: () => ({
+        delete: async () => undefined,
+        findOne: async () => null,
+      }),
+    };
+    const remove = (name: string) =>
+      (state.service as any).saveTenantSettingsInTransaction(
+        manager,
+        "tenant-a",
+        [{ name, value: null }],
+        [
+          {
+            name: "platform.publicBaseUrl",
+            scope: "platform",
+            value: "https://example.com",
+            valueOptions: null,
+            valueType: "string",
+          },
+        ],
+      );
+
+    await assert.rejects(
+      () => remove("platform.publicBaseUrl"),
+      BadRequestException,
+    );
+    await assert.rejects(() => remove("custom.unknown"), BadRequestException);
+  });
 });
 
-function createState(options: { tenantValue?: string } = {}) {
-  const platformSettings = [{
+function createState(options: {
+  platformSettings?: Array<{
+    id: string;
+    name: string;
+    scope: "platform" | "tenant";
+    value: string;
+    valueOptions: null;
+    valueType: string;
+  }>;
+  tenantValue?: string;
+} = {}) {
+  const platformSettings = options.platformSettings ?? [{
     id: "platform-setting",
     name: "feature:ticketing:enabled",
     scope: "platform",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocale } from "next-intl";
 import { useNotifications } from "@/components/app-notifications";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
@@ -42,7 +41,6 @@ export default function IntegrationsPage() {
   const access = usePermission();
   const notifications = useNotifications();
   const tr = useTextTranslation();
-  const locale = useLocale();
   const canCreatePersonalToken = access.hasPermission(
     "integration_token.personal_api_token.create:own",
   );
@@ -230,7 +228,6 @@ export default function IntegrationsPage() {
       <TokenSection
         canRevoke
         emptyText={tr("暂无有效的集成 Token")}
-        locale={locale}
         onRevoke={setPendingRevoke}
         title={tr("有效 Token")}
         tokens={activeTokens}
@@ -239,7 +236,6 @@ export default function IntegrationsPage() {
       <TokenSection
         canRevoke
         emptyText={tr("暂无已撤销或过期的集成 Token")}
-        locale={locale}
         onRevoke={setPendingRevoke}
         title={tr("已撤销和过期 Token")}
         tokens={inactiveTokens}

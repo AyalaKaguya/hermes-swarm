@@ -12,6 +12,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useI18n } from "@/components/i18n-provider";
 import { AppShell } from "@/components/app-shell";
 import { RealtimeProvider } from "@/components/realtime-provider";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/
 import { hasPageAccess } from "@/lib/access-control";
 import { resolveHostOrganizationIdFromPrincipal } from "@/lib/host-organization";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
-import { resolvePrincipalRoute } from "@/lib/principal-route";
+import { resolveLoginRoute, resolvePrincipalRoute } from "@/lib/principal-route";
 import {
   commitOrganizationSelection,
   initializeOrganizationSelection,
@@ -51,6 +52,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const t = useTranslations();
+  const { setRuntimePreferences } = useI18n();
   const loadingSessionFailedMessageRef = useRef(
     t("shell.loadingSessionFailed"),
   );
@@ -76,6 +78,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       }
       try {
         const principal = await fetchMe();
+        setRuntimePreferences(principal.runtimePreferences);
         const initialSelection =
           principal.principalType === "tenant"
             ? resolveInitialOrganizationSelection(principal)
@@ -101,7 +104,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           setResolvedSession(null);
           setLoadError(null);
           setRedirectingToLogin(true);
-          router.replace("/login");
+          router.replace(resolveLoginRoute(pathnameRef.current));
           return;
         }
         setLoadError(
@@ -114,7 +117,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [router],
+    [router, setRuntimePreferences],
   );
 
   useEffect(() => {
@@ -199,15 +202,18 @@ export function AdminShell({ children }: { children: ReactNode }) {
         enabled={snapshot.principalType === "tenant"}
       >
         <AppShell
-      contentClassName={pathname.startsWith("/settings") ? "p-0" : undefined}
+      contentClassName={
+        pathname.startsWith("/settings") ||
+        pathname.startsWith("/platform/settings")
+          ? "p-0"
+          : undefined
+      }
       currentOrganizationId={snapshot.organization?.id}
       homeHref={
-        snapshot.principalType === "platform" ? "/platform/tenants" : "/home"
+        snapshot.principalType === "platform" ? "/platform" : "/home"
       }
       homeLabel={
-        snapshot.principalType === "platform"
-          ? t("platform.tenantApplications")
-          : undefined
+        snapshot.principalType === "platform" ? t("shell.home") : undefined
       }
       onOrganizationSwitch={switchOrganization}
       onUserUpdated={() => loadSnapshot({ showLoading: false })}
@@ -463,7 +469,7 @@ function buildMainNavSections(resolvedSession: ResolvedSession) {
     const items = PAGE_ACCESS_DEFINITIONS.filter(
       (page) =>
         page.section === "platform" &&
-        page.key !== "platform.tenants" &&
+        page.key !== "platform.audit" &&
         hasPageAccess(resolvedSession, page.key),
     ).map((page) => ({
       href: page.href,

@@ -15,6 +15,7 @@ describe("PlatformMembersService independent platform users", () => {
     });
 
     assert.equal(result.email, "operator@example.com");
+    assert.equal("user" in result, false);
     assert.equal(users.length, 1);
     assert.equal("tenantId" in users[0], false);
     assert.match(users[0].passwordHash, /^pbkdf2_sha256\$/);

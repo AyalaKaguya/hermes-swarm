@@ -8,6 +8,7 @@ import {
   PlatformUserRole,
 } from "@hermes-swarm/core";
 import { AuthModule } from "./auth/auth.module.js";
+import { AuditModule } from "./audit/audit.module.js";
 import { FeatureAccessModule } from "./feature-access/feature-access.module.js";
 import { FilesModule } from "./files/files.module.js";
 import { IntegrationsModule } from "./integrations/integrations.module.js";
@@ -39,6 +40,7 @@ import { PLATFORM_DATA_SOURCE } from "../common/database/database.constants.js";
       PLATFORM_DATA_SOURCE,
     ),
     AuthModule,
+    AuditModule,
     FeatureAccessModule,
     UsersModule,
     OrganizationsModule,

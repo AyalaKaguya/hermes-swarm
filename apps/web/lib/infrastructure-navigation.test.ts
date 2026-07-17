@@ -22,6 +22,7 @@ describe("settings information architecture", () => {
         "settings.invites",
         "settings.email-templates",
         "settings.workspace-access",
+        "settings.audit-logs",
       ],
     );
     const personal = INFRASTRUCTURE_NAV_SECTIONS.find(

@@ -6,6 +6,10 @@ import {
   PUBLIC_ACCESS_METADATA,
 } from "@hermes-swarm/rbac";
 import { AuthController } from "./auth/auth.controller.js";
+import {
+  PlatformAuditController,
+  TenantAuditController,
+} from "./audit/audit.controller.js";
 import { FilesController } from "./files/files.controller.js";
 import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
 import { IntegrationTokensController } from "./integrations/integration-tokens.controller.js";
@@ -30,6 +34,7 @@ import { PermissionsController } from "@hermes-swarm/rbac";
 
 const ADMIN_CONTROLLERS = [
   AuthController,
+  PlatformAuditController,
   FilesController,
   InfrastructureBootstrapController,
   IntegrationTokensController,
@@ -46,6 +51,7 @@ const ADMIN_CONTROLLERS = [
   SettingsController,
   RolesController,
   TenantApplicationsController,
+  TenantAuditController,
   TenantsController,
   TicketsController,
   UsersController,

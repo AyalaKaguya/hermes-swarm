@@ -2,13 +2,19 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { getLocale } from "next-intl/server";
+import { cookies } from "next/headers";
 import { cn } from "@/lib/utils";
 import { NotificationProvider } from "@/components/app-notifications";
 import { AppearanceController } from "@/components/appearance-controller";
 import { I18nProvider } from "@/components/i18n-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from "@/lib/appearance-bootstrap";
-import { getMessagesForLanguage, normalizeLanguagePreference } from "@/lib/i18n";
+import {
+  getMessagesForLanguage,
+  normalizeLanguagePreference,
+  normalizeTimeZonePreference,
+  TIME_ZONE_STORAGE_KEY,
+} from "@/lib/i18n";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -31,6 +37,10 @@ export default async function RootLayout({
 }>) {
   const locale = normalizeLanguagePreference(await getLocale());
   const messages = getMessagesForLanguage(locale);
+  const cookieStore = await cookies();
+  const initialTimeZone = normalizeTimeZonePreference(
+    cookieStore.get(TIME_ZONE_STORAGE_KEY)?.value,
+  );
 
   return (
     <html
@@ -45,7 +55,11 @@ export default async function RootLayout({
         />
       </head>
       <body>
-        <I18nProvider initialLocale={locale} initialMessages={messages}>
+        <I18nProvider
+          initialLocale={locale}
+          initialMessages={messages}
+          initialTimeZone={initialTimeZone}
+        >
           <AppearanceController />
           <TooltipProvider>
             <NotificationProvider>

@@ -36,6 +36,63 @@ describe("AuthService identity plane isolation", () => {
     assert.equal(result.snapshot.principalType, "platform");
   });
 
+  it("serializes platform role permissions in the web session contract", async () => {
+    const service = createService({
+      authSessionService: {
+        createSession: async () => issuedSession("platform"),
+        getRefreshCookieName: () => "refresh",
+        getRefreshCookieOptions: () => ({}),
+      },
+      platformUserRepository: {
+        findOne: async () => ({
+          displayName: "Platform Admin",
+          email: "admin@example.com",
+          id: "platform-user",
+          passwordHash: hashPassword("password-123"),
+          roles: [
+            {
+              platformRole: {
+                description: "Platform administrator",
+                id: "platform-role",
+                isSystem: true,
+                label: "Platform Admin",
+                name: "platform-admin",
+                rolePermissions: [
+                  {
+                    enabled: true,
+                    id: "platform-role-permission",
+                    permission: {
+                      code: "role.platform_role.list:platform",
+                    },
+                    permissionId: "permission",
+                    platformRoleId: "platform-role",
+                  },
+                ],
+              },
+            },
+          ],
+          status: "active",
+        }),
+      },
+    });
+
+    const result = await service.loginPlatform(
+      { email: "admin@example.com", password: "password-123" },
+      {},
+      { cookie() {} },
+    );
+
+    assert.deepEqual(result.snapshot.platformUser.roles[0]?.permissions, [
+      {
+        enabled: true,
+        id: "platform-role-permission",
+        permission: "role.platform_role.list:platform",
+        permissionId: "permission",
+        roleId: "platform-role",
+      },
+    ]);
+  });
+
   it("queries tenant users only inside the resolved tenant", async () => {
     const queries: unknown[] = [];
     const user = {
@@ -92,6 +149,81 @@ describe("AuthService identity plane isolation", () => {
     );
     assert.equal(transactionStarted, false);
   });
+
+  it("records successful platform logins without exposing credentials", async () => {
+    const auditRows: Array<Record<string, unknown>> = [];
+    const service = createService({
+      authSessionService: {
+        createSession: async () => issuedSession("platform"),
+        getRefreshCookieName: () => "refresh",
+        getRefreshCookieOptions: () => ({}),
+      },
+      loginAuditService: {
+        record: async (row: Record<string, unknown>) => auditRows.push(row),
+      },
+      platformUserRepository: {
+        findOne: async () => ({
+          displayName: "Platform Admin",
+          email: "admin@example.com",
+          id: "00000000-0000-4000-8000-000000000001",
+          passwordHash: hashPassword("password-123"),
+          roles: [],
+          status: "active",
+        }),
+      },
+    });
+
+    await service.loginPlatform(
+      { email: "Admin@Example.com", password: "password-123" },
+      {
+        headers: {
+          "user-agent": "Mozilla/5.0 Chrome/120.0 Windows NT 10.0",
+          "x-forwarded-for": "203.0.113.10, 10.0.0.2",
+        },
+      },
+      { cookie() {} },
+    );
+
+    assert.deepEqual(auditRows, [
+      {
+        actorId: "00000000-0000-4000-8000-000000000001",
+        attemptedEmail: "admin@example.com",
+        ipAddress: "203.0.113.10",
+        result: "success",
+        scopeType: "platform",
+        sessionId: "session",
+        userAgent: "Mozilla/5.0 Chrome/120.0 Windows NT 10.0",
+      },
+    ]);
+    assert.equal("password" in auditRows[0], false);
+  });
+
+  it("records unresolved tenant login failures without assigning a tenant", async () => {
+    const auditRows: Array<Record<string, unknown>> = [];
+    const service = createService({
+      loginAuditService: {
+        record: async (row: Record<string, unknown>) => auditRows.push(row),
+      },
+      tenantLoginResolver: { resolve: async () => null },
+    });
+
+    await assert.rejects(
+      service.login(
+        {
+          email: "owner@example.com",
+          password: "wrong-password",
+          tenantSlug: "missing",
+        },
+        {},
+        { cookie() {} },
+      ),
+      UnauthorizedException,
+    );
+
+    assert.equal(auditRows[0]?.failureCode, "tenant_unresolved");
+    assert.equal(auditRows[0]?.scopeType, "tenant");
+    assert.equal(auditRows[0]?.tenantId, null);
+  });
 });
 
 function createService(options: Record<string, Record<string, unknown>> = {}) {
@@ -101,6 +233,23 @@ function createService(options: Record<string, Record<string, unknown>> = {}) {
     (options.dataSource ?? {}) as never,
     { run: (_context: unknown, work: () => unknown) => work() } as never,
     (options.tenantLoginResolver ?? { resolve: async () => null }) as never,
+    (options.settingsService ?? {
+      resolvePlatformRuntimePreferences: async () => ({
+        currency: "CNY",
+        dateFormat: "YYYY-MM-DD",
+        language: "zh-Hans",
+        regionCode: "CN",
+        sources: {
+          currency: "code",
+          dateFormat: "code",
+          language: "code",
+          regionCode: "code",
+          timeZone: "code",
+        },
+        timeZone: "Asia/Shanghai",
+      }),
+    }) as never,
+    options.loginAuditService as never,
   );
 }
 

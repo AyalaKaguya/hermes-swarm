@@ -18,10 +18,12 @@ import { DatabaseModule } from "../../common/database/database.module.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
 import { SettingsModule } from "../settings/settings.module.js";
+import { AuditModule } from "../audit/audit.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
+    AuditModule,
     SettingsModule,
     TypeOrmModule.forFeature([
       IntegrationToken,

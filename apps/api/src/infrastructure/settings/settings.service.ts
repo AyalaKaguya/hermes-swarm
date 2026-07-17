@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleInit, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   FEATURE_SETTING_DEFINITIONS,
@@ -6,10 +12,13 @@ import {
   PlatformSetting,
   TenantSetting,
   getFeatureSettingDefaultValue,
+  getSettingDefinitionByKey,
   maskSettingValue,
   mergeEffectiveTenantSettings,
+  resolveRuntimePreferences,
   resolveSettingValueOptions,
   resolveSettingValueType,
+  type RuntimePreferenceUser,
   type SettingValueOption,
 } from "@hermes-swarm/core";
 import type { EntityManager, Repository } from "typeorm";
@@ -48,7 +57,11 @@ export class SettingsService implements OnModuleInit {
       this.findTenantSettings(tenantId),
       this.platformSettingRepository.find({ order: { name: "ASC" } }),
     ]);
-    return mergeEffectiveTenantSettings(tenantSettings, platformSettings, tenantId);
+    return mergeEffectiveTenantSettings(
+      tenantSettings,
+      platformSettings.filter(isTenantOverridableSetting),
+      tenantId,
+    );
   }
 
   async saveTenantSettings(tenantId: string, payload: SaveSettingsPayload) {
@@ -98,6 +111,23 @@ export class SettingsService implements OnModuleInit {
     return this.getPlatformValue(name, fallback);
   }
 
+  async resolveTenantRuntimePreferences(
+    tenantId: string,
+    user: RuntimePreferenceUser | null | undefined,
+  ) {
+    return resolveRuntimePreferences(user, await this.listTenantSettings(tenantId));
+  }
+
+  async resolvePlatformRuntimePreferences(
+    user: RuntimePreferenceUser | null | undefined,
+  ) {
+    const settings = await this.listPlatformSettings();
+    return resolveRuntimePreferences(
+      user,
+      settings.map((setting) => ({ ...setting, scope: "platform" })),
+    );
+  }
+
   private async ensureDefaultPlatformSettings() {
     const definitions = [
       ...Object.values(PLATFORM_SETTING_DEFINITIONS),
@@ -111,7 +141,22 @@ export class SettingsService implements OnModuleInit {
       })),
     ];
     for (const definition of definitions) {
-      if (await this.platformSettingRepository.findOne({ where: { name: definition.key } })) {
+      const existing = await this.platformSettingRepository.findOne({
+        where: { name: definition.key },
+      });
+      if (existing) {
+        const expectedScope = definition.scope ?? "platform";
+        const expectedOptions = getDefinitionValueOptions(definition);
+        if (
+          existing.scope !== expectedScope ||
+          existing.valueType !== definition.valueType ||
+          JSON.stringify(existing.valueOptions) !== JSON.stringify(expectedOptions)
+        ) {
+          existing.scope = expectedScope;
+          existing.valueOptions = expectedOptions;
+          existing.valueType = definition.valueType;
+          await this.platformSettingRepository.save(existing);
+        }
         continue;
       }
       try {
@@ -135,16 +180,38 @@ export class SettingsService implements OnModuleInit {
     entries: ReturnType<typeof parseSettingsPayload>,
   ) {
     const repository = manager.getRepository(PlatformSetting);
+    const tenantRepository = manager.getRepository(TenantSetting);
     const invalidations: AppliedSettingsInvalidation[] = [];
     for (const entry of entries) {
+      const definition = getSettingDefinitionByKey(entry.name);
       if (entry.value === null || entry.value === undefined) {
+        if (definition) {
+          throw new BadRequestException("预定义设置不能删除");
+        }
+        const tenantOverrides = await tenantRepository.find({
+          select: { name: true, tenantId: true },
+          where: { name: entry.name },
+        });
+        await tenantRepository.delete({ name: entry.name });
         await repository.delete({ name: entry.name });
         invalidations.push({ cacheKey: this.platformCacheKey(entry.name), name: entry.name, scope: "platform", value: null });
+        for (const override of tenantOverrides) {
+          invalidations.push({
+            cacheKey: this.tenantCacheKey(override.tenantId, entry.name),
+            name: entry.name,
+            scope: "tenant",
+            tenantId: override.tenantId,
+            value: null,
+          });
+        }
         continue;
       }
       const existing = await repository.findOne({ where: { name: entry.name } });
       const normalized = normalizeSettingEntry(entry, [existing]);
-      const setting = existing ?? repository.create({ name: entry.name, scope: "platform" });
+      const setting = existing ?? repository.create({ name: entry.name });
+      setting.scope = definition?.scope ?? normalizeSettingScope(
+        entry.scope ?? existing?.scope ?? "platform",
+      );
       setting.value = normalized.value;
       setting.valueOptions = normalized.valueOptions;
       setting.valueType = normalized.valueType;
@@ -165,14 +232,24 @@ export class SettingsService implements OnModuleInit {
     const invalidations: AppliedSettingsInvalidation[] = [];
     for (const entry of entries) {
       const existing = await repository.findOne({ where: { name: entry.name, tenantId } });
+      const platformSetting = platformByName.get(entry.name) ?? null;
       if (entry.value === null || entry.value === undefined) {
+        if (platformSetting && !isTenantOverridableSetting(platformSetting)) {
+          throw new BadRequestException("该设置不允许工作空间覆盖");
+        }
+        if (!platformSetting && !existing) {
+          throw new BadRequestException("未知的工作空间设置");
+        }
         await repository.delete({ name: entry.name, tenantId });
         invalidations.push({ cacheKey: this.tenantCacheKey(tenantId, entry.name), name: entry.name, scope: "tenant", tenantId, value: null });
         continue;
       }
+      if (!platformSetting || !isTenantOverridableSetting(platformSetting)) {
+        throw new BadRequestException("该设置不允许工作空间覆盖");
+      }
       const normalized = normalizeSettingEntry(entry, [
         existing,
-        platformByName.get(entry.name) ?? null,
+        platformSetting,
       ]);
       const setting = existing ?? repository.create({ name: entry.name, tenantId });
       setting.value = normalized.value;
@@ -263,6 +340,16 @@ function toPlatformSettingDto(setting: PlatformSetting) {
     valueOptions: resolveSettingValueOptions(setting.name, setting.valueOptions),
     valueType,
   };
+}
+
+function isTenantOverridableSetting(setting: PlatformSetting) {
+  const definition = getSettingDefinitionByKey(setting.name);
+  return definition ? definition.scope === "tenant" : setting.scope === "tenant";
+}
+
+function normalizeSettingScope(value: unknown): "platform" | "tenant" {
+  if (value === "platform" || value === "tenant") return value;
+  throw new BadRequestException("设置范围无效");
 }
 
 function isUniqueConstraintError(error: unknown) {

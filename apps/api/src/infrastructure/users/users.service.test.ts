@@ -217,6 +217,32 @@ describe("UsersService uniqueness handling", () => {
     );
     assert.equal(updated.tenantRole.name, "tenant-owner");
   });
+
+  it("stores explicit runtime preferences and supports workspace inheritance", async () => {
+    const state = createService({
+      users: [userRecord({ email: "owner@example.com", id: USER_ID })],
+    });
+    const explicit = await state.service.updateRuntimePreferences(token, {
+      preferredLanguage: "zh-HK",
+      timeZone: "Asia/Tokyo",
+    });
+    assert.equal(explicit.preferredLanguage, "zh-Hant");
+    assert.equal(explicit.timeZone, "Asia/Tokyo");
+
+    const inherited = await state.service.updateRuntimePreferences(token, {
+      preferredLanguage: null,
+      timeZone: null,
+    });
+    assert.equal(inherited.preferredLanguage, null);
+    assert.equal(inherited.timeZone, null);
+    await assert.rejects(
+      () =>
+        state.service.updateRuntimePreferences(token, {
+          timeZone: "Invalid/Zone",
+        }),
+      BadRequestException,
+    );
+  });
 });
 
 function createService(options: {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
+import { useI18n } from "@/components/i18n-provider";
 import { AppIcon } from "@/components/app-icon";
 import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
@@ -44,12 +45,14 @@ import {
   type TenantApplicationStatus,
 } from "@/lib/admin-api";
 import { withAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
+import { formatRuntimeDateTime } from "@/lib/runtime-format";
 
 type ReviewAction = "approve" | "reject";
 type ManagedTenantStatus = "active" | "archived" | "suspended";
 
 export function TenantApplicationsPage() {
   const t = useTranslations("platform");
+  const { runtimePreferences } = useI18n();
   const { snapshot } = useAdminShell();
   const [applications, setApplications] = useState<TenantApplication[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -273,7 +276,9 @@ export function TenantApplicationsPage() {
                     <TableCell>
                       <StatusBadge status={application.status} />
                     </TableCell>
-                    <TableCell>{formatDate(application.createdAt)}</TableCell>
+                    <TableCell>
+                      {formatRuntimeDateTime(application.createdAt, runtimePreferences) || "—"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
                         <Button
@@ -406,10 +411,6 @@ function Feedback({ children, kind }: { children: React.ReactNode; kind: "error"
   return <InlineNotice tone={kind}>{children}</InlineNotice>;
 }
 
-function formatDate(value: string) {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(timestamp) : "—";
-}
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;

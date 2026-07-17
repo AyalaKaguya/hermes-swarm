@@ -11,12 +11,14 @@ import {
   Role,
   User,
   UserTenantRole,
+  normalizeCanonicalLanguage,
   type UserStatus,
 } from "@hermes-swarm/core";
 import type {
   CreateUserPayload,
   SearchUsersQuery,
   UpdatePreferredLanguagePayload,
+  UpdateRuntimePreferencesPayload,
   UpdateUserPasswordPayload,
   UpdateUserPayload,
 } from "../../common/admin-api.types.js";
@@ -264,12 +266,30 @@ export class UsersService {
     authorization: string | undefined,
     payload: UpdatePreferredLanguagePayload,
   ) {
+    return this.updateRuntimePreferences(authorization, payload);
+  }
+
+  async updateRuntimePreferences(
+    authorization: string | undefined,
+    payload: UpdateRuntimePreferencesPayload,
+  ) {
     const session = await this.requireSession(authorization);
     const input = requirePayload(payload);
     const user = await this.getUserOrThrow(session.userId);
-    user.preferredLanguage = normalizePreferredLanguage(
-      input.preferredLanguage,
-    );
+    if (
+      input.preferredLanguage === undefined &&
+      input.timeZone === undefined
+    ) {
+      throw new BadRequestException("至少需要提供一项偏好设置");
+    }
+    if (input.preferredLanguage !== undefined) {
+      user.preferredLanguage = normalizePreferredLanguage(
+        input.preferredLanguage,
+      );
+    }
+    if (input.timeZone !== undefined) {
+      user.timeZone = normalizeTimeZone(input.timeZone);
+    }
     user.updatedAt = new Date();
     return toUserDto(await this.users.save(user));
   }
@@ -438,18 +458,20 @@ function requirePassword(value: unknown) {
 }
 
 function normalizePreferredLanguage(value: unknown) {
-  const language = requireText(value, "首选语言");
-  switch (language) {
-    case "en":
-      return "en";
-    case "zh":
-    case "zh-CN":
-    case "zh-Hans":
-      return "zh-Hans";
-    case "zh-Hant":
-      return "zh-Hant";
-    default:
-      throw new BadRequestException("不支持的语言");
+  if (value === null) return null;
+  const language = normalizeCanonicalLanguage(requireText(value, "首选语言"));
+  if (!language) throw new BadRequestException("不支持的语言");
+  return language;
+}
+
+function normalizeTimeZone(value: unknown) {
+  if (value === null) return null;
+  const timeZone = requireText(value, "时区");
+  try {
+    new Intl.DateTimeFormat("en", { timeZone }).format();
+    return timeZone;
+  } catch {
+    throw new BadRequestException("不支持的时区");
   }
 }
 

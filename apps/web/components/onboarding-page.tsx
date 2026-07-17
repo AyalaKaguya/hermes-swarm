@@ -24,7 +24,7 @@ import { getPublicBootstrap, onboard } from "@/lib/admin-api";
 export function OnboardingPage() {
   const router = useRouter();
   const t = useTranslations();
-  const { setLanguage } = useI18n();
+  const { setRuntimePreferences } = useI18n();
   const [organizationName, setOrganizationName] = useState("Hermes");
   const [organizationSlug, setOrganizationSlug] = useState("hermes");
   const [adminName, setAdminName] = useState("Admin");
@@ -69,7 +69,7 @@ export function OnboardingPage() {
         organizationSlug,
       });
 
-      setLanguage(response.snapshot.user.preferredLanguage);
+      setRuntimePreferences(response.snapshot.runtimePreferences);
       router.replace("/home");
     } catch (saveError) {
       setError(getErrorMessage(saveError, t("common.operationFailed")));

@@ -11,6 +11,7 @@ import type { SaveSettingsPayload } from "../../common/admin-api.types.js";
 
 export type ParsedSettingPayloadEntry = {
   name: string;
+  scope?: unknown;
   value: unknown;
   valueOptions?: unknown;
   valueType?: unknown;
@@ -44,12 +45,14 @@ export function parseSettingsPayload(
         }
         const setting = item as {
           name?: string;
+          scope?: unknown;
           value?: unknown;
           valueOptions?: unknown;
           valueType?: unknown;
         };
         return {
           name: requireSettingName(setting.name),
+          ...(setting.scope !== undefined ? { scope: setting.scope } : {}),
           value: setting.value,
           valueOptions: setting.valueOptions,
           valueType: setting.valueType,

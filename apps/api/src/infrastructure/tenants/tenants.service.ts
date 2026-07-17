@@ -674,10 +674,10 @@ function hashToken(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function normalizeApplicationLanguage(value: unknown): "en" | "zh-CN" {
+function normalizeApplicationLanguage(value: unknown): "en" | "zh-Hans" {
   return typeof value === "string" && value.trim().toLowerCase().startsWith("en")
     ? "en"
-    : "zh-CN";
+    : "zh-Hans";
 }
 
 export function buildTenantApplicationLinks(

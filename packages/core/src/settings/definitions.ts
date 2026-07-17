@@ -16,6 +16,8 @@ export type SettingValueType = (typeof SETTING_VALUE_TYPES)[number];
 
 export type SettingValueOption = SettingOption;
 
+export type SettingScope = "platform" | "tenant";
+
 export const SECRET_SETTING_MASK = "********";
 
 const SECRET_SETTING_KEY_TOKENS = new Set([
@@ -41,7 +43,7 @@ const SECRET_SETTING_KEY_PATTERNS = [
 export type PlatformSettingDefinition = {
   defaultValue?: string;
   key: string;
-  scope?: "platform" | "tenant";
+  scope?: SettingScope;
   valueOptions?: readonly SettingValueOption[];
   valueType: SettingValueType;
 };
@@ -127,7 +129,7 @@ export const DATE_FORMAT_OPTIONS = [
 ] as const satisfies readonly SettingOption[];
 
 export const LANGUAGE_OPTIONS = [
-  { label: "简体中文", value: "zh-CN" },
+  { label: "简体中文", value: "zh-Hans" },
   { label: "English", value: "en" },
   { label: "繁體中文", value: "zh-Hant" },
 ] as const satisfies readonly SettingOption[];
@@ -230,7 +232,7 @@ export const PLATFORM_SETTING_DEFINITIONS = {
     valueType: "enum",
   },
   defaultLanguage: {
-    defaultValue: "zh-CN",
+    defaultValue: "zh-Hans",
     key: PLATFORM_SETTING_KEYS.defaultLanguage,
     scope: "tenant",
     valueOptions: LANGUAGE_OPTIONS,

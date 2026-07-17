@@ -32,8 +32,8 @@ export class TenantApplication extends BaseEntity {
   @Column({ name: "owner_display_name", type: "varchar", length: 120 })
   ownerDisplayName!: string;
 
-  @Column({ name: "preferred_language", type: "varchar", length: 16, default: "zh-CN" })
-  preferredLanguage!: "en" | "zh-CN";
+  @Column({ name: "preferred_language", type: "varchar", length: 16, default: "zh-Hans" })
+  preferredLanguage!: "en" | "zh-Hans" | "zh-Hant";
 
   @Column({ name: "email_verification_token_hash", type: "varchar", length: 240, nullable: true })
   emailVerificationTokenHash!: string | null;

@@ -125,7 +125,12 @@ export type UpdateUserPasswordPayload = {
  * Preferred language payload for self-service profile updates.
  */
 export type UpdatePreferredLanguagePayload = {
-  preferredLanguage?: string;
+  preferredLanguage?: string | null;
+};
+
+export type UpdateRuntimePreferencesPayload = {
+  preferredLanguage?: string | null;
+  timeZone?: string | null;
 };
 
 export type SettingPayloadValue =
@@ -145,6 +150,7 @@ export type SaveSettingsPayload =
   | {
       settings?: Array<{
         name?: string;
+        scope?: "platform" | "tenant";
         value?: SettingPayloadValue;
         valueOptions?: SettingValueOption[] | null;
         valueType?: SettingValueType;

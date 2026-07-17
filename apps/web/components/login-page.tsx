@@ -39,7 +39,7 @@ export function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const t = useTranslations();
-  const { setLanguage } = useI18n();
+  const { setRuntimePreferences } = useI18n();
   const workspaceInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +139,7 @@ export function LoginPage() {
         return;
       }
       rememberWorkspace(window.localStorage, tenantContext.tenant.slug);
-      setLanguage(response.snapshot.user.preferredLanguage);
+      setRuntimePreferences(response.snapshot.runtimePreferences);
       router.replace(safeReturnUrl(searchParams.get("returnUrl")));
     } catch (loginError) {
       setPassword("");

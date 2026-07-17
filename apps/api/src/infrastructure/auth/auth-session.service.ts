@@ -32,6 +32,7 @@ import {
   createAuthSessionToken,
   parseAuthSessionToken,
 } from "./auth-session.js";
+import { parseAuthDevice } from "./auth-device.js";
 
 export type AuthRequestContext = {
   ipAddress?: string | null;
@@ -114,7 +115,7 @@ export class AuthSessionService {
     const expiresAt = new Date(
       now.getTime() + this.refreshTokenTtlSeconds * 1000,
     );
-    const device = parseDevice(context.userAgent);
+    const device = parseAuthDevice(context.userAgent);
     const record: AuthSessionRecord = {
       browser: device.browser,
       createdAt: now.toISOString(),
@@ -201,7 +202,7 @@ export class AuthSessionService {
       const expiresAt = new Date(
         now.getTime() + this.refreshTokenTtlSeconds * 1000,
       );
-      const device = parseDevice(context.userAgent ?? record.userAgent);
+      const device = parseAuthDevice(context.userAgent ?? record.userAgent);
       const nextRecord: AuthSessionRecord = {
         ...record,
         browser: device.browser,
@@ -984,33 +985,4 @@ function createRefreshToken() {
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
-}
-
-function parseDevice(userAgent: string | null | undefined) {
-  const value = userAgent ?? "";
-  const browser = /Edg\//.test(value)
-    ? "Edge"
-    : /Chrome\//.test(value)
-      ? "Chrome"
-      : /Firefox\//.test(value)
-        ? "Firefox"
-        : /Safari\//.test(value)
-          ? "Safari"
-          : "未知浏览器";
-  const os = /Windows NT/.test(value)
-    ? "Windows"
-    : /Mac OS X/.test(value)
-      ? "macOS"
-      : /Android/.test(value)
-        ? "Android"
-        : /iPhone|iPad|iPod/.test(value)
-          ? "iOS"
-          : /Linux/.test(value)
-            ? "Linux"
-            : "未知系统";
-  return {
-    browser,
-    deviceLabel: `${browser} / ${os}`,
-    os,
-  };
 }

@@ -388,6 +388,62 @@
         ]
       }
     },
+    "/api/admin/platform/audit/login-logs": {
+      "get": {
+        "operationId": "PlatformAuditController_listLoginLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformAudit"
+        ]
+      }
+    },
+    "/api/admin/platform/audit/operation-logs": {
+      "get": {
+        "operationId": "PlatformAuditController_listOperationLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformAudit"
+        ]
+      }
+    },
+    "/api/admin/tenant/audit/login-logs": {
+      "get": {
+        "operationId": "TenantAuditController_listLoginLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TenantAudit"
+        ]
+      }
+    },
+    "/api/admin/tenant/audit/operation-logs": {
+      "get": {
+        "operationId": "TenantAuditController_listOperationLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TenantAudit"
+        ]
+      }
+    },
     "/api/admin/platform/settings": {
       "get": {
         "operationId": "SettingsController_listPlatformSettings",
@@ -548,6 +604,20 @@
     "/api/admin/users/me/preferred-language": {
       "patch": {
         "operationId": "UsersController_updatePreferredLanguage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/admin/users/me/preferences": {
+      "patch": {
+        "operationId": "UsersController_updateRuntimePreferences",
         "parameters": [],
         "responses": {
           "200": {

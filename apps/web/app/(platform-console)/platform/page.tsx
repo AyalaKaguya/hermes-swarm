@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { AuditLogsView } from "@/components/audit-logs-view";
 
 export default function PlatformPage() {
-  redirect("/platform/tenants");
+  return <AuditLogsView scope="platform" />;
 }

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/components/i18n-provider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type {
   CreatedIntegrationToken,
@@ -22,6 +23,7 @@ import type {
   IntegrationTokenScopeCapability,
   PermissionCatalog,
 } from "@/lib/admin-api";
+import { formatRuntimeDateTime } from "@/lib/runtime-format";
 
 export type IntegrationTokenDraft = {
   expiresAt: string;
@@ -180,7 +182,6 @@ export function CreatedTokenDialog({
 export function TokenSection({
   canRevoke,
   emptyText,
-  locale,
   onRevoke,
   title,
   tokens,
@@ -188,12 +189,12 @@ export function TokenSection({
 }: {
   canRevoke: boolean;
   emptyText: string;
-  locale: string;
   onRevoke: (token: IntegrationToken) => void;
   title: string;
   tokens: IntegrationToken[];
   tr: (value: string | null | undefined) => string;
 }) {
+  const { runtimePreferences } = useI18n();
   return (
     <Card>
       <CardHeader className="pb-3"><CardTitle className="text-base">{title}</CardTitle></CardHeader>
@@ -209,7 +210,7 @@ export function TokenSection({
                 <Badge variant="secondary">{token.permissions.length} {tr("项权限")}</Badge>
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground">
-                {token.note || tr("无备注")} · {tr("到期")} {formatDateTime(token.expiresAt, locale)}
+                {token.note || tr("无备注")} · {tr("到期")} {formatRuntimeDateTime(token.expiresAt, runtimePreferences) || "-"}
               </p>
             </div>
             {canRevoke && !token.revokedAt && !token.isExpired && (
@@ -293,10 +294,4 @@ function capabilityToCatalog(
       }];
     }),
   };
-}
-
-function formatDateTime(value: string | null, locale: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString(locale);
 }

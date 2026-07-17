@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { useAdminShell } from "@/components/admin-shell";
+import { useI18n } from "@/components/i18n-provider";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,7 @@ import {
   getAuthenticatedAdminSessionMarker,
   requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
+import { formatRuntimeDateTime } from "@/lib/runtime-format";
 
 type OrganizationAssignmentDraft = {
   isDefault: boolean;
@@ -62,6 +64,7 @@ type OrganizationAssignmentDraft = {
 
 export default function InvitesPage() {
   const tr = useTextTranslation();
+  const { runtimePreferences } = useI18n();
   const { snapshot } = useAdminShell();
   const access = usePermission();
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -242,7 +245,11 @@ export default function InvitesPage() {
             <TableCell><div className="font-medium">{invite.email}</div>{invite.existingUser && <div className="text-xs text-muted-foreground">{tr("已有工作空间账号")}</div>}</TableCell>
             <TableCell><div className="flex flex-wrap gap-1">{invite.organizationAssignments.length ? invite.organizationAssignments.map((assignment) => <Badge key={assignment.organizationId} variant="outline">{organizationById.get(assignment.organizationId)?.name ?? assignment.organizationId}{assignment.isDefault ? ` · ${tr("默认")}` : ""}</Badge>) : <span className="text-sm text-muted-foreground">{tr("仅工作空间")}</span>}</div></TableCell>
             <TableCell><Badge variant={invite.status === "invited" ? "default" : "secondary"}>{statusLabel(invite.status, tr)}</Badge></TableCell>
-            <TableCell className="text-sm text-muted-foreground">{invite.expireDate ? new Date(invite.expireDate).toLocaleString() : tr("永久")}</TableCell>
+            <TableCell className="text-sm text-muted-foreground">
+              {invite.expireDate
+                ? formatRuntimeDateTime(invite.expireDate, runtimePreferences)
+                : tr("永久")}
+            </TableCell>
             <TableCell className="text-right"><div className="flex justify-end gap-1">{invite.status === "invited" && <><Button disabled={!canResend || saving} onClick={() => void resend(invite)} size="sm" variant="ghost">{tr("重发")}</Button><Button disabled={!canRevoke || saving} onClick={() => setInviteToRevoke(invite)} size="sm" variant="ghost">{tr("撤销")}</Button></>}</div></TableCell>
           </TableRow>)}
           {invites.length === 0 && <TableRow><TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={5}>{tr("暂无邀请")}</TableCell></TableRow>}

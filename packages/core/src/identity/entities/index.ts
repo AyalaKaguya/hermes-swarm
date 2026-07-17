@@ -3,6 +3,7 @@ export {
   AccessAuditLog,
   type AccessAuditPrincipalType,
   type AccessAuditResult,
+  type AccessAuditScopeType,
 } from "./access-audit-log.entity.js";
 export { EmailVerification } from "./email-verification.entity.js";
 export {
@@ -10,6 +11,11 @@ export {
   type IntegrationTokenScope,
 } from "./integration-token.entity.js";
 export { Invite, type InviteStatus } from "./invite.entity.js";
+export {
+  LoginAuditLog,
+  type LoginAuditResult,
+  type LoginAuditScopeType,
+} from "./login-audit-log.entity.js";
 export {
   Organization,
   type OrganizationStatus,

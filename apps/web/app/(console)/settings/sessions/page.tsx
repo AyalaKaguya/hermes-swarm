@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useLocale } from "next-intl";
+import { useI18n } from "@/components/i18n-provider";
 import { useNotifications } from "@/components/app-notifications";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { InlineNotice } from "@/components/inline-notice";
@@ -30,6 +30,8 @@ import {
   getAuthenticatedAdminSessionMarker,
   withAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
+import { formatRuntimeDateTime } from "@/lib/runtime-format";
+import type { RuntimePreferences } from "@hermes-swarm/core/settings";
 
 type PendingSessionAction =
   | {
@@ -43,7 +45,7 @@ type PendingSessionAction =
 export default function SessionsPage() {
   const notifications = useNotifications();
   const tr = useTextTranslation();
-  const locale = useLocale();
+  const { runtimePreferences } = useI18n();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
@@ -141,7 +143,7 @@ export default function SessionsPage() {
         : tr("没有其他可登出的设备");
   const dialogContent = getPendingActionDialogContent(
     pendingAction,
-    locale,
+    runtimePreferences,
     tr,
   );
 
@@ -298,7 +300,7 @@ function SessionDeviceRow({
   working: boolean;
 }) {
   const tr = useTextTranslation();
-  const locale = useLocale();
+  const { runtimePreferences } = useI18n();
   const status = getSessionStatus(device);
   const statusLabel = tr(status.label);
   const historical = Boolean(device.revokedAt || device.isExpired);
@@ -322,15 +324,15 @@ function SessionDeviceRow({
           <SessionMeta label={tr("IP")} value={device.ipAddress ?? tr("未知")} />
           <SessionMeta
             label={tr("最近活跃")}
-            value={formatDateTime(device.lastSeenAt, locale)}
+            value={formatRuntimeDateTime(device.lastSeenAt, runtimePreferences)}
           />
           <SessionMeta
             label={tr("创建时间")}
-            value={formatDateTime(device.createdAt, locale)}
+            value={formatRuntimeDateTime(device.createdAt, runtimePreferences)}
           />
           <SessionMeta
             label={tr("过期时间")}
-            value={formatDateTime(device.expiresAt, locale)}
+            value={formatRuntimeDateTime(device.expiresAt, runtimePreferences)}
           />
         </div>
       </div>
@@ -376,7 +378,7 @@ function SessionDeviceRow({
 
 function getPendingActionDialogContent(
   action: PendingSessionAction | null,
-  locale: string,
+  runtimePreferences: RuntimePreferences,
   tr: (value: string | null | undefined) => string,
 ) {
   if (!action) return null;
@@ -390,7 +392,7 @@ function getPendingActionDialogContent(
   }
 
   if (action.type === "delete") {
-    const device = formatSessionDeviceSummary(action.device, locale, tr);
+    const device = formatSessionDeviceSummary(action.device, runtimePreferences, tr);
     return {
       confirmLabel: tr("删除"),
       description: `${tr("设备")}：${device}。${tr(
@@ -400,7 +402,7 @@ function getPendingActionDialogContent(
     };
   }
 
-  const device = formatSessionDeviceSummary(action.device, locale, tr);
+  const device = formatSessionDeviceSummary(action.device, runtimePreferences, tr);
   return {
     confirmLabel: tr("登出"),
     description: `${tr("设备")}：${device}。${tr(
@@ -412,13 +414,13 @@ function getPendingActionDialogContent(
 
 function formatSessionDeviceSummary(
   device: AuthSessionDevice,
-  locale: string,
+  runtimePreferences: RuntimePreferences,
   tr: (value: string | null | undefined) => string,
 ) {
   return [
     device.deviceLabel || tr("未知设备"),
     device.ipAddress || tr("未知 IP"),
-    `${tr("最近活跃")} ${formatDateTime(device.lastSeenAt, locale)}`,
+    `${tr("最近活跃")} ${formatRuntimeDateTime(device.lastSeenAt, runtimePreferences)}`,
   ].join(" / ");
 }
 
@@ -450,13 +452,4 @@ function getSessionStatus(device: AuthSessionDevice) {
       "size-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15",
     label: device.isCurrent ? "当前设备" : "已登录",
   };
-}
-
-function formatDateTime(value: string, locale: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
 }

@@ -25,11 +25,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   fetchMe,
   updateUser,
   updateUserPassword,
+  updateUserRuntimePreferences,
   uploadAdminFile,
   type User,
 } from "@/lib/admin-api";
@@ -38,12 +46,18 @@ import {
   requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
+import {
+  LANGUAGE_OPTIONS,
+  TIME_ZONE_OPTIONS,
+} from "@hermes-swarm/core/settings/definitions";
 
 type ProfileForm = {
   displayName: string;
   email: string;
   firstName: string;
   lastName: string;
+  preferredLanguage: string;
+  timeZone: string;
 };
 
 type PasswordForm = {
@@ -113,6 +127,8 @@ export default function AccountPage() {
       profile.email !== saved.email ||
       profile.firstName !== saved.firstName ||
       profile.lastName !== saved.lastName
+      || profile.preferredLanguage !== saved.preferredLanguage
+      || profile.timeZone !== saved.timeZone
     );
   }, [profile, user]);
 
@@ -135,12 +151,25 @@ export default function AccountPage() {
 
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
-      const updated = await updateUser(token, {
+      let updated = await updateUser(token, {
         displayName: profile.displayName,
         email: profile.email,
         firstName: profile.firstName || null,
         lastName: profile.lastName || null,
       });
+      const savedPreferences = toProfileForm(user);
+      if (
+        profile.preferredLanguage !== savedPreferences.preferredLanguage ||
+        profile.timeZone !== savedPreferences.timeZone
+      ) {
+        updated = await updateUserRuntimePreferences(token, {
+          preferredLanguage:
+            profile.preferredLanguage === "inherit"
+              ? null
+              : profile.preferredLanguage,
+          timeZone: profile.timeZone === "inherit" ? null : profile.timeZone,
+        });
+      }
       setUser(updated);
       setProfile(toProfileForm(updated));
       notifications.success(tr("个人资料已保存"));
@@ -242,6 +271,61 @@ export default function AccountPage() {
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">
                 {user.displayName || user.email}
+              </div>
+
+              <Separator />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={tr("界面语言")} htmlFor="account-language">
+                  <Select
+                    onValueChange={(value) =>
+                      setProfile((current) => ({
+                        ...current,
+                        preferredLanguage: value,
+                      }))
+                    }
+                    value={profile.preferredLanguage}
+                  >
+                    <SelectTrigger id="account-language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inherit">
+                        {tr("跟随工作空间")}
+                      </SelectItem>
+                      {LANGUAGE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label={tr("个人时区")} htmlFor="account-time-zone">
+                  <Select
+                    onValueChange={(value) =>
+                      setProfile((current) => ({
+                        ...current,
+                        timeZone: value,
+                      }))
+                    }
+                    value={profile.timeZone}
+                  >
+                    <SelectTrigger id="account-time-zone">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inherit">
+                        {tr("跟随工作空间")}
+                      </SelectItem>
+                      {TIME_ZONE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {tr(option.label)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
               </div>
               <div className="truncate text-xs">{user.email}</div>
             </div>
@@ -473,6 +557,8 @@ function emptyProfile(): ProfileForm {
     email: "",
     firstName: "",
     lastName: "",
+    preferredLanguage: "inherit",
+    timeZone: "inherit",
   };
 }
 
@@ -482,6 +568,8 @@ function toProfileForm(user: User): ProfileForm {
     email: user.email ?? "",
     firstName: user.firstName ?? "",
     lastName: user.lastName ?? "",
+    preferredLanguage: user.preferredLanguage ?? "inherit",
+    timeZone: user.timeZone ?? "inherit",
   };
 }
 

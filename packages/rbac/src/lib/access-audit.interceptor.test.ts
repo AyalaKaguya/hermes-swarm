@@ -24,13 +24,17 @@ describe("access audit persistence", () => {
         errorCode: null,
         httpMethod: "PATCH",
         httpPath: "/api/admin/organizations/org-1",
+        ipAddress: null,
         organizationId: "org-1",
         permission: "organization.update:organization",
         principalType: "tenant",
         result: "allowed",
+        scopeType: "organization",
+        sessionId: null,
         statusCode: 200,
         targetTenantId: null,
         tenantId: "tenant-1",
+        userAgent: null,
       },
     ]);
   });

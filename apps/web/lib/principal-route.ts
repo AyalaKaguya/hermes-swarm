@@ -14,5 +14,9 @@ export function resolvePrincipalRoute(
   if (pathname.startsWith("/settings/platform")) {
     return "/platform/settings";
   }
-  return "/platform/tenants";
+  return "/platform";
+}
+
+export function resolveLoginRoute(pathname: string) {
+  return pathname.startsWith("/platform") ? "/platform/login" : "/login";
 }

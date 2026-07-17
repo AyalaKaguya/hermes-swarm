@@ -21,16 +21,22 @@ import {
   getStoredLanguagePreference,
   normalizeLanguagePreference,
   type SupportedLanguage,
+  applyTimeZonePreference,
+  normalizeTimeZonePreference,
 } from "@/lib/i18n";
+import type { RuntimePreferences } from "@hermes-swarm/core/settings";
 
 type I18nContextValue = {
   language: SupportedLanguage;
+  runtimePreferences: RuntimePreferences;
   setLanguage: (language: string | null | undefined) => void;
+  setRuntimePreferences: (preferences: RuntimePreferences) => void;
 };
 
 type I18nState = {
   language: SupportedLanguage;
   messages: AbstractIntlMessages;
+  runtimePreferences: RuntimePreferences;
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -39,10 +45,12 @@ export function I18nProvider({
   children,
   initialLocale,
   initialMessages,
+  initialTimeZone,
 }: {
   children: ReactNode;
   initialLocale: string;
   initialMessages: AbstractIntlMessages;
+  initialTimeZone: string;
 }) {
   const initialLanguage = normalizeLanguagePreference(initialLocale);
   const [state, setState] = useState<I18nState>(() => {
@@ -57,6 +65,10 @@ export function I18nProvider({
         language === initialLanguage
           ? initialMessages
           : getMessagesForLanguage(language),
+      runtimePreferences: defaultRuntimePreferences(
+        language,
+        normalizeTimeZonePreference(initialTimeZone),
+      ),
     };
   });
 
@@ -67,9 +79,26 @@ export function I18nProvider({
       return {
         language: normalized,
         messages: getMessagesForLanguage(normalized),
+        runtimePreferences: {
+          ...current.runtimePreferences,
+          language: normalized,
+        },
       };
     });
   }, []);
+
+  const setRuntimePreferences = useCallback(
+    (preferences: RuntimePreferences) => {
+      const language = applyLanguagePreference(preferences.language);
+      const timeZone = applyTimeZonePreference(preferences.timeZone);
+      setState({
+        language,
+        messages: getMessagesForLanguage(language),
+        runtimePreferences: { ...preferences, language, timeZone },
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const storedLanguage = getStoredLanguagePreference();
@@ -90,22 +119,47 @@ export function I18nProvider({
   }, [state.language, setLanguage]);
 
   const value = useMemo<I18nContextValue>(
-    () => ({ language: state.language, setLanguage }),
-    [state.language, setLanguage],
+    () => ({
+      language: state.language,
+      runtimePreferences: state.runtimePreferences,
+      setLanguage,
+      setRuntimePreferences,
+    }),
+    [state.language, state.runtimePreferences, setLanguage, setRuntimePreferences],
   );
 
   return (
     <I18nContext.Provider value={value}>
       <NextIntlClientProvider
-        key={state.language}
+        key={`${state.language}:${state.runtimePreferences.timeZone}`}
         locale={state.language}
         messages={state.messages}
-        timeZone="Asia/Hong_Kong"
+        timeZone={state.runtimePreferences.timeZone}
       >
         {children}
       </NextIntlClientProvider>
     </I18nContext.Provider>
   );
+}
+
+function defaultRuntimePreferences(
+  language: SupportedLanguage,
+  timeZone: string,
+): RuntimePreferences {
+  return {
+    currency: "CNY",
+    dateFormat: "YYYY-MM-DD",
+    language,
+    regionCode: "CN",
+    sources: {
+      currency: "code",
+      dateFormat: "code",
+      language: "code",
+      regionCode: "code",
+      timeZone: "code",
+    },
+    timeZone,
+  };
 }
 
 export function useI18n() {

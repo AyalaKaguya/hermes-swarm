@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  Injectable,
+  Optional,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   Organization,
@@ -18,6 +22,8 @@ import { verifyPassword } from "../../common/security/password-hash.js";
 import { toUserDto } from "../users/user-dto.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
+import { SettingsService } from "../settings/settings.service.js";
+import { LoginAuditService } from "../audit/login-audit.service.js";
 
 @Injectable()
 /**
@@ -31,74 +37,165 @@ export class AuthService {
     private readonly dataSource: DataSource,
     private readonly tenantContext: TenantContextService,
     private readonly tenantLoginResolver: TenantLoginResolverService,
+    private readonly settingsService: SettingsService,
+    @Optional()
+    private readonly loginAuditService?: LoginAuditService,
   ) {}
 
   /**
    * Authenticates an admin user and returns the session token plus principal.
    */
   async login(payload: LoginPayload, request: any, response: any) {
-    const input = requireLoginPayload(payload);
-    const email = normalizeEmail(input.email);
-    const password = requireText(input.password, "密码");
-    const tenant = (await this.tenantLoginResolver.resolve(
-      request,
-      input.tenantSlug,
-    ))?.tenant;
-    const user = tenant
-      ? await this.runInTenantContext(tenant.id, (manager) =>
-          manager.getRepository(User).findOne({
-            where: { email, tenantId: tenant.id },
-          }),
-        )
-      : null;
-    if (
-      !user ||
-      user.status !== "active" ||
-      !verifyPassword(password, user.passwordHash)
-    ) {
-      throw new UnauthorizedException("用户名或密码不正确");
-    }
+    const requestContext = getRequestContext(request);
+    const attemptedEmail = readAttemptedEmail(payload);
+    let tenantId: string | null = null;
+    let tenantResolutionCompleted = false;
+    let recorded = false;
+    try {
+      const input = requireLoginPayload(payload);
+      const email = normalizeEmail(input.email);
+      const password = requireText(input.password, "密码");
+      const tenant = (await this.tenantLoginResolver.resolve(
+        request,
+        input.tenantSlug,
+      ))?.tenant;
+      tenantResolutionCompleted = true;
+      tenantId = tenant?.id ?? null;
+      const user = tenant
+        ? await this.runInTenantContext(tenant.id, (manager) =>
+            manager.getRepository(User).findOne({
+              where: { email, tenantId: tenant.id },
+            }),
+          )
+        : null;
+      if (
+        !user ||
+        user.status !== "active" ||
+        !verifyPassword(password, user.passwordHash)
+      ) {
+        await this.recordLoginAttempt({
+          attemptedEmail: email,
+          failureCode: tenant ? "invalid_credentials" : "tenant_unresolved",
+          ...requestContext,
+          result: "failed",
+          scopeType: "tenant",
+          tenantId,
+        });
+        recorded = true;
+        throw new UnauthorizedException("用户名或密码不正确");
+      }
 
-    return this.createLoginResponse(user, request, response);
+      const result = await this.createLoginResponse(user, request, response);
+      await this.recordLoginAttempt({
+        actorId: user.id,
+        attemptedEmail: email,
+        ...requestContext,
+        result: "success",
+        scopeType: "tenant",
+        sessionId: result.sessionId,
+        tenantId,
+      });
+      recorded = true;
+      return result;
+    } catch (error) {
+      if (!recorded) {
+        await this.recordLoginAttempt({
+          attemptedEmail,
+          failureCode:
+            tenantResolutionCompleted && !tenantId
+              ? "tenant_unresolved"
+              : error instanceof UnauthorizedException
+                ? "invalid_credentials"
+                : "internal_error",
+          ...requestContext,
+          result: "failed",
+          scopeType: "tenant",
+          tenantId,
+        });
+      }
+      throw error;
+    }
   }
 
   async loginPlatform(payload: LoginPayload, request: any, response: any) {
-    const input = requireLoginPayload(payload);
-    const email = normalizeEmail(input.email);
-    const password = requireText(input.password, "密码");
-    const user = await this.platformUserRepository.findOne({
-      relations: {
-        roles: {
-          platformRole: { rolePermissions: { permission: true } },
+    const requestContext = getRequestContext(request);
+    const attemptedEmail = readAttemptedEmail(payload);
+    let recorded = false;
+    try {
+      const input = requireLoginPayload(payload);
+      const email = normalizeEmail(input.email);
+      const password = requireText(input.password, "密码");
+      const user = await this.platformUserRepository.findOne({
+        relations: {
+          roles: {
+            platformRole: { rolePermissions: { permission: true } },
+          },
         },
-      },
-      where: { email },
-    });
-    if (
-      !user ||
-      user.status !== "active" ||
-      !verifyPassword(password, user.passwordHash)
-    ) {
-      throw new UnauthorizedException("用户名或密码不正确");
+        where: { email },
+      });
+      if (
+        !user ||
+        user.status !== "active" ||
+        !verifyPassword(password, user.passwordHash)
+      ) {
+        await this.recordLoginAttempt({
+          attemptedEmail: email,
+          failureCode: "invalid_credentials",
+          ...requestContext,
+          result: "failed",
+          scopeType: "platform",
+        });
+        recorded = true;
+        throw new UnauthorizedException("用户名或密码不正确");
+      }
+      const session = await this.authSessionService.createSession(
+        user.id,
+        null,
+        "platform",
+        requestContext,
+      );
+      setRefreshCookie(
+        response,
+        this.authSessionService.getRefreshCookieName(),
+        session.refreshToken,
+        this.authSessionService.getRefreshCookieOptions(),
+      );
+      const result = {
+        accessToken: session.accessToken,
+        expiresAt: session.expiresAt,
+        sessionId: session.sessionId,
+        snapshot: {
+          platformUser: toPlatformUserDto(user),
+          principalType: "platform" as const,
+          runtimePreferences:
+            await this.settingsService.resolvePlatformRuntimePreferences(user),
+        },
+      };
+      await this.recordLoginAttempt({
+        actorId: user.id,
+        attemptedEmail: email,
+        ...requestContext,
+        result: "success",
+        scopeType: "platform",
+        sessionId: result.sessionId,
+      });
+      recorded = true;
+      return result;
+    } catch (error) {
+      if (!recorded) {
+        await this.recordLoginAttempt({
+          attemptedEmail,
+          failureCode:
+            error instanceof UnauthorizedException
+              ? "invalid_credentials"
+              : "internal_error",
+          ...requestContext,
+          result: "failed",
+          scopeType: "platform",
+        });
+      }
+      throw error;
     }
-    const session = await this.authSessionService.createSession(
-      user.id,
-      null,
-      "platform",
-      getRequestContext(request),
-    );
-    setRefreshCookie(
-      response,
-      this.authSessionService.getRefreshCookieName(),
-      session.refreshToken,
-      this.authSessionService.getRefreshCookieOptions(),
-    );
-    return {
-      accessToken: session.accessToken,
-      expiresAt: session.expiresAt,
-      sessionId: session.sessionId,
-      snapshot: { platformUser: toPlatformUserDto(user), principalType: "platform" },
-    };
   }
 
   async createLoginResponse(user: User, request: any, response: any) {
@@ -263,6 +360,10 @@ export class AuthService {
       return {
         platformUser: toPlatformUserDto(platformUser),
         principalType: "platform",
+        runtimePreferences:
+          await this.settingsService.resolvePlatformRuntimePreferences(
+            platformUser,
+          ),
       };
     }
     if (!session.tenantId) throw new UnauthorizedException("当前接口需要租户账号");
@@ -382,6 +483,11 @@ export class AuthService {
         ),
       ),
       principalType: "tenant" as const,
+      runtimePreferences:
+        await this.settingsService.resolveTenantRuntimePreferences(
+          tenantId,
+          user,
+        ),
       tenant,
       tenantId,
       tenantRole: tenantRoleAssignments[0]
@@ -414,6 +520,12 @@ export class AuthService {
       );
     });
   }
+
+  private recordLoginAttempt(
+    input: Parameters<LoginAuditService["record"]>[0],
+  ) {
+    return this.loginAuditService?.record(input) ?? Promise.resolve();
+  }
 }
 
 function groupPermissionsByRoleId(permissions: RolePermission[]) {
@@ -436,6 +548,15 @@ function requireLoginPayload(value: LoginPayload) {
 
 function normalizeEmail(value: unknown) {
   return requireText(value, "邮箱").toLowerCase();
+}
+
+function readAttemptedEmail(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "unknown";
+  }
+  const email = (value as { email?: unknown }).email;
+  if (typeof email !== "string") return "unknown";
+  return email.trim().toLowerCase().slice(0, 160) || "unknown";
 }
 
 function requireText(value: unknown, label: string) {
@@ -517,8 +638,20 @@ function toPlatformUserDto(user: PlatformUser) {
         permissions:
           item.platformRole.rolePermissions
             ?.filter((row) => row.enabled)
-            .map((row) => row.permission.code)
-            .filter(Boolean) ?? [],
+            .flatMap((row) => {
+              const permission = row.permission?.code;
+              return permission
+                ? [
+                    {
+                      enabled: row.enabled,
+                      id: row.id,
+                      permission,
+                      permissionId: row.permissionId,
+                      roleId: row.platformRoleId,
+                    },
+                  ]
+                : [];
+            }) ?? [],
       })) ?? [],
     status: user.status,
   };

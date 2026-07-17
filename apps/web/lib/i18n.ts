@@ -9,6 +9,8 @@ export type AppMessages = typeof zhHansMessages;
 export const DEFAULT_LANGUAGE: SupportedLanguage = "zh-Hans";
 export const LANGUAGE_STORAGE_KEY = "hermes-swarm.preferred-language";
 export const LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+export const TIME_ZONE_STORAGE_KEY = "hermes-swarm.time-zone";
+export const DEFAULT_TIME_ZONE = "Asia/Shanghai";
 
 export const SUPPORTED_LANGUAGES = ["zh-Hans", "zh-Hant", "en"] as const;
 
@@ -73,6 +75,28 @@ export function applyLanguagePreference(language: string | null | undefined) {
   document.documentElement.lang = normalized;
   window.localStorage.setItem(LANGUAGE_STORAGE_KEY, normalized);
   document.cookie = `${LANGUAGE_STORAGE_KEY}=${normalized}; path=/; max-age=${LANGUAGE_COOKIE_MAX_AGE}; samesite=lax`;
+  return normalized;
+}
+
+export function normalizeTimeZonePreference(
+  timeZone: string | null | undefined,
+) {
+  const candidate = timeZone?.trim() || DEFAULT_TIME_ZONE;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: candidate }).format();
+    return candidate;
+  } catch {
+    return DEFAULT_TIME_ZONE;
+  }
+}
+
+export function applyTimeZonePreference(
+  timeZone: string | null | undefined,
+) {
+  const normalized = normalizeTimeZonePreference(timeZone);
+  if (typeof document === "undefined") return normalized;
+  window.localStorage.setItem(TIME_ZONE_STORAGE_KEY, normalized);
+  document.cookie = `${TIME_ZONE_STORAGE_KEY}=${normalized}; path=/; max-age=${LANGUAGE_COOKIE_MAX_AGE}; samesite=lax`;
   return normalized;
 }
 

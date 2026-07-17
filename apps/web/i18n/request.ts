@@ -4,6 +4,8 @@ import {
   LANGUAGE_STORAGE_KEY,
   getMessagesForLanguage,
   normalizeLanguagePreference,
+  normalizeTimeZonePreference,
+  TIME_ZONE_STORAGE_KEY,
 } from "@/lib/i18n";
 
 export default getRequestConfig(async () => {
@@ -15,6 +17,8 @@ export default getRequestConfig(async () => {
   return {
     locale,
     messages: getMessagesForLanguage(locale),
-    timeZone: "Asia/Hong_Kong",
+    timeZone: normalizeTimeZonePreference(
+      cookieStore.get(TIME_ZONE_STORAGE_KEY)?.value,
+    ),
   };
 });

@@ -17,6 +17,7 @@ import type {
   CreateUserPayload,
   SearchUsersQuery,
   UpdatePreferredLanguagePayload,
+  UpdateRuntimePreferencesPayload,
   UpdateUserPasswordPayload,
   UpdateUserPayload,
 } from "../../common/admin-api.types.js";
@@ -151,6 +152,25 @@ export class UsersController {
     @Body() payload: UpdatePreferredLanguagePayload,
   ) {
     return this.usersService.updatePreferredLanguage(authorization, payload);
+  }
+
+  @Patch("me/preferences")
+  @AccessOperation({
+    description: "修改自己的语言和时区偏好。",
+    entity: "user",
+    entityLabel: "用户",
+    operation: "update_preferences",
+    label: "修改本地化偏好",
+    purpose: "self_profile",
+    purposeLabel: "个人资料",
+    scope: "own",
+    sortOrder: 35,
+  })
+  updateRuntimePreferences(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() payload: UpdateRuntimePreferencesPayload,
+  ) {
+    return this.usersService.updateRuntimePreferences(authorization, payload);
   }
 
   @Patch(":userId")

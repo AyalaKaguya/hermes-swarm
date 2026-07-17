@@ -31,7 +31,7 @@ import {
 } from "@/lib/appearance";
 import {
   logoutAuthSession,
-  updateUserPreferredLanguage,
+  updateUserRuntimePreferences,
   type User,
 } from "@/lib/admin-api";
 import { getAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
@@ -70,15 +70,20 @@ export function UserMenu({
   }, []);
 
   async function changeLanguage(nextLanguage: string) {
-    const normalized = normalizeLanguagePreference(nextLanguage);
-    setLanguage(normalized);
+    const inherited = nextLanguage === "inherit";
+    const normalized = inherited
+      ? null
+      : normalizeLanguagePreference(nextLanguage);
+    if (normalized) setLanguage(normalized);
 
     const token = await getAuthenticatedAdminSessionMarker();
-    if (!token || !user || normalized === language) return;
+    if (!token || !user) return;
 
     setSavingLanguage(true);
     try {
-      await updateUserPreferredLanguage(token, normalized);
+      await updateUserRuntimePreferences(token, {
+        preferredLanguage: normalized,
+      });
       await onUserUpdated?.();
     } catch (err) {
       notifications.error(
@@ -163,8 +168,19 @@ export function UserMenu({
             <DropdownMenuSubContent className="w-36">
               <DropdownMenuRadioGroup
                 onValueChange={changeLanguage}
-                value={language}
+                value={
+                  user?.preferredLanguage
+                    ? normalizeLanguagePreference(user.preferredLanguage)
+                    : "inherit"
+                }
               >
+                <DropdownMenuRadioItem
+                  className="h-8"
+                  disabled={savingLanguage}
+                  value="inherit"
+                >
+                  {tr("跟随工作空间")}
+                </DropdownMenuRadioItem>
                 {LANGUAGE_OPTIONS.map((option) => (
                   <DropdownMenuRadioItem
                     className="h-8"

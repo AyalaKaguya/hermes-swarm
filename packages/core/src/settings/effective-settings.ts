@@ -12,11 +12,14 @@ export type ScopedSettingRecord = {
   value: string | null;
   valueOptions?: readonly SettingValueOption[] | null;
   valueType?: SettingValueType | string | null;
+  scope?: string | null;
 };
 
 export type EffectiveTenantSetting = {
   defaultValue: string | null;
   id: string;
+  isEditable: boolean;
+  isOrphaned: boolean;
   isOverridden: boolean;
   name: string;
   overrideValue: string | null;
@@ -48,11 +51,14 @@ export function mergeEffectiveTenantSettings(
       tenantSetting?.valueOptions ?? platformSetting?.valueOptions,
     );
     const isOverridden = Boolean(tenantSetting);
+    const isOrphaned = Boolean(tenantSetting && !platformSetting);
     const defaultValue = platformSetting?.value ?? null;
     const overrideValue = tenantSetting?.value ?? null;
     return {
       defaultValue: maskSettingValue(defaultValue, valueType),
       id: tenantSetting?.id ?? platformSetting?.id ?? `${tenantId}:${name}`,
+      isEditable: !isOrphaned && platformSetting?.scope !== "platform",
+      isOrphaned,
       isOverridden,
       name,
       overrideValue: maskSettingValue(overrideValue, valueType),

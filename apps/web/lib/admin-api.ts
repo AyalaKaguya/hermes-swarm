@@ -3,6 +3,10 @@ import {
   type SettingValueOption,
   type SettingValueType,
 } from "@hermes-swarm/core/settings/definitions";
+import type {
+  EffectiveTenantSetting,
+  RuntimePreferences,
+} from "@hermes-swarm/core/settings";
 import type { AuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 import { getOrganizationRequestSignal } from "@/lib/organization-context";
 
@@ -15,6 +19,76 @@ export type Tenant = {
   name: string;
   slug: string;
   status: "provisioning" | "active" | "suspended" | "archived";
+};
+
+export type AuditActor = {
+  displayName: string;
+  email: string;
+  id: string;
+};
+
+export type AuditNamedReference = {
+  id: string;
+  name: string;
+};
+
+export type AuditLogPage<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+export type AuditLogQuery = Partial<{
+  actorId: string;
+  from: string;
+  httpMethod: string;
+  keyword: string;
+  page: number;
+  pageSize: number;
+  permission: string;
+  result: string;
+  to: string;
+}>;
+
+export type LoginAuditLogItem = {
+  actor: AuditActor | null;
+  actorId: string | null;
+  attemptedEmail: string;
+  createdAt: string;
+  deviceLabel: string | null;
+  failureCode: string | null;
+  id: string;
+  ipAddress: string | null;
+  result: "failed" | "success";
+  scopeType: "platform" | "tenant";
+  sessionId: string | null;
+  tenantId: string | null;
+  userAgent: string | null;
+};
+
+export type OperationAuditLogItem = {
+  actor: AuditActor | null;
+  actorId: string | null;
+  createdAt: string;
+  errorCode: string | null;
+  httpMethod: string | null;
+  httpPath: string | null;
+  id: string;
+  ipAddress: string | null;
+  operationLabel: string;
+  organization: AuditNamedReference | null;
+  organizationId: string | null;
+  permission: string;
+  principalType: "anonymous" | "integration" | "platform" | "tenant";
+  result: "allowed" | "denied" | "error";
+  scopeType: "organization" | "own" | "platform" | "tenant";
+  sessionId: string | null;
+  statusCode: number | null;
+  targetTenant: AuditNamedReference | null;
+  targetTenantId: string | null;
+  tenantId: string | null;
+  userAgent: string | null;
 };
 
 export type TenantApplicationStatus =
@@ -161,7 +235,7 @@ export type User = {
   imageUrl: string | null;
   nickname?: string | null;
   avatarUrl?: string | null;
-  preferredLanguage: string;
+  preferredLanguage: string | null;
   emailVerified: boolean;
   timeZone: string | null;
   tenantRole?: Role | null;
@@ -254,17 +328,20 @@ export type OrganizationMembershipPayload = {
 };
 
 export type PlatformMember = {
-  displayName: string | null;
+  displayName: string;
+  email: string;
   id: string;
   role: Role | null;
   roleId: string | null;
+  roles: Role[];
   status: "active" | "disabled";
-  user: User;
   userId: string;
 };
 
 export type PlatformMemberPayload = {
   displayName?: string | null;
+  email?: string;
+  password?: string;
   roleId?: string | null;
   status?: "active" | "disabled";
   userId?: string;
@@ -321,7 +398,7 @@ export type Invite = {
 export type SystemSettingDto = {
   id: string;
   name: string;
-  scope: string;
+  scope: "platform" | "tenant";
   value: string | null;
   valueOptions?: SettingValueOption[] | null;
   valueType: SettingValueType;
@@ -337,6 +414,7 @@ export type SettingPayloadValue =
 
 export type SettingPayloadEntry = {
   name: string;
+  scope?: "platform" | "tenant";
   value: SettingPayloadValue;
   valueOptions?: SettingValueOption[] | null;
   valueType?: SettingValueType;
@@ -366,6 +444,7 @@ export type TenantPrincipalSession = {
   permissions: string[];
   role?: Role | null;
   principalType: "tenant";
+  runtimePreferences: RuntimePreferences;
   systemSettings?: SystemSettingDto[];
   tenant?: Tenant | null;
   tenantId: string;
@@ -376,6 +455,7 @@ export type TenantPrincipalSession = {
 export type PlatformPrincipalSession = {
   platformUser: PlatformUser;
   principalType: "platform";
+  runtimePreferences: RuntimePreferences;
   systemSettings?: SystemSettingDto[];
 };
 
@@ -394,6 +474,7 @@ export type Snapshot = {
   role?: Role | null;
   rolePermissions: RolePermission[];
   roles: Role[];
+  runtimePreferences: RuntimePreferences;
   systemSettings: SystemSettingDto[];
   tenant?: Tenant | null;
   tenantId?: string | null;
@@ -774,6 +855,40 @@ export function listPlatformTenants(
   return fetchAdmin<Tenant[]>("/platform/tenants", {});
 }
 
+export function listLoginAuditLogs(
+  session: AuthenticatedAdminSessionMarker,
+  scope: "platform" | "tenant",
+  query: AuditLogQuery,
+) {
+  return fetchAdmin<AuditLogPage<LoginAuditLogItem>>(
+    `${auditApiBase(scope)}/login-logs${buildQueryString(query)}`,
+  );
+}
+
+export function listOperationAuditLogs(
+  session: AuthenticatedAdminSessionMarker,
+  scope: "platform" | "tenant",
+  query: AuditLogQuery,
+) {
+  return fetchAdmin<AuditLogPage<OperationAuditLogItem>>(
+    `${auditApiBase(scope)}/operation-logs${buildQueryString(query)}`,
+  );
+}
+
+function auditApiBase(scope: "platform" | "tenant") {
+  return scope === "platform" ? "/platform/audit" : "/tenant/audit";
+}
+
+function buildQueryString(query: AuditLogQuery) {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === "") continue;
+    parameters.set(key, String(value));
+  }
+  const queryString = parameters.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
 export function updatePlatformTenantStatus(
   session: AuthenticatedAdminSessionMarker,
   tenantId: string,
@@ -963,10 +1078,20 @@ export function updateUserPassword(session: AuthenticatedAdminSessionMarker, pay
 
 export function updateUserPreferredLanguage(
   session: AuthenticatedAdminSessionMarker,
-  preferredLanguage: string,
+  preferredLanguage: string | null,
 ) {
   return fetchAdmin<User>("/users/me/preferred-language", {
     body: { preferredLanguage },
+    method: "PATCH",
+  });
+}
+
+export function updateUserRuntimePreferences(
+  session: AuthenticatedAdminSessionMarker,
+  payload: { preferredLanguage?: string | null; timeZone?: string | null },
+) {
+  return fetchAdmin<User>("/users/me/preferences", {
+    body: payload,
     method: "PATCH",
   });
 }
@@ -1224,6 +1349,22 @@ export function saveSystemSettings(
   settings: SaveSettingsPayload,
 ) {
   return fetchAdmin<SystemSettingDto[]>("/platform/settings", { body: settings, method: "PUT" });
+}
+
+export function listTenantSettings(
+  session: AuthenticatedAdminSessionMarker,
+) {
+  return fetchAdmin<EffectiveTenantSetting[]>("/tenant/settings", {});
+}
+
+export function saveTenantSettings(
+  session: AuthenticatedAdminSessionMarker,
+  settings: SaveSettingsPayload,
+) {
+  return fetchAdmin<EffectiveTenantSetting[]>("/tenant/settings", {
+    body: settings,
+    method: "PUT",
+  });
 }
 
 export function listOrganizations(session: AuthenticatedAdminSessionMarker) {

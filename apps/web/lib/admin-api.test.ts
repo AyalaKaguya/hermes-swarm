@@ -7,6 +7,8 @@ import {
   createTenantRole,
   fetchMe,
   listInvites,
+  listLoginAuditLogs,
+  listOperationAuditLogs,
   listUsers,
   listTenantRoles,
   replaceTenantRolePermissions,
@@ -151,6 +153,30 @@ describe("admin API browser client", () => {
         method: "POST",
         url: "/api/admin/invites",
       },
+    ]);
+  });
+
+  it("uses scope-specific audit routes with server-side filters", async () => {
+    const requests: string[] = [];
+    globalThis.fetch = async (input) => {
+      requests.push(String(input));
+      return Response.json({ items: [], page: 2, pageSize: 20, total: 0 });
+    };
+
+    await listLoginAuditLogs("web-session", "tenant", {
+      keyword: "owner@example.com",
+      page: 2,
+      pageSize: 20,
+      result: "failed",
+    });
+    await listOperationAuditLogs("web-session", "platform", {
+      httpMethod: "PATCH",
+      permission: "tenant.application.approve:platform",
+    });
+
+    assert.deepEqual(requests, [
+      "/api/admin/tenant/audit/login-logs?keyword=owner%40example.com&page=2&pageSize=20&result=failed",
+      "/api/admin/platform/audit/operation-logs?httpMethod=PATCH&permission=tenant.application.approve%3Aplatform",
     ]);
   });
 });

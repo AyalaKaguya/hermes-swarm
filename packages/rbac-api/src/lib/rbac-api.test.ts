@@ -147,4 +147,28 @@ describe("page access definitions", () => {
       "organization",
     );
   });
+
+  it("defines scope-isolated tenant and platform audit pages", () => {
+    const tenantAudit = getPageAccessDefinition("settings.audit-logs");
+    const platformAudit = getPageAccessDefinition("platform.audit");
+
+    assert.equal(tenantAudit?.href, "/settings/audit-logs");
+    assert.equal(tenantAudit?.scope, "tenant");
+    assert.deepEqual(tenantAudit?.defaultRoles, [
+      "tenant-owner",
+      "tenant-admin",
+    ]);
+    assert.equal(platformAudit?.href, "/platform");
+    assert.equal(platformAudit?.scope, "platform");
+    assert.deepEqual(
+      findPageAccessDefinitionsByPath("/platform").map((item) => item.key),
+      ["platform.audit"],
+    );
+    assert.deepEqual(
+      findPageAccessDefinitionsByPath("/platform/tenants").map(
+        (item) => item.key,
+      ),
+      ["platform.tenants"],
+    );
+  });
 });

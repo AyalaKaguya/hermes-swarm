@@ -9,6 +9,10 @@ import {
 } from "@hermes-swarm/rbac";
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { FilesController } from "../../../infrastructure/files/files.controller.js";
+import {
+  PlatformAuditController,
+  TenantAuditController,
+} from "../../../infrastructure/audit/audit.controller.js";
 import { IntegrationTokensController } from "../../../infrastructure/integrations/integration-tokens.controller.js";
 import { InviteController } from "../../../infrastructure/invite/invite.controller.js";
 import { TenantMailController } from "../../../infrastructure/mail/mail.controller.js";
@@ -25,6 +29,7 @@ import { UsersController } from "../../../infrastructure/users/users.controller.
 
 const ACCESS_CONTROLLERS = [
   FilesController,
+  PlatformAuditController,
   IntegrationTokensController,
   InviteController,
   TenantMailController,
@@ -36,6 +41,7 @@ const ACCESS_CONTROLLERS = [
   PlatformRolesController,
   SettingsController,
   TenantApplicationsController,
+  TenantAuditController,
   TenantsController,
   TicketsController,
   UsersController,

@@ -195,7 +195,6 @@ function toPlatformUserDto(user: PlatformUser) {
     roleId: roles[0]?.id ?? null,
     roles,
     status: user.status,
-    user: undefined,
     userId: user.id,
   };
 }

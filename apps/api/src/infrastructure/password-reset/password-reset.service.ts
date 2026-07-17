@@ -76,9 +76,14 @@ export class PasswordResetService {
       await resets.save(
         resets.create({ email: user.email, tenantId: tenant.id, token }),
       );
+      const runtimePreferences =
+        await this.settingsService.resolveTenantRuntimePreferences(
+          tenant.id,
+          user,
+        );
       await this.emailSendService.send({
         email: user.email,
-        languageCode: user.preferredLanguage,
+        languageCode: runtimePreferences.language,
         templateName: "password-reset",
         locals: {
           email: user.email,

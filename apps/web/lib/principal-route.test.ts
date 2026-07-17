@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolvePrincipalRoute } from "./principal-route";
+import { resolveLoginRoute, resolvePrincipalRoute } from "./principal-route";
 
 describe("principal route isolation", () => {
   it("keeps tenant principals out of the platform control plane", () => {
@@ -11,7 +11,7 @@ describe("principal route isolation", () => {
   it("keeps platform principals out of tenant routes", () => {
     assert.equal(
       resolvePrincipalRoute("platform", "/settings/tenant"),
-      "/platform/tenants",
+      "/platform",
     );
     assert.equal(resolvePrincipalRoute("platform", "/platform/tenants"), null);
   });
@@ -25,5 +25,10 @@ describe("principal route isolation", () => {
       resolvePrincipalRoute("platform", "/settings/platform-email-templates"),
       "/platform/email-templates",
     );
+  });
+
+  it("uses the matching login surface for unauthenticated routes", () => {
+    assert.equal(resolveLoginRoute("/platform/settings/localization"), "/platform/login");
+    assert.equal(resolveLoginRoute("/settings/tenant/localization"), "/login");
   });
 });

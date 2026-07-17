@@ -193,7 +193,7 @@ export class InviteService {
               emailVerified: true,
               nickname: requireText(payload.displayName, "用户名称"),
               passwordHash: hashPassword(requirePassword(payload.password)),
-              preferredLanguage: "zh-CN",
+              preferredLanguage: null,
               status: "active",
               tenantId: this.tenantId,
               type: "user",

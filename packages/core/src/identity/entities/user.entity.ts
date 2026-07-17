@@ -3,7 +3,7 @@ import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
 
 export type UserStatus = "active" | "disabled";
 export type UserType = "service" | "user";
-export type PreferredLanguage = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
+export type PreferredLanguage = "en" | "zh-Hans" | "zh-Hant";
 
 @Entity({ name: "users" })
 @Index("UQ_users_tenant_identity", ["tenantId", "id"], { unique: true })
@@ -44,8 +44,8 @@ export class User extends TenantOwnedBaseEntity {
   @Column({ name: "avatar_url", type: "varchar", length: 500, nullable: true })
   avatarUrl!: string | null;
 
-  @Column({ name: "preferred_language", type: "varchar", length: 16, default: "zh-CN" })
-  preferredLanguage!: PreferredLanguage;
+  @Column({ name: "preferred_language", type: "varchar", length: 16, nullable: true })
+  preferredLanguage!: PreferredLanguage | null;
 
   @Column({ name: "email_verified", type: "boolean", default: false })
   emailVerified!: boolean;

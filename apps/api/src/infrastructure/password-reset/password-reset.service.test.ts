@@ -355,6 +355,22 @@ function createPasswordResetService(options: {
       async getPlatformValue(_key: string, fallback: string) {
         return fallback;
       },
+      async resolveTenantRuntimePreferences(_tenantId: string, user: any) {
+        return {
+          currency: "CNY",
+          dateFormat: "YYYY-MM-DD",
+          language: user.preferredLanguage ?? "zh-Hans",
+          regionCode: "CN",
+          sources: {
+            currency: "code",
+            dateFormat: "code",
+            language: user.preferredLanguage ? "user" : "code",
+            regionCode: "code",
+            timeZone: "code",
+          },
+          timeZone: user.timeZone ?? "Asia/Shanghai",
+        };
+      },
     } as any,
     dataSource.getRepository(Tenant),
     {

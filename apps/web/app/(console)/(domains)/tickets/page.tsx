@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { useLocale } from "next-intl";
+import { useI18n } from "@/components/i18n-provider";
 import { AppIcon } from "@/components/app-icon";
 import { useAdminShell } from "@/components/admin-shell";
 import {
@@ -75,6 +75,7 @@ import {
   toTicketSourceRealtimeUpdate,
   upsertTicketMessage,
 } from "@/lib/realtime-events";
+import { formatRuntimeDateTime } from "@/lib/runtime-format";
 
 const MAX_TICKET_IMAGES = 6;
 const MAX_TICKET_IMAGE_SIZE = 2 * 1024 * 1024;
@@ -88,7 +89,7 @@ type TicketDraft = {
 
 export default function TicketsPage() {
   const tr = useTextTranslation();
-  const locale = useLocale();
+  const { runtimePreferences } = useI18n();
   const { snapshot } = useAdminShell();
   const { activeOrganizationId, epoch } = useOrganizationContext();
   const { connectionEpoch, subscribe } = useRealtime();
@@ -520,7 +521,7 @@ export default function TicketsPage() {
                 </DialogTitle>
                 <DialogDescription>
                   {selectedTicket
-                    ? `${selectedTicket.sourceOrganization?.name ?? selectedTicket.sourceOrganizationId} · ${statusLabel(selectedTicket.status, tr)} · ${formatDate(selectedTicket.lastMessageAt ?? selectedTicket.createdAt, locale)}`
+                    ? `${selectedTicket.sourceOrganization?.name ?? selectedTicket.sourceOrganizationId} · ${statusLabel(selectedTicket.status, tr)} · ${formatRuntimeDateTime(selectedTicket.lastMessageAt ?? selectedTicket.createdAt, runtimePreferences)}`
                     : tr("工单会话")}
                 </DialogDescription>
               </div>
@@ -718,7 +719,7 @@ function TicketListPanel({
   tickets: Ticket[];
   title: string;
 }) {
-  const locale = useLocale();
+  const { runtimePreferences } = useI18n();
   const tr = useTextTranslation();
   return (
     <section className="flex min-h-[32rem] flex-col rounded-lg border bg-card">
@@ -754,9 +755,9 @@ function TicketListPanel({
                       ticket.sourceOrganizationId}
                   </span>
                   <span>
-                    {formatDate(
+                    {formatRuntimeDateTime(
                       ticket.lastMessageAt ?? ticket.createdAt,
-                      locale,
+                      runtimePreferences,
                     )}
                   </span>
                 </div>
@@ -778,7 +779,7 @@ function MessageBubble({
   message: TicketMessage;
   onPreviewAttachment: (attachment: TicketMessageAttachment) => void;
 }) {
-  const locale = useLocale();
+  const { runtimePreferences } = useI18n();
   const tr = useTextTranslation();
   const mine = message.authorUserId === currentUserId;
   const authorName =
@@ -798,7 +799,7 @@ function MessageBubble({
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs opacity-80">
           <span className="font-medium">{authorName}</span>
-          <span>{formatDate(message.createdAt, locale)}</span>
+          <span>{formatRuntimeDateTime(message.createdAt, runtimePreferences)}</span>
         </div>
         <MarkdownContent value={message.body} />
         {message.attachments.length > 0 && (
@@ -1069,10 +1070,4 @@ function statusLabel(status: Ticket["status"], tr: (value: string) => string) {
   if (status === "closed") return tr("已关闭");
   if (status === "archived") return tr("已归档");
   return tr("处理中");
-}
-
-function formatDate(value: string | null, locale: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString(locale);
 }

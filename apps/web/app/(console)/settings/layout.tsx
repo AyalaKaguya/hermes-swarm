@@ -1,36 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
 import { useOrganizationContext } from "@/components/organization-context-provider";
-import { AppIcon } from "@/components/app-icon";
-import {
-  SETTINGS_NAV_SECTIONS,
-  type SettingsNavItem,
-} from "@/components/settings-navigation";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { SETTINGS_NAV_SECTIONS } from "@/components/settings/settings-navigation";
+import { SettingsWorkspaceShell } from "@/components/settings/settings-workspace-shell";
+import { usePermission } from "@/hooks/use-permission";
+import { useTextTranslation } from "@/hooks/use-text-translation";
+import { resolveActiveSettingsNavigationKey } from "@/lib/settings-navigation-active";
 import {
   findPageAccessDefinitionsByPath,
   type PageAccessDefinition,
 } from "@hermes-swarm/rbac-api";
-import { usePermission } from "@/hooks/use-permission";
-import { useTextTranslation } from "@/hooks/use-text-translation";
-import { resolveActiveSettingsNavigationKey } from "@/lib/settings-navigation-active";
-import { cn } from "@/lib/utils";
-
-const SETTINGS_SIDEBAR_DEFAULT_SIZE = "240px";
-const SETTINGS_SIDEBAR_MIN_SIZE = "56px";
-const SETTINGS_SIDEBAR_MAX_SIZE = "320px";
-const SETTINGS_SIDEBAR_COLLAPSED_THRESHOLD = 80;
 
 export default function SettingsLayout({
   children,
@@ -45,37 +28,36 @@ export default function SettingsLayout({
   const { resolvedSession, snapshot } = useAdminShell();
   const { activeOrganizationId } = useOrganizationContext();
   const access = usePermission();
-  const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] =
-    useState(false);
   const routeOrganizationId = getRouteOrganizationId(pathname);
   const currentPages = findPageAccessDefinitionsByPath(pathname);
   const canAccessCurrentPage =
     currentPages.length > 0 &&
-      currentPages.some((page) =>
-        access.hasPageAccess(page.key, {
-          organizationId: routeOrganizationId ?? activeOrganizationId,
-        }),
-      );
+    currentPages.some((page) =>
+      access.hasPageAccess(page.key, {
+        organizationId: routeOrganizationId ?? activeOrganizationId,
+      }),
+    );
 
   const visibleSectionKeys = activeOrganizationId
     ? new Set(["personal", "organization"])
     : new Set(["personal", "tenant"]);
-  const navSections = SETTINGS_NAV_SECTIONS
-    .filter((section) => visibleSectionKeys.has(section.key))
+  const navSections = SETTINGS_NAV_SECTIONS.filter((section) =>
+    visibleSectionKeys.has(section.key),
+  )
     .map((section) => ({
-    ...section,
-    label: tr(section.label),
-    items: section.items
-      .filter((item) => {
-        if (!snapshot || !resolvedSession) return false;
-        return access.hasPageAccess(item.pageKey, {
-          organizationId: activeOrganizationId,
-        });
-      })
-      .map((item) => ({ ...item, label: tr(item.label) })),
-  })).filter((section) => section.items.length > 0);
+      ...section,
+      label: tr(section.label),
+      items: section.items
+        .filter((item) => {
+          if (!snapshot || !resolvedSession) return false;
+          return access.hasPageAccess(item.pageKey, {
+            organizationId: activeOrganizationId,
+          });
+        })
+        .map((item) => ({ ...item, label: tr(item.label) })),
+    }))
+    .filter((section) => section.items.length > 0);
   const visibleItems = navSections.flatMap((section) => section.items);
-
   const activeKey = resolveActiveSettingsNavigationKey(
     visibleItems,
     pathname,
@@ -93,161 +75,19 @@ export default function SettingsLayout({
   }, [activeOrganizationId, currentPages, router]);
 
   return (
-    <div className="min-h-svh min-w-0 bg-background lg:h-svh lg:overflow-hidden">
-      <div className="hidden h-full min-h-0 lg:block">
-        <ResizablePanelGroup className="h-full min-h-0" orientation="horizontal">
-          <ResizablePanel
-            className="min-h-0 border-r bg-muted/20"
-            defaultSize={SETTINGS_SIDEBAR_DEFAULT_SIZE}
-            groupResizeBehavior="preserve-pixel-size"
-            id="settings-navigation"
-            maxSize={SETTINGS_SIDEBAR_MAX_SIZE}
-            minSize={SETTINGS_SIDEBAR_MIN_SIZE}
-            onResize={(size) =>
-              setSettingsSidebarCollapsed(
-                size.inPixels <= SETTINGS_SIDEBAR_COLLAPSED_THRESHOLD,
-              )
-            }
-          >
-            <SettingsSidebar
-              activeKey={activeKey}
-              collapsed={settingsSidebarCollapsed}
-              navSections={navSections}
-            />
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel
-            className="min-h-0 min-w-0 overflow-hidden"
-            id="settings-content"
-            minSize="360px"
-          >
-            <div className="h-full min-w-0 overflow-auto px-4 py-5 lg:px-5">
-              <div className="mx-auto flex max-w-7xl flex-col gap-4">
-                {canAccessCurrentPage ? (
-                  children
-                ) : (
-                  <SettingsAccessDenied pages={currentPages} />
-                )}
-              </div>
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
-
-      <div className="hidden min-w-0 gap-4 px-4 py-5 max-lg:grid">
-        <nav
-          aria-label={t("shell.settingsNavigation")}
-          className="-mx-4 flex min-w-0 gap-2 overflow-x-auto border-b px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {visibleItems.map((item) => (
-            <Link
-              className={cn(
-                "flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-                item.key === activeKey && "bg-accent",
-              )}
-              href={item.href}
-              key={item.key}
-            >
-              <AppIcon
-                className="size-4 shrink-0"
-                name={item.icon ?? "settings"}
-              />
-              <span className="whitespace-nowrap">{item.label}</span>
-            </Link>
-          ))}
-        </nav>
-        <div>
-          {canAccessCurrentPage ? (
-            children
-          ) : (
-            <SettingsAccessDenied pages={currentPages} />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SettingsSidebar({
-  activeKey,
-  collapsed,
-  navSections,
-}: {
-  activeKey?: string;
-  collapsed: boolean;
-  navSections: Array<{
-    items: SettingsNavItem[];
-    key: string;
-    label: string;
-  }>;
-}) {
-  const t = useTranslations();
-
-  return (
-    <aside
-      aria-label={t("shell.settingsNavigation")}
-      className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden",
-        collapsed && "items-center",
-      )}
+    <SettingsWorkspaceShell
+      activeKey={activeKey}
+      ariaLabel={t("shell.settingsNavigation")}
+      headerDescription={t("shell.settingsDescription")}
+      headerTitle={t("shell.settings")}
+      navSections={navSections}
     >
-      <div className="flex h-12 w-full items-center gap-2 border-b px-2">
-        <span
-          className={cn(
-            "grid size-8 shrink-0 place-items-center rounded-md",
-            collapsed && "mx-auto",
-          )}
-          title={t("shell.settings")}
-        >
-          <AppIcon className="size-4" name="settings" />
-        </span>
-        {!collapsed && (
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium">
-              {t("shell.settings")}
-            </div>
-            <div className="truncate text-xs">
-              {t("shell.settingsDescription")}
-            </div>
-          </div>
-        )}
-      </div>
-      <ScrollArea className="min-h-0 w-full flex-1">
-        <div className="px-2 py-3">
-          {navSections.map((section, sectionIndex) => (
-            <div className="grid gap-1" key={section.key}>
-              {sectionIndex > 0 && <Separator className="my-2" />}
-              {!collapsed && (
-                <div className="px-2 py-1 text-[0.68rem] font-medium uppercase">
-                  {section.label}
-                </div>
-              )}
-              {section.items.map((item) => {
-                const active = item.key === activeKey;
-                return (
-                  <Link
-                    className={cn(
-                      "flex h-8 items-center gap-2 rounded-lg px-2 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-                      active && "bg-accent",
-                      collapsed && "justify-center",
-                    )}
-                    href={item.href}
-                    key={item.key}
-                    title={item.label}
-                  >
-                    <AppIcon
-                      className="size-4 shrink-0"
-                      name={item.icon ?? "settings"}
-                    />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </ScrollArea>
-    </aside>
+      {canAccessCurrentPage ? (
+        children
+      ) : (
+        <SettingsAccessDenied pages={currentPages} />
+      )}
+    </SettingsWorkspaceShell>
   );
 }
 

@@ -16,7 +16,7 @@ export class PlatformUser extends BaseEntity {
   @Column({ name: "password_hash", type: "varchar", length: 240, nullable: true })
   passwordHash!: string | null;
 
-  @Column({ name: "preferred_language", type: "varchar", length: 16, default: "zh-CN" })
+  @Column({ name: "preferred_language", type: "varchar", length: 16, default: "zh-Hans" })
   preferredLanguage!: string;
 
   @Column({ type: "varchar", length: 24, default: "active" })

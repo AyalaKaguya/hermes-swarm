@@ -12,6 +12,11 @@ export type AccessAuditPrincipalType =
   | "platform"
   | "tenant";
 export type AccessAuditResult = "allowed" | "denied" | "error";
+export type AccessAuditScopeType =
+  | "organization"
+  | "own"
+  | "platform"
+  | "tenant";
 
 /** Append-only control-plane record of an authorization decision. */
 @Entity({ name: "access_audit_logs" })
@@ -37,6 +42,12 @@ export class AccessAuditLog {
   @Column({ name: "principal_type", type: "varchar", length: 24 })
   principalType!: AccessAuditPrincipalType;
 
+  @Column({ name: "scope_type", type: "varchar", length: 24 })
+  scopeType!: AccessAuditScopeType;
+
+  @Column({ name: "session_id", type: "uuid", nullable: true })
+  sessionId!: string | null;
+
   @Column({ type: "varchar", length: 220 })
   permission!: string;
 
@@ -57,4 +68,10 @@ export class AccessAuditLog {
 
   @Column({ name: "error_code", type: "varchar", length: 120, nullable: true })
   errorCode!: string | null;
+
+  @Column({ name: "ip_address", type: "varchar", length: 64, nullable: true })
+  ipAddress!: string | null;
+
+  @Column({ name: "user_agent", type: "varchar", length: 500, nullable: true })
+  userAgent!: string | null;
 }

@@ -50,6 +50,10 @@
       "types": "./dist/settings/effective-settings.d.ts",
       "import": "./dist/settings/effective-settings.js"
     },
+    "./settings/runtime-preferences": {
+      "types": "./dist/settings/runtime-preferences.d.ts",
+      "import": "./dist/settings/runtime-preferences.js"
+    },
     "./settings/entities": {
       "types": "./dist/settings/entities/index.d.ts",
       "import": "./dist/settings/entities/index.js"

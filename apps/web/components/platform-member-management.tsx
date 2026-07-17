@@ -3,7 +3,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type FormEvent,
 } from "react";
@@ -11,7 +10,6 @@ import { AppIcon } from "@/components/app-icon";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { InlineNotice } from "@/components/inline-notice";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -42,23 +40,19 @@ import {
   deletePlatformMember,
   listPlatformMembers,
   listPlatformRoles,
-  searchUsers,
   updatePlatformMember,
   type PlatformMember,
   type Role,
-  type User,
 } from "@/lib/admin-api";
 import {
   getAuthenticatedAdminSessionMarker,
   requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { cn } from "@/lib/utils";
 
 type PlatformMemberManagementProps = {
   canCreateMember?: boolean;
   canRemoveMember?: boolean;
-  canSearchUsers?: boolean;
   canUpdateMember?: boolean;
   canViewMembers?: boolean;
   canViewRoles?: boolean;
@@ -73,7 +67,6 @@ type MemberDraft = {
 export function PlatformMemberManagement({
   canCreateMember,
   canRemoveMember,
-  canSearchUsers,
   canUpdateMember,
   canViewMembers,
   canViewRoles,
@@ -134,12 +127,8 @@ export function PlatformMemberManagement({
     void load();
   }, [load]);
 
-  const memberUserIds = useMemo(
-    () => new Set(members.map((member) => member.userId)),
-    [members],
-  );
   const canOpenCreate = Boolean(
-    canCreateMember && canSearchUsers && canViewRoles && roles.length > 0,
+    canCreateMember && canViewRoles && roles.length > 0,
   );
 
   async function saveMember(member: PlatformMember) {
@@ -198,7 +187,7 @@ export function PlatformMemberManagement({
         <div>
           <CardTitle>{tr("平台用户管理")}</CardTitle>
           <CardDescription>
-            {tr("为已有用户授予平台角色，控制其可使用的平台能力")}
+            {tr("管理独立的平台账号、状态与平台角色")}
           </CardDescription>
         </div>
         <Button
@@ -216,7 +205,7 @@ export function PlatformMemberManagement({
         {!canOpenCreate && (
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             {tr(
-              "添加平台用户需要拥有用户搜索、平台成员添加和平台角色查看权限，并至少存在一个平台角色。",
+              "添加平台用户需要拥有平台成员添加和平台角色查看权限，并至少存在一个平台角色。",
             )}
           </div>
         )}
@@ -242,13 +231,13 @@ export function PlatformMemberManagement({
                   key={member.id}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <UserAvatar size="sm" user={member.user} />
+                    <UserAvatar size="sm" user={member} />
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium">
-                        {member.displayName || member.user.displayName}
+                        {member.displayName || member.email}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {member.user.email}
+                        {member.email}
                       </div>
                     </div>
                   </div>
@@ -307,7 +296,7 @@ export function PlatformMemberManagement({
                     </Button>
                     <Button
                       aria-label={`${tr("移除平台用户")} ${
-                        member.displayName || member.user.displayName
+                        member.displayName || member.email
                       }`}
                       disabled={!canRemoveMember || busy}
                       onClick={() => setMemberToRemove(member)}
@@ -316,7 +305,7 @@ export function PlatformMemberManagement({
                         !canRemoveMember
                           ? tr("当前账号无权移除平台用户")
                           : `${tr("移除平台用户")} ${
-                              member.displayName || member.user.displayName
+                              member.displayName || member.email
                             }`
                       }
                       type="button"
@@ -332,7 +321,6 @@ export function PlatformMemberManagement({
         )}
       </CardContent>
       <AddPlatformMemberDialog
-        memberUserIds={memberUserIds}
         onChanged={async () => {
           await load();
           await onChanged?.();
@@ -346,8 +334,8 @@ export function PlatformMemberManagement({
         description={
           memberToRemove
             ? `${tr("将移除平台用户")} ${
-                memberToRemove.displayName || memberToRemove.user.displayName
-              } (${memberToRemove.user.email})`
+                memberToRemove.displayName || memberToRemove.email
+              } (${memberToRemove.email})`
             : ""
         }
         onConfirm={() => {
@@ -366,25 +354,22 @@ export function PlatformMemberManagement({
 }
 
 function AddPlatformMemberDialog({
-  memberUserIds,
   onChanged,
   onOpenChange,
   open,
   roles,
 }: {
-  memberUserIds: Set<string>;
   onChanged: () => Promise<void>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   roles: Role[];
 }) {
   const tr = useTextTranslation();
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<User[]>([]);
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [status, setStatus] = useState<PlatformMember["status"]>("active");
   const [error, setError] = useState<string | null>(null);
 
@@ -393,48 +378,26 @@ function AddPlatformMemberDialog({
     setRoleId((current) => current || roles[0]?.id || "");
   }, [open, roles]);
 
-  useEffect(() => {
-    if (!open) return;
-    const normalized = query.trim();
-    if (normalized.length < 2) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
-
-    setSearching(true);
-    const timer = window.setTimeout(() => {
-      getAuthenticatedAdminSessionMarker()
-        .then((token) => (token ? searchUsers(token, normalized) : []))
-        .then((items) => {
-          setResults(items);
-          setError(null);
-        })
-        .catch((err) =>
-          setError(err instanceof Error ? err.message : tr("搜索失败")),
-        )
-        .finally(() => setSearching(false));
-    }, 250);
-
-    return () => window.clearTimeout(timer);
-  }, [open, query, tr]);
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedUser || !roleId) return;
+    if (!displayName.trim() || !email.trim() || password.length < 8 || !roleId) {
+      return;
+    }
 
     setSaving(true);
     setError(null);
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
       await createPlatformMember(token, {
+        displayName: displayName.trim(),
+        email: email.trim(),
+        password,
         roleId,
         status,
-        userId: selectedUser.id,
       });
-      setQuery("");
-      setResults([]);
-      setSelectedUser(null);
+      setDisplayName("");
+      setEmail("");
+      setPassword("");
       setStatus("active");
       onOpenChange(false);
       await onChanged();
@@ -451,58 +414,47 @@ function AddPlatformMemberDialog({
         <DialogHeader>
           <DialogTitle>{tr("添加平台用户")}</DialogTitle>
           <DialogDescription>
-            {tr("搜索已有用户，并为其分配一个平台角色。")}
+            {tr("创建独立的平台账号，并为其分配一个平台角色。")}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
           {error && <InlineNotice tone="error">{error}</InlineNotice>}
-          <div className="grid gap-2">
-            <Label htmlFor="platform-member-search">{tr("搜索用户")}</Label>
-            <Input
-              autoComplete="off"
-              id="platform-member-search"
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setSelectedUser(null);
-              }}
-              placeholder={tr("输入邮箱、名称或手机号")}
-              value={query}
-            />
-            <div className="grid max-h-64 gap-1 overflow-auto rounded-md border bg-background p-1">
-              {selectedUser ? (
-                <UserOption
-                  selected
-                  user={selectedUser}
-                  onClick={() => setSelectedUser(null)}
-                />
-              ) : query.trim().length < 2 ? (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  {tr("至少输入 2 个字符开始搜索")}
-                </div>
-              ) : searching ? (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  {tr("搜索中...")}
-                </div>
-              ) : results.length === 0 ? (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  {tr("没有匹配的用户")}
-                </div>
-              ) : (
-                results.map((user) => {
-                  const alreadyMember = memberUserIds.has(user.id);
-                  return (
-                    <UserOption
-                      disabled={alreadyMember}
-                      key={user.id}
-                      selected={false}
-                      user={user}
-                      onClick={() => {
-                        if (!alreadyMember) setSelectedUser(user);
-                      }}
-                    />
-                  );
-                })
-              )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="platform-member-name">{tr("显示名称")}</Label>
+              <Input
+                autoComplete="name"
+                id="platform-member-name"
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder={tr("例如：平台管理员")}
+                required
+                value={displayName}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="platform-member-email">{tr("邮箱")}</Label>
+              <Input
+                autoComplete="email"
+                id="platform-member-email"
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="admin@example.com"
+                required
+                type="email"
+                value={email}
+              />
+            </div>
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="platform-member-password">{tr("初始密码")}</Label>
+              <Input
+                autoComplete="new-password"
+                id="platform-member-password"
+                minLength={8}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={tr("至少 8 位")}
+                required
+                type="password"
+                value={password}
+              />
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -548,58 +500,21 @@ function AddPlatformMemberDialog({
             >
               {tr("取消")}
             </Button>
-            <Button disabled={saving || !selectedUser || !roleId} type="submit">
+            <Button
+              disabled={
+                saving ||
+                !displayName.trim() ||
+                !email.trim() ||
+                password.length < 8 ||
+                !roleId
+              }
+              type="submit"
+            >
               {saving ? tr("添加中...") : tr("添加")}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function UserOption({
-  disabled,
-  onClick,
-  selected,
-  user,
-}: {
-  disabled?: boolean;
-  onClick: () => void;
-  selected: boolean;
-  user: User;
-}) {
-  const tr = useTextTranslation();
-
-  return (
-    <Button
-      className={cn(
-        "h-auto w-full min-w-0 justify-between gap-3 px-3 py-2 text-left",
-        selected
-          ? "bg-primary/10"
-          : undefined,
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-      variant={selected ? "secondary" : "ghost"}
-    >
-      <span className="flex min-w-0 items-center gap-3">
-        <UserAvatar size="sm" user={user} />
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">
-            {user.displayName}
-          </span>
-          <span className="block truncate text-xs text-muted-foreground">
-            {user.email}
-          </span>
-        </span>
-      </span>
-      {disabled ? (
-        <Badge variant="secondary">{tr("已添加")}</Badge>
-      ) : selected ? (
-        <Badge variant="outline">{tr("已选择")}</Badge>
-      ) : null}
-    </Button>
   );
 }
