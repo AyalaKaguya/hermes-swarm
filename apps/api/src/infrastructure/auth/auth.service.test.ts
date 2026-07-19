@@ -178,8 +178,8 @@ describe("AuthService identity plane isolation", () => {
       {
         headers: {
           "user-agent": "Mozilla/5.0 Chrome/120.0 Windows NT 10.0",
-          "x-forwarded-for": "203.0.113.10, 10.0.0.2",
         },
+        socket: { remoteAddress: "203.0.113.10" },
       },
       { cookie() {} },
     );

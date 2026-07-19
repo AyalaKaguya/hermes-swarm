@@ -11,7 +11,12 @@ import {
   SettingsFieldRow,
   SettingsPageHeader,
 } from "@/components/settings/settings-page";
-import { SettingValueInput } from "@/components/settings/settings-value-input";
+import {
+  CustomSettingDialog,
+  SettingEditDialog,
+  SettingValueInput,
+  type CustomSettingSubmit,
+} from "@/components/settings/settings-value-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +27,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { usePermission } from "@/hooks/use-permission";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
@@ -198,6 +202,33 @@ export function TenantSettingsPage({
     ]);
   }
 
+  async function saveCustomSetting(setting: CustomSettingSubmit) {
+    if (!canManageSettings) return;
+    const settingName = setting.name.trim();
+    if (!settingName) return;
+
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const session = await requireAuthenticatedAdminSessionMarker();
+      const result = await saveTenantSettings(session, {
+        settings: [{
+          ...setting,
+          name: settingName,
+          scope: "tenant",
+        }],
+      });
+      setSettings(result);
+      setDrafts(toSettingDrafts(result));
+      await refreshSnapshot();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : tr("保存失败"));
+      throw reason;
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
   async function restoreAllLocalization() {
     setRestoreAllOpen(false);
     await persistSettings(
@@ -306,7 +337,6 @@ export function TenantSettingsPage({
                   canManage={canManageSettings}
                   draft={drafts[definition.key]}
                   effectiveSource={runtimePreferences.sources[runtimeField]}
-                  effectiveValue={runtimePreferences[runtimeField]}
                   key={definition.key}
                   label={tr(definition.label)}
                   onDraftChange={(patch) => updateDraft(definition.key, patch)}
@@ -380,7 +410,20 @@ export function TenantSettingsPage({
               {savingSettings ? tr("保存中...") : tr("保存")}
             </Button>
           }
-          description={tr("仅显示平台定义并允许工作空间覆盖的参数")}
+          description={tr("保存工作空间专属环境参数和密钥，或覆盖平台开放的参数")}
+          headerActions={
+            <CustomSettingDialog
+              description={tr("创建当前工作空间专属参数；密钥类型只显示遮罩并加密保存。")}
+              disabled={!canManageSettings || savingSettings}
+              idPrefix="tenant-custom-setting"
+              namePlaceholder="MY_ENV_NAME"
+              onSubmit={saveCustomSetting}
+              saving={savingSettings}
+              scopeOptions={[{ label: "工作空间", value: "tenant" }]}
+              title={tr("新增工作空间参数")}
+              triggerLabel={tr("新增参数")}
+            />
+          }
           loading={loadingSettings}
           loadingLabel={tr("加载中...")}
           title={tr("参数设置")}
@@ -398,6 +441,7 @@ export function TenantSettingsPage({
                   key={setting.name}
                   label={setting.name}
                   onDraftChange={(patch) => updateDraft(setting.name, patch)}
+                  onEdit={saveCustomSetting}
                   onRestore={() => void restoreSetting(setting)}
                   setting={setting}
                   tr={tr}
@@ -425,9 +469,9 @@ function TenantSettingRow({
   canManage,
   draft,
   effectiveSource,
-  effectiveValue,
   label,
   onDraftChange,
+  onEdit,
   onRestore,
   setting,
   tr,
@@ -435,69 +479,73 @@ function TenantSettingRow({
   canManage: boolean;
   draft?: SettingDraft;
   effectiveSource?: "code" | "platform" | "tenant" | "user";
-  effectiveValue?: string;
   label: string;
   onDraftChange: (patch: Partial<SettingDraft>) => void;
+  onEdit?: (setting: CustomSettingSubmit) => Promise<void> | void;
   onRestore: () => void;
   setting: EffectiveTenantSetting;
   tr: (value: string) => string;
 }) {
-  const overridden = draft?.overridden ?? setting.isOverridden;
   const value = draft?.value ?? setting.overrideValue ?? setting.value ?? "";
   const canEdit = canManage && setting.isEditable;
   const source = effectiveSource ?? setting.scope;
+  const valueInputId = `value-${setting.id}`;
   return (
     <SettingsFieldRow
       actions={
-        <>
-          <Label className="text-xs" htmlFor={`override-${setting.id}`}>
-            {tr(overridden ? "自定义" : "跟随平台默认")}
-          </Label>
-          <Switch
-            checked={overridden}
-            disabled={!canEdit}
-            id={`override-${setting.id}`}
-            onCheckedChange={(checked) =>
-              onDraftChange({
-                overridden: checked,
-                value: checked ? (setting.value ?? "") : null,
-              })
-            }
-          />
-          {setting.isOverridden && (
-            <Button
-              disabled={!canManage}
-              onClick={onRestore}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              {tr(setting.isOrphaned ? "删除" : "恢复")}
-            </Button>
-          )}
-        </>
+        setting.isCustom || setting.isOverridden ? (
+          <>
+            {setting.isCustom && onEdit && (
+              <SettingEditDialog
+                disabled={!canManage}
+                idPrefix={`tenant-custom-${setting.id}`}
+                name={setting.name}
+                onSubmit={onEdit}
+                value={setting.overrideValue ?? setting.value ?? ""}
+                valueOptions={setting.valueOptions}
+                valueType={setting.valueType}
+              />
+            )}
+            {setting.isOverridden && (
+              <Button
+                disabled={!canManage}
+                onClick={onRestore}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {tr(setting.isCustom ? "删除" : "恢复平台默认")}
+              </Button>
+            )}
+          </>
+        ) : undefined
       }
       description={
         <span className="flex flex-wrap items-center gap-2">
           <Badge variant={source === "tenant" ? "default" : "secondary"}>
-            {tr(runtimePreferenceSourceLabel(source))}
+            {tr(
+              setting.isCustom
+                ? "工作空间专属"
+                : runtimePreferenceSourceLabel(source),
+            )}
           </Badge>
-          <span className="truncate text-xs text-muted-foreground">
-            {tr("当前生效")}: {displaySettingValue(effectiveValue ?? setting.value)}
-          </span>
-          <span className="truncate text-xs text-muted-foreground">
-            {tr("平台值")}: {displaySettingValue(setting.defaultValue)}
-          </span>
-          {setting.isOrphaned && (
-            <Badge variant="destructive">{tr("未定义参数")}</Badge>
+          {!setting.isCustom && (
+            <span className="truncate text-xs text-muted-foreground">
+              {tr("平台值")}: {displaySettingValue(setting.defaultValue)}
+            </span>
           )}
         </span>
       }
+      htmlFor={valueInputId}
       label={label}
     >
       <SettingValueInput
-        disabled={!canEdit || !overridden}
-        onValueChange={(nextValue) => onDraftChange({ value: nextValue })}
+        className="ml-auto w-full max-w-sm justify-end"
+        disabled={!canEdit}
+        id={valueInputId}
+        onValueChange={(nextValue) =>
+          onDraftChange({ overridden: true, value: nextValue })
+        }
         value={value}
         valueOptions={setting.valueOptions}
         valueType={setting.valueType}

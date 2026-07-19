@@ -6,6 +6,7 @@ import {
 } from "@hermes-swarm/core";
 import type { Repository } from "typeorm";
 import type { AccessRequest } from "./access.types.js";
+import { resolveClientIp } from "./client-ip.js";
 import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 @Injectable()
@@ -40,7 +41,7 @@ export class AccessAuditService {
         errorCode: resolveErrorCode(input.error),
         httpMethod: normalizeText(request.method, 16)?.toUpperCase() ?? null,
         httpPath: path,
-        ipAddress: normalizeText(resolveRequestIp(request), 64),
+        ipAddress: normalizeText(resolveClientIp(request), 64),
         organizationId: context.scope.organizationId ?? null,
         permission: context.definition.id,
         principalType: principal?.principalType ?? "anonymous",
@@ -73,18 +74,6 @@ function resolveTargetTenantId(request: AccessRequest) {
 function readHeader(request: AccessRequest, name: string) {
   const value = request.headers?.[name] ?? request.headers?.[name.toLowerCase()];
   return Array.isArray(value) ? value[0] : value;
-}
-
-function resolveRequestIp(request: AccessRequest) {
-  const forwardedFor = readHeader(request, "x-forwarded-for");
-  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
-    return forwardedFor.split(",")[0]?.trim() ?? null;
-  }
-  const candidate = request as AccessRequest & {
-    ip?: unknown;
-    socket?: { remoteAddress?: unknown };
-  };
-  return candidate.ip ?? candidate.socket?.remoteAddress ?? null;
 }
 
 function normalizeUuid(value: unknown) {

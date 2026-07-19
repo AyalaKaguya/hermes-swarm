@@ -10,6 +10,23 @@
 
 Web proxies `/api/**` to API. Root `.env` provides local PostgreSQL/Redis URLs and API overrides.
 
+## Audit client IP behind a proxy or CDN
+
+Login and operation audits always record the direct TCP peer. They use
+`Forwarded`, `X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP`,
+`Fastly-Client-IP`, `X-Azure-ClientIP`, `X-Envoy-External-Address`, or
+`X-Real-IP` only when that peer matches `TRUSTED_PROXY_CIDRS`.
+
+```dotenv
+TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128,10.20.0.0/16
+```
+
+List only the CDN, load balancer, ingress, or BFF networks that can connect
+directly to the API. The last trusted proxy must overwrite or sanitize incoming
+forwarding headers. Do not use a public catch-all CIDR on an Internet-accessible
+API. Multi-hop `Forwarded` and `X-Forwarded-For` chains are evaluated from right
+to left, removing only configured trusted proxy hops.
+
 Check listeners on Windows:
 
 ```powershell

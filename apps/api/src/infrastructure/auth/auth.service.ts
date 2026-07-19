@@ -24,6 +24,7 @@ import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.j
 import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import { LoginAuditService } from "../audit/login-audit.service.js";
+import { resolveClientIp } from "@hermes-swarm/rbac";
 
 @Injectable()
 /**
@@ -574,17 +575,9 @@ function extractBearerToken(authorization: string | undefined) {
 
 function getRequestContext(request: any) {
   return {
-    ipAddress: getRequestIp(request),
+    ipAddress: resolveClientIp(request),
     userAgent: getHeader(request, "user-agent"),
   };
-}
-
-function getRequestIp(request: any) {
-  const forwardedFor = getHeader(request, "x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() || null;
-  }
-  return request?.ip ?? request?.socket?.remoteAddress ?? null;
 }
 
 function getHeader(request: any, name: string) {

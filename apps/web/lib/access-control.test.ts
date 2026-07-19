@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hasPageAccess, hasPermission } from "./access-control";
+import {
+  hasPageAccess,
+  hasPermission,
+  mergePermissionCodes,
+} from "./access-control";
 import type { RolePermission } from "./admin-api";
 import type { ResolvedSession } from "./session";
 
@@ -67,6 +71,29 @@ describe("web access control", () => {
 
   it("allows empty permission requirements for an authenticated principal", () => {
     assert.equal(hasPermission(principal([]), []), true);
+  });
+
+  it("merges enabled tenant role permissions into the effective session", () => {
+    assert.deepEqual(
+      mergePermissionCodes(
+        ["page.settings.tenant.access:tenant"],
+        {
+          permissions: [
+            rolePermission("setting.tenant_config.list:tenant"),
+            rolePermission("setting.tenant_config.save:tenant"),
+            {
+              ...rolePermission("setting.tenant_config.delete:tenant"),
+              enabled: false,
+            },
+          ],
+        },
+      ),
+      [
+        "page.settings.tenant.access:tenant",
+        "setting.tenant_config.list:tenant",
+        "setting.tenant_config.save:tenant",
+      ],
+    );
   });
 
   it("checks page access through page definition permissions", () => {

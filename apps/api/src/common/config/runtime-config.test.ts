@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
+  appRuntimeConfig,
   databaseRuntimeConfig,
+  settingsRuntimeConfig,
   validateRuntimeConfig,
 } from "./runtime-config.js";
 
@@ -13,6 +15,8 @@ const originalEnvironment = {
   POSTGRES_URL: process.env.POSTGRES_URL,
   DATABASE_SYNCHRONIZE: process.env.DATABASE_SYNCHRONIZE,
   DATABASE_STRICT_RLS: process.env.DATABASE_STRICT_RLS,
+  TRUSTED_PROXY_CIDRS: process.env.TRUSTED_PROXY_CIDRS,
+  SETTINGS_ENCRYPTION_KEY: process.env.SETTINGS_ENCRYPTION_KEY,
 };
 
 afterEach(() => {
@@ -23,6 +27,38 @@ afterEach(() => {
 });
 
 describe("database runtime configuration", () => {
+  it("uses a dedicated settings encryption key when configured", () => {
+    process.env.SETTINGS_ENCRYPTION_KEY = "dedicated-settings-key";
+    assert.equal(
+      settingsRuntimeConfig().encryptionKey,
+      "dedicated-settings-key",
+    );
+  });
+
+  it("normalizes trusted proxy CIDRs and rejects invalid ranges", () => {
+    process.env.TRUSTED_PROXY_CIDRS = " 127.0.0.1/32, ::1/128 ";
+    assert.deepEqual(appRuntimeConfig().trustedProxyCidrs, [
+      "127.0.0.1/32",
+      "::1/128",
+    ]);
+    assert.doesNotThrow(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "test",
+        POSTGRES_TEST_URL: "postgresql://test.example/hermes-test",
+        TRUSTED_PROXY_CIDRS: process.env.TRUSTED_PROXY_CIDRS,
+      }),
+    );
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          NODE_ENV: "test",
+          POSTGRES_TEST_URL: "postgresql://test.example/hermes-test",
+          TRUSTED_PROXY_CIDRS: "10.0.0.0/99",
+        }),
+      /Invalid trusted proxy CIDR/,
+    );
+  });
+
   it("requires an explicit opt-in to synchronize during development", () => {
     process.env.NODE_ENV = "development";
     delete process.env.DATABASE_SYNCHRONIZE;

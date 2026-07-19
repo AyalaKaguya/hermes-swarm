@@ -29,7 +29,7 @@ import {
   type Snapshot,
 } from "@/lib/admin-api";
 import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/session";
-import { hasPageAccess } from "@/lib/access-control";
+import { hasPageAccess, mergePermissionCodes } from "@/lib/access-control";
 import { resolveHostOrganizationIdFromPrincipal } from "@/lib/host-organization";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 import { resolveLoginRoute, resolvePrincipalRoute } from "@/lib/principal-route";
@@ -327,6 +327,7 @@ export function createShellSnapshot(
   const activePermissions = resolveTenantPermissions(
     principal.permissions,
     activeMembership?.role ?? null,
+    principal.tenantRole,
   );
   const isPlatformAdmin = false;
 
@@ -368,8 +369,10 @@ function selectSnapshotOrganization(
 ): Snapshot {
   if (!organizationId) {
     const role = snapshot.tenantRole ?? null;
-    const permissions = snapshot.currentUser.permissions.filter((permission) =>
-      !permission.endsWith(":organization"),
+    const permissions = resolveTenantPermissions(
+      snapshot.currentUser.permissions,
+      null,
+      role,
     );
     return {
       ...snapshot,
@@ -392,6 +395,7 @@ function selectSnapshotOrganization(
   const permissions = resolveTenantPermissions(
     snapshot.currentUser.permissions,
     role,
+    snapshot.tenantRole,
   );
 
   return {
@@ -410,15 +414,16 @@ function selectSnapshotOrganization(
   };
 }
 
-function resolveTenantPermissions(base: string[], role: Role | null) {
-  return [
-    ...new Set([
-      ...base.filter((permission) => !permission.endsWith(":organization")),
-      ...(role?.permissions ?? [])
-        .filter((permission) => permission.enabled)
-        .map((permission) => permission.permission),
-    ]),
-  ];
+function resolveTenantPermissions(
+  base: string[],
+  organizationRole: Role | null,
+  tenantRole: Role | null | undefined,
+) {
+  return mergePermissionCodes(
+    base.filter((permission) => !permission.endsWith(":organization")),
+    tenantRole,
+    organizationRole,
+  );
 }
 
 function resolvePlatformPermissions(roles: Snapshot["roles"]) {

@@ -1,9 +1,14 @@
 import * as path from "node:path";
 import { registerAs } from "@nestjs/config";
+import {
+  readTrustedProxyCidrs,
+  validateTrustedProxyCidrs,
+} from "@hermes-swarm/rbac";
 
 export const appRuntimeConfig = registerAs("app", () => ({
   corsOrigin: parseCorsOrigin(process.env.CORS_ORIGIN),
   port: parseInteger(process.env.API_PORT, 3200),
+  trustedProxyCidrs: readTrustedProxyCidrs(process.env),
 }));
 
 export const databaseRuntimeConfig = registerAs("database", () => {
@@ -79,6 +84,14 @@ export const authRuntimeConfig = registerAs("auth", () => ({
     "hermes-swarm-local-auth-secret",
 }));
 
+export const settingsRuntimeConfig = registerAs("settings", () => ({
+  encryptionKey:
+    process.env.SETTINGS_ENCRYPTION_KEY ??
+    process.env.AUTH_SESSION_SECRET ??
+    process.env.JWT_SECRET ??
+    "hermes-swarm-local-settings-secret",
+}));
+
 export function getApiEnvFilePaths() {
   return [
     path.resolve(process.cwd(), ".env"),
@@ -91,6 +104,7 @@ export function validateRuntimeConfig(
 ): Record<string, unknown> {
   const environment = String(config.NODE_ENV ?? "development");
   validatePort("API_PORT", config.API_PORT, { fallback: 3200 });
+  validateTrustedProxyCidrs(config.TRUSTED_PROXY_CIDRS);
   validateUrl("POSTGRES_URL", config.POSTGRES_URL, "postgresql:");
   validateUrl("POSTGRES_TENANT_URL", config.POSTGRES_TENANT_URL, "postgresql:");
   validateUrl("POSTGRES_PLATFORM_URL", config.POSTGRES_PLATFORM_URL, "postgresql:");
@@ -192,6 +206,13 @@ export function validateRuntimeConfig(
     "AUTH_SESSION_SECRET",
     config.AUTH_SESSION_SECRET ?? config.JWT_SECRET,
     "hermes-swarm-local-auth-secret",
+  );
+  validateText(
+    "SETTINGS_ENCRYPTION_KEY",
+    config.SETTINGS_ENCRYPTION_KEY ??
+      config.AUTH_SESSION_SECRET ??
+      config.JWT_SECRET,
+    "hermes-swarm-local-settings-secret",
   );
   return config;
 }

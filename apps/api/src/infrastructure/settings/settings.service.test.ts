@@ -3,6 +3,10 @@ import { describe, it } from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import { PlatformSetting, TenantSetting } from "@hermes-swarm/core";
 import { SettingsService } from "./settings.service.js";
+import {
+  decryptSettingSecret,
+  isEncryptedSettingSecret,
+} from "./settings-secret-codec.js";
 
 describe("SettingsService platform-to-tenant fallback", () => {
   it("uses the platform value when the workspace has no override", async () => {
@@ -45,7 +49,7 @@ describe("SettingsService platform-to-tenant fallback", () => {
     assert.equal(preferences.sources.currency, "platform");
   });
 
-  it("rejects platform-only and unknown workspace overrides", async () => {
+  it("rejects platform-only and implicit unknown workspace overrides", async () => {
     const state = createState();
     const manager = {
       getRepository: () => ({ findOne: async () => null }),
@@ -68,6 +72,119 @@ describe("SettingsService platform-to-tenant fallback", () => {
 
     await assert.rejects(() => save("platform.publicBaseUrl"), BadRequestException);
     await assert.rejects(() => save("custom.unknown"), BadRequestException);
+  });
+
+  it("creates an explicit workspace-only parameter", async () => {
+    const state = createState();
+    const saved: Array<Record<string, unknown>> = [];
+    const repository = {
+      create: (value: Record<string, unknown>) => ({ id: "custom", ...value }),
+      findOne: async () => null,
+      save: async (value: Record<string, unknown>) => {
+        saved.push(value);
+        return value;
+      },
+    };
+    const manager = { getRepository: () => repository };
+
+    await (state.service as any).saveTenantSettingsInTransaction(
+      manager,
+      "tenant-a",
+      [{
+        name: "API_BASE_URL",
+        scope: "tenant",
+        value: "https://api.example.com",
+        valueType: "string",
+      }],
+      [],
+    );
+
+    assert.equal(saved[0]?.name, "API_BASE_URL");
+    assert.equal(saved[0]?.tenantId, "tenant-a");
+    assert.equal(saved[0]?.value, "https://api.example.com");
+  });
+
+  it("encrypts workspace secret parameters before persistence", async () => {
+    const state = createState();
+    const saved: Array<Record<string, any>> = [];
+    const repository = {
+      create: (value: Record<string, unknown>) => ({ id: "secret", ...value }),
+      findOne: async () => null,
+      save: async (value: Record<string, unknown>) => {
+        saved.push(value);
+        return value;
+      },
+    };
+    const manager = { getRepository: () => repository };
+
+    await (state.service as any).saveTenantSettingsInTransaction(
+      manager,
+      "tenant-a",
+      [{
+        name: "DATABASE_PASSWORD",
+        scope: "tenant",
+        value: "database-password",
+        valueType: "secret",
+      }],
+      [],
+    );
+
+    const persistedValue = String(saved[0]?.value);
+    assert.equal(isEncryptedSettingSecret(persistedValue), true);
+    assert.equal(
+      decryptSettingSecret(
+        persistedValue,
+        "hermes-swarm-local-settings-secret",
+      ),
+      "database-password",
+    );
+  });
+
+  it("lists workspace-only parameters through the current RLS manager", async () => {
+    let baseRepositoryReads = 0;
+    let tenantContextReads = 0;
+    const tenantSettings = [{
+      id: "tenant-secret",
+      name: "DATABASE_PASSWORD",
+      tenantId: "tenant-a",
+      value: "enc:v1:encrypted",
+      valueOptions: null,
+      valueType: "secret",
+    }];
+    const platformRepository = {
+      find: async () => [],
+    };
+    const tenantRepository = {
+      find: async () => {
+        baseRepositoryReads += 1;
+        return [];
+      },
+    };
+    const manager = {
+      getRepository: (target: unknown) => {
+        assert.equal(target, TenantSetting);
+        return {
+          find: async () => {
+            tenantContextReads += 1;
+            return tenantSettings;
+          },
+        };
+      },
+    };
+    const service = new SettingsService(
+      platformRepository as never,
+      { getClient: async () => { throw new Error("redis offline"); } } as never,
+      tenantRepository as never,
+      { current: () => ({ manager, tenantId: "tenant-a" }) } as never,
+    );
+
+    const result = await service.listTenantSettings("tenant-a");
+
+    assert.equal(baseRepositoryReads, 0);
+    assert.equal(tenantContextReads, 1);
+    assert.equal(result[0]?.name, "DATABASE_PASSWORD");
+    assert.equal(result[0]?.isCustom, true);
+    assert.equal(result[0]?.value, "********");
   });
 
   it("allows null to remove a legacy workspace-only setting", async () => {

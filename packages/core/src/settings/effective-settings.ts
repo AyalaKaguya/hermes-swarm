@@ -18,6 +18,7 @@ export type ScopedSettingRecord = {
 export type EffectiveTenantSetting = {
   defaultValue: string | null;
   id: string;
+  isCustom: boolean;
   isEditable: boolean;
   isOrphaned: boolean;
   isOverridden: boolean;
@@ -51,13 +52,15 @@ export function mergeEffectiveTenantSettings(
       tenantSetting?.valueOptions ?? platformSetting?.valueOptions,
     );
     const isOverridden = Boolean(tenantSetting);
-    const isOrphaned = Boolean(tenantSetting && !platformSetting);
+    const isCustom = Boolean(tenantSetting && !platformSetting);
+    const isOrphaned = false;
     const defaultValue = platformSetting?.value ?? null;
     const overrideValue = tenantSetting?.value ?? null;
     return {
       defaultValue: maskSettingValue(defaultValue, valueType),
       id: tenantSetting?.id ?? platformSetting?.id ?? `${tenantId}:${name}`,
-      isEditable: !isOrphaned && platformSetting?.scope !== "platform",
+      isCustom,
+      isEditable: isCustom || platformSetting?.scope !== "platform",
       isOrphaned,
       isOverridden,
       name,

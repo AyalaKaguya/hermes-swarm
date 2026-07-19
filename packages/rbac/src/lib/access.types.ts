@@ -53,9 +53,11 @@ export type AccessRequest = {
   };
   accessPrincipal?: AccessAuthSession;
   headers?: Record<string, string | string[] | undefined>;
+  ip?: unknown;
   params?: Record<string, string | undefined>;
   method?: string;
   originalUrl?: string;
+  socket?: { remoteAddress?: unknown };
   url?: string;
   [key: string]: unknown;
 };

@@ -176,11 +176,11 @@ type CreateInvitePayload = {
 
 始终显示个人设置：账号、登录设备、API Token。
 
-选择“全部组织”时显示：工作空间、组织、用户、邀请、邮件、工作空间访问。
+选择“全部组织”时显示：工作空间、组织、用户、邀请、邮件、角色和权限。
 
 选择具体组织时显示：组织资料、成员、角色与权限。
 
-工作空间角色路由为 `/settings/workspace-access`；组织角色路由为 `/settings/organization/roles`。旧 `/settings/roles` 不再存在。组织切换通过 `OrganizationContextProvider` 原子更新，不刷新页面或重新登录。
+“角色和权限”路由为 `/settings/workspace-access`；组织角色路由为 `/settings/organization/roles`。旧 `/settings/roles` 不再存在。组织切换通过 `OrganizationContextProvider` 原子更新，不刷新页面或重新登录。
 
 ## 验收门禁
 

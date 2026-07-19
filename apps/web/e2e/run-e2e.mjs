@@ -49,6 +49,11 @@ const tenantRole = {
   label: "Tenant Owner",
   displayName: "Tenant Owner",
   name: "tenant-owner",
+  permissions: [
+    rolePermission("page.settings.tenant.access:tenant", "role-owner"),
+    rolePermission("setting.tenant_config.list:tenant", "role-owner"),
+    rolePermission("setting.tenant_config.save:tenant", "role-owner"),
+  ],
   scope: "tenant",
 };
 
@@ -329,6 +334,9 @@ const tests = [
   {
     name: "workspace localization overrides and restores platform defaults",
     run: async ({ page, state }) => {
+      state.permissions = state.permissions.filter(
+        (permission) => permission !== "setting.tenant_config.save:tenant",
+      );
       state.user.preferredLanguage = null;
       state.user.timeZone = null;
       refreshRuntimePreferences(state);
@@ -342,7 +350,6 @@ const tests = [
       await expectVisibleText(page, "平台默认");
 
       const timeZoneRow = settingRow(page, "时区");
-      await timeZoneRow.getByRole("switch").click();
       await timeZoneRow.getByRole("combobox").click();
       await page.getByRole("option", { name: "东京时间 (Asia/Tokyo)" }).click();
       await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -355,7 +362,9 @@ const tests = [
       );
       await expectVisibleText(page, "工作空间覆盖");
 
-      await settingRow(page, "时区").getByRole("button", { name: "恢复" }).click();
+      await settingRow(page, "时区")
+        .getByRole("button", { name: "恢复平台默认", exact: true })
+        .click();
       await page.waitForFunction(() =>
         document.cookie.includes("hermes-swarm.time-zone=Asia/Shanghai"),
       );
@@ -389,6 +398,97 @@ const tests = [
       await row.getByText(/当前生效.*Asia\/Hong_Kong/).waitFor();
       await page.waitForFunction(() =>
         document.cookie.includes("hermes-swarm.time-zone=Asia/Hong_Kong"),
+      );
+    },
+  },
+  {
+    name: "editing an inherited workspace parameter creates a workspace value",
+    run: async ({ page, state }) => {
+      state.tenantSettings.push({
+        defaultValue: "true",
+        id: "platform-feature-email",
+        isCustom: false,
+        isEditable: true,
+        isOrphaned: false,
+        isOverridden: false,
+        name: "feature:email:enabled",
+        overrideValue: null,
+        scope: "platform",
+        tenantId: snapshot.tenantId,
+        value: "true",
+        valueOptions: null,
+        valueType: "boolean",
+      });
+      await installApiMocks(page, state);
+      await seedSession(page, { allOrganizations: true });
+      await page.goto(`${baseUrl}/settings/tenant/parameters`);
+
+      const valueSwitch = page.locator("#value-platform-feature-email:visible");
+      await valueSwitch.waitFor();
+      assert.equal(await valueSwitch.count(), 1);
+      const row = valueSwitch.locator(
+        "xpath=ancestor::div[contains(@class,'rounded-md')][1]",
+      );
+      const [rowBox, switchBox] = await Promise.all([
+        row.boundingBox(),
+        valueSwitch.boundingBox(),
+      ]);
+      assert.ok(rowBox && switchBox);
+      assert.ok(switchBox.x >= rowBox.x + rowBox.width * 0.8);
+      await valueSwitch.click();
+      assert.equal(await row.getByText("跟随平台默认").count(), 0);
+      await page.getByRole("button", { name: "保存", exact: true }).click();
+
+      const setting = state.tenantSettings.find(
+        (item) => item.name === "feature:email:enabled",
+      );
+      assert.equal(setting?.isOverridden, true);
+      assert.equal(setting?.overrideValue, "false");
+      await row
+        .getByRole("button", { name: "恢复平台默认", exact: true })
+        .click();
+      assert.equal(setting?.isOverridden, false);
+    },
+  },
+  {
+    name: "workspace parameters can add and delete a secret",
+    run: async ({ page, state }) => {
+      await installApiMocks(page, state);
+      await seedSession(page, { allOrganizations: true });
+      await page.goto(`${baseUrl}/settings/tenant/parameters`);
+
+      await page.getByRole("button", { name: "新增参数" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel("名称").fill("DATABASE_PASSWORD");
+      await dialog.getByLabel("类型").click();
+      await page.getByRole("option", { name: "密钥" }).click();
+      await dialog.getByLabel("值").pressSequentially("database-password");
+      await dialog.getByRole("button", { name: "添加", exact: true }).click();
+
+      const setting = state.tenantSettings.find(
+        (item) => item.name === "DATABASE_PASSWORD",
+      );
+      assert.equal(
+        state.lastTenantSettingsPayload?.settings?.[0]?.scope,
+        "tenant",
+      );
+      assert.equal(
+        state.lastTenantSettingsPayload?.settings?.[0]?.value,
+        "database-password",
+      );
+      assert.equal(setting?.isCustom, true);
+      assert.equal(setting?.value, "********");
+
+      const row = settingRow(page, "DATABASE_PASSWORD");
+      await row.waitFor();
+      assert.equal(
+        await row.locator("input").getAttribute("placeholder"),
+        "********",
+      );
+      await row.getByRole("button", { name: "删除", exact: true }).click();
+      assert.equal(
+        state.tenantSettings.some((item) => item.name === "DATABASE_PASSWORD"),
+        false,
       );
     },
   },
@@ -446,7 +546,9 @@ async function installApiMocks(page, state = createE2EState()) {
       }
       return json(route, {
         ...snapshot,
+        permissions: state.permissions,
         runtimePreferences: state.runtimePreferences,
+        tenantRole: state.tenantRole,
         user: state.user,
       });
     }
@@ -517,7 +619,11 @@ async function installApiMocks(page, state = createE2EState()) {
       return json(route, state.tenantSettings);
     }
     if (method === "PUT" && path === "/tenant/settings") {
-      applyTenantSettings(state, request.postDataJSON()?.settings ?? []);
+      state.lastTenantSettingsPayload = request.postDataJSON();
+      applyTenantSettings(
+        state,
+        state.lastTenantSettingsPayload?.settings ?? [],
+      );
       return json(route, state.tenantSettings);
     }
     if (method === "PATCH" && path === "/users/me/preferences") {
@@ -537,9 +643,12 @@ async function installApiMocks(page, state = createE2EState()) {
 function createE2EState() {
   const state = {
     createdInvite: null,
+    lastTenantSettingsPayload: null,
     platformSettings: structuredClone(platformSettings),
+    permissions: structuredClone(snapshot.permissions),
     principalType: "tenant",
     runtimePreferences: structuredClone(snapshot.runtimePreferences),
+    tenantRole: structuredClone(snapshot.tenantRole),
     tenantSettings: createTenantSettings(),
     user: structuredClone(user),
   };
@@ -722,6 +831,7 @@ function effectiveSetting(name, defaultValue, options) {
   return {
     defaultValue,
     id: `platform-${name}`,
+    isCustom: false,
     isEditable: true,
     isOrphaned: false,
     isOverridden: false,
@@ -745,9 +855,31 @@ function settingOptionLabel(value) {
 
 function applyTenantSettings(state, entries) {
   for (const entry of entries) {
-    const setting = state.tenantSettings.find((item) => item.name === entry.name);
+    let setting = state.tenantSettings.find((item) => item.name === entry.name);
+    if (!setting && entry.scope === "tenant" && entry.value != null) {
+      setting = {
+        defaultValue: null,
+        id: `tenant-custom-${entry.name}`,
+        isCustom: true,
+        isEditable: true,
+        isOrphaned: false,
+        isOverridden: true,
+        name: entry.name,
+        overrideValue: null,
+        scope: "tenant",
+        tenantId: snapshot.tenantId,
+        value: null,
+        valueOptions: entry.valueOptions ?? null,
+        valueType: entry.valueType ?? "string",
+      };
+      state.tenantSettings.push(setting);
+    }
     if (!setting) continue;
     if (entry.value === null || entry.value === undefined) {
+      if (setting.isCustom) {
+        state.tenantSettings.splice(state.tenantSettings.indexOf(setting), 1);
+        continue;
+      }
       Object.assign(setting, {
         isOverridden: false,
         overrideValue: null,
@@ -755,12 +887,17 @@ function applyTenantSettings(state, entries) {
         value: setting.defaultValue,
       });
     } else {
-      const value = String(entry.value);
+      const value =
+        entry.valueType === "secret" || setting.valueType === "secret"
+          ? "********"
+          : String(entry.value);
       Object.assign(setting, {
         isOverridden: true,
         overrideValue: value,
         scope: "tenant",
         value,
+        valueOptions: entry.valueOptions ?? setting.valueOptions,
+        valueType: entry.valueType ?? setting.valueType,
       });
     }
   }

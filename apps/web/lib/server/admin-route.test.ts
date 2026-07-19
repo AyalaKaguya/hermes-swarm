@@ -148,6 +148,72 @@ describe("admin BFF refresh single-flight", () => {
     assert.equal(apiRequests, 20);
     assert.deepEqual(await responses[0]!.json(), { ok: true });
   });
+
+  it("keeps the web session when the refresh service is temporarily unavailable", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    });
+    globalThis.fetch = async () =>
+      Response.json(
+        { message: "Service unavailable" },
+        { status: 503 },
+      );
+
+    const response = await sendRefreshRequest(session);
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      message: "认证服务暂时不可用，请稍后重试",
+    });
+    assert.equal(response.headers.get("set-cookie"), null);
+  });
+
+  it("uses a still-valid access token when preemptive refresh is temporarily unavailable", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({
+      expiresAt: new Date(Date.now() + 30_000).toISOString(),
+    });
+    let apiRequests = 0;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).endsWith("/auth/refresh")) {
+        throw new TypeError("fetch failed");
+      }
+      apiRequests += 1;
+      assert.equal(
+        new Headers(init?.headers).get("authorization"),
+        "Bearer access-token",
+      );
+      return Response.json({ ok: true });
+    };
+
+    const response = await sendProtectedRequest(session);
+
+    assert.equal(response.status, 200);
+    assert.equal(apiRequests, 1);
+    assert.deepEqual(await response.json(), { ok: true });
+  });
+
+  it("clears the web session only when the refresh token is rejected", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    });
+    globalThis.fetch = async () =>
+      Response.json(
+        { message: "登录已失效，请重新登录" },
+        { status: 401 },
+      );
+
+    const response = await sendRefreshRequest(session);
+
+    assert.equal(response.status, 401);
+    assert.equal(
+      response.headers.get("set-cookie")?.includes(WEB_SESSION_COOKIE_NAME),
+      true,
+    );
+    assert.equal(response.headers.get("set-cookie")?.includes("Max-Age=0"), true);
+  });
 });
 
 async function sendRefreshRequest(session: WebSession) {

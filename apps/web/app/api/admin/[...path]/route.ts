@@ -80,7 +80,12 @@ async function handleAdminRequest(
     return toNextResponse(await forwardToNest(request, path, request.nextUrl.search));
   }
 
-  const session = await getUsableWebSession(request);
+  let session: Awaited<ReturnType<typeof getUsableWebSession>>;
+  try {
+    session = await getUsableWebSession(request);
+  } catch (error) {
+    return refreshFailureResponse(normalizeRefreshError(error));
+  }
   if (!session) return unauthorizedResponse(true);
 
   let upstream = await forwardToNest(
@@ -90,8 +95,12 @@ async function handleAdminRequest(
     session.accessToken,
   );
   if (upstream.status === 401) {
-    const refreshed = await refreshWebSession(session, request).catch(() => null);
-    if (!refreshed) return unauthorizedResponse(true);
+    let refreshed: WebSession;
+    try {
+      refreshed = await refreshWebSession(session, request);
+    } catch (error) {
+      return refreshFailureResponse(normalizeRefreshError(error));
+    }
     upstream = await forwardToNest(
       request,
       path,
@@ -163,8 +172,12 @@ async function handleLogout(request: NextRequest, path: string) {
 async function handleRefresh(request: NextRequest) {
   const session = readWebSession(request);
   if (!session) return unauthorizedResponse(true);
-  const refreshed = await refreshWebSession(session, request).catch(() => null);
-  if (!refreshed) return unauthorizedResponse(true);
+  let refreshed: WebSession;
+  try {
+    refreshed = await refreshWebSession(session, request);
+  } catch (error) {
+    return refreshFailureResponse(normalizeRefreshError(error));
+  }
   const response = jsonResponse(stripSessionSecrets(refreshed), 200);
   setWebSessionCookie(response, refreshed);
   return response;
@@ -176,8 +189,19 @@ async function getUsableWebSession(request: NextRequest) {
   if (!isAccessTokenExpiring(session.expiresAt, ACCESS_TOKEN_REFRESH_SKEW_MS)) {
     return { ...session, changed: false };
   }
-  const refreshed = await refreshWebSession(session, request).catch(() => null);
-  return refreshed ? { ...refreshed, changed: true } : null;
+  try {
+    const refreshed = await refreshWebSession(session, request);
+    return { ...refreshed, changed: true };
+  } catch (error) {
+    if (
+      error instanceof RefreshSessionError &&
+      error.kind === "unavailable" &&
+      !isAccessTokenExpiring(session.expiresAt)
+    ) {
+      return { ...session, changed: false };
+    }
+    throw normalizeRefreshError(error);
+  }
 }
 
 function refreshWebSession(session: WebSession, request: NextRequest): Promise<WebSession> {
@@ -201,18 +225,28 @@ async function refreshWebSessionUpstream(
     session.principalType === "platform"
       ? "/platform/auth/refresh"
       : "/auth/refresh";
-  const upstream = await fetch(`${getInternalBaseUrl()}${refreshPath}`, {
-    headers: {
-      cookie: `${REFRESH_COOKIE_NAME}=${encodeURIComponent(session.refreshToken)}`,
-      ...(request.headers.get("user-agent")
-        ? { "user-agent": request.headers.get("user-agent")! }
-        : {}),
-    },
-    method: "POST",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${getInternalBaseUrl()}${refreshPath}`, {
+      headers: {
+        cookie: `${REFRESH_COOKIE_NAME}=${encodeURIComponent(session.refreshToken)}`,
+        ...(request.headers.get("user-agent")
+          ? { "user-agent": request.headers.get("user-agent")! }
+          : {}),
+      },
+      method: "POST",
+    });
+  } catch {
+    throw new RefreshSessionError("unavailable");
+  }
   const detail = await readJson(upstream);
   if (!upstream.ok) {
-    throw new Error(getString(detail?.message) ?? "Unable to refresh session");
+    throw new RefreshSessionError(
+      upstream.status === 401 || upstream.status === 403
+        ? "invalid"
+        : "unavailable",
+      getString(detail?.message) ?? undefined,
+    );
   }
 
   const accessToken = getString(detail?.accessToken);
@@ -222,7 +256,10 @@ async function refreshWebSessionUpstream(
     extractCookieValue(upstream.headers.get("set-cookie"), REFRESH_COOKIE_NAME) ??
     session.refreshToken;
   if (!accessToken || !expiresAt || !sessionId || !refreshToken) {
-    throw new Error("Refresh response is missing session fields");
+    throw new RefreshSessionError(
+      "unavailable",
+      "Refresh response is missing session fields",
+    );
   }
   return {
     accessToken,
@@ -320,6 +357,35 @@ function unauthorizedResponse(clearSession: boolean) {
   );
   if (clearSession) clearWebSessionCookie(response);
   return response;
+}
+
+function refreshFailureResponse(error: RefreshSessionError) {
+  if (error.kind === "invalid") {
+    return unauthorizedResponse(true);
+  }
+  return jsonResponse(
+    { message: "认证服务暂时不可用，请稍后重试" },
+    503,
+  );
+}
+
+function normalizeRefreshError(error: unknown) {
+  return error instanceof RefreshSessionError
+    ? error
+    : new RefreshSessionError("unavailable");
+}
+
+class RefreshSessionError extends Error {
+  constructor(
+    readonly kind: "invalid" | "unavailable",
+    message =
+      kind === "invalid"
+        ? "登录已失效，请重新登录"
+        : "认证服务暂时不可用，请稍后重试",
+  ) {
+    super(message);
+    this.name = "RefreshSessionError";
+  }
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown> | null> {

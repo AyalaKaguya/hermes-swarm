@@ -7,11 +7,19 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { enUS, zhCN, zhTW } from "date-fns/locale";
+import { CalendarIcon } from "lucide-react";
 import { useI18n } from "@/components/i18n-provider";
 import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -49,8 +57,15 @@ import {
   type LoginAuditLogItem,
   type OperationAuditLogItem,
 } from "@/lib/admin-api";
+import {
+  auditDateBoundaryToIso,
+  auditDateFromKey,
+  auditDateKeyFromDate,
+  formatAuditDateKey,
+} from "@/lib/audit-date-range";
 import { getAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 import { formatRuntimeDateTime } from "@/lib/runtime-format";
+import type { RuntimePreferences } from "@hermes-swarm/core/settings";
 
 type AuditTab = "login" | "operation";
 type AuditRow = LoginAuditLogItem | OperationAuditLogItem;
@@ -80,7 +95,11 @@ export function AuditLogsView({
 
   const query = useMemo<AuditLogQuery>(
     () => ({
-      from: toIso(filters.from),
+      from: auditDateBoundaryToIso(
+        filters.from,
+        runtimePreferences.timeZone,
+        "start",
+      ),
       httpMethod:
         tab === "operation" && filters.httpMethod !== "all"
           ? filters.httpMethod
@@ -91,9 +110,13 @@ export function AuditLogsView({
       permission:
         tab === "operation" ? filters.permission || undefined : undefined,
       result: filters.result === "all" ? undefined : filters.result,
-      to: toIso(filters.to),
+      to: auditDateBoundaryToIso(
+        filters.to,
+        runtimePreferences.timeZone,
+        "end",
+      ),
     }),
-    [filters, page, tab],
+    [filters, page, runtimePreferences.timeZone, tab],
   );
 
   const load = useCallback(async () => {
@@ -183,6 +206,7 @@ export function AuditLogsView({
           onApply={applyFilters}
           onChange={setDraft}
           onReset={resetFilters}
+          runtimePreferences={runtimePreferences}
           tab={tab}
         />
 
@@ -255,12 +279,14 @@ function AuditFilters({
   onApply,
   onChange,
   onReset,
+  runtimePreferences,
   tab,
 }: {
   draft: AuditFilterState;
   onApply: () => void;
   onChange: (value: AuditFilterState) => void;
   onReset: () => void;
+  runtimePreferences: RuntimePreferences;
   tab: AuditTab;
 }) {
   const tr = useTextTranslation();
@@ -291,20 +317,18 @@ function AuditFilters({
           />
         </FilterField>
         <FilterField label={tr("开始时间")}>
-          <Input
-            onChange={(event) =>
-              onChange({ ...draft, from: event.target.value })
-            }
-            type="datetime-local"
+          <AuditDatePicker
+            label={tr("开始时间")}
+            onChange={(from) => onChange({ ...draft, from })}
+            runtimePreferences={runtimePreferences}
             value={draft.from}
           />
         </FilterField>
         <FilterField label={tr("结束时间")}>
-          <Input
-            onChange={(event) =>
-              onChange({ ...draft, to: event.target.value })
-            }
-            type="datetime-local"
+          <AuditDatePicker
+            label={tr("结束时间")}
+            onChange={(to) => onChange({ ...draft, to })}
+            runtimePreferences={runtimePreferences}
             value={draft.to}
           />
         </FilterField>
@@ -374,6 +398,61 @@ function AuditFilters({
         </div>
       )}
     </div>
+  );
+}
+
+function AuditDatePicker({
+  label,
+  onChange,
+  runtimePreferences,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  runtimePreferences: RuntimePreferences;
+  value: string;
+}) {
+  const tr = useTextTranslation();
+  const [open, setOpen] = useState(false);
+  const selected = auditDateFromKey(value);
+  const locale =
+    runtimePreferences.language === "en"
+      ? enUS
+      : runtimePreferences.language === "zh-Hant"
+        ? zhTW
+        : zhCN;
+  const displayValue = formatAuditDateKey(
+    value,
+    runtimePreferences.dateFormat,
+  );
+  return (
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={label}
+          className={`w-full justify-start font-normal ${
+            displayValue ? "" : "text-muted-foreground"
+          }`}
+          type="button"
+          variant="outline"
+        >
+          <CalendarIcon />
+          {displayValue || tr("选择日期")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          captionLayout="dropdown"
+          locale={locale}
+          mode="single"
+          onSelect={(date) => {
+            onChange(date ? auditDateKeyFromDate(date) : "");
+            setOpen(false);
+          }}
+          selected={selected}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -782,12 +861,6 @@ function failureLabel(
     tenant_unresolved: tr("工作空间无法识别"),
   };
   return labels[code] ?? code;
-}
-
-function toIso(value: string) {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 type AuditFilterState = {

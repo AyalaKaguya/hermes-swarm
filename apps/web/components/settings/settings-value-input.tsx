@@ -813,7 +813,14 @@ export function SettingEditDialog({
   return (
     <Dialog onOpenChange={setOpen} open={open}>
       <DialogTrigger asChild>
-        <Button disabled={disabled || saving} size="icon" type="button" variant="ghost">
+        <Button
+          aria-label={`${tr("编辑设置")} ${name}`}
+          disabled={disabled || saving}
+          size="icon"
+          title={`${tr("编辑设置")} ${name}`}
+          type="button"
+          variant="ghost"
+        >
           <AppIcon className="size-4" name="pencil" />
         </Button>
       </DialogTrigger>

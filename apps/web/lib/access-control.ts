@@ -7,6 +7,22 @@ import type { ResolvedSession } from "./session";
 
 type AccessPrincipal = ResolvedSession;
 
+export function mergePermissionCodes(
+  base: readonly string[],
+  ...roles: Array<{ permissions?: RolePermission[] } | null | undefined>
+) {
+  return [
+    ...new Set([
+      ...base,
+      ...roles.flatMap((role) =>
+        (role?.permissions ?? [])
+          .filter((permission) => permission.enabled !== false)
+          .map((permission) => permission.permission),
+      ),
+    ]),
+  ];
+}
+
 export function hasPermission(
   principal: AccessPrincipal | null | undefined,
   permissions: string | string[],

@@ -6,9 +6,11 @@ import {
   Optional,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import { ConfigService } from "@nestjs/config";
 import {
   FEATURE_SETTING_DEFINITIONS,
   PLATFORM_SETTING_DEFINITIONS,
+  SECRET_SETTING_MASK,
   PlatformSetting,
   TenantSetting,
   getFeatureSettingDefaultValue,
@@ -20,6 +22,7 @@ import {
   resolveSettingValueType,
   type RuntimePreferenceUser,
   type SettingValueOption,
+  type SettingValueType,
 } from "@hermes-swarm/core";
 import type { EntityManager, Repository } from "typeorm";
 import type { SaveSettingsPayload } from "../../common/admin-api.types.js";
@@ -30,6 +33,13 @@ import {
   normalizeSettingEntry,
   parseSettingsPayload,
 } from "./settings-value-normalizer.js";
+import {
+  decryptSettingSecret,
+  encryptSettingSecret,
+  isEncryptedSettingSecret,
+} from "./settings-secret-codec.js";
+
+const SECRET_CACHE_PREFIX = "setting-secret-cache:v1:";
 
 @Injectable()
 export class SettingsService implements OnModuleInit {
@@ -44,6 +54,8 @@ export class SettingsService implements OnModuleInit {
     private readonly tenantSettingRepository?: Repository<TenantSetting>,
     @Optional()
     private readonly tenantContext?: TenantContextService,
+    @Optional()
+    private readonly configService?: ConfigService,
   ) {}
 
   async onModuleInit() {
@@ -92,21 +104,40 @@ export class SettingsService implements OnModuleInit {
   async getPlatformValue(name: string, fallback: string | null = null) {
     const cacheKey = this.platformCacheKey(name);
     const cached = await this.getCache(cacheKey);
-    if (cached !== null) return cached;
+    if (cached !== null) return this.decodeCachedSettingValue(cached);
     const setting = await this.platformSettingRepository.findOne({ where: { name } });
-    const value = setting?.value ?? fallback;
-    await this.setCache(cacheKey, value);
+    const value = setting
+      ? this.decodePersistedSettingValue(
+          setting.name,
+          setting.value,
+          setting.valueType,
+        )
+      : fallback;
+    await this.setCache(
+      cacheKey,
+      setting
+        ? this.encodeCachedSettingValue(setting.value, setting.valueType)
+        : value,
+    );
     return value;
   }
 
   async getTenantValue(tenantId: string, name: string, fallback: string | null = null) {
     const cacheKey = this.tenantCacheKey(tenantId, name);
     const cached = await this.getCache(cacheKey);
-    if (cached !== null) return cached;
+    if (cached !== null) return this.decodeCachedSettingValue(cached);
     const setting = await this.tenantSettingRepository?.findOne({ where: { name, tenantId } });
     if (setting?.value !== null && setting?.value !== undefined) {
-      await this.setCache(cacheKey, setting.value);
-      return setting.value;
+      const value = this.decodePersistedSettingValue(
+        setting.name,
+        setting.value,
+        setting.valueType,
+      );
+      await this.setCache(
+        cacheKey,
+        this.encodeCachedSettingValue(setting.value, setting.valueType),
+      );
+      return value;
     }
     return this.getPlatformValue(name, fallback);
   }
@@ -212,11 +243,22 @@ export class SettingsService implements OnModuleInit {
       setting.scope = definition?.scope ?? normalizeSettingScope(
         entry.scope ?? existing?.scope ?? "platform",
       );
-      setting.value = normalized.value;
+      setting.value = this.encodePersistedSettingValue(
+        normalized.value,
+        normalized.valueType,
+        entry.value,
+        existing?.value,
+      );
       setting.valueOptions = normalized.valueOptions;
       setting.valueType = normalized.valueType;
       const persisted = await repository.save(setting);
-      invalidations.push({ cacheKey: this.platformCacheKey(entry.name), name: entry.name, scope: "platform", value: persisted.value });
+      invalidations.push({
+        cacheKey: this.platformCacheKey(entry.name),
+        name: entry.name,
+        scope: "platform",
+        value: persisted.value,
+        valueType: persisted.valueType,
+      });
     }
     return invalidations;
   }
@@ -233,6 +275,9 @@ export class SettingsService implements OnModuleInit {
     for (const entry of entries) {
       const existing = await repository.findOne({ where: { name: entry.name, tenantId } });
       const platformSetting = platformByName.get(entry.name) ?? null;
+      if (entry.scope !== undefined && entry.scope !== "tenant") {
+        throw new BadRequestException("工作空间参数范围必须为 tenant");
+      }
       if (entry.value === null || entry.value === undefined) {
         if (platformSetting && !isTenantOverridableSetting(platformSetting)) {
           throw new BadRequestException("该设置不允许工作空间覆盖");
@@ -244,26 +289,49 @@ export class SettingsService implements OnModuleInit {
         invalidations.push({ cacheKey: this.tenantCacheKey(tenantId, entry.name), name: entry.name, scope: "tenant", tenantId, value: null });
         continue;
       }
-      if (!platformSetting || !isTenantOverridableSetting(platformSetting)) {
+      if (platformSetting && !isTenantOverridableSetting(platformSetting)) {
         throw new BadRequestException("该设置不允许工作空间覆盖");
+      }
+      if (!platformSetting && !existing && entry.scope !== "tenant") {
+        throw new BadRequestException("新增工作空间参数必须显式使用 tenant 范围");
       }
       const normalized = normalizeSettingEntry(entry, [
         existing,
         platformSetting,
       ]);
       const setting = existing ?? repository.create({ name: entry.name, tenantId });
-      setting.value = normalized.value;
+      setting.value = this.encodePersistedSettingValue(
+        normalized.value,
+        normalized.valueType,
+        entry.value,
+        existing?.value,
+      );
       setting.valueOptions = normalized.valueOptions;
       setting.valueType = normalized.valueType;
       const persisted = await repository.save(setting);
-      invalidations.push({ cacheKey: this.tenantCacheKey(tenantId, entry.name), name: entry.name, scope: "tenant", tenantId, value: persisted.value });
+      invalidations.push({
+        cacheKey: this.tenantCacheKey(tenantId, entry.name),
+        name: entry.name,
+        scope: "tenant",
+        tenantId,
+        value: persisted.value,
+        valueType: persisted.valueType,
+      });
     }
     return invalidations;
   }
 
   private async applySettingsInvalidation(invalidation: AppliedSettingsInvalidation) {
     if (invalidation.value === null) await this.deleteCache(invalidation.cacheKey);
-    else await this.setCache(invalidation.cacheKey, invalidation.value);
+    else {
+      await this.setCache(
+        invalidation.cacheKey,
+        this.encodeCachedSettingValue(
+          invalidation.value,
+          invalidation.valueType,
+        ),
+      );
+    }
     await this.publishSettingsInvalidation(
       invalidation.scope === "platform"
         ? { name: invalidation.name, scope: "platform" }
@@ -272,7 +340,17 @@ export class SettingsService implements OnModuleInit {
   }
 
   private findTenantSettings(tenantId: string) {
-    return this.tenantSettingRepository?.find({ order: { name: "ASC" }, where: { tenantId } }) ?? Promise.resolve([]);
+    const repository =
+      this.tenantContext
+        ?.current(false)
+        ?.manager.getRepository(TenantSetting) ??
+      this.tenantSettingRepository;
+    return (
+      repository?.find({
+        order: { name: "ASC" },
+        where: { tenantId },
+      }) ?? Promise.resolve([])
+    );
   }
 
   private runTenantTransaction<T>(work: (manager: EntityManager) => Promise<T>) {
@@ -286,6 +364,64 @@ export class SettingsService implements OnModuleInit {
     const tenantId = explicitTenantId?.trim() ?? this.tenantContext?.current(false)?.tenantId;
     if (!tenantId) throw new Error("Tenant context is required for settings");
     return tenantId;
+  }
+
+  private encodePersistedSettingValue(
+    value: string | null,
+    valueType: SettingValueType,
+    submittedValue: unknown,
+    existingValue?: string | null,
+  ) {
+    if (value === null || valueType !== "secret") return value;
+    if (
+      submittedValue === SECRET_SETTING_MASK &&
+      existingValue &&
+      isEncryptedSettingSecret(existingValue)
+    ) {
+      return existingValue;
+    }
+    return encryptSettingSecret(value, this.settingEncryptionKey());
+  }
+
+  private decodePersistedSettingValue(
+    name: string,
+    value: string | null,
+    valueType: SettingValueType | string | null | undefined,
+  ) {
+    if (
+      value === null ||
+      resolveSettingValueType(name, valueType) !== "secret"
+    ) {
+      return value;
+    }
+    return decryptSettingSecret(value, this.settingEncryptionKey());
+  }
+
+  private encodeCachedSettingValue(
+    value: string | null,
+    valueType?: SettingValueType | string | null,
+  ) {
+    if (value === null) return null;
+    return valueType === "secret" ? `${SECRET_CACHE_PREFIX}${value}` : value;
+  }
+
+  private decodeCachedSettingValue(value: string) {
+    return value.startsWith(SECRET_CACHE_PREFIX)
+      ? decryptSettingSecret(
+          value.slice(SECRET_CACHE_PREFIX.length),
+          this.settingEncryptionKey(),
+        )
+      : value;
+  }
+
+  private settingEncryptionKey() {
+    return (
+      this.configService?.get<string>("settings.encryptionKey") ??
+      process.env.SETTINGS_ENCRYPTION_KEY ??
+      process.env.AUTH_SESSION_SECRET ??
+      process.env.JWT_SECRET ??
+      "hermes-swarm-local-settings-secret"
+    );
   }
 
   private platformCacheKey(name: string) { return `settings:platform:${name}`; }
@@ -320,8 +456,21 @@ type SettingsInvalidationEvent =
   | { name: string; scope: "platform" }
   | { name: string; scope: "tenant"; tenantId: string };
 type AppliedSettingsInvalidation =
-  | { cacheKey: string; name: string; scope: "platform"; value: string | null }
-  | { cacheKey: string; name: string; scope: "tenant"; tenantId: string; value: string | null };
+  | {
+      cacheKey: string;
+      name: string;
+      scope: "platform";
+      value: string | null;
+      valueType?: SettingValueType;
+    }
+  | {
+      cacheKey: string;
+      name: string;
+      scope: "tenant";
+      tenantId: string;
+      value: string | null;
+      valueType?: SettingValueType;
+    };
 
 function getDefinitionValueOptions(definition: unknown) {
   const valueOptions = definition && typeof definition === "object" && "valueOptions" in definition

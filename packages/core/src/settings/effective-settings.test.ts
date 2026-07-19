@@ -24,4 +24,22 @@ describe("workspace settings", () => {
     assert.equal(result[0]?.scope, "platform");
     assert.equal(result[0]?.isOverridden, false);
   });
+
+  it("treats workspace-only parameters as editable custom values", () => {
+    const result = mergeEffectiveTenantSettings(
+      [{
+        id: "tenant-secret",
+        name: "DATABASE_PASSWORD",
+        value: "database-password",
+        valueType: "secret",
+      }],
+      [],
+      "tenant-a",
+    );
+
+    assert.equal(result[0]?.isCustom, true);
+    assert.equal(result[0]?.isEditable, true);
+    assert.equal(result[0]?.isOrphaned, false);
+    assert.equal(result[0]?.value, "********");
+  });
 });

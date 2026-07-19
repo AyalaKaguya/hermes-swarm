@@ -197,7 +197,7 @@ export default function WorkspaceAccessPage() {
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">{tr("工作空间访问")}</h1>
+          <h1 className="text-lg font-semibold">{tr("角色和权限")}</h1>
           <p className="text-sm text-muted-foreground">{tr("配置工作空间控制台、用户治理和个人能力的访问权限。")}</p>
         </div>
         <Button disabled={!canCreate || saving} onClick={() => openDialog({ mode: "create" })} size="sm">

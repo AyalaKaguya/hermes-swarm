@@ -144,7 +144,7 @@ export const PAGE_ACCESS_DEFINITIONS = [
     href: "/settings/workspace-access",
     icon: "shield",
     key: "settings.workspace-access",
-    label: "工作空间访问",
+    label: "角色和权限",
     order: 70,
     routePatterns: ["/settings/workspace-access"],
     scope: "tenant",

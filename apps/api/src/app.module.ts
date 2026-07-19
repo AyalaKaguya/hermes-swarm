@@ -9,6 +9,7 @@ import {
   databaseRuntimeConfig,
   getApiEnvFilePaths,
   redisRuntimeConfig,
+  settingsRuntimeConfig,
   validateRuntimeConfig,
 } from "./common/config/runtime-config.js";
 import { HealthModule } from "./common/health/health.module.js";
@@ -29,6 +30,7 @@ import { TenantTransactionInterceptor } from "./common/database/tenant-transacti
         authRuntimeConfig,
         databaseRuntimeConfig,
         redisRuntimeConfig,
+        settingsRuntimeConfig,
       ],
       validate: validateRuntimeConfig,
     }),

@@ -829,7 +829,6 @@
   "管理工作空间邮件模板": "Manage workspace email templates",
   "配置工作空间邮件发送服务器": "Configure the workspace email delivery server",
   "SMTP 设置": "SMTP settings",
-  "工作空间访问": "Workspace access",
   "配置工作空间控制台、用户治理和个人能力的访问权限。": "Control access to workspace administration, user governance, and personal capabilities.",
   "角色仅属于当前组织，不会影响其他组织或自动向下级继承。": "Roles belong only to this organization and do not affect or inherit into other organizations.",
   "角色保存失败": "Unable to save role",
@@ -909,6 +908,7 @@
   "结果": "Result",
   "结束时间": "End time",
   "开始时间": "Start time",
+  "选择日期": "Select date",
   "目标租户": "Target workspace",
   "匿名": "Anonymous",
   "请求": "Request",
@@ -932,5 +932,10 @@
   "暂无登录日志": "No login logs",
   "账号或密码不正确": "Incorrect account or password",
   "状态码": "Status code",
-  "HTTP 方法": "HTTP method"
+  "HTTP 方法": "HTTP method",
+  "保存工作空间专属环境参数和密钥，或覆盖平台开放的参数": "Store workspace-specific environment parameters and secrets, or override parameters exposed by the platform",
+  "创建当前工作空间专属参数；密钥类型只显示遮罩并加密保存。": "Create a parameter for this workspace. Secret values are masked and encrypted at rest.",
+  "新增工作空间参数": "Add workspace parameter",
+  "新增参数": "Add parameter",
+  "工作空间专属": "Workspace-specific"
 }
