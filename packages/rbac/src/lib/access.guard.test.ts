@@ -173,6 +173,60 @@ describe("AccessGuard integration token narrowing", () => {
     assert.equal((request.accessPrincipal as { userId?: string }).userId, "user-1");
   });
 
+  it("resolves handler-level resource metadata before the controller fallback", async () => {
+    const handlerResource: AccessResourceMetadata = {
+      ...resource,
+      entity: "tenant_application",
+      entityLabel: "租户申请",
+      scope: "platform",
+    };
+    const handlerOperation: AccessOperationMetadata = {
+      label: "查看租户申请",
+      operation: "list",
+    };
+    const definition = resolveAccessDefinition(handlerResource, handlerOperation)!;
+    function Controller() {}
+    function handler() {}
+    let resourceTargets: unknown[] = [];
+    const guard = new AccessGuard(
+      {
+        getAllAndOverride: (key: string, targets: unknown[]) => {
+          if (key === ACCESS_RESOURCE_METADATA) {
+            resourceTargets = targets;
+            return handlerResource;
+          }
+          if (key === ACCESS_OPERATION_METADATA) return handlerOperation;
+          return undefined;
+        },
+      } as any,
+      {
+        validateAccessToken: async () => ({
+          principalType: "platform",
+          tenantId: null,
+          userId: "platform-user-1",
+        }),
+      },
+      {
+        getDefinition: (permission: string) =>
+          permission === definition.id ? definition : null,
+      } as any,
+      { can: async () => true } as any,
+      { resolve: async () => ({ scopeLevel: "platform", tenantId: null }) } as any,
+    );
+
+    assert.equal(
+      await guard.canActivate({
+        getClass: () => Controller,
+        getHandler: () => handler,
+        switchToHttp: () => ({
+          getRequest: () => ({ headers: { authorization: "Bearer session-token" } }),
+        }),
+      } as any),
+      true,
+    );
+    assert.deepEqual(resourceTargets, [handler, Controller]);
+  });
+
   it("rejects unannotated admin routes instead of silently allowing them", async () => {
     const guard = new AccessGuard(
       { get: () => undefined, getAllAndOverride: () => undefined } as any,
@@ -204,10 +258,10 @@ describe("AccessGuard integration token narrowing", () => {
   }, auditService?: { recordRequest: (...args: any[]) => Promise<unknown> }, accessService: { can: (...args: any[]) => Promise<boolean> } = { can: async () => true }) {
     return new AccessGuard(
       {
-        get: (key: string) =>
-          key === ACCESS_RESOURCE_METADATA ? resource : undefined,
         getAllAndOverride: (key: string) =>
-          key === ACCESS_OPERATION_METADATA
+          key === ACCESS_RESOURCE_METADATA
+            ? resource
+            : key === ACCESS_OPERATION_METADATA
             ? operation
             : key === ACCESS_SCOPE_METADATA
               ? scope

@@ -33,5 +33,9 @@ describe("login workspace state", () => {
     assert.equal(safeReturnUrl("/tickets?status=open"), "/tickets?status=open");
     assert.equal(safeReturnUrl("//evil.example"), "/home");
     assert.equal(withWorkspace("/forgot-password", "acme"), "/forgot-password?workspace=acme");
+    assert.equal(
+      withWorkspace("/login?next=%2Fhome", "acme"),
+      "/login?next=%2Fhome&workspace=acme",
+    );
   });
 });

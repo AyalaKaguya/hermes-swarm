@@ -7,7 +7,11 @@ import {
 } from "@nestjs/common/constants";
 import {
   ACCESS_OPERATION_METADATA,
+  ACCESS_RESOURCE_METADATA,
+  PERMISSION_RESOURCE_METADATA,
   PUBLIC_ACCESS_METADATA,
+  REQUIRE_PERMISSION_METADATA,
+  resolveAccessDefinition,
 } from "@hermes-swarm/rbac";
 import { PermissionsController } from "@hermes-swarm/rbac";
 import { AppModule } from "../app.module.js";
@@ -15,6 +19,7 @@ import { AppModule } from "../app.module.js";
 describe("admin route access metadata", () => {
   it("requires every admin handler to explicitly declare access or public behavior", () => {
     const missing: string[] = [];
+    const invalid: string[] = [];
 
     const controllers = collectControllers(AppModule).filter((controller) =>
       String(Reflect.getMetadata(PATH_METADATA, controller) ?? "").startsWith(
@@ -36,17 +41,31 @@ describe("admin route access metadata", () => {
 
         const operation =
           Reflect.getMetadata(ACCESS_OPERATION_METADATA, handler) ??
-          Reflect.getMetadata(ACCESS_OPERATION_METADATA, controller);
+          Reflect.getMetadata(ACCESS_OPERATION_METADATA, controller) ??
+          Reflect.getMetadata(REQUIRE_PERMISSION_METADATA, handler) ??
+          Reflect.getMetadata(REQUIRE_PERMISSION_METADATA, controller);
         const publicAccess =
           Reflect.getMetadata(PUBLIC_ACCESS_METADATA, handler) ??
           Reflect.getMetadata(PUBLIC_ACCESS_METADATA, controller);
         if (!operation && !publicAccess?.reason?.trim()) {
           missing.push(`${controller.name}.${methodName}`);
+          continue;
+        }
+        if (operation) {
+          const resource =
+            Reflect.getMetadata(ACCESS_RESOURCE_METADATA, handler) ??
+            Reflect.getMetadata(ACCESS_RESOURCE_METADATA, controller) ??
+            Reflect.getMetadata(PERMISSION_RESOURCE_METADATA, handler) ??
+            Reflect.getMetadata(PERMISSION_RESOURCE_METADATA, controller);
+          if (!resolveAccessDefinition(resource, operation)) {
+            invalid.push(`${controller.name}.${methodName}`);
+          }
         }
       }
     }
 
     assert.deepEqual(missing, []);
+    assert.deepEqual(invalid, []);
   });
 
   it("allows tenant governors to read the role permission catalog", () => {

@@ -2,8 +2,10 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
@@ -34,6 +36,8 @@ import { createPasswordResetToken } from "../password-reset/password-reset-token
 import { PlatformEmailSendService } from "../mail/platform-email-send.service.js";
 import { OrganizationRolesService } from "../organizations/organization-roles.service.js";
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
+import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
+import { SettingsService } from "../settings/settings.service.js";
 
 const RESERVED_TENANT_ROLE_NAMES = new Set([
   "tenant-owner",
@@ -61,9 +65,12 @@ export class TenantsService {
     private readonly organizationRoles: OrganizationRolesService,
     private readonly grantPolicy: RoleGrantPolicyService =
       new RoleGrantPolicyService(),
+    @Optional()
+    private readonly settingsService?: SettingsService,
   ) {}
 
   async apply(payload: TenantApplicationPayload) {
+    await this.assertWorkspaceApplicationsEnabled();
     const requestedName = requireText(payload?.requestedName, "租户名称");
     const requestedSlug = normalizeSlug(payload?.requestedSlug ?? requestedName);
     const ownerEmail = normalizeEmail(payload?.ownerEmail);
@@ -605,6 +612,17 @@ export class TenantsService {
     });
     if (!application) throw new NotFoundException("租户申请不存在");
     return application;
+  }
+
+  private async assertWorkspaceApplicationsEnabled() {
+    const enabled =
+      (await this.settingsService?.getPlatformValue(
+        PLATFORM_SETTING_KEYS.workspaceApplicationsEnabled,
+        "true",
+      )) ?? "true";
+    if (enabled !== "true") {
+      throw new ForbiddenException("平台当前未开放工作空间申请");
+    }
   }
 
   private async assertTenantIdentityAvailable(

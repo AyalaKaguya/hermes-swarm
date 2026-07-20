@@ -20,12 +20,14 @@ import { DatabaseModule } from "../../common/database/database.module.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { MailModule } from "../mail/mail.module.js";
 import { OrganizationsModule } from "../organizations/organizations.module.js";
+import { SettingsModule } from "../settings/settings.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
     MailModule,
     OrganizationsModule,
+    SettingsModule,
     TypeOrmModule.forFeature([Tenant]),
     TypeOrmModule.forFeature(
       [

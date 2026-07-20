@@ -32,7 +32,10 @@ import {
   safeReturnUrl,
   withWorkspace,
 } from "@/lib/login-workspace";
-import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
+import {
+  resolvePlatformNameFromSettings,
+  resolveWorkspaceApplicationsEnabled,
+} from "@/lib/platform-settings";
 import { clearStoredSession } from "@/lib/session";
 
 export function LoginPage() {
@@ -52,6 +55,8 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [platformName, setPlatformName] = useState<string | null>(null);
+  const [workspaceApplicationsEnabled, setWorkspaceApplicationsEnabled] =
+    useState(true);
 
   useEffect(() => {
     clearStoredSession();
@@ -62,6 +67,9 @@ export function LoginPage() {
         const bootstrap = await getPublicBootstrap();
         if (cancelled) return;
         setPlatformName(resolvePlatformNameFromSettings(bootstrap.systemSettings));
+        setWorkspaceApplicationsEnabled(
+          resolveWorkspaceApplicationsEnabled(bootstrap.systemSettings),
+        );
         if (bootstrap.onboardingRequired) {
           router.replace("/onboarding");
           return;
@@ -140,7 +148,11 @@ export function LoginPage() {
       }
       rememberWorkspace(window.localStorage, tenantContext.tenant.slug);
       setRuntimePreferences(response.snapshot.runtimePreferences);
-      router.replace(safeReturnUrl(searchParams.get("returnUrl")));
+      router.replace(
+        safeReturnUrl(
+          searchParams.get("next") ?? searchParams.get("returnUrl"),
+        ),
+      );
     } catch (loginError) {
       setPassword("");
       setError(getErrorMessage(loginError, t("auth.invalidCredentials")));
@@ -247,9 +259,11 @@ export function LoginPage() {
               <Button disabled={submitting || !email.trim() || !password} type="submit">
                 {submitting ? t("auth.signingIn") : t("auth.signIn")}
               </Button>
-              <Button asChild variant="ghost">
-                <Link href="/apply">{t("auth.applyForWorkspace")}</Link>
-              </Button>
+              {workspaceApplicationsEnabled && (
+                <Button asChild variant="ghost">
+                  <Link href="/apply">{t("auth.applyForWorkspace")}</Link>
+                </Button>
+              )}
             </form>
           ) : (
             <form className="grid gap-3" onSubmit={resolveWorkspace}>
@@ -271,9 +285,11 @@ export function LoginPage() {
               <Button disabled={resolving || !normalizeWorkspace(workspace)} type="submit">
                 {resolving ? t("auth.findingWorkspace") : t("auth.continue")}
               </Button>
-              <Button asChild variant="ghost">
-                <Link href="/apply">{t("auth.applyForWorkspace")}</Link>
-              </Button>
+              {workspaceApplicationsEnabled && (
+                <Button asChild variant="ghost">
+                  <Link href="/apply">{t("auth.applyForWorkspace")}</Link>
+                </Button>
+              )}
             </form>
           )}
 

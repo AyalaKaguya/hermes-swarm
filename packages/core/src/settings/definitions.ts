@@ -93,6 +93,7 @@ export const PLATFORM_TITLE_SETTING_KEY = "platform.title";
 
 export const PLATFORM_SETTING_KEYS = {
   allowOrganizationCreation: "platform.allowOrganizationCreation",
+  workspaceApplicationsEnabled: "platform.workspaceApplicationsEnabled",
   defaultCurrency: "tenant.defaultCurrency",
   defaultDateFormat: "tenant.defaultDateFormat",
   defaultLanguage: "tenant.defaultLanguage",
@@ -214,6 +215,12 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   allowOrganizationCreation: {
     defaultValue: "true",
     key: PLATFORM_SETTING_KEYS.allowOrganizationCreation,
+    scope: "platform",
+    valueType: "boolean",
+  },
+  workspaceApplicationsEnabled: {
+    defaultValue: "true",
+    key: PLATFORM_SETTING_KEYS.workspaceApplicationsEnabled,
     scope: "platform",
     valueType: "boolean",
   },

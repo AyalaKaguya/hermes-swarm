@@ -660,7 +660,10 @@ async function sendAdminRequest(
     headers.set("Content-Type", "application/json");
   }
   const method = options?.method ?? "GET";
-  if (["DELETE", "PATCH", "POST", "PUT"].includes(method)) {
+  if (
+    ["DELETE", "PATCH", "POST", "PUT"].includes(method.toUpperCase()) &&
+    shouldAttachCsrfToken(path)
+  ) {
     headers.set("X-CSRF-Token", await getCsrfToken());
   }
 
@@ -701,6 +704,18 @@ async function sendAdminRequest(
 }
 
 let csrfTokenPromise: Promise<string> | null = null;
+const CSRF_EXEMPT_ADMIN_PATHS = new Set([
+  "/bootstrap",
+  "/auth/login",
+  "/auth/tenant-context",
+  "/auth/request-password",
+  "/auth/reset-password",
+  "/invites/accept",
+  "/invites/validate",
+  "/onboarding",
+  "/platform/auth/login",
+  "/tenant-applications",
+]);
 
 async function getCsrfToken() {
   csrfTokenPromise ??= fetch(`${ADMIN_API_BASE_URL}/auth/csrf`, {
@@ -719,6 +734,12 @@ async function getCsrfToken() {
     csrfTokenPromise = null;
     throw error;
   }
+}
+
+function shouldAttachCsrfToken(path: string) {
+  const pathname = path.split("?", 1)[0] ?? path;
+  if (CSRF_EXEMPT_ADMIN_PATHS.has(pathname)) return false;
+  return !/^\/tenant-applications\/[^/]+\/(?:verify|cancel)$/.test(pathname);
 }
 
 function shouldAttachRequestScope(path: string) {

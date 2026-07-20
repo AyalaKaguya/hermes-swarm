@@ -492,6 +492,7 @@
   "组织创建设置": "Organization creation settings",
   "控制新组织创建入口和默认状态": "Control the organization creation entry and default status",
   "允许创建组织": "Allow organization creation",
+  "允许申请工作空间": "Allow workspace applications",
   "平台下全部组织的配置入口": "Configuration entry for all organizations on the platform",
   "查看全部组织": "View all organizations",
   "平台级公共消息服务开关和提供方": "Platform-wide shared messaging service switch and provider",
@@ -937,5 +938,8 @@
   "创建当前工作空间专属参数；密钥类型只显示遮罩并加密保存。": "Create a parameter for this workspace. Secret values are masked and encrypted at rest.",
   "新增工作空间参数": "Add workspace parameter",
   "新增参数": "Add parameter",
-  "工作空间专属": "Workspace-specific"
+  "工作空间专属": "Workspace-specific",
+  "首选项": "Preferences",
+  "首选项已保存": "Preferences saved",
+  "设置界面语言和个人时区": "Choose your interface language and personal time zone"
 }

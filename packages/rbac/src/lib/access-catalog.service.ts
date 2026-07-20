@@ -186,7 +186,7 @@ export class AccessCatalogService implements OnModuleInit {
       const metatype = wrapper.metatype;
       if (!metatype?.prototype) continue;
 
-      const resource = getClassMetadata(metatype);
+      const controllerResource = getResourceMetadata(metatype);
       const controllerPath = Reflect.getMetadata(PATH_METADATA, metatype);
       const isAdminController = String(controllerPath ?? "").startsWith("admin");
       const prototype = metatype.prototype as Record<string, unknown>;
@@ -207,6 +207,7 @@ export class AccessCatalogService implements OnModuleInit {
           continue;
         }
 
+        const resource = getResourceMetadata(method) ?? controllerResource;
         const definition = resolveAccessDefinition(resource, operation);
         if (!definition) {
           invalid.push(`${metatype.name}.${methodName}:invalid`);
@@ -463,10 +464,10 @@ function resolveFallbackDefaultRoles(
   return ["admin", "owner"];
 }
 
-function getClassMetadata(metatype: object) {
+function getResourceMetadata(target: object) {
   return (
-    Reflect.getMetadata(ACCESS_RESOURCE_METADATA, metatype) ??
-    Reflect.getMetadata(PERMISSION_RESOURCE_METADATA, metatype)
+    Reflect.getMetadata(ACCESS_RESOURCE_METADATA, target) ??
+    Reflect.getMetadata(PERMISSION_RESOURCE_METADATA, target)
   ) as AccessResourceMetadata | undefined;
 }
 

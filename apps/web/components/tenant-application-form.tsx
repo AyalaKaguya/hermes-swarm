@@ -19,10 +19,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   cancelTenantApplication,
+  getPublicBootstrap,
   submitTenantApplication,
   verifyTenantApplication,
   type TenantApplicationSubmission,
 } from "@/lib/admin-api";
+import { resolveWorkspaceApplicationsEnabled } from "@/lib/platform-settings";
 
 export function TenantApplicationForm() {
   const t = useTranslations("tenantApplication");
@@ -38,9 +40,38 @@ export function TenantApplicationForm() {
   const [verificationState, setVerificationState] = useState<"idle" | "verifying" | "verified" | "failed">("idle");
   const [cancellationState, setCancellationState] = useState<"idle" | "cancelling" | "cancelled" | "failed">("idle");
   const [error, setError] = useState("");
+  const [availability, setAvailability] = useState<
+    "checking" | "enabled" | "disabled" | "failed"
+  >("checking");
   const applicationId = searchParams.get("applicationId");
   const verificationToken = searchParams.get("token");
   const cancellationToken = searchParams.get("cancelToken");
+
+  useEffect(() => {
+    if (
+      applicationId &&
+      (verificationToken || cancellationToken)
+    ) {
+      setAvailability("enabled");
+      return;
+    }
+    let cancelled = false;
+    void getPublicBootstrap()
+      .then((bootstrap) => {
+        if (cancelled) return;
+        setAvailability(
+          resolveWorkspaceApplicationsEnabled(bootstrap.systemSettings)
+            ? "enabled"
+            : "disabled",
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setAvailability("failed");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, cancellationToken, verificationToken]);
 
   useEffect(() => {
     if (!applicationId || !verificationToken || verificationStarted.current) return;
@@ -164,6 +195,27 @@ export function TenantApplicationForm() {
             <Link href={cancellationHref}>{t("cancelApplication")}</Link>
           </Button>
         )}
+        <Button asChild className="w-full" variant="ghost">
+          <Link href="/login">{t("backToSignIn")}</Link>
+        </Button>
+      </PublicCard>
+    );
+  }
+
+  if (availability !== "enabled") {
+    const unavailable = availability === "disabled";
+    return (
+      <PublicCard
+        description={
+          unavailable
+            ? t("unavailableDescription")
+            : availability === "failed"
+              ? t("availabilityFailed")
+              : t("availabilityChecking")
+        }
+        icon="building"
+        title={unavailable ? t("unavailableTitle") : t("title")}
+      >
         <Button asChild className="w-full" variant="ghost">
           <Link href="/login">{t("backToSignIn")}</Link>
         </Button>

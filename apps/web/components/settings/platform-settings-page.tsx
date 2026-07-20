@@ -68,6 +68,7 @@ import { normalizeCanonicalLanguage } from "@hermes-swarm/core/settings/runtime-
 
 type PlatformForm = {
   allowOrganizationCreation: boolean;
+  workspaceApplicationsEnabled: boolean;
   defaultCurrency: string;
   defaultDateFormat: string;
   defaultLanguage: string;
@@ -507,6 +508,15 @@ export function PlatformSettingsPage({
           title={tr("工作空间治理")}
         >
           <div className="grid gap-3">
+            <PlatformToggleRow
+              checked={form.workspaceApplicationsEnabled}
+              disabled={!canManagePlatform}
+              id="platform-workspace-applications"
+              label={tr("允许申请工作空间")}
+              onCheckedChange={(checked) =>
+                updateField("workspaceApplicationsEnabled", checked)
+              }
+            />
             <PlatformToggleRow
               checked={form.allowOrganizationCreation}
               disabled={!canManagePlatform}
@@ -1017,6 +1027,7 @@ function platformSectionDescription(section: PlatformSection) {
 function emptyPlatformForm(): PlatformForm {
   return {
     allowOrganizationCreation: true,
+    workspaceApplicationsEnabled: true,
     defaultCurrency: PLATFORM_SETTING_DEFINITIONS.defaultCurrency.defaultValue,
     defaultDateFormat:
       PLATFORM_SETTING_DEFINITIONS.defaultDateFormat.defaultValue,
@@ -1057,6 +1068,10 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
   return {
     allowOrganizationCreation: parseBoolean(
       getDefined("allowOrganizationCreation"),
+      true,
+    ),
+    workspaceApplicationsEnabled: parseBoolean(
+      getDefined("workspaceApplicationsEnabled"),
       true,
     ),
     defaultCurrency: getDefined("defaultCurrency"),
@@ -1154,6 +1169,10 @@ function platformSettingsForSection(
       ];
     case "governance":
       return [
+        platformSettingEntry(
+          "workspaceApplicationsEnabled",
+          form.workspaceApplicationsEnabled,
+        ),
         platformSettingEntry(
           "allowOrganizationCreation",
           form.allowOrganizationCreation,

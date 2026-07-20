@@ -41,7 +41,7 @@ export class OrganizationScopeRls2026072000002 implements MigrationInterface {
   }
 }
 
-export function organizationScopePredicate(organizationColumn: string) {
+function organizationScopePredicate(organizationColumn: string) {
   return [
     `"tenant_id" = NULLIF(current_setting('${TENANT_DATABASE_GUCS.tenantId}', true), '')::uuid`,
     `AND (`,

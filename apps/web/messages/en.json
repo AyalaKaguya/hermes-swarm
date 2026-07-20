@@ -125,6 +125,10 @@
     "wrongPrincipal": "This is not a platform account"
   },
   "tenantApplication": {
+    "availabilityChecking": "Checking whether workspace applications are open.",
+    "availabilityFailed": "We could not check application availability. Please try again later.",
+    "unavailableTitle": "Workspace applications are closed",
+    "unavailableDescription": "The platform is not accepting new workspace applications. Contact the platform operator.",
     "title": "Apply for a tenant",
     "description": "Share the tenant and owner details. After email verification, the platform team will review and provision the workspace.",
     "tenantName": "Tenant name",

@@ -34,8 +34,10 @@ afterEach(() => {
 describe("admin API browser client", () => {
   it("never sends client-selected tenant or organization scope headers", async () => {
     const requests: Headers[] = [];
+    let csrfRequests = 0;
     globalThis.fetch = async (input, init) => {
       if (String(input) === "/api/admin/auth/csrf") {
+        csrfRequests += 1;
         return Response.json({ csrfToken: "csrf-token" });
       }
       requests.push(new Headers(init?.headers));
@@ -53,16 +55,24 @@ describe("admin API browser client", () => {
       assert.equal(headers.has("Department-Id"), false);
       assert.equal(headers.has("Authorization"), false);
     }
+    assert.equal(csrfRequests, 0);
   });
 
   it("uses the workspace role library routes", async () => {
-    const requests: Array<{ body: unknown; method: string; url: string }> = [];
+    const requests: Array<{
+      body: unknown;
+      csrfToken: string | null;
+      method: string;
+      url: string;
+    }> = [];
     globalThis.fetch = async (input, init) => {
       if (String(input) === "/api/admin/auth/csrf") {
         return Response.json({ csrfToken: "csrf-token" });
       }
+      const headers = new Headers(init?.headers);
       requests.push({
         body: init?.body ? JSON.parse(String(init.body)) : null,
+        csrfToken: headers.get("X-CSRF-Token"),
         method: init?.method ?? "GET",
         url: String(input),
       });
@@ -78,9 +88,15 @@ describe("admin API browser client", () => {
     ]);
 
     assert.deepEqual(requests, [
-      { body: null, method: "GET", url: "/api/admin/roles" },
+      {
+        body: null,
+        csrfToken: null,
+        method: "GET",
+        url: "/api/admin/roles",
+      },
       {
         body: { displayName: "Workspace operator" },
+        csrfToken: "csrf-token",
         method: "POST",
         url: "/api/admin/roles",
       },
@@ -90,6 +106,7 @@ describe("admin API browser client", () => {
             { enabled: true, permission: "organization.profile.view:organization" },
           ],
         },
+        csrfToken: "csrf-token",
         method: "PUT",
         url: "/api/admin/roles/role-1/permissions",
       },

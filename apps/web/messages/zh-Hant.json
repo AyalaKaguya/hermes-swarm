@@ -125,6 +125,10 @@
     "wrongPrincipal": "目前帳號不是平台帳號"
   },
   "tenantApplication": {
+    "availabilityChecking": "正在確認平台是否開放工作空間申請。",
+    "availabilityFailed": "暫時無法確認申請狀態，請稍後重試。",
+    "unavailableTitle": "工作空間申請暫未開放",
+    "unavailableDescription": "平台目前未開放新的工作空間申請，請聯絡平台營運人員。",
     "title": "申請租戶",
     "description": "提交租戶資料和負責人資訊。驗證信箱後，平台將審核並開通工作空間。",
     "tenantName": "租戶名稱",

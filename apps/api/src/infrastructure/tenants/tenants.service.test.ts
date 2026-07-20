@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   buildTenantApplicationLinks,
   buildTenantOwnerActivationLink,
@@ -36,6 +40,20 @@ describe("TenantsService applications", () => {
     });
     assert.equal(result.verificationEmailSent, false);
     assert.equal(state.applications[0]?.preferredLanguage, "en");
+  });
+
+  it("rejects new applications when the platform has closed workspace applications", async () => {
+    const state = createState({ workspaceApplicationsEnabled: false });
+    await assert.rejects(
+      state.service.apply({
+        ownerDisplayName: "Alice",
+        ownerEmail: "alice@example.com",
+        requestedName: "North Region",
+      }),
+      ForbiddenException,
+    );
+    assert.equal(state.applications.length, 0);
+    assert.equal(state.sentEmails.length, 0);
   });
 
   it("builds encoded public application and activation links", () => {
@@ -270,6 +288,7 @@ function createState(options: {
   duplicateSlug?: string;
   failEmail?: boolean;
   tenant?: { id: string; status: string };
+  workspaceApplicationsEnabled?: boolean;
 } = {}) {
   const applications: any[] = [];
   const applicationRepository: any = {
@@ -330,6 +349,12 @@ function createState(options: {
           if (options.failEmail) throw new Error("smtp failed");
           return { sent: true };
         },
+      } as never,
+      {} as never,
+      undefined as never,
+      {
+        getPlatformValue: async () =>
+          options.workspaceApplicationsEnabled === false ? "false" : "true",
       } as never,
     ),
   };

@@ -56,6 +56,9 @@ type ProfileForm = {
   email: string;
   firstName: string;
   lastName: string;
+};
+
+type PreferencesForm = {
   preferredLanguage: string;
   timeZone: string;
 };
@@ -80,8 +83,11 @@ export default function AccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [password, setPassword] = useState<PasswordForm>(EMPTY_PASSWORD);
+  const [preferences, setPreferences] =
+    useState<PreferencesForm>(emptyPreferences());
   const [profile, setProfile] = useState<ProfileForm>(emptyProfile());
   const [savingPassword, setSavingPassword] = useState(false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -93,6 +99,7 @@ export default function AccountPage() {
     if (shellUser) {
       setUser(shellUser);
       setProfile(toProfileForm(shellUser));
+      setPreferences(toPreferencesForm(shellUser));
     }
 
     if (!token) {
@@ -107,6 +114,7 @@ export default function AccountPage() {
       }
       setUser(me.user);
       setProfile(toProfileForm(me.user));
+      setPreferences(toPreferencesForm(me.user));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
@@ -127,14 +135,27 @@ export default function AccountPage() {
       profile.email !== saved.email ||
       profile.firstName !== saved.firstName ||
       profile.lastName !== saved.lastName
-      || profile.preferredLanguage !== saved.preferredLanguage
-      || profile.timeZone !== saved.timeZone
     );
   }, [profile, user]);
+
+  const preferencesDirty = useMemo(() => {
+    if (!user) return false;
+    const saved = toPreferencesForm(user);
+    return (
+      preferences.preferredLanguage !== saved.preferredLanguage ||
+      preferences.timeZone !== saved.timeZone
+    );
+  }, [preferences, user]);
 
   function resetProfile() {
     if (!user) return;
     setProfile(toProfileForm(user));
+    setError(null);
+  }
+
+  function resetPreferences() {
+    if (!user) return;
+    setPreferences(toPreferencesForm(user));
     setError(null);
   }
 
@@ -151,25 +172,12 @@ export default function AccountPage() {
 
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
-      let updated = await updateUser(token, {
+      const updated = await updateUser(token, {
         displayName: profile.displayName,
         email: profile.email,
         firstName: profile.firstName || null,
         lastName: profile.lastName || null,
       });
-      const savedPreferences = toProfileForm(user);
-      if (
-        profile.preferredLanguage !== savedPreferences.preferredLanguage ||
-        profile.timeZone !== savedPreferences.timeZone
-      ) {
-        updated = await updateUserRuntimePreferences(token, {
-          preferredLanguage:
-            profile.preferredLanguage === "inherit"
-              ? null
-              : profile.preferredLanguage,
-          timeZone: profile.timeZone === "inherit" ? null : profile.timeZone,
-        });
-      }
       setUser(updated);
       setProfile(toProfileForm(updated));
       notifications.success(tr("个人资料已保存"));
@@ -178,6 +186,33 @@ export default function AccountPage() {
       setError(err instanceof Error ? err.message : tr("保存失败"));
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  async function savePreferences() {
+    if (!user) return;
+
+    setSavingPreferences(true);
+    setError(null);
+
+    try {
+      const token = await requireAuthenticatedAdminSessionMarker();
+      const updated = await updateUserRuntimePreferences(token, {
+        preferredLanguage:
+          preferences.preferredLanguage === "inherit"
+            ? null
+            : preferences.preferredLanguage,
+        timeZone:
+          preferences.timeZone === "inherit" ? null : preferences.timeZone,
+      });
+      setUser(updated);
+      setPreferences(toPreferencesForm(updated));
+      notifications.success(tr("首选项已保存"));
+      await refreshSnapshot();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tr("保存失败"));
+    } finally {
+      setSavingPreferences(false);
     }
   }
 
@@ -272,62 +307,9 @@ export default function AccountPage() {
               <div className="truncate text-sm font-medium">
                 {user.displayName || user.email}
               </div>
-
-              <Separator />
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={tr("界面语言")} htmlFor="account-language">
-                  <Select
-                    onValueChange={(value) =>
-                      setProfile((current) => ({
-                        ...current,
-                        preferredLanguage: value,
-                      }))
-                    }
-                    value={profile.preferredLanguage}
-                  >
-                    <SelectTrigger id="account-language">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="inherit">
-                        {tr("跟随工作空间")}
-                      </SelectItem>
-                      {LANGUAGE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label={tr("个人时区")} htmlFor="account-time-zone">
-                  <Select
-                    onValueChange={(value) =>
-                      setProfile((current) => ({
-                        ...current,
-                        timeZone: value,
-                      }))
-                    }
-                    value={profile.timeZone}
-                  >
-                    <SelectTrigger id="account-time-zone">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="inherit">
-                        {tr("跟随工作空间")}
-                      </SelectItem>
-                      {TIME_ZONE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {tr(option.label)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
+              <div className="truncate text-xs text-muted-foreground">
+                {user.email}
               </div>
-              <div className="truncate text-xs">{user.email}</div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -368,6 +350,7 @@ export default function AccountPage() {
       <Tabs defaultValue="profile">
         <TabsList className="w-fit">
           <TabsTrigger value="profile">{tr("个人资料")}</TabsTrigger>
+          <TabsTrigger value="preferences">{tr("首选项")}</TabsTrigger>
           <TabsTrigger value="password">{tr("密码")}</TabsTrigger>
         </TabsList>
 
@@ -446,6 +429,91 @@ export default function AccountPage() {
                 <Button
                   disabled={!profileDirty || savingProfile}
                   onClick={saveProfile}
+                  type="button"
+                >
+                  {tr("保存")}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent className="mt-2" value="preferences">
+          <Card>
+            <CardHeader>
+              <CardTitle>{tr("首选项")}</CardTitle>
+              <CardDescription>
+                {tr("设置界面语言和个人时区")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={tr("界面语言")} htmlFor="account-language">
+                  <Select
+                    onValueChange={(value) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        preferredLanguage: value,
+                      }))
+                    }
+                    value={preferences.preferredLanguage}
+                  >
+                    <SelectTrigger id="account-language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inherit">
+                        {tr("跟随工作空间")}
+                      </SelectItem>
+                      {LANGUAGE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label={tr("个人时区")} htmlFor="account-time-zone">
+                  <Select
+                    onValueChange={(value) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        timeZone: value,
+                      }))
+                    }
+                    value={preferences.timeZone}
+                  >
+                    <SelectTrigger id="account-time-zone">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inherit">
+                        {tr("跟随工作空间")}
+                      </SelectItem>
+                      {TIME_ZONE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {tr(option.label)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+
+              <Separator />
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  disabled={!preferencesDirty || savingPreferences}
+                  onClick={resetPreferences}
+                  type="button"
+                  variant="outline"
+                >
+                  {tr("重置")}
+                </Button>
+                <Button
+                  disabled={!preferencesDirty || savingPreferences}
+                  onClick={savePreferences}
                   type="button"
                 >
                   {tr("保存")}
@@ -557,6 +625,11 @@ function emptyProfile(): ProfileForm {
     email: "",
     firstName: "",
     lastName: "",
+  };
+}
+
+function emptyPreferences(): PreferencesForm {
+  return {
     preferredLanguage: "inherit",
     timeZone: "inherit",
   };
@@ -568,6 +641,11 @@ function toProfileForm(user: User): ProfileForm {
     email: user.email ?? "",
     firstName: user.firstName ?? "",
     lastName: user.lastName ?? "",
+  };
+}
+
+function toPreferencesForm(user: User): PreferencesForm {
+  return {
     preferredLanguage: user.preferredLanguage ?? "inherit",
     timeZone: user.timeZone ?? "inherit",
   };

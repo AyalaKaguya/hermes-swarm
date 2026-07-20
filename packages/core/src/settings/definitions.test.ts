@@ -23,6 +23,13 @@ describe("setting definitions", () => {
       resolveSettingValueType(PLATFORM_SETTING_KEYS.defaultCurrency, null),
       "enum",
     );
+    assert.equal(
+      resolveSettingValueType(
+        PLATFORM_SETTING_KEYS.workspaceApplicationsEnabled,
+        "string",
+      ),
+      "boolean",
+    );
   });
 
   it("uses supplied custom value types when no known definition overrides them", () => {

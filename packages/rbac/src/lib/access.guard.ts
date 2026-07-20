@@ -173,13 +173,13 @@ export class AccessGuard implements CanActivate {
 
   private getResourceMetadata(context: ExecutionContext) {
     return (
-      this.reflector.get<AccessResourceMetadata | undefined>(
+      this.reflector.getAllAndOverride<AccessResourceMetadata | undefined>(
         ACCESS_RESOURCE_METADATA,
-        context.getClass(),
+        [context.getHandler(), context.getClass()],
       ) ??
-      this.reflector.get<AccessResourceMetadata | undefined>(
+      this.reflector.getAllAndOverride<AccessResourceMetadata | undefined>(
         PERMISSION_RESOURCE_METADATA,
-        context.getClass(),
+        [context.getHandler(), context.getClass()],
       )
     );
   }

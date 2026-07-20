@@ -125,6 +125,10 @@
     "wrongPrincipal": "当前账号不是平台账号"
   },
   "tenantApplication": {
+    "availabilityChecking": "正在确认平台是否开放工作空间申请。",
+    "availabilityFailed": "暂时无法确认申请状态，请稍后重试。",
+    "unavailableTitle": "工作空间申请暂未开放",
+    "unavailableDescription": "平台当前未开放新的工作空间申请，请联系平台运营人员。",
     "title": "申请租户",
     "description": "提交租户资料和负责人信息。验证邮箱后，平台将审核并开通工作空间。",
     "tenantName": "租户名称",
