@@ -106,7 +106,7 @@ async function seedPlatform(
   Object.assign(admin, {
     deletedAt: null,
     displayName: config.platformAdminDisplayName,
-    passwordHash: hashPassword(config.platformAdminPassword),
+    passwordHash: await hashPassword(config.platformAdminPassword),
     preferredLanguage: "zh-CN",
     status: "active",
   });
@@ -191,7 +191,7 @@ async function seedTenantData(
     displayName: config.ownerDisplayName,
     emailVerified: true,
     nickname: config.ownerDisplayName,
-    passwordHash: hashPassword(config.ownerPassword),
+    passwordHash: await hashPassword(config.ownerPassword),
     preferredLanguage: "zh-CN",
     status: "active",
     type: "user",

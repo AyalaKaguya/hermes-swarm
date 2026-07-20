@@ -19,6 +19,7 @@ import {
   ACCESS_RESOURCE_METADATA,
   PERMISSION_RESOURCE_METADATA,
   REQUIRE_PERMISSION_METADATA,
+  PUBLIC_ACCESS_METADATA,
 } from "./access.decorators.js";
 import type {
   AccessDefaultRole,
@@ -34,6 +35,8 @@ const SCOPE_LABELS: Record<PermissionScope, string> = {
   platform: "平台",
   tenant: "工作空间",
 };
+const METHOD_METADATA = "method";
+const PATH_METADATA = "path";
 
 const SCOPE_ORDER: Record<PermissionScope, number> = {
   platform: 0,
@@ -69,6 +72,7 @@ export class AccessCatalogService implements OnModuleInit {
     if (process.env.RBAC_SYNC_CATALOG_ENABLED === "false") return;
     await this.syncCatalog().catch((error) => {
       this.logger.error(`权限目录同步失败: ${String(error)}`);
+      if (process.env.NODE_ENV === "production") throw error;
     });
   }
 
@@ -176,27 +180,49 @@ export class AccessCatalogService implements OnModuleInit {
 
   private scanDefinitions() {
     const definitions = new Map<string, ResolvedAccessDefinition>();
+    const invalid: string[] = [];
 
     for (const wrapper of this.discoveryService.getControllers()) {
       const metatype = wrapper.metatype;
       if (!metatype?.prototype) continue;
 
       const resource = getClassMetadata(metatype);
+      const controllerPath = Reflect.getMetadata(PATH_METADATA, metatype);
+      const isAdminController = String(controllerPath ?? "").startsWith("admin");
       const prototype = metatype.prototype as Record<string, unknown>;
 
       for (const methodName of Object.getOwnPropertyNames(prototype)) {
         if (methodName === "constructor") continue;
         const method = prototype[methodName];
         if (typeof method !== "function") continue;
+        if (Reflect.getMetadata(METHOD_METADATA, method) === undefined) continue;
 
         const operation = getHandlerMetadata(method);
-        if (!operation) continue;
+        const publicAccess = Reflect.getMetadata(PUBLIC_ACCESS_METADATA, method) as
+          | { reason?: string }
+          | undefined;
+        if (!operation) {
+          if (publicAccess?.reason?.trim()) continue;
+          if (isAdminController) invalid.push(`${metatype.name}.${methodName}:missing`);
+          continue;
+        }
 
         const definition = resolveAccessDefinition(resource, operation);
-        if (definition) definitions.set(definition.id, definition);
+        if (!definition) {
+          invalid.push(`${metatype.name}.${methodName}:invalid`);
+          continue;
+        }
+        if (definitions.has(definition.id)) {
+          invalid.push(`${metatype.name}.${methodName}:duplicate:${definition.id}`);
+          continue;
+        }
+        definitions.set(definition.id, definition);
       }
     }
 
+    if (invalid.length) {
+      throw new Error(`Invalid admin Access metadata: ${invalid.join(", ")}`);
+    }
     return [...definitions.values()].sort(compareDefinition);
   }
 

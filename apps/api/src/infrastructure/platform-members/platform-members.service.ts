@@ -15,6 +15,7 @@ import { Repository } from "typeorm";
 import { hashPassword } from "../../common/security/password-hash.js";
 import type { PlatformMemberPayload } from "./platform-members.controller.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
+import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 
 @Injectable()
 export class PlatformMembersService {
@@ -25,6 +26,8 @@ export class PlatformMembersService {
     private readonly roleRepository: Repository<PlatformRole>,
     @InjectRepository(PlatformUserRole, PLATFORM_DATA_SOURCE)
     private readonly userRoleRepository: Repository<PlatformUserRole>,
+    private readonly grantPolicy: RoleGrantPolicyService =
+      new RoleGrantPolicyService(),
   ) {}
 
   async list() {
@@ -35,9 +38,12 @@ export class PlatformMembersService {
     return users.map(toPlatformUserDto);
   }
 
-  async create(payload: PlatformMemberPayload) {
+  async create(payload: PlatformMemberPayload, actorUserId?: string) {
     const input = requirePayload(payload);
     const role = await this.resolveRole(input.roleId);
+    if (role && actorUserId) {
+      await this.assertCanGrantPlatformRole(actorUserId, input.userId, role);
+    }
     let user = input.userId
       ? await this.userRepository.findOne({ where: { id: input.userId } })
       : null;
@@ -53,7 +59,7 @@ export class PlatformMembersService {
         this.userRepository.create({
           displayName,
           email,
-          passwordHash: hashPassword(password),
+          passwordHash: await hashPassword(password),
           preferredLanguage: "zh-CN",
           status: normalizeStatus(input.status),
         }),
@@ -63,7 +69,11 @@ export class PlatformMembersService {
     return toPlatformUserDto(await this.getUserOrThrow(user.id));
   }
 
-  async update(platformUserId: string, payload: Partial<PlatformMemberPayload>) {
+  async update(
+    platformUserId: string,
+    payload: Partial<PlatformMemberPayload>,
+    actorUserId?: string,
+  ) {
     const input = requirePayload(payload);
     await this.userRepository.manager.transaction(async (manager) => {
       const user = await manager.findOne(PlatformUser, {
@@ -80,6 +90,14 @@ export class PlatformMembersService {
       if (input.roleId !== undefined) {
         await manager.delete(PlatformUserRole, { platformUserId: user.id });
         const role = await this.resolveRole(input.roleId, manager);
+        if (role && actorUserId) {
+          await this.assertCanGrantPlatformRole(
+            actorUserId,
+            platformUserId,
+            role,
+            manager,
+          );
+        }
         if (role) {
           await manager.save(
             PlatformUserRole,
@@ -127,7 +145,10 @@ export class PlatformMembersService {
   private async resolveRole(roleId: string | null | undefined, manager = this.roleRepository.manager) {
     if (roleId === null || roleId === undefined) return null;
     const id = requireText(roleId, "角色 ID");
-    const role = await manager.findOne(PlatformRole, { where: { id } });
+    const role = await manager.findOne(PlatformRole, {
+      relations: { rolePermissions: { permission: true } },
+      where: { id },
+    });
     if (!role) throw new BadRequestException("平台角色不存在");
     return role;
   }
@@ -152,6 +173,53 @@ export class PlatformMembersService {
     if (!users.some((user) => user.id !== currentUserId && isActivePlatformAdmin(user))) {
       throw new BadRequestException("平台至少需要保留一个 Platform Admin");
     }
+  }
+
+  private async assertCanGrantPlatformRole(
+    actorUserId: string,
+    targetUserId: string | undefined,
+    targetRole: PlatformRole,
+    manager = this.userRepository.manager,
+  ) {
+    const actor = await manager.findOne(PlatformUser, {
+      relations: {
+        roles: {
+          platformRole: { rolePermissions: { permission: true } },
+        },
+      },
+      where: { id: actorUserId, status: "active" },
+    });
+    const roles =
+      actor?.roles?.map((assignment) => assignment.platformRole).filter(Boolean) ??
+      [];
+    this.grantPolicy.assertCanGrant({
+      actor: { principalType: "platform", tenantId: null, userId: actorUserId },
+      actorPermissionCodes: [
+        ...new Set(
+          roles.flatMap((role) =>
+            (role.rolePermissions ?? [])
+              .filter((permission) => permission.enabled)
+              .flatMap((permission) =>
+                permission.permission?.code
+                  ? [permission.permission.code]
+                  : [],
+              ),
+          ),
+        ),
+      ],
+      actorRoleNames: roles.map((role) => role.name),
+      scope: "platform",
+      targetRole: {
+        id: targetRole.id,
+        name: targetRole.name,
+        permissionCodes: (targetRole.rolePermissions ?? [])
+          .filter((permission) => permission.enabled)
+          .flatMap((permission) =>
+            permission.permission?.code ? [permission.permission.code] : [],
+          ),
+      },
+      targetUserId,
+    });
   }
 }
 

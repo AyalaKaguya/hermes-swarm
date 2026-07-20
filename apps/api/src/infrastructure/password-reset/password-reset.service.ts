@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -22,6 +23,7 @@ import {
 } from "./password-reset-token.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { TenantLoginResolverService } from "../auth/tenant-login-resolver.service.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
 @Injectable()
@@ -38,6 +40,8 @@ export class PasswordResetService {
     @InjectRepository(Tenant, PLATFORM_DATA_SOURCE)
     private readonly platformTenantRepository: Repository<Tenant>,
     private readonly tenantLoginResolver: TenantLoginResolverService,
+    @Inject(AuthSessionService)
+    private readonly authSessionService?: AuthSessionService,
   ) {}
 
   /**
@@ -189,7 +193,9 @@ export class PasswordResetService {
         throw new BadRequestException("令牌无效或已过期");
       }
 
-      user.passwordHash = hashPassword(password);
+      user.passwordHash = await hashPassword(password);
+      user.credentialVersion = (user.credentialVersion ?? 0) + 1;
+      user.credentialsChangedAt = new Date();
       user.emailVerified = true;
       await manager.save(User, user);
       const deleteResult = await manager.delete(PasswordReset, {
@@ -201,7 +207,10 @@ export class PasswordResetService {
       }
     });
 
-    return { success: true };
+    await this.authSessionService
+      ?.revokeUserSessions(decoded.tenantId, decoded.userId)
+      .catch(() => undefined);
+    return { reauthenticationRequired: true, success: true };
   }
 
   private runInTenant<T>(tenantId: string, work: () => Promise<T>) {

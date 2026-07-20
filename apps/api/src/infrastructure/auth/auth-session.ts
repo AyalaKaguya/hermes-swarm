@@ -1,38 +1,65 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AuthSessionTokenPayload } from "../../common/admin-api.types.js";
 
-const TOKEN_VERSION = "v1";
+const TOKEN_VERSION = "v2";
+const LEGACY_TOKEN_VERSION = "v1";
+const DEFAULT_KEY_ID = "current";
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12;
 export const INTEGRATION_SESSION_PREFIX = "integration:";
 
 export function createAuthSessionToken(
-  payload: Omit<AuthSessionTokenPayload, "exp">,
-  options: { secret?: string; ttlSeconds?: number } = {},
+  payload: Omit<AuthSessionTokenPayload, "credentialVersion" | "exp" | "kid"> & {
+    credentialVersion?: number;
+  },
+  options: { keyId?: string; secret?: string; ttlSeconds?: number } = {},
 ) {
   const expiresAt =
     Math.floor(Date.now() / 1000) +
     (options.ttlSeconds ?? DEFAULT_SESSION_TTL_SECONDS);
   const encodedPayload = encodeBase64Url(
-    JSON.stringify({ ...payload, exp: expiresAt } satisfies AuthSessionTokenPayload),
+    JSON.stringify({
+      ...payload,
+      credentialVersion: payload.credentialVersion ?? 0,
+      exp: expiresAt,
+      kid: options.keyId ?? DEFAULT_KEY_ID,
+    } satisfies AuthSessionTokenPayload),
   );
   const signature = sign(encodedPayload, options.secret);
-  return `${TOKEN_VERSION}.${encodedPayload}.${signature}`;
+  return `${TOKEN_VERSION}.${options.keyId ?? DEFAULT_KEY_ID}.${encodedPayload}.${signature}`;
 }
 
 export function parseAuthSessionToken(
   token: string | undefined,
-  options: { secret?: string } = {},
+  options: {
+    keyId?: string;
+    previousKeys?: Record<string, string>;
+    secret?: string;
+  } = {},
 ): AuthSessionTokenPayload | null {
   if (!token) {
     return null;
   }
 
-  const [version, encodedPayload, signature] = token.split(".");
-  if (version !== TOKEN_VERSION || !encodedPayload || !signature) {
+  const parts = token.split(".");
+  const version = parts[0];
+  const keyId =
+    version === TOKEN_VERSION
+      ? parts[1]
+      : version === LEGACY_TOKEN_VERSION
+        ? options.keyId ?? DEFAULT_KEY_ID
+        : undefined;
+  const encodedPayload = version === TOKEN_VERSION ? parts[2] : parts[1];
+  const signature = version === TOKEN_VERSION ? parts[3] : parts[2];
+  if (!keyId || !encodedPayload || !signature || parts.length !== (version === TOKEN_VERSION ? 4 : 3)) {
     return null;
   }
 
-  const expectedSignature = sign(encodedPayload, options.secret);
+  const secret =
+    keyId === (options.keyId ?? DEFAULT_KEY_ID)
+      ? options.secret
+      : options.previousKeys?.[keyId];
+  if (!secret && keyId !== (options.keyId ?? DEFAULT_KEY_ID)) return null;
+  const expectedSignature = sign(encodedPayload, secret);
   if (!secureEqual(signature, expectedSignature)) {
     return null;
   }
@@ -46,6 +73,8 @@ export function parseAuthSessionToken(
       !isPrincipalType(payload.principalType) ||
       !payload.sessionId ||
       !payload.jti ||
+      !Number.isInteger(payload.credentialVersion) ||
+      payload.credentialVersion! < 0 ||
       !payload.exp ||
       payload.exp < Math.floor(Date.now() / 1000) ||
       !hasValidTenantContext(payload.principalType, payload.tenantId)
@@ -53,8 +82,10 @@ export function parseAuthSessionToken(
       return null;
     }
     return {
+      credentialVersion: payload.credentialVersion!,
       exp: payload.exp,
       jti: payload.jti,
+      kid: payload.kid ?? keyId,
       principalType: payload.principalType,
       sessionId: payload.sessionId,
       tenantId: payload.tenantId ?? null,

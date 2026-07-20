@@ -266,7 +266,7 @@ async function ensureUser(
     deletedAt: null,
     displayName: input.displayName,
     emailVerified: true,
-    passwordHash: hashPassword(input.password),
+    passwordHash: await hashPassword(input.password),
     preferredLanguage: "zh-CN",
     status: input.status,
     type: "user",

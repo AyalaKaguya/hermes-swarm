@@ -16,6 +16,12 @@ export class PlatformUser extends BaseEntity {
   @Column({ name: "password_hash", type: "varchar", length: 240, nullable: true })
   passwordHash!: string | null;
 
+  @Column({ name: "credential_version", type: "integer", default: 0 })
+  credentialVersion!: number;
+
+  @Column({ name: "credentials_changed_at", type: "timestamptz", nullable: true })
+  credentialsChangedAt!: Date | null;
+
   @Column({ name: "preferred_language", type: "varchar", length: 16, default: "zh-Hans" })
   preferredLanguage!: string;
 

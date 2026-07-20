@@ -201,6 +201,24 @@ const tests = [
     },
   },
   {
+    name: "platform settings direct URL denies a principal without page access",
+    run: async ({ page, state }) => {
+      state.principalType = "platform";
+      state.platformPermissions = state.platformPermissions.filter(
+        (permission) =>
+          permission !== "page.settings.platform.access:platform",
+      );
+      await installApiMocks(page, state);
+      await seedSession(page);
+      await page.goto(`${baseUrl}/platform/settings/general`);
+      await page.getByText("无权访问此页面", { exact: true }).waitFor();
+      assert.equal(
+        await page.getByRole("heading", { level: 1, name: "平台信息" }).count(),
+        0,
+      );
+    },
+  },
+  {
     name: "platform settings use the tenant-style two-pane workspace",
     run: async ({ page, state }) => {
       state.principalType = "platform";
@@ -346,7 +364,6 @@ const tests = [
       await page.goto(`${baseUrl}/settings/tenant`);
       await page.waitForURL("**/settings/tenant/general");
       await page.goto(`${baseUrl}/settings/tenant/localization`);
-      await expectVisibleText(page, "当前生效");
       await expectVisibleText(page, "平台默认");
 
       const timeZoneRow = settingRow(page, "时区");
@@ -395,7 +412,6 @@ const tests = [
 
       const row = settingRow(page, "时区");
       await row.getByText("个人偏好", { exact: true }).waitFor();
-      await row.getByText(/当前生效.*Asia\/Hong_Kong/).waitFor();
       await page.waitForFunction(() =>
         document.cookie.includes("hermes-swarm.time-zone=Asia/Hong_Kong"),
       );
@@ -540,6 +556,9 @@ async function installApiMocks(page, state = createE2EState()) {
     const path = url.pathname.replace(/^\/api\/admin/, "");
     const method = request.method();
     if (method === "OPTIONS") return json(route, null, 204);
+    if (method === "GET" && path === "/auth/csrf") {
+      return json(route, { csrfToken: "e2e-csrf-token" });
+    }
     if (method === "GET" && path === "/auth/me") {
       if (state.principalType === "platform") {
         return json(route, createPlatformPrincipal(state));
@@ -644,6 +663,7 @@ function createE2EState() {
   const state = {
     createdInvite: null,
     lastTenantSettingsPayload: null,
+    platformPermissions: structuredClone(platformPagePermissions),
     platformSettings: structuredClone(platformSettings),
     permissions: structuredClone(snapshot.permissions),
     principalType: "tenant",
@@ -663,7 +683,7 @@ function createPlatformPrincipal(state) {
     isSystem: true,
     label: "Platform Administrator",
     name: "platform-admin",
-    permissions: platformPagePermissions.map((permission) => ({
+    permissions: state.platformPermissions.map((permission) => ({
         enabled: true,
         id: `role-platform-admin-${permission}`,
         permission,

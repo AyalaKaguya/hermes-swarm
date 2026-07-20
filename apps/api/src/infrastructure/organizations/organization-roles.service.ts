@@ -16,6 +16,8 @@ import type {
   TenantRolePayload,
   TenantRolePermissionsPayload,
 } from "../tenants/tenants.controller.js";
+import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
+import { UserOrganization } from "@hermes-swarm/core";
 
 const DEFAULT_ORGANIZATION_ROLES = [
   { description: "拥有当前组织的全部权限。", label: "Owner", name: "owner" },
@@ -26,7 +28,11 @@ const DEFAULT_ORGANIZATION_ROLES = [
 
 @Injectable()
 export class OrganizationRolesService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly grantPolicy: RoleGrantPolicyService =
+      new RoleGrantPolicyService(),
+  ) {}
 
   async list(organizationId: string) {
     await this.requireOrganization(organizationId);
@@ -98,6 +104,7 @@ export class OrganizationRolesService {
     organizationId: string,
     roleId: string,
     payload: TenantRolePermissionsPayload,
+    actorUserId?: string,
   ) {
     const role = await this.requireRole(organizationId, roleId);
     if (role.name === "owner") {
@@ -118,6 +125,30 @@ export class OrganizationRolesService {
       : [];
     if (permissions.length !== codes.length) {
       throw new BadRequestException("角色包含非组织权限");
+    }
+    if (actorUserId) {
+      const membership = await this.manager.findOne(UserOrganization, {
+        where: {
+          organizationId,
+          status: "active",
+          tenantId: this.tenantId,
+          userId: actorUserId,
+        },
+      });
+      const assignment = membership
+        ? await this.manager.findOne(UserOrganizationRole, {
+            relations: { role: { rolePermissions: true } },
+            where: { membershipId: membership.id, tenantId: this.tenantId },
+          })
+        : null;
+      this.grantPolicy.assertCanReplacePermissions(
+        (assignment?.role?.rolePermissions ?? [])
+          .filter((permission) => permission.enabled)
+          .map((permission) => permission.permission),
+        permissions.flatMap((permission) =>
+          permission.code ? [permission.code] : [],
+        ),
+      );
     }
     await this.manager.delete(RolePermission, { roleId, tenantId: this.tenantId });
     if (permissions.length) {

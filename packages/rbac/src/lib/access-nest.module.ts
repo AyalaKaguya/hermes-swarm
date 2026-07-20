@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Global, Module } from "@nestjs/common";
 import { DiscoveryModule } from "@nestjs/core";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
@@ -19,7 +19,9 @@ import { AccessCatalogService } from "./access-catalog.service.js";
 import { AccessScopeService } from "./access-scope.service.js";
 import { AccessService } from "./access-service.js";
 import { PLATFORM_DATA_SOURCE } from "./tokens.js";
+import { RoleGrantPolicyService } from "./role-grant-policy.service.js";
 
+@Global()
 @Module({
   imports: [
     DiscoveryModule,
@@ -48,6 +50,7 @@ import { PLATFORM_DATA_SOURCE } from "./tokens.js";
     AccessCatalogService,
     AccessScopeService,
     AccessService,
+    RoleGrantPolicyService,
   ],
   exports: [
     AccessAuditInterceptor,
@@ -55,6 +58,7 @@ import { PLATFORM_DATA_SOURCE } from "./tokens.js";
     AccessCatalogService,
     AccessScopeService,
     AccessService,
+    RoleGrantPolicyService,
   ],
 })
 export class AccessNestModule {}

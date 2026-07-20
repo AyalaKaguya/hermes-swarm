@@ -74,7 +74,7 @@ export class InfrastructureBootstrapController {
         manager.create(PlatformUser, {
           displayName,
           email,
-          passwordHash: hashPassword(password),
+          passwordHash: await hashPassword(password),
           preferredLanguage: "zh-CN",
           status: "active",
         }),

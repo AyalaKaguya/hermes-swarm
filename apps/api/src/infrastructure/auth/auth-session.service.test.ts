@@ -51,4 +51,33 @@ describe("auth session token boundaries", () => {
     );
     assert.equal(parseAuthSessionToken(`${token}x`, { secret }), null);
   });
+
+  it("binds credential version and key ID while supporting a bounded previous key", () => {
+    const token = createAuthSessionToken(
+      {
+        credentialVersion: 7,
+        jti: "jti-rotated",
+        principalType: "tenant",
+        sessionId: "session-rotated",
+        tenantId: "tenant-a",
+        userId: "user-a",
+      },
+      { keyId: "previous", secret, ttlSeconds: 60 },
+    );
+    assert.equal(
+      parseAuthSessionToken(token, {
+        keyId: "current",
+        previousKeys: { previous: secret },
+        secret: "current-session-secret-with-sufficient-entropy",
+      })?.credentialVersion,
+      7,
+    );
+    assert.equal(
+      parseAuthSessionToken(token, {
+        keyId: "current",
+        secret: "current-session-secret-with-sufficient-entropy",
+      }),
+      null,
+    );
+  });
 });

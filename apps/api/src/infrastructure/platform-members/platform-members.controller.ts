@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
 } from "@nestjs/common";
 import {
   AccessOperation,
@@ -48,8 +49,8 @@ export class PlatformMembersController {
     operation: "create",
     sortOrder: 20,
   })
-  create(@Body() payload: PlatformMemberPayload) {
-    return this.service.create(payload);
+  create(@Body() payload: PlatformMemberPayload, @Req() request: any) {
+    return this.service.create(payload, request.accessPrincipal?.userId);
   }
 
   @Patch(":memberId")
@@ -62,8 +63,13 @@ export class PlatformMembersController {
   update(
     @Param("memberId") memberId: string,
     @Body() payload: Partial<PlatformMemberPayload>,
+    @Req() request: any,
   ) {
-    return this.service.update(memberId, payload);
+    return this.service.update(
+      memberId,
+      payload,
+      request.accessPrincipal?.userId,
+    );
   }
 
   @Delete(":memberId")

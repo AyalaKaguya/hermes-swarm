@@ -34,7 +34,10 @@ afterEach(() => {
 describe("admin API browser client", () => {
   it("never sends client-selected tenant or organization scope headers", async () => {
     const requests: Headers[] = [];
-    globalThis.fetch = async (_input, init) => {
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
       requests.push(new Headers(init?.headers));
       return Response.json({ memberships: [], permissions: [], user: {} });
     };
@@ -55,6 +58,9 @@ describe("admin API browser client", () => {
   it("uses the workspace role library routes", async () => {
     const requests: Array<{ body: unknown; method: string; url: string }> = [];
     globalThis.fetch = async (input, init) => {
+      if (String(input) === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
       requests.push({
         body: init?.body ? JSON.parse(String(init.body)) : null,
         method: init?.method ?? "GET",
@@ -93,6 +99,9 @@ describe("admin API browser client", () => {
   it("uses the personal API Token route without a user id or scope", async () => {
     let request: { body: unknown; url: string } | null = null;
     globalThis.fetch = async (input, init) => {
+      if (String(input) === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
       request = {
         body: init?.body ? JSON.parse(String(init.body)) : null,
         url: String(input),
@@ -115,6 +124,9 @@ describe("admin API browser client", () => {
   it("uses workspace-level user and invite routes", async () => {
     const requests: Array<{ body: unknown; method: string; url: string }> = [];
     globalThis.fetch = async (input, init) => {
+      if (String(input) === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
       requests.push({
         body: init?.body ? JSON.parse(String(init.body)) : null,
         method: init?.method ?? "GET",

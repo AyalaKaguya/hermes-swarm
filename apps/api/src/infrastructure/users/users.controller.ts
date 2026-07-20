@@ -15,11 +15,13 @@ import {
 } from "@nestjs/common";
 import type {
   CreateUserPayload,
+  AdminResetUserPasswordPayload,
   SearchUsersQuery,
   UpdatePreferredLanguagePayload,
   UpdateRuntimePreferencesPayload,
   UpdateUserPasswordPayload,
-  UpdateUserPayload,
+  UpdateManagedUserPayload,
+  UpdateSelfProfilePayload,
 } from "../../common/admin-api.types.js";
 import {
   AccessOperation,
@@ -111,7 +113,7 @@ export class UsersController {
   })
   updateSelf(
     @Headers("authorization") authorization: string | undefined,
-    @Body() payload: UpdateUserPayload,
+    @Body() payload: UpdateSelfProfilePayload,
   ) {
     return this.usersService.updateSelf(authorization, payload);
   }
@@ -183,9 +185,29 @@ export class UsersController {
   updateManaged(
     @Headers("authorization") authorization: string | undefined,
     @Param("userId") userId: string,
-    @Body() payload: UpdateUserPayload,
+    @Body() payload: UpdateManagedUserPayload,
   ) {
     return this.usersService.updateManaged(authorization, userId, payload);
+  }
+
+  @Post(":userId/password-reset")
+  @AccessOperation({
+    description: "管理员重置当前工作空间用户的登录密码并撤销旧会话。",
+    isDangerous: true,
+    label: "重置用户密码",
+    operation: "admin_reset_password",
+    sortOrder: 60,
+  })
+  adminResetPassword(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("userId") userId: string,
+    @Body() payload: AdminResetUserPasswordPayload,
+  ) {
+    return this.usersService.adminResetPassword(
+      authorization,
+      userId,
+      payload,
+    );
   }
 
   @Put(":userId/role")

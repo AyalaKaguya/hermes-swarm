@@ -3,6 +3,7 @@ import type { NextRequest, NextResponse } from "next/server";
 
 export type WebSession = {
   accessToken: string;
+  csrfToken?: string;
   expiresAt: string;
   principalType?: "platform" | "tenant";
   refreshToken: string;
@@ -21,7 +22,11 @@ export function readWebSession(request: NextRequest): WebSession | null {
 }
 
 export function setWebSessionCookie(response: NextResponse, session: WebSession) {
-  response.cookies.set(WEB_SESSION_COOKIE_NAME, sealWebSession(session), {
+  const normalized = {
+    ...session,
+    csrfToken: session.csrfToken || randomBytes(32).toString("base64url"),
+  };
+  response.cookies.set(WEB_SESSION_COOKIE_NAME, sealWebSession(normalized), {
     httpOnly: true,
     maxAge: WEB_SESSION_COOKIE_MAX_AGE_SECONDS,
     path: "/",
@@ -81,6 +86,7 @@ export function unsealWebSession(value: string): WebSession | null {
     const session = JSON.parse(plaintext.toString("utf8")) as Partial<WebSession>;
     if (
       !session.accessToken ||
+      !session.csrfToken ||
       !session.refreshToken ||
       !session.expiresAt ||
       !session.sessionId
@@ -89,6 +95,7 @@ export function unsealWebSession(value: string): WebSession | null {
     }
     return {
       accessToken: session.accessToken,
+      csrfToken: session.csrfToken,
       expiresAt: session.expiresAt,
       ...(session.principalType === "platform" ||
       session.principalType === "tenant"
@@ -105,10 +112,10 @@ export function unsealWebSession(value: string): WebSession | null {
 function getEncryptionKey() {
   const secret =
     process.env.WEB_SESSION_SECRET ??
-    process.env.AUTH_SESSION_SECRET ??
     (process.env.NODE_ENV === "production"
       ? undefined
-      : "hermes-swarm-local-web-session-secret");
+      : process.env.AUTH_SESSION_SECRET ??
+        "hermes-swarm-local-web-session-secret");
   if (!secret) {
     throw new Error("WEB_SESSION_SECRET is required in production.");
   }

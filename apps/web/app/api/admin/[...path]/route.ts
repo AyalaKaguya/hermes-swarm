@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import {
   clearWebSessionCookie,
   readWebSession,
@@ -69,11 +70,19 @@ async function handleAdminRequest(
   }
 
   if (path === "/auth/logout") {
-    return handleLogout(request, path);
+    const session = readWebSession(request);
+    if (!session) return unauthorizedResponse(true);
+    const csrfError = validateCsrfRequest(request, session);
+    if (csrfError) return csrfError;
+    return handleLogout(request, path, session);
   }
 
   if (path === "/auth/refresh") {
-    return handleRefresh(request);
+    const session = readWebSession(request);
+    if (!session) return unauthorizedResponse(true);
+    const csrfError = validateCsrfRequest(request, session);
+    if (csrfError) return csrfError;
+    return handleRefresh(request, session);
   }
 
   if (isPublicAdminPath(path)) {
@@ -87,6 +96,14 @@ async function handleAdminRequest(
     return refreshFailureResponse(normalizeRefreshError(error));
   }
   if (!session) return unauthorizedResponse(true);
+
+  if (path === "/auth/csrf" && request.method === "GET") {
+    return jsonResponse({ csrfToken: session.csrfToken }, 200);
+  }
+  if (isMutation(request.method)) {
+    const csrfError = validateCsrfRequest(request, session);
+    if (csrfError) return csrfError;
+  }
 
   let upstream = await forwardToNest(
     request.clone(),
@@ -154,8 +171,11 @@ async function handleSessionStart(request: NextRequest, path: string) {
   return response;
 }
 
-async function handleLogout(request: NextRequest, path: string) {
-  const session = readWebSession(request);
+async function handleLogout(
+  request: NextRequest,
+  path: string,
+  session: WebSession,
+) {
   if (session?.accessToken) {
     await forwardToNest(
       request,
@@ -169,9 +189,7 @@ async function handleLogout(request: NextRequest, path: string) {
   return response;
 }
 
-async function handleRefresh(request: NextRequest) {
-  const session = readWebSession(request);
-  if (!session) return unauthorizedResponse(true);
+async function handleRefresh(request: NextRequest, session: WebSession) {
   let refreshed: WebSession;
   try {
     refreshed = await refreshWebSession(session, request);
@@ -263,6 +281,7 @@ async function refreshWebSessionUpstream(
   }
   return {
     accessToken,
+    csrfToken: session.csrfToken,
     expiresAt,
     principalType: session.principalType ?? "tenant",
     refreshToken,
@@ -315,7 +334,12 @@ function buildForwardHeaders(
       normalized === "content-length" ||
       normalized === "cookie" ||
       normalized === "host" ||
+      normalized === "x-csrf-token" ||
       normalized === "x-forwarded-host" ||
+      normalized === "x-forwarded-proto" ||
+      normalized === "x-organization-id" ||
+      normalized === "x-scope-level" ||
+      normalized === "x-tenant-id" ||
       normalized === "set-cookie" ||
       normalized === "transfer-encoding"
     ) {
@@ -328,6 +352,53 @@ function buildForwardHeaders(
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
   return headers;
+}
+
+function isMutation(method: string) {
+  return ["DELETE", "PATCH", "POST", "PUT"].includes(method.toUpperCase());
+}
+
+function validateCsrfRequest(request: NextRequest, session: WebSession) {
+  const origin = request.headers.get("origin");
+  if (origin) {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      return csrfDenied(request, "CSRF_ORIGIN_INVALID");
+    }
+    if (parsed.origin !== request.nextUrl.origin) {
+      return csrfDenied(request, "CSRF_ORIGIN_MISMATCH");
+    }
+  } else if (request.headers.get("sec-fetch-site") !== "same-origin") {
+    return csrfDenied(request, "CSRF_SOURCE_UNTRUSTED");
+  }
+  const supplied = request.headers.get("x-csrf-token") ?? "";
+  const expected = session.csrfToken ?? "";
+  const suppliedBuffer = Buffer.from(supplied);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    suppliedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(suppliedBuffer, expectedBuffer)
+  ) {
+    return csrfDenied(request, "CSRF_TOKEN_INVALID");
+  }
+  return null;
+}
+
+function csrfDenied(request: NextRequest, code: string) {
+  console.warn(
+    JSON.stringify({
+      code,
+      event: "csrf.denied",
+      method: request.method,
+      path: request.nextUrl.pathname,
+    }),
+  );
+  return jsonResponse(
+    { code, message: "请求来源验证失败", statusCode: 403 },
+    403,
+  );
 }
 
 async function toNextResponse(upstream: Response, session?: WebSession) {

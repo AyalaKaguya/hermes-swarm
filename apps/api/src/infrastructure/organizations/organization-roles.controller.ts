@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Req } from "@nestjs/common";
 import { AccessOperation, AccessResource } from "@hermes-swarm/rbac";
 import type {
   TenantRolePayload,
@@ -45,8 +45,14 @@ export class OrganizationRolesController {
     @Param("organizationId") organizationId: string,
     @Param("roleId") roleId: string,
     @Body() payload: TenantRolePermissionsPayload,
+    @Req() request: any,
   ) {
-    return this.roles.replacePermissions(organizationId, roleId, payload);
+    return this.roles.replacePermissions(
+      organizationId,
+      roleId,
+      payload,
+      request.accessPrincipal?.userId,
+    );
   }
 
   @Delete(":roleId")

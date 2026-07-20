@@ -9,11 +9,13 @@ import {
   PlatformRole,
   PlatformRolePermission,
   PlatformUserRole,
+  PlatformUser,
 } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import type { ReplaceRolePermissionsPayload } from "../../common/admin-api.types.js";
 import type { PlatformRolePayload } from "./platform-roles.controller.js";
+import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 
 @Injectable()
 export class PlatformRolesService {
@@ -24,6 +26,8 @@ export class PlatformRolesService {
     private readonly rolePermissionRepository: Repository<PlatformRolePermission>,
     @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
     private readonly permissionRepository: Repository<Permission>,
+    private readonly grantPolicy: RoleGrantPolicyService =
+      new RoleGrantPolicyService(),
   ) {}
 
   async list() {
@@ -79,6 +83,7 @@ export class PlatformRolesService {
   async replacePermissions(
     roleId: string,
     payload: ReplaceRolePermissionsPayload,
+    actorUserId?: string,
   ) {
     const role = await this.getRoleOrThrow(roleId);
     this.assertMutableRole(role);
@@ -86,6 +91,33 @@ export class PlatformRolesService {
     const permissions = await Promise.all(
       permissionKeys.map((key) => this.getPermissionOrThrow(key)),
     );
+    if (actorUserId) {
+      const actor = await this.roleRepository.manager.findOne(PlatformUser, {
+        relations: {
+          roles: {
+            platformRole: { rolePermissions: { permission: true } },
+          },
+        },
+        where: { id: actorUserId, status: "active" },
+      });
+      const actorPermissions = [
+        ...new Set(
+          (actor?.roles ?? []).flatMap((assignment) =>
+            (assignment.platformRole?.rolePermissions ?? [])
+              .filter((item) => item.enabled)
+              .flatMap((item) =>
+                item.permission?.code ? [item.permission.code] : [],
+              ),
+          ),
+        ),
+      ];
+      this.grantPolicy.assertCanReplacePermissions(
+        actorPermissions,
+        permissions.flatMap((permission) =>
+          permission.code ? [permission.code] : [],
+        ),
+      );
+    }
     return this.rolePermissionRepository.manager.transaction(async (manager) => {
       await manager.delete(PlatformRolePermission, {
         platformRoleId: role.id,

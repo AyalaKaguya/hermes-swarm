@@ -13,6 +13,7 @@
     "migration:revert": "typeorm-ts-node-esm migration:revert -d src/common/database/migration-data-source.ts",
     "migration:show": "typeorm-ts-node-esm migration:show -d src/common/database/migration-data-source.ts",
     "seed:development": "tsx src/common/database/seed/development-seed.cli.ts",
+    "settings:rotate-secrets": "tsx src/infrastructure/settings/settings-secret-rotation.cli.ts",
     "openapi:generate": "node dist/openapi.generate.js",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:jobs-seed": "node --import tsx --test \"src/common/jobs/*.test.ts\" \"src/common/database/seed/*.test.ts\" \"src/domains/support/jobs/*.test.ts\"",

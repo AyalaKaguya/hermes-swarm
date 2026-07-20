@@ -6,6 +6,8 @@ import { Organization, Tenant, Ticket, User } from "@hermes-swarm/core";
 import { DATABASE_ENTITIES } from "../common/database/database-entities.js";
 import { WorkspaceModelBaseline2026071500001 } from "../common/database/migrations/202607150001-WorkspaceModelBaseline.js";
 import { AuditLogs2026071700002 } from "../common/database/migrations/202607170002-AuditLogs.js";
+import { CredentialVersion2026072000001 } from "../common/database/migrations/2026072000001-CredentialVersion.js";
+import { OrganizationScopeRls2026072000002 } from "../common/database/migrations/2026072000002-OrganizationScopeRls.js";
 
 const databaseUrl =
   process.env.POSTGRES_E2E_URL ??
@@ -13,11 +15,14 @@ const databaseUrl =
 
 const ids = {
   organizationA: "00000000-0000-4000-8000-000000000201",
+  organizationAChild: "00000000-0000-4000-8000-000000000203",
   organizationB: "00000000-0000-4000-8000-000000000202",
   tenantA: "00000000-0000-4000-8000-000000000001",
   tenantB: "00000000-0000-4000-8000-000000000002",
   userA: "00000000-0000-4000-8000-000000000101",
   userB: "00000000-0000-4000-8000-000000000102",
+  ticketA: "00000000-0000-4000-8000-000000000301",
+  ticketAChild: "00000000-0000-4000-8000-000000000302",
 };
 
 describe("workspace database baseline e2e", { concurrency: false }, () => {
@@ -31,6 +36,8 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
       migrations: [
         WorkspaceModelBaseline2026071500001,
         AuditLogs2026071700002,
+        CredentialVersion2026072000001,
+        OrganizationScopeRls2026072000002,
       ],
       migrationsRun: false,
       synchronize: false,
@@ -46,6 +53,40 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
     ]);
     await seedTenant(ids.tenantA, ids.userA, ids.organizationA);
     await seedTenant(ids.tenantB, ids.userB, ids.organizationB);
+    await inTenant(ids.tenantA, async (manager) => {
+      await manager.getRepository(Organization).save({
+        id: ids.organizationAChild,
+        name: "Organization A Child",
+        parentOrganizationId: ids.organizationA,
+        slug: "organization-a-child",
+        status: "active",
+        tenantId: ids.tenantA,
+      });
+      await manager.getRepository(Ticket).save([
+        {
+          assigneeUserId: null,
+          conversationId: null,
+          id: ids.ticketA,
+          participantUserIds: [],
+          requesterUserId: ids.userA,
+          sourceOrganizationId: ids.organizationA,
+          status: "open",
+          subject: "Root organization ticket",
+          tenantId: ids.tenantA,
+        },
+        {
+          assigneeUserId: null,
+          conversationId: null,
+          id: ids.ticketAChild,
+          participantUserIds: [],
+          requesterUserId: ids.userA,
+          sourceOrganizationId: ids.organizationAChild,
+          status: "open",
+          subject: "Child organization ticket",
+          tenantId: ids.tenantA,
+        },
+      ]);
+    });
   });
 
   after(async () => {
@@ -97,6 +138,25 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
         ),
       (error: unknown) => databaseErrorCode(error) === "23503",
     );
+  });
+
+  it("restricts organization-scoped ticket reads to the exact organization", async () => {
+    const visibleIds = await dataSource.transaction(async (manager) => {
+      await manager.query("SET LOCAL ROLE hermes_tenant_app");
+      await manager.query(
+        `SELECT
+          set_config('app.tenant_id', $1, true),
+          set_config('app.scope_level', 'organization', true),
+          set_config('app.organization_id', $2, true)`,
+        [ids.tenantA, ids.organizationAChild],
+      );
+      const rows = (await manager.query(
+        `SELECT "id" FROM "tickets" ORDER BY "id"`,
+      )) as Array<{ id: string }>;
+      return rows.map((row) => row.id);
+    });
+
+    assert.deepEqual(visibleIds, [ids.ticketAChild]);
   });
 
   it("isolates login audit rows through the tenant database role and keeps audit tables append-only", async () => {
@@ -166,6 +226,7 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
   function inTenant<T>(tenantId: string, work: (manager: any) => Promise<T>) {
     return dataSource.transaction(async (manager) => {
       await manager.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+      await manager.query("SELECT set_config('app.scope_level', 'tenant', true)");
       return work(manager);
     });
   }

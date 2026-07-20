@@ -72,7 +72,7 @@ export class AuthService {
       if (
         !user ||
         user.status !== "active" ||
-        !verifyPassword(password, user.passwordHash)
+        !(await verifyPassword(password, user.passwordHash))
       ) {
         await this.recordLoginAttempt({
           attemptedEmail: email,
@@ -137,7 +137,7 @@ export class AuthService {
       if (
         !user ||
         user.status !== "active" ||
-        !verifyPassword(password, user.passwordHash)
+        !(await verifyPassword(password, user.passwordHash))
       ) {
         await this.recordLoginAttempt({
           attemptedEmail: email,

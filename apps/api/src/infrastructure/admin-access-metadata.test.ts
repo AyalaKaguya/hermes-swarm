@@ -1,67 +1,29 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { METHOD_METADATA } from "@nestjs/common/constants";
+import {
+  METHOD_METADATA,
+  MODULE_METADATA,
+  PATH_METADATA,
+} from "@nestjs/common/constants";
 import {
   ACCESS_OPERATION_METADATA,
   PUBLIC_ACCESS_METADATA,
 } from "@hermes-swarm/rbac";
-import { AuthController } from "./auth/auth.controller.js";
-import {
-  PlatformAuditController,
-  TenantAuditController,
-} from "./audit/audit.controller.js";
-import { FilesController } from "./files/files.controller.js";
-import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
-import { IntegrationTokensController } from "./integrations/integration-tokens.controller.js";
-import { InviteController } from "./invite/invite.controller.js";
-import { TenantMailController } from "./mail/mail.controller.js";
-import { PlatformMailController } from "./mail/platform-mail.controller.js";
-import { MembershipsController } from "./memberships/memberships.controller.js";
-import { NotificationsController } from "./notifications/notifications.controller.js";
-import { OrganizationsController } from "./organizations/organizations.controller.js";
-import { PasswordResetController } from "./password-reset/password-reset.controller.js";
-import { PlatformMembersController } from "./platform-members/platform-members.controller.js";
-import { PlatformRolesController } from "./platform-roles/platform-roles.controller.js";
-import { SettingsController } from "./settings/settings.controller.js";
-import { TicketsController } from "../domains/support/tickets/tickets.controller.js";
-import {
-  TenantApplicationsController,
-  TenantsController,
-} from "./tenants/tenants.controller.js";
-import { RolesController } from "./tenants/roles.controller.js";
-import { UsersController } from "./users/users.controller.js";
 import { PermissionsController } from "@hermes-swarm/rbac";
-
-const ADMIN_CONTROLLERS = [
-  AuthController,
-  PlatformAuditController,
-  FilesController,
-  InfrastructureBootstrapController,
-  IntegrationTokensController,
-  InviteController,
-  TenantMailController,
-  MembershipsController,
-  NotificationsController,
-  OrganizationsController,
-  PasswordResetController,
-  PlatformMailController,
-  PlatformMembersController,
-  PlatformRolesController,
-  PermissionsController,
-  SettingsController,
-  RolesController,
-  TenantApplicationsController,
-  TenantAuditController,
-  TenantsController,
-  TicketsController,
-  UsersController,
-] as const;
+import { AppModule } from "../app.module.js";
 
 describe("admin route access metadata", () => {
   it("requires every admin handler to explicitly declare access or public behavior", () => {
     const missing: string[] = [];
 
-    for (const controller of ADMIN_CONTROLLERS) {
+    const controllers = collectControllers(AppModule).filter((controller) =>
+      String(Reflect.getMetadata(PATH_METADATA, controller) ?? "").startsWith(
+        "admin",
+      ),
+    );
+    assert.ok(controllers.length > 0);
+
+    for (const controller of controllers) {
       for (const methodName of Object.getOwnPropertyNames(controller.prototype)) {
         if (methodName === "constructor") continue;
         const handler = controller.prototype[methodName];
@@ -72,9 +34,13 @@ describe("admin route access metadata", () => {
           continue;
         }
 
-        const operation = Reflect.getMetadata(ACCESS_OPERATION_METADATA, handler);
-        const publicAccess = Reflect.getMetadata(PUBLIC_ACCESS_METADATA, handler);
-        if (!operation && !publicAccess) {
+        const operation =
+          Reflect.getMetadata(ACCESS_OPERATION_METADATA, handler) ??
+          Reflect.getMetadata(ACCESS_OPERATION_METADATA, controller);
+        const publicAccess =
+          Reflect.getMetadata(PUBLIC_ACCESS_METADATA, handler) ??
+          Reflect.getMetadata(PUBLIC_ACCESS_METADATA, controller);
+        if (!operation && !publicAccess?.reason?.trim()) {
           missing.push(`${controller.name}.${methodName}`);
         }
       }
@@ -92,3 +58,54 @@ describe("admin route access metadata", () => {
     assert.deepEqual(operation?.defaultRoles, ["tenant-owner", "tenant-admin"]);
   });
 });
+
+type NestModuleEntry =
+  | Function
+  | {
+      controllers?: Function[];
+      forwardRef?: () => NestModuleEntry;
+      imports?: NestModuleEntry[];
+      module?: Function;
+    };
+
+function collectControllers(root: NestModuleEntry) {
+  const controllers = new Set<Function>();
+  const visited = new Set<Function>();
+
+  function visit(entry: NestModuleEntry | null | undefined) {
+    if (!entry) return;
+    if (
+      typeof entry === "object" &&
+      typeof entry.forwardRef === "function"
+    ) {
+      visit(entry.forwardRef());
+      return;
+    }
+    const dynamic = typeof entry === "object" ? entry : undefined;
+    const moduleType = (dynamic?.module ?? entry) as Function;
+    if (typeof moduleType !== "function") return;
+
+    for (const controller of [
+      ...((Reflect.getMetadata(
+        MODULE_METADATA.CONTROLLERS,
+        moduleType,
+      ) as Function[] | undefined) ?? []),
+      ...(dynamic?.controllers ?? []),
+    ]) {
+      controllers.add(controller);
+    }
+    if (visited.has(moduleType) && !dynamic) return;
+    visited.add(moduleType);
+    const imports = [
+      ...((Reflect.getMetadata(
+        MODULE_METADATA.IMPORTS,
+        moduleType,
+      ) as NestModuleEntry[] | undefined) ?? []),
+      ...(dynamic?.imports ?? []),
+    ];
+    for (const imported of imports) visit(imported);
+  }
+
+  visit(root);
+  return [...controllers];
+}

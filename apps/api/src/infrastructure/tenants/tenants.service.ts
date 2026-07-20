@@ -33,6 +33,7 @@ import { TenantContextService } from "../../common/database/tenant-context.servi
 import { createPasswordResetToken } from "../password-reset/password-reset-token.js";
 import { PlatformEmailSendService } from "../mail/platform-email-send.service.js";
 import { OrganizationRolesService } from "../organizations/organization-roles.service.js";
+import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 
 const RESERVED_TENANT_ROLE_NAMES = new Set([
   "tenant-owner",
@@ -58,6 +59,8 @@ export class TenantsService {
     private readonly tenantContext: TenantContextService,
     private readonly platformEmailSendService: PlatformEmailSendService,
     private readonly organizationRoles: OrganizationRolesService,
+    private readonly grantPolicy: RoleGrantPolicyService =
+      new RoleGrantPolicyService(),
   ) {}
 
   async apply(payload: TenantApplicationPayload) {
@@ -477,6 +480,7 @@ export class TenantsService {
     tenantId: string,
     roleId: string,
     payload: TenantRolePermissionsPayload,
+    actorUserId?: string,
   ) {
     tenantId = this.requireTenantExecution(tenantId);
     const role = await this.requireTenantRole(tenantId, roleId);
@@ -501,6 +505,22 @@ export class TenantsService {
       const allowed = permission && (permission.scope === "tenant" || permission.scope === "own");
       if (!allowed) throw new BadRequestException(`角色权限范围不匹配: ${code}`);
       permissions.push(permission);
+    }
+    if (actorUserId) {
+      const assignments = await this.tenantContext.repository(UserTenantRole).find({
+        relations: { role: { rolePermissions: true } },
+        where: { tenantId, userId: actorUserId },
+      });
+      this.grantPolicy.assertCanReplacePermissions(
+        assignments.flatMap((assignment) =>
+          (assignment.role?.rolePermissions ?? [])
+            .filter((permission) => permission.enabled)
+            .map((permission) => permission.permission),
+        ),
+        permissions.flatMap((permission) =>
+          permission.code ? [permission.code] : [],
+        ),
+      );
     }
     const manager = this.tenantContext.current()!.manager;
     await manager.delete(RolePermission, { roleId, tenantId });

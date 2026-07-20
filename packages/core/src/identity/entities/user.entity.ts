@@ -35,6 +35,12 @@ export class User extends TenantOwnedBaseEntity {
   @Column({ name: "password_hash", type: "varchar", length: 240, nullable: true })
   passwordHash!: string | null;
 
+  @Column({ name: "credential_version", type: "integer", default: 0 })
+  credentialVersion!: number;
+
+  @Column({ name: "credentials_changed_at", type: "timestamptz", nullable: true })
+  credentialsChangedAt!: Date | null;
+
   @Column({ name: "refresh_token", type: "varchar", length: 240, nullable: true })
   refreshToken!: string | null;
 

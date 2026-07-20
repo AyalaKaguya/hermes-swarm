@@ -659,6 +659,10 @@ async function sendAdminRequest(
   if (options?.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
+  const method = options?.method ?? "GET";
+  if (["DELETE", "PATCH", "POST", "PUT"].includes(method)) {
+    headers.set("X-CSRF-Token", await getCsrfToken());
+  }
 
   const controller = new AbortController();
   const scopeSignal = getOrganizationRequestSignal();
@@ -674,7 +678,7 @@ async function sendAdminRequest(
 
   try {
     response = await fetch(`${ADMIN_API_BASE_URL}${path}`, {
-      method: options?.method ?? "GET",
+      method,
       headers,
       body: options?.body === undefined ? undefined : JSON.stringify(options.body),
       credentials: "include",
@@ -694,6 +698,27 @@ async function sendAdminRequest(
   }
 
   return response;
+}
+
+let csrfTokenPromise: Promise<string> | null = null;
+
+async function getCsrfToken() {
+  csrfTokenPromise ??= fetch(`${ADMIN_API_BASE_URL}/auth/csrf`, {
+    credentials: "include",
+  }).then(async (response) => {
+    if (!response.ok) throw new Error("无法建立安全请求上下文");
+    const value = (await response.json()) as { csrfToken?: unknown };
+    if (typeof value.csrfToken !== "string" || !value.csrfToken) {
+      throw new Error("安全请求上下文无效");
+    }
+    return value.csrfToken;
+  });
+  try {
+    return await csrfTokenPromise;
+  } catch (error) {
+    csrfTokenPromise = null;
+    throw error;
+  }
 }
 
 function shouldAttachRequestScope(path: string) {

@@ -82,6 +82,8 @@ export const authRuntimeConfig = registerAs("auth", () => ({
     process.env.AUTH_SESSION_SECRET ??
     process.env.JWT_SECRET ??
     "hermes-swarm-local-auth-secret",
+  sessionKeyId: process.env.AUTH_SESSION_KEY_ID ?? "current",
+  previousSessionKeys: parseKeyring(process.env.AUTH_SESSION_PREVIOUS_KEYS),
 }));
 
 export const settingsRuntimeConfig = registerAs("settings", () => ({
@@ -90,6 +92,10 @@ export const settingsRuntimeConfig = registerAs("settings", () => ({
     process.env.AUTH_SESSION_SECRET ??
     process.env.JWT_SECRET ??
     "hermes-swarm-local-settings-secret",
+  encryptionKeyId: process.env.SETTINGS_ENCRYPTION_KEY_ID ?? "current",
+  previousEncryptionKeys: parseKeyring(
+    process.env.SETTINGS_PREVIOUS_ENCRYPTION_KEYS,
+  ),
 }));
 
 export function getApiEnvFilePaths() {
@@ -214,6 +220,9 @@ export function validateRuntimeConfig(
       config.JWT_SECRET,
     "hermes-swarm-local-settings-secret",
   );
+  if (environment === "production") {
+    validateProductionSecrets(config);
+  }
   return config;
 }
 
@@ -321,4 +330,63 @@ function databaseUrlUsername(value: unknown) {
   } catch {
     return "";
   }
+}
+
+function validateProductionSecrets(config: Record<string, unknown>) {
+  const names = [
+    "AUTH_SESSION_SECRET",
+    "WEB_SESSION_SECRET",
+    "SETTINGS_ENCRYPTION_KEY",
+    "INVITE_TOKEN_SECRET",
+    "PASSWORD_RESET_TOKEN_SECRET",
+  ] as const;
+  const values = names.map((name) => {
+    const value = typeof config[name] === "string" ? config[name].trim() : "";
+    if (!value) throw new Error(`${name} is required in production`);
+    if (decodedSecretLength(value) < 32) {
+      throw new Error(`${name} must contain at least 32 bytes of key material`);
+    }
+    if (/hermes-swarm|dev-|local-|change-me|example/i.test(value)) {
+      throw new Error(`${name} cannot use a public or development default`);
+    }
+    return value;
+  });
+  if (new Set(values).size !== values.length) {
+    throw new Error("Production security secrets must be independent");
+  }
+}
+
+function decodedSecretLength(value: string) {
+  if (/^[a-f0-9]{64,}$/i.test(value) && value.length % 2 === 0) {
+    return Buffer.from(value, "hex").length;
+  }
+  if (/^[A-Za-z0-9_-]{43,}={0,2}$/.test(value)) {
+    try {
+      return Buffer.from(value, "base64url").length;
+    } catch {
+      // Fall through to UTF-8 for explicitly textual secrets.
+    }
+  }
+  return Buffer.byteLength(value, "utf8");
+}
+
+function parseKeyring(value: string | undefined) {
+  if (!value?.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("Keyring configuration must be a JSON object");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Keyring configuration must be a JSON object");
+  }
+  return Object.fromEntries(
+    Object.entries(parsed).map(([keyId, secret]) => {
+      if (!keyId.trim() || typeof secret !== "string" || !secret.trim()) {
+        throw new Error("Keyring entries require a key id and secret");
+      }
+      return [keyId.trim(), secret];
+    }),
+  );
 }

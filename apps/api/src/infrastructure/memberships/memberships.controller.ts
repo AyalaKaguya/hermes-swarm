@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Put,
+  Req,
 } from "@nestjs/common";
 import {
   AccessOperation,
@@ -52,8 +53,13 @@ export class MembershipsController {
   create(
     @Param("organizationId") organizationId: string,
     @Body() payload: MembershipPayload,
+    @Req() request: any,
   ) {
-    return this.membershipsService.create(organizationId, payload);
+    return this.membershipsService.create(
+      organizationId,
+      payload,
+      request.accessPrincipal?.userId,
+    );
   }
 
   @Patch(":membershipId")
@@ -68,11 +74,13 @@ export class MembershipsController {
     @Param("organizationId") organizationId: string,
     @Param("membershipId") membershipId: string,
     @Body() payload: Partial<MembershipPayload>,
+    @Req() request: any,
   ) {
     return this.membershipsService.update(
       organizationId,
       membershipId,
       payload,
+      request.accessPrincipal?.userId,
     );
   }
 
@@ -104,11 +112,13 @@ export class MembershipsController {
     @Param("organizationId") organizationId: string,
     @Param("membershipId") membershipId: string,
     @Body() payload: { roleId?: string },
+    @Req() request: any,
   ) {
     return this.membershipsService.replaceRole(
       organizationId,
       membershipId,
       typeof payload?.roleId === "string" ? payload.roleId : "",
+      request.accessPrincipal?.userId,
     );
   }
 }

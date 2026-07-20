@@ -10,5 +10,6 @@ export * from "./lib/access-service.js";
 export * from "./lib/access.decorators.js";
 export * from "./lib/access.guard.js";
 export * from "./lib/access.types.js";
+export * from "./lib/role-grant-policy.service.js";
 export * from "./lib/client-ip.js";
 export * from "./lib/tokens.js";

@@ -82,8 +82,11 @@ describe("PasswordResetService", () => {
       token,
     });
 
-    assert.deepEqual(result, { success: true });
-    assert.equal(verifyPassword("new-password", user.passwordHash), true);
+    assert.deepEqual(result, {
+      success: true,
+      reauthenticationRequired: true,
+    });
+    assert.equal(await verifyPassword("new-password", user.passwordHash), true);
     assert.equal(user.emailVerified, true);
     await assert.rejects(() =>
       state.service.resetPassword({
@@ -126,8 +129,8 @@ describe("PasswordResetService", () => {
     );
     assert.equal(state.passwordResets.length, 0);
     assert.equal(
-      verifyPassword("first-password", user.passwordHash) ||
-        verifyPassword("second-password", user.passwordHash),
+      (await verifyPassword("first-password", user.passwordHash)) ||
+        (await verifyPassword("second-password", user.passwordHash)),
       true,
     );
   });
@@ -161,7 +164,7 @@ describe("PasswordResetService", () => {
     });
 
     assert.equal(state.tenant.status, "provisioning");
-    assert.equal(verifyPassword("owner-password", user.passwordHash), true);
+    assert.equal(await verifyPassword("owner-password", user.passwordHash), true);
     assert.equal(state.passwordResets.length, 0);
   });
 

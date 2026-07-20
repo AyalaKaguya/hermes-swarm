@@ -50,18 +50,30 @@ export class AccessGuard implements CanActivate {
     const operation = this.getOperationMetadata(context);
     if (!operation) {
       if (this.isAdminRequest(context)) {
-        throw new ForbiddenException("受保护接口缺少 Access 元数据");
+        throw accessMetadataError(
+          "ACCESS_METADATA_MISSING",
+          "受保护接口缺少 Access 元数据",
+        );
       }
       return true;
     }
 
     const resource = this.getResourceMetadata(context);
     const fallbackDefinition = resolveAccessDefinition(resource, operation);
-    if (!fallbackDefinition) return true;
+    if (!fallbackDefinition) {
+      throw accessMetadataError(
+        "ACCESS_METADATA_INVALID",
+        "Access 元数据无法解析为完整权限定义",
+      );
+    }
 
-    const definition =
-      this.catalogService.getDefinition(fallbackDefinition.id) ??
-      fallbackDefinition;
+    const definition = this.catalogService.getDefinition(fallbackDefinition.id);
+    if (!definition) {
+      throw accessMetadataError(
+        "ACCESS_DEFINITION_UNKNOWN",
+        "Access 定义不在已同步权限目录中",
+      );
+    }
     const request = context.switchToHttp().getRequest<AccessRequest>();
 
     let session: Awaited<
@@ -71,7 +83,8 @@ export class AccessGuard implements CanActivate {
       session = await this.authSessionService.validateAccessToken(
         this.extractBearerToken(request.headers?.authorization),
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
@@ -183,6 +196,10 @@ export class AccessGuard implements CanActivate {
     if (!header) return undefined;
     return header.replace(/^Bearer\s+/i, "").trim();
   }
+}
+
+function accessMetadataError(code: string, message: string) {
+  return new ForbiddenException({ code, message, statusCode: 403 });
 }
 
 function integrationTokenAllows(

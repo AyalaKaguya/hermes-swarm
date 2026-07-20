@@ -15,6 +15,11 @@ import type { LoginPayload } from "../../common/admin-api.types.js";
 import { PublicAccess } from "@hermes-swarm/rbac";
 import { AuthService } from "./auth.service.js";
 import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
+import {
+  AuthRateLimitService,
+  rateLimitHash,
+  requestIp,
+} from "../../common/security/auth-rate-limit.service.js";
 
 @Controller("admin/auth")
 /**
@@ -24,6 +29,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly tenantLoginResolver: TenantLoginResolverService,
+    private readonly rateLimiter: AuthRateLimitService,
   ) {}
 
   @Post("tenant-context")
@@ -32,6 +38,9 @@ export class AuthController {
     @Body() payload: { workspace?: string } | null,
     @Req() request: any,
   ) {
+    await this.rateLimiter.assertAllowed([
+      { key: `tenant-context:ip:${rateLimitHash(requestIp(request))}`, limit: 60, windowSeconds: 60 },
+    ]);
     const workspace = payload?.workspace;
     const resolution = await this.tenantLoginResolver.resolve(request, workspace);
     if (workspace?.trim() && !resolution) {
@@ -45,27 +54,30 @@ export class AuthController {
    */
   @Post("login")
   @PublicAccess({ reason: "Credential validation is handled by AuthService." })
-  login(
+  async login(
     @Body() payload: LoginPayload,
     @Req() request: any,
     @Res({ passthrough: true }) response: any,
   ) {
+    await this.rateLimiter.assertAllowed(loginRules(payload, request, "tenant"), response);
     return this.authService.login(payload, request, response);
   }
 
   @Post("platform/login")
   @PublicAccess({ reason: "Platform credential validation is handled by AuthService." })
-  platformLogin(
+  async platformLogin(
     @Body() payload: LoginPayload,
     @Req() request: any,
     @Res({ passthrough: true }) response: any,
   ) {
+    await this.rateLimiter.assertAllowed(loginRules(payload, request, "platform"), response);
     return this.authService.loginPlatform(payload, request, response);
   }
 
   @Post("refresh")
   @PublicAccess({ reason: "Refresh cookie validation is handled by AuthService." })
-  refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
+  async refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
+    await this.rateLimiter.assertAllowed(refreshRules(request), response);
     return this.authService.refresh(request, response, "tenant");
   }
 
@@ -139,21 +151,26 @@ export class AuthController {
 
 @Controller("admin/platform/auth")
 export class PlatformAuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly rateLimiter: AuthRateLimitService,
+  ) {}
 
   @Post("login")
   @PublicAccess({ reason: "Platform credential validation is handled by AuthService." })
-  login(
+  async login(
     @Body() payload: LoginPayload,
     @Req() request: any,
     @Res({ passthrough: true }) response: any,
   ) {
+    await this.rateLimiter.assertAllowed(loginRules(payload, request, "platform"), response);
     return this.authService.loginPlatform(payload, request, response);
   }
 
   @Post("refresh")
   @PublicAccess({ reason: "Refresh cookie validation is handled by AuthService." })
-  refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
+  async refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
+    await this.rateLimiter.assertAllowed(refreshRules(request), response);
     return this.authService.refresh(request, response, "platform");
   }
 
@@ -172,4 +189,23 @@ export class PlatformAuthController {
   me(@Headers("authorization") authorization?: string) {
     return this.authService.platformMe(authorization);
   }
+}
+
+function loginRules(payload: LoginPayload, request: any, scope: string) {
+  const ip = rateLimitHash(requestIp(request));
+  const account = rateLimitHash(
+    `${scope}:${payload?.tenantSlug ?? ""}:${payload?.email ?? ""}`,
+  );
+  return [
+    { key: `login:ip:${ip}`, limit: 30, windowSeconds: 300 },
+    { key: `login:account:${account}`, limit: 5, windowSeconds: 300 },
+  ];
+}
+
+function refreshRules(request: any) {
+  const ip = rateLimitHash(requestIp(request));
+  const cookie = rateLimitHash(request?.headers?.cookie ?? "");
+  return [
+    { key: `refresh:${cookie}:${ip}`, limit: 60, windowSeconds: 60 },
+  ];
 }

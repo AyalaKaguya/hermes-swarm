@@ -32,9 +32,8 @@ import { hashPassword } from "../../common/security/password-hash.js";
 import { EmailSendService } from "../mail/email-send.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
 import { SettingsService } from "../settings/settings.service.js";
+import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 
-const INVITE_JWT_SECRET =
-  process.env.INVITE_JWT_SECRET ?? process.env.JWT_SECRET ?? "dev-invite-secret";
 const ORGANIZATION_MEMBER_CREATE_PERMISSION =
   "user.organization_member.create:organization";
 type InviteExpiry = "3d" | "7d" | "never";
@@ -49,6 +48,8 @@ export class InviteService {
     private readonly emailSendService: EmailSendService,
     private readonly notificationsService: NotificationsService,
     private readonly settingsService: SettingsService,
+    private readonly grantPolicy: RoleGrantPolicyService =
+      new RoleGrantPolicyService(),
   ) {}
 
   async list(): Promise<InviteDto[]> {
@@ -67,6 +68,12 @@ export class InviteService {
       input.organizations,
     );
     await this.assertInviterCanAssignOrganizations(invitedById, assignments);
+    await this.assertInviterCanGrantRoles(
+      this.manager,
+      invitedById,
+      input.workspaceRoleId,
+      assignments,
+    );
     const existing = await this.invites.findOne({
       where: { email: input.email, status: "invited", tenantId: this.tenantId },
     });
@@ -180,6 +187,15 @@ export class InviteService {
           locked.workspaceRoleId,
           locked.organizationAssignments,
         );
+        if (!locked.invitedById) {
+          throw new BadRequestException("邀请缺少有效的授权主体");
+        }
+        await this.assertInviterCanGrantRoles(
+          manager,
+          locked.invitedById,
+          locked.workspaceRoleId,
+          locked.organizationAssignments,
+        );
 
         acceptedUser =
           (await manager.findOne(User, {
@@ -192,7 +208,7 @@ export class InviteService {
               email: locked.email,
               emailVerified: true,
               nickname: requireText(payload.displayName, "用户名称"),
-              passwordHash: hashPassword(requirePassword(payload.password)),
+              passwordHash: await hashPassword(requirePassword(payload.password)),
               preferredLanguage: null,
               status: "active",
               tenantId: this.tenantId,
@@ -392,6 +408,103 @@ export class InviteService {
     }
   }
 
+  private async assertInviterCanGrantRoles(
+    manager: EntityManager,
+    actorUserId: string,
+    workspaceRoleId: string,
+    assignments: Invite["organizationAssignments"],
+  ) {
+    const actorTenantAssignments = await manager.find(UserTenantRole, {
+      relations: { role: { rolePermissions: true } },
+      where: { tenantId: this.tenantId, userId: actorUserId },
+    });
+    const actorTenantRoles = actorTenantAssignments
+      .map((assignment) => assignment.role)
+      .filter(Boolean);
+    const workspaceRole = await manager.findOne(Role, {
+      relations: { rolePermissions: true },
+      where: {
+        id: workspaceRoleId,
+        organizationId: IsNull(),
+        scope: "tenant",
+        tenantId: this.tenantId,
+      },
+    });
+    if (!workspaceRole) throw new BadRequestException("邀请包含无效工作空间角色");
+    this.grantPolicy.assertCanGrant({
+      actor: {
+        principalType: "tenant",
+        tenantId: this.tenantId,
+        userId: actorUserId,
+      },
+      actorPermissionCodes: actorTenantRoles.flatMap((role) =>
+        (role.rolePermissions ?? [])
+          .filter((permission) => permission.enabled)
+          .map((permission) => permission.permission),
+      ),
+      actorRoleNames: actorTenantRoles.map((role) => role.name),
+      scope: "tenant",
+      targetRole: {
+        id: workspaceRole.id,
+        name: workspaceRole.name,
+        permissionCodes: (workspaceRole.rolePermissions ?? [])
+          .filter((permission) => permission.enabled)
+          .map((permission) => permission.permission),
+      },
+    });
+
+    for (const assignment of assignments) {
+      const actorMembership = await manager.findOne(UserOrganization, {
+        where: {
+          organizationId: assignment.organizationId,
+          status: "active",
+          tenantId: this.tenantId,
+          userId: actorUserId,
+        },
+      });
+      const actorRoleAssignment = actorMembership
+        ? await manager.findOne(UserOrganizationRole, {
+            relations: { role: { rolePermissions: true } },
+            where: {
+              membershipId: actorMembership.id,
+              tenantId: this.tenantId,
+            },
+          })
+        : null;
+      const targetRole = await manager.findOne(Role, {
+        relations: { rolePermissions: true },
+        where: {
+          id: assignment.roleId,
+          organizationId: assignment.organizationId,
+          scope: "organization",
+          tenantId: this.tenantId,
+        },
+      });
+      if (!targetRole) throw new BadRequestException("邀请包含无效组织角色");
+      this.grantPolicy.assertCanGrant({
+        actor: {
+          principalType: "tenant",
+          tenantId: this.tenantId,
+          userId: actorUserId,
+        },
+        actorPermissionCodes: (actorRoleAssignment?.role?.rolePermissions ?? [])
+          .filter((permission) => permission.enabled)
+          .map((permission) => permission.permission),
+        actorRoleNames: actorRoleAssignment?.role
+          ? [actorRoleAssignment.role.name]
+          : [],
+        scope: "organization",
+        targetRole: {
+          id: targetRole.id,
+          name: targetRole.name,
+          permissionCodes: (targetRole.rolePermissions ?? [])
+            .filter((permission) => permission.enabled)
+            .map((permission) => permission.permission),
+        },
+      });
+    }
+  }
+
   private async getActiveInvite(email?: string, token?: string) {
     const decoded = verifyInviteToken(token);
     const normalizedEmail = normalizeEmail(email ?? decoded.email);
@@ -571,14 +684,14 @@ function computeExpireDate(expiresIn: InviteExpiry) {
 function signInviteToken(email: string, tenantId: string, expiresIn: InviteExpiry) {
   const payload = { email, nonce: randomUUID(), tenantId };
   return expiresIn === "never"
-    ? jwt.sign(payload, INVITE_JWT_SECRET)
-    : jwt.sign(payload, INVITE_JWT_SECRET, { expiresIn });
+    ? jwt.sign(payload, getInviteTokenSecret())
+    : jwt.sign(payload, getInviteTokenSecret(), { expiresIn });
 }
 
 function verifyInviteToken(token?: string) {
   if (!token) throw new BadRequestException("令牌不能为空");
   try {
-    const decoded = jwt.verify(token, INVITE_JWT_SECRET) as {
+    const decoded = jwt.verify(token, getInviteTokenSecret()) as {
       email?: string;
       tenantId?: string;
     };
@@ -587,6 +700,18 @@ function verifyInviteToken(token?: string) {
   } catch {
     throw new BadRequestException("邀请链接无效或已过期");
   }
+}
+
+function getInviteTokenSecret() {
+  const secret =
+    process.env.INVITE_TOKEN_SECRET ??
+    (process.env.NODE_ENV === "production"
+      ? undefined
+      : process.env.INVITE_JWT_SECRET ??
+        process.env.JWT_SECRET ??
+        "dev-invite-secret");
+  if (!secret) throw new Error("INVITE_TOKEN_SECRET is required in production");
+  return secret;
 }
 
 function deriveInviteStatus(invite: Invite): InviteStatus {

@@ -1,26 +1,30 @@
-import { randomBytes, pbkdf2Sync, timingSafeEqual } from "node:crypto";
+import { pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 
 const PASSWORD_HASH_PREFIX = "pbkdf2_sha256";
 const PASSWORD_ITERATIONS = 310_000;
 const PASSWORD_KEY_LENGTH = 32;
+const deriveKey = promisify(pbkdf2);
 
-export function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("base64url");
-  const hash = pbkdf2Sync(
+  const hash = await deriveKey(
     password,
     salt,
     PASSWORD_ITERATIONS,
     PASSWORD_KEY_LENGTH,
     "sha256",
-  ).toString("base64url");
-  return `${PASSWORD_HASH_PREFIX}$${PASSWORD_ITERATIONS}$${salt}$${hash}`;
+  );
+  return `${PASSWORD_HASH_PREFIX}$${PASSWORD_ITERATIONS}$${salt}$${hash.toString("base64url")}`;
 }
 
-export function verifyPassword(
+export async function verifyPassword(
   password: string,
-  storedHash: string | null | undefined,
+  storedHash: string | PromiseLike<string> | null | undefined,
 ) {
   if (!storedHash) return false;
+  storedHash = await storedHash;
+  if (typeof storedHash !== "string") return false;
 
   const [prefix, iterationsValue, salt, hash] = storedHash.split("$");
   if (prefix !== PASSWORD_HASH_PREFIX || !iterationsValue || !salt || !hash) {
@@ -31,7 +35,7 @@ export function verifyPassword(
   if (!Number.isInteger(iterations) || iterations <= 0) return false;
 
   const expected = Buffer.from(hash, "base64url");
-  const actual = pbkdf2Sync(
+  const actual = await deriveKey(
     password,
     salt,
     iterations,

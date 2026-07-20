@@ -34,6 +34,7 @@ describe("web session sealing", () => {
 function createSession(): WebSession {
   return {
     accessToken: "access-token",
+    csrfToken: "csrf-token",
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
     refreshToken: "refresh-token",
     sessionId: "session-1",

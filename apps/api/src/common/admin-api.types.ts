@@ -9,7 +9,9 @@ import type {
  * Payload stored inside the admin session token.
  */
 export type AuthSessionTokenPayload = {
+  credentialVersion: number;
   exp: number;
+  kid: string;
   jti: string;
   principalType: "integration" | "platform" | "tenant";
   sessionId: string;
@@ -104,7 +106,21 @@ export type CreateUserPayload = {
 /**
  * User update payload shape.
  */
-export type UpdateUserPayload = Partial<CreateUserPayload>;
+export type UpdateSelfProfilePayload = {
+  displayName?: string;
+  firstName?: string | null;
+  imageUrl?: string | null;
+  lastName?: string | null;
+  mobile?: string | null;
+  username?: string | null;
+};
+
+export type UpdateManagedUserPayload = UpdateSelfProfilePayload & {
+  status?: UserStatus;
+};
+
+/** @deprecated Use the purpose-specific profile payloads. */
+export type UpdateUserPayload = UpdateManagedUserPayload;
 
 /**
  * Search query used by the user search endpoint.
@@ -119,6 +135,15 @@ export type SearchUsersQuery = {
 export type UpdateUserPasswordPayload = {
   currentPassword?: string;
   password?: string;
+};
+
+export type AdminResetUserPasswordPayload = {
+  password?: string;
+};
+
+export type CredentialChangeResponseDto = {
+  reauthenticationRequired: true;
+  success: true;
 };
 
 /**

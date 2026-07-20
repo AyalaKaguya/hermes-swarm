@@ -41,6 +41,7 @@ export type AuthRequestContext = {
 
 export type AuthSessionRecord = {
   browser: string;
+  credentialVersion: number;
   createdAt: string;
   deviceLabel: string;
   expiresAt: string;
@@ -109,6 +110,12 @@ export class AuthSessionService {
     context: AuthRequestContext = {},
   ) {
     assertPrincipalTenantContext(principalType, tenantId);
+    const principal = await this.ensureActivePrincipal(
+      userId,
+      tenantId,
+      principalType,
+    );
+    const credentialVersion = principal.credentialVersion ?? 0;
     const sessionId = randomUUID();
     const refreshToken = createRefreshToken();
     const now = new Date();
@@ -118,6 +125,7 @@ export class AuthSessionService {
     const device = parseAuthDevice(context.userAgent);
     const record: AuthSessionRecord = {
       browser: device.browser,
+      credentialVersion,
       createdAt: now.toISOString(),
       deviceLabel: device.deviceLabel,
       expiresAt: expiresAt.toISOString(),
@@ -138,7 +146,13 @@ export class AuthSessionService {
     await this.addUserSession(tenantId, userId, sessionId);
 
     return {
-      ...this.issueAccessToken(userId, tenantId, principalType, sessionId),
+      ...this.issueAccessToken(
+        userId,
+        tenantId,
+        principalType,
+        sessionId,
+        credentialVersion,
+      ),
       refreshToken,
       sessionId,
     };
@@ -189,11 +203,12 @@ export class AuthSessionService {
         if (rotated) return rotated;
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
-      await this.ensureActivePrincipal(
+      const principal = await this.ensureActivePrincipal(
         record.userId,
         record.tenantId,
         record.principalType,
       );
+      this.assertCredentialVersion(record, principal.credentialVersion ?? 0);
 
       const nextRefreshToken = createRefreshToken();
       const nextHash = hashToken(nextRefreshToken);
@@ -220,6 +235,7 @@ export class AuthSessionService {
           record.tenantId,
           record.principalType,
           sessionId,
+          record.credentialVersion,
         ),
         refreshToken: nextRefreshToken,
         sessionId,
@@ -244,6 +260,8 @@ export class AuthSessionService {
   async validateAccessToken(token: string | undefined) {
     const accessToken = token ?? "";
     const payload = parseAuthSessionToken(token, {
+      keyId: this.sessionKeyId,
+      previousKeys: this.previousSessionKeys,
       secret: this.sessionSecret,
     });
     if (!payload) {
@@ -260,16 +278,18 @@ export class AuthSessionService {
       record.userId !== payload.userId ||
       record.tenantId !== payload.tenantId ||
       record.principalType !== payload.principalType ||
+      record.credentialVersion !== payload.credentialVersion ||
       record.revokedAt ||
       isSessionExpired(record)
     ) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
-    await this.ensureActivePrincipal(
+    const principal = await this.ensureActivePrincipal(
       payload.userId,
       payload.tenantId,
       payload.principalType,
     );
+    this.assertCredentialVersion(record, principal.credentialVersion ?? 0);
 
     const touchedRecord = await this.touchSession(
       payload.sessionId,
@@ -494,6 +514,7 @@ export class AuthSessionService {
     tenantId: string | null,
     principalType: "platform" | "tenant",
     sessionId: string,
+    credentialVersion: number,
   ) {
     const ttlSeconds = this.accessTokenTtlSeconds;
     const expiresAt = new Date(
@@ -501,6 +522,7 @@ export class AuthSessionService {
     ).toISOString();
     const accessToken = createAuthSessionToken(
       {
+        credentialVersion,
         jti: randomUUID(),
         principalType,
         sessionId,
@@ -508,6 +530,7 @@ export class AuthSessionService {
         userId,
       },
       {
+        keyId: this.sessionKeyId,
         secret: this.sessionSecret,
         ttlSeconds,
       },
@@ -583,6 +606,7 @@ export class AuthSessionService {
       jti: payload.jti,
       record: {
         browser: "Integration Token",
+        credentialVersion: payload.credentialVersion,
         createdAt: record.createdAt.toISOString(),
         deviceLabel: record.note || "Integration Token",
         expiresAt: record.expiresAt.toISOString(),
@@ -750,6 +774,36 @@ export class AuthSessionService {
     return this.ensureActiveUser(userId, tenantId);
   }
 
+  private assertCredentialVersion(
+    record: Pick<AuthSessionRecord, "credentialVersion" | "tenantId" | "userId">,
+    currentVersion: number,
+  ) {
+    if (record.credentialVersion === currentVersion) return;
+    void this.revokeAllPrincipalSessions(record.tenantId, record.userId).catch(
+      () => undefined,
+    );
+    throw new UnauthorizedException({
+      code: "AUTH_CREDENTIALS_CHANGED",
+      message: "登录凭据已变更，请重新登录",
+      statusCode: 401,
+    });
+  }
+
+  private revokeAllPrincipalSessions(tenantId: string | null, userId: string) {
+    return tenantId
+      ? this.revokeUserSessions(tenantId, userId)
+      : this.revokePlatformUserSessions(userId);
+  }
+
+  private async revokePlatformUserSessions(userId: string) {
+    const sessionIds = await (
+      await this.redisService.getClient()
+    ).sMembers(this.userSessionsKey(null, userId));
+    await Promise.all(
+      sessionIds.map((sessionId) => this.revokeSession(null, sessionId, userId)),
+    );
+  }
+
   private async waitForRefreshRotation(
     client: Awaited<ReturnType<RedisService["getClient"]>>,
     refreshTokenHash: string,
@@ -858,6 +912,16 @@ export class AuthSessionService {
 
   private get sessionSecret() {
     return this.configService.getOrThrow<string>("auth.sessionSecret");
+  }
+
+  private get sessionKeyId() {
+    return this.configService.get<string>("auth.sessionKeyId") ?? "current";
+  }
+
+  private get previousSessionKeys() {
+    return this.configService.get<Record<string, string>>(
+      "auth.previousSessionKeys",
+    ) ?? {};
   }
 }
 

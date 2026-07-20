@@ -50,9 +50,7 @@ export function hasPageAccess(
     if (principal.principalType !== "platform") return false;
     return (
       principal.platformUser?.roles.some(
-        (role) =>
-          roleHasPermission(role.permissions, definition.permission) ||
-          definition.defaultRoles.includes(role.name),
+        (role) => roleHasPermission(role.permissions, definition.permission),
       ) ?? false
     );
   }

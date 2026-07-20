@@ -15,10 +15,15 @@ import { In } from "typeorm";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { TenantContextService } from "../../common/database/tenant-context.service.js";
 import type { MembershipPayload } from "./memberships.controller.js";
+import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 
 @Injectable()
 export class MembershipsService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly grantPolicy: RoleGrantPolicyService =
+      new RoleGrantPolicyService(),
+  ) {}
 
   async list(organizationId: string) {
     const organization = await this.requireOrganization(organizationId);
@@ -42,7 +47,11 @@ export class MembershipsService {
     );
   }
 
-  async create(organizationId: string, payload: MembershipPayload) {
+  async create(
+    organizationId: string,
+    payload: MembershipPayload,
+    actorUserId?: string,
+  ) {
     const organization = await this.requireOrganization(organizationId);
     if (organization.status !== "active") throw new BadRequestException("组织不可用");
     const { tenantId } = this.tenantContext.current()!;
@@ -63,7 +72,12 @@ export class MembershipsService {
       status: payload.status ?? "active",
     });
     membership = await this.tenantContext.repository(UserOrganization).save(membership);
-    await this.replaceRole(organizationId, membership.id, requireText(payload.roleId, "角色"));
+    await this.replaceRole(
+      organizationId,
+      membership.id,
+      requireText(payload.roleId, "角色"),
+      actorUserId,
+    );
     return this.getMembership(organizationId, membership.id);
   }
 
@@ -71,6 +85,7 @@ export class MembershipsService {
     organizationId: string,
     membershipId: string,
     payload: Partial<MembershipPayload>,
+    actorUserId?: string,
   ) {
     const membership = await this.requireMembership(organizationId, membershipId);
     if (payload.displayName !== undefined) membership.displayName = nullableText(payload.displayName);
@@ -78,24 +93,46 @@ export class MembershipsService {
       if (!["active", "disabled", "invited"].includes(payload.status)) {
         throw new BadRequestException("成员状态无效");
       }
+      if (membership.status === "active" && payload.status !== "active") {
+        await this.assertOwnerContinuity(membership, null);
+      }
       membership.status = payload.status;
     }
     if (payload.isDefault !== undefined) membership.isDefault = Boolean(payload.isDefault);
     await this.tenantContext.repository(UserOrganization).save(membership);
     if (payload.roleId !== undefined) {
-      await this.replaceRole(organizationId, membership.id, payload.roleId);
+      await this.replaceRole(
+        organizationId,
+        membership.id,
+        payload.roleId,
+        actorUserId,
+      );
     }
     return this.getMembership(organizationId, membership.id);
   }
 
-  async replaceRole(organizationId: string, membershipId: string, roleId: string) {
+  async replaceRole(
+    organizationId: string,
+    membershipId: string,
+    roleId: string,
+    actorUserId?: string,
+  ) {
     const membership = await this.requireMembership(organizationId, membershipId);
     const { tenantId, manager } = this.tenantContext.current()!;
     roleId = requireText(roleId, "角色");
     const role = await this.tenantContext.repository(Role).findOne({
+      relations: { rolePermissions: true },
       where: { id: roleId, organizationId, scope: "organization", tenantId },
     });
     if (!role) throw new BadRequestException("组织角色无效");
+    if (actorUserId) {
+      await this.assertCanGrantOrganizationRole(
+        actorUserId,
+        membership.userId,
+        organizationId,
+        role,
+      );
+    }
     await this.assertOwnerContinuity(membership, role.name);
     await manager.delete(UserOrganizationRole, { membershipId: membership.id, tenantId });
     await manager.save(UserOrganizationRole, {
@@ -148,14 +185,34 @@ export class MembershipsService {
       },
     });
     if (!ownerRole) throw new BadRequestException("组织 Owner 角色不存在");
-    const owners = await this.tenantContext.repository(UserOrganizationRole).count({
-      where: {
-        organizationId: membership.organizationId,
-        roleId: ownerRole.id,
-        tenantId: membership.tenantId,
-      },
-    });
-    if (owners <= 1) throw new BadRequestException("组织必须至少保留一个 Owner");
+    const owners = (await this.tenantContext.current()!.manager.query(
+      `SELECT uo.id
+         FROM user_organizations uo
+         JOIN users u
+           ON u.tenant_id = uo.tenant_id AND u.id = uo.user_id
+         JOIN user_organization_roles uor
+           ON uor.tenant_id = uo.tenant_id
+          AND uor.organization_id = uo.organization_id
+          AND uor.membership_id = uo.id
+        WHERE uo.tenant_id = $1
+          AND uo.organization_id = $2
+          AND uo.status = 'active'
+          AND u.status = 'active'
+          AND u.deleted_at IS NULL
+          AND uor.role_id = $3
+        FOR UPDATE OF uo, u`,
+      [membership.tenantId, membership.organizationId, ownerRole.id],
+    )) as Array<{ id: string }>;
+    if (
+      owners.some((owner) => owner.id === membership.id) &&
+      owners.filter((owner) => owner.id !== membership.id).length === 0
+    ) {
+      throw new BadRequestException({
+        code: "OWNER_CONTINUITY_REQUIRED",
+        message: "组织必须至少保留一个有效 Owner",
+        statusCode: 400,
+      });
+    }
   }
 
   private async resolveUser(payload: MembershipPayload, tenantId: string) {
@@ -174,13 +231,59 @@ export class MembershipsService {
       displayName: nullableText(payload.displayName) ?? email,
       email,
       emailVerified: false,
-      passwordHash: hashPassword(password),
+      passwordHash: await hashPassword(password),
       preferredLanguage: null,
       status: "active",
       tenantId,
       type: "user",
     });
     return this.tenantContext.repository(User).save(user);
+  }
+
+  private async assertCanGrantOrganizationRole(
+    actorUserId: string,
+    targetUserId: string,
+    organizationId: string,
+    targetRole: Role,
+  ) {
+    const membership = await this.tenantContext.repository(UserOrganization).findOne({
+      where: {
+        organizationId,
+        status: "active",
+        tenantId: this.tenantContext.current()!.tenantId,
+        userId: actorUserId,
+      },
+    });
+    const assignment = membership
+      ? await this.tenantContext.repository(UserOrganizationRole).findOne({
+          relations: { role: { rolePermissions: true } },
+          where: {
+            membershipId: membership.id,
+            tenantId: membership.tenantId,
+          },
+        })
+      : null;
+    const actorRole = assignment?.role;
+    this.grantPolicy.assertCanGrant({
+      actor: {
+        principalType: "tenant",
+        tenantId: this.tenantContext.current()!.tenantId,
+        userId: actorUserId,
+      },
+      actorPermissionCodes: (actorRole?.rolePermissions ?? [])
+        .filter((permission) => permission.enabled)
+        .map((permission) => permission.permission),
+      actorRoleNames: actorRole ? [actorRole.name] : [],
+      scope: "organization",
+      targetRole: {
+        id: targetRole.id,
+        name: targetRole.name,
+        permissionCodes: (targetRole.rolePermissions ?? [])
+          .filter((permission) => permission.enabled)
+          .map((permission) => permission.permission),
+      },
+      targetUserId,
+    });
   }
 
   private async requireMembership(

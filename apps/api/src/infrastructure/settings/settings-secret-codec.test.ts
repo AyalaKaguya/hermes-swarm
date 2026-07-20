@@ -30,4 +30,23 @@ describe("settings secret codec", () => {
     const encrypted = encryptSettingSecret("database-password", "master-key");
     assert.throws(() => decryptSettingSecret(encrypted, "wrong-key"));
   });
+
+  it("reads the previous key by key ID and writes the current v2 envelope", () => {
+    const previous = encryptSettingSecret("database-password", {
+      currentKey: "previous-master-key",
+      currentKeyId: "previous",
+    });
+    const keyring = {
+      currentKey: "current-master-key",
+      currentKeyId: "current",
+      previousKeys: { previous: "previous-master-key" },
+    };
+
+    assert.match(previous, /^enc:v2:previous:/);
+    assert.equal(decryptSettingSecret(previous, keyring), "database-password");
+    assert.match(
+      encryptSettingSecret(decryptSettingSecret(previous, keyring), keyring),
+      /^enc:v2:current:/,
+    );
+  });
 });

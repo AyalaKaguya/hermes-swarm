@@ -214,13 +214,55 @@ describe("admin BFF refresh single-flight", () => {
     );
     assert.equal(response.headers.get("set-cookie")?.includes("Max-Age=0"), true);
   });
+
+  it("rejects authenticated mutations without the matching CSRF token", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message?: unknown) => warnings.push(String(message));
+    const session = createSession();
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/users/user-1",
+      {
+        headers: {
+          cookie: `${WEB_SESSION_COOKIE_NAME}=${sealWebSession(session)}`,
+          origin: "http://localhost:3100",
+        },
+        method: "DELETE",
+      },
+    );
+
+    let response: Response;
+    try {
+      response = await POST(request, {
+        params: Promise.resolve({ path: ["users", "user-1"] }),
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      code: "CSRF_TOKEN_INVALID",
+      message: "请求来源验证失败",
+      statusCode: 403,
+    });
+    assert.deepEqual(JSON.parse(warnings[0] ?? "{}"), {
+      code: "CSRF_TOKEN_INVALID",
+      event: "csrf.denied",
+      method: "DELETE",
+      path: "/api/admin/users/user-1",
+    });
+  });
 });
 
 async function sendRefreshRequest(session: WebSession) {
   const request = new NextRequest("http://localhost:3100/api/admin/auth/refresh", {
     headers: {
       cookie: `${WEB_SESSION_COOKIE_NAME}=${sealWebSession(session)}`,
+      origin: "http://localhost:3100",
       "user-agent": "test-agent",
+      "x-csrf-token": session.csrfToken!,
     },
     method: "POST",
   });
@@ -257,6 +299,7 @@ function refreshResponse(session: WebSession) {
 function createSession(overrides: Partial<WebSession> = {}): WebSession {
   return {
     accessToken: "access-token",
+    csrfToken: "csrf-token",
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
     refreshToken: "refresh-token",
     sessionId: "session-1",

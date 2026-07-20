@@ -8,6 +8,7 @@ import {
   PUBLIC_ACCESS_METADATA,
 } from "./access.decorators.js";
 import { AccessGuard } from "./access.guard.js";
+import { resolveAccessDefinition } from "./access-catalog.service.js";
 import type {
   AccessOperationMetadata,
   AccessResourceMetadata,
@@ -138,7 +139,9 @@ describe("AccessGuard integration token narrowing", () => {
           throw new Error("should not authenticate");
         },
       },
-      { getDefinition: () => null } as any,
+      {
+        getDefinition: () => resolveAccessDefinition(resource, operation),
+      } as any,
       { can: async () => false } as any,
       { resolve: async () => ({}) } as any,
     );
@@ -223,7 +226,9 @@ describe("AccessGuard integration token narrowing", () => {
           userId: "user-1",
         }),
       },
-      { getDefinition: () => null } as any,
+      {
+        getDefinition: () => resolveAccessDefinition(resource, operation),
+      } as any,
       accessService as any,
       {
         resolve: async (_definition: unknown, _metadata: unknown, request: any) => ({

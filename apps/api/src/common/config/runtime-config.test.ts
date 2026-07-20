@@ -137,10 +137,17 @@ describe("database runtime configuration", () => {
     );
     assert.doesNotThrow(() =>
       validateRuntimeConfig({
+        AUTH_SESSION_SECRET: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        INVITE_TOKEN_SECRET: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
         NODE_ENV: "production",
+        PASSWORD_RESET_TOKEN_SECRET:
+          "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
         POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
         POSTGRES_TENANT_URL:
           "postgresql://hermes_tenant_app@app.example/hermes",
+        SETTINGS_ENCRYPTION_KEY:
+          "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+        WEB_SESSION_SECRET: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
       }),
     );
     assert.throws(
@@ -174,6 +181,46 @@ describe("database runtime configuration", () => {
         POSTGRES_TENANT_URL:
           "postgresql://hermes_tenant_app@app.example/hermes",
       }),
+    );
+  });
+
+  it("requires independent production secrets with at least 32 bytes", () => {
+    const base = {
+      AUTH_SESSION_SECRET: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      INVITE_TOKEN_SECRET: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      NODE_ENV: "production",
+      PASSWORD_RESET_TOKEN_SECRET:
+        "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
+      POSTGRES_TENANT_URL:
+        "postgresql://hermes_tenant_app@app.example/hermes",
+      SETTINGS_ENCRYPTION_KEY:
+        "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+      WEB_SESSION_SECRET: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+    };
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          ...base,
+          PASSWORD_RESET_TOKEN_SECRET: undefined,
+        }),
+      /PASSWORD_RESET_TOKEN_SECRET is required/,
+    );
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          ...base,
+          WEB_SESSION_SECRET: "too-short",
+        }),
+      /at least 32 bytes/,
+    );
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          ...base,
+          WEB_SESSION_SECRET: base.AUTH_SESSION_SECRET,
+        }),
+      /must be independent/,
     );
   });
 });

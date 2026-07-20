@@ -61,6 +61,22 @@ describe("access audit persistence", () => {
     assert.equal(rows[0].result, "denied");
   });
 
+  it("records stable security codes from Nest exception responses", async () => {
+    const rows: any[] = [];
+    const service = new AccessAuditService({
+      insert: async (row: any) => rows.push(row),
+    } as any);
+    const error = new BadRequestException({
+      code: "OWNER_CONTINUITY_REQUIRED",
+      message: "owner required",
+      statusCode: 400,
+    });
+
+    await service.recordRequest(createRequest(), "error", { error });
+
+    assert.equal(rows[0].errorCode, "OWNER_CONTINUITY_REQUIRED");
+  });
+
   it("records allowed handler completion", async () => {
     const calls: any[] = [];
     const interceptor = new AccessAuditInterceptor({

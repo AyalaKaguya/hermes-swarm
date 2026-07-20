@@ -95,8 +95,20 @@ function resolveStatusCode(error: unknown) {
 
 function resolveErrorCode(error: unknown) {
   if (!error || typeof error !== "object") return null;
-  const candidate = error as { code?: unknown; name?: unknown };
-  return normalizeText(candidate.code ?? candidate.name, 120);
+  const candidate = error as {
+    code?: unknown;
+    getResponse?: () => unknown;
+    name?: unknown;
+  };
+  const response =
+    typeof candidate.getResponse === "function"
+      ? candidate.getResponse()
+      : undefined;
+  const responseCode =
+    response && typeof response === "object" && "code" in response
+      ? (response as { code?: unknown }).code
+      : undefined;
+  return normalizeText(responseCode ?? candidate.code ?? candidate.name, 120);
 }
 
 function normalizeText(value: unknown, maxLength: number) {

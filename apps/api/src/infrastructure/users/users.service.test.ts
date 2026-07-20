@@ -45,7 +45,7 @@ describe("UsersService uniqueness handling", () => {
     );
     await assert.rejects(
       () => state.service.updateSelf(token, { status: "archived" } as any),
-      { message: "用户状态无效" },
+      { message: "不允许的字段: status" },
     );
     assert.equal(state.users[0].status, "active");
     await assert.rejects(
@@ -90,7 +90,10 @@ describe("UsersService uniqueness handling", () => {
       password: "new-password",
     });
 
-    assert.equal(verifyPassword("new-password", state.users[0].passwordHash), true);
+    assert.equal(
+      await verifyPassword("new-password", state.users[0].passwordHash),
+      true,
+    );
   });
 
   it("maps concurrent email uniqueness failures during create to a business error", async () => {
@@ -124,7 +127,7 @@ describe("UsersService uniqueness handling", () => {
       () =>
         state.service.updateSelf(token, {
           email: "next@example.com",
-        }),
+        } as any),
       BadRequestException,
     );
   });
@@ -207,7 +210,7 @@ describe("UsersService uniqueness handling", () => {
 
     await assert.rejects(
       () => state.service.replaceTenantRole(token, USER_ID, adminRole.id),
-      { message: "不能移除 Tenant Owner 的所有者角色" },
+      { message: "工作空间必须至少保留一个有效 Tenant Owner" },
     );
 
     const updated = await state.service.replaceTenantRole(
@@ -273,6 +276,35 @@ function createService(options: {
     return { ...saved };
   }
   const manager = {
+    createQueryBuilder() {
+      let values: any;
+      let parameters: any;
+      return {
+        update() {
+          return this;
+        },
+        set(input: any) {
+          values = input;
+          return this;
+        },
+        where(_clause: string, input: any) {
+          parameters = input;
+          return this;
+        },
+        async execute() {
+          const user = users.find(
+            (item) =>
+              item.id === parameters.id && item.tenantId === parameters.tenantId,
+          );
+          if (!user) return { affected: 0 };
+          user.passwordHash = values.passwordHash;
+          user.credentialVersion = (user.credentialVersion ?? 0) + 1;
+          user.credentialsChangedAt = values.credentialsChangedAt;
+          user.updatedAt = values.updatedAt;
+          return { affected: 1 };
+        },
+      };
+    },
     async delete(target: any, query: any) {
       if (target.name === "UserTenantRole") {
         for (let index = userTenantRoles.length - 1; index >= 0; index -= 1) {
@@ -443,6 +475,8 @@ function userRecord(input: { email: string; id: string; passwordHash?: string | 
   return {
     avatarUrl: null,
     createdAt: new Date("2026-07-01T00:00:00Z"),
+    credentialVersion: 0,
+    credentialsChangedAt: null,
     displayName: input.email.split("@")[0],
     email: input.email,
     emailVerified: true,

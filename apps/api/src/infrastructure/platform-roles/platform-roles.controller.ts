@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Put,
+  Req,
 } from "@nestjs/common";
 import type { ReplaceRolePermissionsPayload } from "../../common/admin-api.types.js";
 import {
@@ -75,8 +76,13 @@ export class PlatformRolesController {
   replacePermissions(
     @Param("roleId") roleId: string,
     @Body() payload: ReplaceRolePermissionsPayload,
+    @Req() request: any,
   ) {
-    return this.service.replacePermissions(roleId, payload);
+    return this.service.replacePermissions(
+      roleId,
+      payload,
+      request.accessPrincipal?.userId,
+    );
   }
 
   @Delete(":roleId")

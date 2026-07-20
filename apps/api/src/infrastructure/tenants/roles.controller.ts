@@ -78,6 +78,7 @@ export class RolesController {
       requireTenantId(request),
       roleId,
       payload,
+      request.accessPrincipal?.userId,
     );
   }
 

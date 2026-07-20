@@ -380,7 +380,7 @@ export class SettingsService implements OnModuleInit {
     ) {
       return existingValue;
     }
-    return encryptSettingSecret(value, this.settingEncryptionKey());
+    return encryptSettingSecret(value, this.settingEncryptionKeyring());
   }
 
   private decodePersistedSettingValue(
@@ -394,7 +394,7 @@ export class SettingsService implements OnModuleInit {
     ) {
       return value;
     }
-    return decryptSettingSecret(value, this.settingEncryptionKey());
+    return decryptSettingSecret(value, this.settingEncryptionKeyring());
   }
 
   private encodeCachedSettingValue(
@@ -409,7 +409,7 @@ export class SettingsService implements OnModuleInit {
     return value.startsWith(SECRET_CACHE_PREFIX)
       ? decryptSettingSecret(
           value.slice(SECRET_CACHE_PREFIX.length),
-          this.settingEncryptionKey(),
+          this.settingEncryptionKeyring(),
         )
       : value;
   }
@@ -422,6 +422,18 @@ export class SettingsService implements OnModuleInit {
       process.env.JWT_SECRET ??
       "hermes-swarm-local-settings-secret"
     );
+  }
+
+  private settingEncryptionKeyring() {
+    return {
+      currentKey: this.settingEncryptionKey(),
+      currentKeyId:
+        this.configService?.get<string>("settings.encryptionKeyId") ?? "current",
+      previousKeys:
+        this.configService?.get<Record<string, string>>(
+          "settings.previousEncryptionKeys",
+        ) ?? {},
+    };
   }
 
   private platformCacheKey(name: string) { return `settings:platform:${name}`; }
