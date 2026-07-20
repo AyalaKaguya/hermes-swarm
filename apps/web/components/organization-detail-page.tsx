@@ -2,11 +2,29 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAdminShell } from "@/components/admin-shell";
+import { AppIcon } from "@/components/app-icon";
+import { useNotifications } from "@/components/app-notifications";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,13 +35,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  createOrganizationMember,
   deleteOrganizationMember,
   getOrganization,
+  listOrganizationMemberCandidates,
   listOrganizationMembers,
   listOrganizationRoles,
   replaceOrganizationMemberRole,
   updateOrganization,
   type Organization,
+  type OrganizationMemberCandidate,
   type OrganizationMembership,
   type Role,
 } from "@/lib/admin-api";
@@ -31,6 +52,7 @@ import {
   getAuthenticatedAdminSessionMarker,
   requireAuthenticatedAdminSessionMarker,
 } from "@/lib/authenticated-admin";
+import { usePermission } from "@/hooks/use-permission";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
 type OrganizationForm = {
@@ -48,13 +70,23 @@ export function OrganizationDetailPage({
   section?: "members" | "profile";
 }) {
   const tr = useTextTranslation();
+  const access = usePermission();
+  const notifications = useNotifications();
   const { refreshSnapshot } = useAdminShell();
   const [organization, setOrganization] = useState<Organization | null>(null);
+  const [memberCandidates, setMemberCandidates] = useState<
+    OrganizationMemberCandidate[]
+  >([]);
   const [memberships, setMemberships] = useState<OrganizationMembership[]>([]);
   const [organizationRoles, setOrganizationRoles] = useState<Role[]>([]);
   const [form, setForm] = useState<OrganizationForm>(emptyForm());
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [addingMember, setAddingMember] = useState(false);
+  const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const [selectedRoleId, setSelectedRoleId] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingMemberId, setSavingMemberId] = useState<string | null>(null);
   const [memberToRemove, setMemberToRemove] = useState<OrganizationMembership | null>(null);
@@ -99,6 +131,13 @@ export function OrganizationDetailPage({
   }, [load]);
 
   const isRoot = Boolean(organization && !organization.parentOrganizationId);
+  const canCreateMember = access.hasPermission(
+    "user.organization_member.create:organization",
+  );
+  const canListCandidates = access.hasPermission(
+    "user.organization_member.list_candidates:organization",
+  );
+  const canAddMember = canCreateMember && canListCandidates;
 
   async function saveOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -168,6 +207,63 @@ export function OrganizationDetailPage({
     }
   }
 
+  async function openAddMember() {
+    if (!organization || !canAddMember || organizationRoles.length === 0) {
+      return;
+    }
+    setAddMemberOpen(true);
+    setSelectedCandidateId("");
+    setSelectedRoleId(
+      organizationRoles.find((role) => role.name === "member")?.id ??
+        organizationRoles[0]?.id ??
+        "",
+    );
+    setMemberCandidates([]);
+    setLoadingCandidates(true);
+    setError(null);
+    try {
+      const session = await requireAuthenticatedAdminSessionMarker();
+      setMemberCandidates(
+        await listOrganizationMemberCandidates(session, organization.id),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tr("加载失败"));
+    } finally {
+      setLoadingCandidates(false);
+    }
+  }
+
+  async function addMember() {
+    if (!organization || !selectedCandidateId || !selectedRoleId) return;
+    setAddingMember(true);
+    setError(null);
+    try {
+      const session = await requireAuthenticatedAdminSessionMarker();
+      await createOrganizationMember(session, organization.id, {
+        roleId: selectedRoleId,
+        userId: selectedCandidateId,
+      });
+      setAddMemberOpen(false);
+      notifications.success(tr("组织成员已添加"));
+      await load();
+      await refreshSnapshot();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tr("添加成员失败"));
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
+  function changeAddMemberOpen(open: boolean) {
+    if (!open && addingMember) return;
+    setAddMemberOpen(open);
+    if (!open) {
+      setMemberCandidates([]);
+      setSelectedCandidateId("");
+      setSelectedRoleId("");
+    }
+  }
+
   if (!organizationId) {
     return <EmptyState text={tr("请先选择一个组织")} />;
   }
@@ -222,7 +318,20 @@ export function OrganizationDetailPage({
       </div>}
 
       {section === "members" && <Card>
-        <CardHeader><CardTitle className="text-base">{tr("成员与角色")} · {memberships.length}</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <CardTitle className="text-base">{tr("成员与角色")} · {memberships.length}</CardTitle>
+          {canAddMember && (
+            <Button
+              disabled={organizationRoles.length === 0}
+              onClick={() => void openAddMember()}
+              size="sm"
+              type="button"
+            >
+              <AppIcon className="size-3.5" name="plus" />
+              {tr("添加成员")}
+            </Button>
+          )}
+        </CardHeader>
         <CardContent className="grid gap-2">
           {memberships.map((membership) => {
             const draft = memberRoleDrafts[membership.id] ?? "";
@@ -256,6 +365,80 @@ export function OrganizationDetailPage({
           {memberships.length === 0 && <div className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">{tr("暂无成员")}</div>}
         </CardContent>
       </Card>}
+
+      <Dialog onOpenChange={changeAddMemberOpen} open={addMemberOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{tr("添加组织成员")}</DialogTitle>
+            <DialogDescription>
+              {tr("从工作空间已有用户中选择人员，并分配组织角色。")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="grid gap-1.5">
+              <Label>{tr("选择工作空间用户")}</Label>
+              <Command className="rounded-lg border">
+                <CommandInput placeholder={tr("搜索工作空间用户")} />
+                <CommandList>
+                  <CommandEmpty>
+                    {loadingCandidates
+                      ? tr("加载中...")
+                      : tr("暂无可添加用户")}
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {memberCandidates.map((candidate) => (
+                      <CommandItem
+                        data-checked={selectedCandidateId === candidate.id}
+                        key={candidate.id}
+                        onSelect={() => setSelectedCandidateId(candidate.id)}
+                        value={`${candidate.displayName} ${candidate.email}`}
+                      >
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                          {candidateInitials(candidate)}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {candidate.displayName}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {candidate.email}
+                          </span>
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </div>
+
+            <Field label={tr("组织角色")}>
+              <MemberRoleSelect
+                disabled={addingMember}
+                onValueChange={setSelectedRoleId}
+                roleLabel={tr("请选择角色")}
+                roles={organizationRoles}
+                value={selectedRoleId}
+              />
+            </Field>
+          </div>
+
+          <DialogFooter showCloseButton>
+            <Button
+              disabled={
+                addingMember ||
+                loadingCandidates ||
+                !selectedCandidateId ||
+                !selectedRoleId
+              }
+              onClick={() => void addMember()}
+              type="button"
+            >
+              {addingMember ? tr("添加中...") : tr("添加成员")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmActionDialog
         confirmLabel={tr("移除")}
@@ -301,6 +484,15 @@ function MemberRoleSelect({
 
 function EmptyState({ text }: { text: string }) {
   return <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">{text}</div>;
+}
+
+function candidateInitials(candidate: OrganizationMemberCandidate) {
+  return (candidate.displayName || candidate.email)
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }
 
 function Field({ children, label }: { children: React.ReactNode; label: string }) {

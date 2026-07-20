@@ -318,13 +318,23 @@ export type OrganizationMembership = {
   userId: string;
 };
 
-export type OrganizationMembershipPayload = {
+export type OrganizationMemberCandidate = {
+  avatarUrl: string | null;
+  displayName: string;
+  email: string;
+  id: string;
+  imageUrl: string | null;
+};
+
+export type CreateOrganizationMembershipPayload = {
+  roleId: string;
+  userId: string;
+};
+
+export type UpdateOrganizationMembershipPayload = {
   displayName?: string | null;
-  email?: string;
-  password?: string;
   roleId?: string;
   status?: MembershipStatus;
-  userId?: string;
 };
 
 export type PlatformMember = {
@@ -1564,10 +1574,20 @@ export function listOrganizationMembers(session: AuthenticatedAdminSessionMarker
   );
 }
 
+export function listOrganizationMemberCandidates(
+  session: AuthenticatedAdminSessionMarker,
+  organizationId: string,
+) {
+  return fetchAdmin<OrganizationMemberCandidate[]>(
+    `/organizations/${organizationId}/members/candidates`,
+    {},
+  );
+}
+
 export function createOrganizationMember(
   session: AuthenticatedAdminSessionMarker,
   organizationId: string,
-  payload: OrganizationMembershipPayload,
+  payload: CreateOrganizationMembershipPayload,
 ) {
   return fetchAdmin<OrganizationMembership>(
     `/organizations/${organizationId}/members`,
@@ -1579,7 +1599,7 @@ export function updateOrganizationMember(
   session: AuthenticatedAdminSessionMarker,
   organizationId: string,
   membershipId: string,
-  payload: OrganizationMembershipPayload,
+  payload: UpdateOrganizationMembershipPayload,
 ) {
   return fetchAdmin<OrganizationMembership>(
     `/organizations/${organizationId}/members/${membershipId}`,

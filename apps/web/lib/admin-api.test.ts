@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   authLogin,
+  createOrganizationMember,
   createInvite,
   createIntegrationToken,
   createTenantRole,
@@ -9,6 +10,7 @@ import {
   listInvites,
   listLoginAuditLogs,
   listOperationAuditLogs,
+  listOrganizationMemberCandidates,
   listUsers,
   listTenantRoles,
   replaceTenantRolePermissions,
@@ -181,6 +183,40 @@ describe("admin API browser client", () => {
         },
         method: "POST",
         url: "/api/admin/invites",
+      },
+    ]);
+  });
+
+  it("uses organization-scoped routes to list and add existing workspace users", async () => {
+    const requests: Array<{ body: unknown; method: string; url: string }> = [];
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
+      requests.push({
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+        method: init?.method ?? "GET",
+        url: String(input),
+      });
+      return Response.json([]);
+    };
+
+    await listOrganizationMemberCandidates("web-session", "org-1");
+    await createOrganizationMember("web-session", "org-1", {
+      roleId: "role-1",
+      userId: "user-1",
+    });
+
+    assert.deepEqual(requests, [
+      {
+        body: null,
+        method: "GET",
+        url: "/api/admin/organizations/org-1/members/candidates",
+      },
+      {
+        body: { roleId: "role-1", userId: "user-1" },
+        method: "POST",
+        url: "/api/admin/organizations/org-1/members",
       },
     ]);
   });

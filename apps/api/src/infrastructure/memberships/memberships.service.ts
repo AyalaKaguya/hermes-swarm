@@ -12,10 +12,20 @@ import {
   UserOrganizationRole,
 } from "@hermes-swarm/core";
 import { In } from "typeorm";
-import { hashPassword } from "../../common/security/password-hash.js";
 import { TenantContextService } from "../../common/database/tenant-context.service.js";
-import type { MembershipPayload } from "./memberships.controller.js";
+import type {
+  CreateMembershipPayload,
+  UpdateMembershipPayload,
+} from "./memberships.controller.js";
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
+
+const CREATE_MEMBERSHIP_KEYS = new Set(["roleId", "userId"]);
+const UPDATE_MEMBERSHIP_KEYS = new Set([
+  "displayName",
+  "isDefault",
+  "roleId",
+  "status",
+]);
 
 @Injectable()
 export class MembershipsService {
@@ -47,15 +57,41 @@ export class MembershipsService {
     );
   }
 
+  async listCandidates(organizationId: string) {
+    const organization = await this.requireOrganization(organizationId);
+    if (organization.status !== "active") {
+      throw new BadRequestException("组织不可用");
+    }
+    const { tenantId } = this.tenantContext.current()!;
+    const activeMemberships = await this.tenantContext
+      .repository(UserOrganization)
+      .find({
+        select: { userId: true },
+        where: { organizationId, status: "active", tenantId },
+      });
+    const activeMemberIds = new Set(
+      activeMemberships.map((membership) => membership.userId),
+    );
+    const users = await this.tenantContext.repository(User).find({
+      order: { displayName: "ASC", email: "ASC" },
+      where: { status: "active", tenantId, type: "user" },
+    });
+    return users
+      .filter((user) => !activeMemberIds.has(user.id))
+      .map(toCandidateDto);
+  }
+
   async create(
     organizationId: string,
-    payload: MembershipPayload,
+    payload: CreateMembershipPayload,
     actorUserId?: string,
   ) {
+    const input = requirePayload(payload);
+    assertAllowedKeys(input, CREATE_MEMBERSHIP_KEYS);
     const organization = await this.requireOrganization(organizationId);
     if (organization.status !== "active") throw new BadRequestException("组织不可用");
     const { tenantId } = this.tenantContext.current()!;
-    const user = await this.resolveUser(payload, tenantId);
+    const user = await this.requireWorkspaceUser(input.userId, tenantId);
     let membership = await this.tenantContext.repository(UserOrganization).findOne({
       where: { organizationId, tenantId, userId: user.id },
     });
@@ -66,16 +102,16 @@ export class MembershipsService {
       userId: user.id,
     });
     Object.assign(membership, {
-      displayName: payload.displayName ?? user.displayName,
-      isDefault: Boolean(payload.isDefault),
-      joinedAt: membership.joinedAt ?? new Date(),
-      status: payload.status ?? "active",
+      displayName: user.displayName,
+      isDefault: false,
+      joinedAt: new Date(),
+      status: "active",
     });
     membership = await this.tenantContext.repository(UserOrganization).save(membership);
     await this.replaceRole(
       organizationId,
       membership.id,
-      requireText(payload.roleId, "角色"),
+      requireText(input.roleId, "角色"),
       actorUserId,
     );
     return this.getMembership(organizationId, membership.id);
@@ -84,27 +120,33 @@ export class MembershipsService {
   async update(
     organizationId: string,
     membershipId: string,
-    payload: Partial<MembershipPayload>,
+    payload: UpdateMembershipPayload,
     actorUserId?: string,
   ) {
+    const input = requirePayload(payload);
+    assertAllowedKeys(input, UPDATE_MEMBERSHIP_KEYS);
     const membership = await this.requireMembership(organizationId, membershipId);
-    if (payload.displayName !== undefined) membership.displayName = nullableText(payload.displayName);
-    if (payload.status !== undefined) {
-      if (!["active", "disabled", "invited"].includes(payload.status)) {
+    if (input.displayName !== undefined) {
+      membership.displayName = nullableText(input.displayName);
+    }
+    if (input.status !== undefined) {
+      if (!["active", "disabled", "invited"].includes(input.status)) {
         throw new BadRequestException("成员状态无效");
       }
-      if (membership.status === "active" && payload.status !== "active") {
+      if (membership.status === "active" && input.status !== "active") {
         await this.assertOwnerContinuity(membership, null);
       }
-      membership.status = payload.status;
+      membership.status = input.status;
     }
-    if (payload.isDefault !== undefined) membership.isDefault = Boolean(payload.isDefault);
+    if (input.isDefault !== undefined) {
+      membership.isDefault = Boolean(input.isDefault);
+    }
     await this.tenantContext.repository(UserOrganization).save(membership);
-    if (payload.roleId !== undefined) {
+    if (input.roleId !== undefined) {
       await this.replaceRole(
         organizationId,
         membership.id,
-        payload.roleId,
+        input.roleId,
         actorUserId,
       );
     }
@@ -215,29 +257,15 @@ export class MembershipsService {
     }
   }
 
-  private async resolveUser(payload: MembershipPayload, tenantId: string) {
-    if (payload.userId) {
-      const user = await this.tenantContext.repository(User).findOne({
-        where: { id: payload.userId, tenantId },
-      });
-      if (!user) throw new NotFoundException("用户不存在");
-      return user;
-    }
-    const email = normalizeEmail(payload.email);
-    let user = await this.tenantContext.repository(User).findOne({ where: { email, tenantId } });
-    if (user) return user;
-    const password = requireText(payload.password, "密码");
-    user = this.tenantContext.repository(User).create({
-      displayName: nullableText(payload.displayName) ?? email,
-      email,
-      emailVerified: false,
-      passwordHash: await hashPassword(password),
-      preferredLanguage: null,
-      status: "active",
-      tenantId,
-      type: "user",
+  private async requireWorkspaceUser(userId: unknown, tenantId: string) {
+    const id = requireText(userId, "工作空间用户");
+    const user = await this.tenantContext.repository(User).findOne({
+      where: { id, status: "active", tenantId, type: "user" },
     });
-    return this.tenantContext.repository(User).save(user);
+    if (!user) {
+      throw new NotFoundException("工作空间用户不存在或不可用");
+    }
+    return user;
   }
 
   private async assertCanGrantOrganizationRole(
@@ -310,6 +338,16 @@ export class MembershipsService {
   }
 }
 
+function toCandidateDto(user: User) {
+  return {
+    avatarUrl: user.avatarUrl,
+    displayName: user.displayName,
+    email: user.email,
+    id: user.id,
+    imageUrl: user.imageUrl,
+  };
+}
+
 function toMembershipDto(membership: UserOrganization, role: Role | null) {
   return {
     displayName: membership.displayName,
@@ -324,10 +362,6 @@ function toMembershipDto(membership: UserOrganization, role: Role | null) {
   };
 }
 
-function normalizeEmail(value: unknown) {
-  return requireText(value, "邮箱").toLowerCase();
-}
-
 function requireText(value: unknown, label: string) {
   if (typeof value !== "string" || !value.trim()) {
     throw new BadRequestException(`${label}不能为空`);
@@ -338,4 +372,21 @@ function requireText(value: unknown, label: string) {
 function nullableText(value: unknown) {
   if (typeof value !== "string") return null;
   return value.trim() || null;
+}
+
+function requirePayload<T extends object>(value: T | null | undefined): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("请求参数无效");
+  }
+  return value;
+}
+
+function assertAllowedKeys(
+  value: Record<string, unknown>,
+  allowedKeys: ReadonlySet<string>,
+) {
+  const unsupported = Object.keys(value).filter((key) => !allowedKeys.has(key));
+  if (unsupported.length > 0) {
+    throw new BadRequestException(`不支持的字段: ${unsupported.join(", ")}`);
+  }
 }

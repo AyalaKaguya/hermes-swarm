@@ -43,6 +43,18 @@ export class MembershipsController {
     return this.membershipsService.list(organizationId);
   }
 
+  @Get("candidates")
+  @AccessOperation({
+    defaultRoles: ["owner", "admin"],
+    description: "查看可添加到当前组织的工作空间用户。",
+    label: "查看可添加成员",
+    operation: "list_candidates",
+    sortOrder: 15,
+  })
+  listCandidates(@Param("organizationId") organizationId: string) {
+    return this.membershipsService.listCandidates(organizationId);
+  }
+
   @Post()
   @AccessOperation({
     description: "向当前组织添加成员。",
@@ -52,7 +64,7 @@ export class MembershipsController {
   })
   create(
     @Param("organizationId") organizationId: string,
-    @Body() payload: MembershipPayload,
+    @Body() payload: CreateMembershipPayload,
     @Req() request: any,
   ) {
     return this.membershipsService.create(
@@ -73,7 +85,7 @@ export class MembershipsController {
   update(
     @Param("organizationId") organizationId: string,
     @Param("membershipId") membershipId: string,
-    @Body() payload: Partial<MembershipPayload>,
+    @Body() payload: UpdateMembershipPayload,
     @Req() request: any,
   ) {
     return this.membershipsService.update(
@@ -123,12 +135,14 @@ export class MembershipsController {
   }
 }
 
-export type MembershipPayload = {
+export type CreateMembershipPayload = {
+  roleId?: string;
+  userId?: string;
+};
+
+export type UpdateMembershipPayload = {
   displayName?: string | null;
-  email?: string;
-  password?: string;
   isDefault?: boolean;
   roleId?: string;
   status?: "active" | "disabled" | "invited";
-  userId?: string;
 };
