@@ -11,10 +11,13 @@ import {
   Req,
   Res,
 } from "@nestjs/common";
-import type { LoginPayload } from "../../common/admin-api.types.js";
+import type {
+  LoginPayload,
+  SelectContextPayload,
+} from "../../common/admin-api.types.js";
 import { PublicAccess } from "@hermes-swarm/rbac";
 import { AuthService } from "./auth.service.js";
-import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
+import { WorkspaceLoginResolverService } from "./workspace-login-resolver.service.js";
 import {
   AuthRateLimitService,
   rateLimitHash,
@@ -28,25 +31,25 @@ import {
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly tenantLoginResolver: TenantLoginResolverService,
+    private readonly workspaceLoginResolver: WorkspaceLoginResolverService,
     private readonly rateLimiter: AuthRateLimitService,
   ) {}
 
-  @Post("tenant-context")
-  @PublicAccess({ reason: "Tenant workspace discovery happens before login." })
-  async tenantContext(
+  @Post("workspace-context")
+  @PublicAccess({ reason: "Workspace workspace discovery happens before login." })
+  async workspaceContext(
     @Body() payload: { workspace?: string } | null,
     @Req() request: any,
   ) {
     await this.rateLimiter.assertAllowed([
-      { key: `tenant-context:ip:${rateLimitHash(requestIp(request))}`, limit: 60, windowSeconds: 60 },
+      { key: `workspace-context:ip:${rateLimitHash(requestIp(request))}`, limit: 60, windowSeconds: 60 },
     ]);
     const workspace = payload?.workspace;
-    const resolution = await this.tenantLoginResolver.resolve(request, workspace);
+    const resolution = await this.workspaceLoginResolver.resolve(request, workspace);
     if (workspace?.trim() && !resolution) {
-      return { source: null, tenant: null };
+      return { source: null, workspace: null };
     }
-    return this.tenantLoginResolver.toPublicContext(resolution);
+    return this.workspaceLoginResolver.toPublicContext(resolution);
   }
 
   /**
@@ -59,26 +62,47 @@ export class AuthController {
     @Req() request: any,
     @Res({ passthrough: true }) response: any,
   ) {
-    await this.rateLimiter.assertAllowed(loginRules(payload, request, "tenant"), response);
+    await this.rateLimiter.assertAllowed(loginRules(payload, request, "account"), response);
     return this.authService.login(payload, request, response);
   }
 
-  @Post("platform/login")
-  @PublicAccess({ reason: "Platform credential validation is handled by AuthService." })
-  async platformLogin(
-    @Body() payload: LoginPayload,
+  @Post("select-context")
+  @PublicAccess({ reason: "One-time context selection token validation is handled by AuthService." })
+  selectContext(
+    @Body() payload: SelectContextPayload,
     @Req() request: any,
     @Res({ passthrough: true }) response: any,
   ) {
-    await this.rateLimiter.assertAllowed(loginRules(payload, request, "platform"), response);
-    return this.authService.loginPlatform(payload, request, response);
+    return this.authService.selectContext(payload, request, response);
+  }
+
+  @Get("contexts")
+  @PublicAccess({ reason: "Current account session validation is handled by AuthService." })
+  contexts(@Headers("authorization") authorization?: string) {
+    return this.authService.listAccountContexts(authorization);
+  }
+
+  @Post("switch-context")
+  @PublicAccess({ reason: "Current account session and target membership are validated by AuthService." })
+  switchContext(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() payload: { contextType?: string; membershipId?: string },
+    @Req() request: any,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    return this.authService.switchContext(
+      authorization,
+      payload,
+      request,
+      response,
+    );
   }
 
   @Post("refresh")
   @PublicAccess({ reason: "Refresh cookie validation is handled by AuthService." })
   async refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
     await this.rateLimiter.assertAllowed(refreshRules(request), response);
-    return this.authService.refresh(request, response, "tenant");
+    return this.authService.refresh(request, response);
   }
 
   @Post("logout")
@@ -149,52 +173,10 @@ export class AuthController {
   }
 }
 
-@Controller("admin/platform/auth")
-export class PlatformAuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly rateLimiter: AuthRateLimitService,
-  ) {}
-
-  @Post("login")
-  @PublicAccess({ reason: "Platform credential validation is handled by AuthService." })
-  async login(
-    @Body() payload: LoginPayload,
-    @Req() request: any,
-    @Res({ passthrough: true }) response: any,
-  ) {
-    await this.rateLimiter.assertAllowed(loginRules(payload, request, "platform"), response);
-    return this.authService.loginPlatform(payload, request, response);
-  }
-
-  @Post("refresh")
-  @PublicAccess({ reason: "Refresh cookie validation is handled by AuthService." })
-  async refresh(@Req() request: any, @Res({ passthrough: true }) response: any) {
-    await this.rateLimiter.assertAllowed(refreshRules(request), response);
-    return this.authService.refresh(request, response, "platform");
-  }
-
-  @Post("logout")
-  @PublicAccess({ reason: "Current platform session validation is handled by AuthService." })
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async logout(
-    @Headers("authorization") authorization: string | undefined,
-    @Res({ passthrough: true }) response: any,
-  ) {
-    await this.authService.logout(authorization, response);
-  }
-
-  @Get("me")
-  @PublicAccess({ reason: "Current platform session validation is handled by AuthService." })
-  me(@Headers("authorization") authorization?: string) {
-    return this.authService.platformMe(authorization);
-  }
-}
-
 function loginRules(payload: LoginPayload, request: any, scope: string) {
   const ip = rateLimitHash(requestIp(request));
   const account = rateLimitHash(
-    `${scope}:${payload?.tenantSlug ?? ""}:${payload?.email ?? ""}`,
+    `${scope}:${payload?.workspaceSlug ?? ""}:${payload?.email ?? ""}`,
   );
   return [
     { key: `login:ip:${ip}`, limit: 30, windowSeconds: 300 },

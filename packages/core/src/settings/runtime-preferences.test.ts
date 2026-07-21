@@ -13,12 +13,12 @@ describe("runtime preferences", () => {
       [
         {
           name: PLATFORM_SETTING_KEYS.defaultLanguage,
-          scope: "tenant",
+          scope: "workspace",
           value: "zh-Hant",
         },
         {
           name: PLATFORM_SETTING_KEYS.defaultTimeZone,
-          scope: "tenant",
+          scope: "workspace",
           value: "Asia/Tokyo",
         },
       ],
@@ -30,11 +30,11 @@ describe("runtime preferences", () => {
     assert.equal(result.sources.timeZone, "user");
   });
 
-  it("uses tenant and platform settings before code defaults", () => {
+  it("uses workspace and platform settings before code defaults", () => {
     const result = resolveRuntimePreferences(null, [
       {
         name: PLATFORM_SETTING_KEYS.defaultCurrency,
-        scope: "tenant",
+        scope: "workspace",
         value: "HKD",
       },
       {
@@ -47,7 +47,7 @@ describe("runtime preferences", () => {
     assert.equal(result.currency, "HKD");
     assert.equal(result.regionCode, "HK");
     assert.equal(result.dateFormat, "YYYY-MM-DD");
-    assert.equal(result.sources.currency, "tenant");
+    assert.equal(result.sources.currency, "workspace");
     assert.equal(result.sources.regionCode, "platform");
     assert.equal(result.sources.dateFormat, "code");
   });

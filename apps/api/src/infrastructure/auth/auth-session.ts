@@ -77,18 +77,22 @@ export function parseAuthSessionToken(
       payload.credentialVersion! < 0 ||
       !payload.exp ||
       payload.exp < Math.floor(Date.now() / 1000) ||
-      !hasValidTenantContext(payload.principalType, payload.tenantId)
+      !hasValidWorkspaceContext(payload.principalType, payload.workspaceId)
     ) {
       return null;
     }
     return {
+      accountId:
+        typeof payload.accountId === "string" ? payload.accountId : payload.userId,
       credentialVersion: payload.credentialVersion!,
       exp: payload.exp,
       jti: payload.jti,
       kid: payload.kid ?? keyId,
+      membershipId:
+        typeof payload.membershipId === "string" ? payload.membershipId : null,
       principalType: payload.principalType,
       sessionId: payload.sessionId,
-      tenantId: payload.tenantId ?? null,
+      workspaceId: payload.workspaceId ?? null,
       userId: payload.userId,
     };
   } catch {
@@ -96,19 +100,19 @@ export function parseAuthSessionToken(
   }
 }
 
-function hasValidTenantContext(
+function hasValidWorkspaceContext(
   principalType: AuthSessionTokenPayload["principalType"],
-  tenantId: unknown,
+  workspaceId: unknown,
 ) {
   return principalType === "platform"
-    ? tenantId === null
-    : typeof tenantId === "string" && tenantId.length > 0;
+    ? workspaceId === null
+    : typeof workspaceId === "string" && workspaceId.length > 0;
 }
 
 function isPrincipalType(
   value: unknown,
 ): value is AuthSessionTokenPayload["principalType"] {
-  return value === "integration" || value === "platform" || value === "tenant";
+  return value === "integration" || value === "platform" || value === "workspace";
 }
 
 function sign(encodedPayload: string, secret?: string) {

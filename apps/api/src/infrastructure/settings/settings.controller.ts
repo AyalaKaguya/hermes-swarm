@@ -45,50 +45,50 @@ export class SettingsController {
     return this.settingsService.savePlatformSettings(payload);
   }
 
-  @Get("tenant/settings")
+  @Get("workspace/settings")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
     description: "查看当前工作空间配置项。",
     label: "查看工作空间配置",
     operation: "list",
-    purpose: "tenant_config",
+    purpose: "workspace_config",
     purposeLabel: "工作空间配置",
-    scope: "tenant",
+    scope: "workspace",
     sortOrder: 10,
   })
-  listTenantSettings(@Req() request: TenantSettingsRequest) {
-    return this.settingsService.listTenantSettings(requireTenantId(request));
+  listWorkspaceSettings(@Req() request: WorkspaceSettingsRequest) {
+    return this.settingsService.listWorkspaceSettings(requireWorkspaceId(request));
   }
 
-  @Put("tenant/settings")
+  @Put("workspace/settings")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
+    defaultRoles: ["workspace-owner", "workspace-admin"],
     description: "更新当前工作空间配置项。",
     label: "更新工作空间配置",
     operation: "save",
-    purpose: "tenant_config",
+    purpose: "workspace_config",
     purposeLabel: "工作空间配置",
-    scope: "tenant",
+    scope: "workspace",
     sortOrder: 20,
   })
-  saveTenantSettings(
-    @Req() request: TenantSettingsRequest,
+  saveWorkspaceSettings(
+    @Req() request: WorkspaceSettingsRequest,
     @Body() payload: SaveSettingsPayload,
   ) {
-    return this.settingsService.saveTenantSettings(
-      requireTenantId(request),
+    return this.settingsService.saveWorkspaceSettings(
+      requireWorkspaceId(request),
       payload,
     );
   }
 
 }
 
-type TenantSettingsRequest = {
-  accessPrincipal?: { tenantId?: string | null };
+type WorkspaceSettingsRequest = {
+  accessPrincipal?: { workspaceId?: string | null };
 };
 
-function requireTenantId(request: TenantSettingsRequest) {
-  const tenantId = request.accessPrincipal?.tenantId?.trim();
-  if (!tenantId) throw new Error("Tenant context was not established by the access guard.");
-  return tenantId;
+function requireWorkspaceId(request: WorkspaceSettingsRequest) {
+  const workspaceId = request.accessPrincipal?.workspaceId?.trim();
+  if (!workspaceId) throw new Error("Workspace context was not established by the access guard.");
+  return workspaceId;
 }

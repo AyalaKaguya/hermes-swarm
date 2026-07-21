@@ -1,9 +1,8 @@
 import jwt from "jsonwebtoken";
 
 export type PasswordResetTokenPayload = {
+  accountId: string;
   email: string;
-  tenantId: string;
-  userId: string;
 };
 
 export function createPasswordResetToken(payload: PasswordResetTokenPayload) {

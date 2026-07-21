@@ -1,12 +1,12 @@
 import { Column, Entity, Index } from "typeorm";
-import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
+import { WorkspaceOwnedBaseEntity } from "./workspace-owned-base.entity.js";
 
-export type IntegrationTokenScope = "tenant";
+export type IntegrationTokenScope = "workspace";
 
 @Entity({ name: "integration_tokens" })
 @Index("IDX_integration_tokens_owner", ["ownerUserId"])
 @Index("IDX_integration_tokens_hash", ["tokenHash"], { unique: true })
-export class IntegrationToken extends TenantOwnedBaseEntity {
+export class IntegrationToken extends WorkspaceOwnedBaseEntity {
   @Column({ name: "owner_user_id", type: "uuid" })
   ownerUserId!: string;
 

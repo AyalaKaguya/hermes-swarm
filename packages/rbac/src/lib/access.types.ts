@@ -40,9 +40,8 @@ export type ResolvedAccessDefinition = AccessResourceMetadata & {
 };
 
 export type AccessScopeResult = {
-  organizationId?: string | null;
   scopeLevel?: RequestScopeLevel;
-  tenantId?: string | null;
+  workspaceId?: string | null;
   targetUserId?: string | null;
 };
 
@@ -81,12 +80,12 @@ export type AccessAuthSession = {
   integrationToken?: {
     id: string;
     permissions: string[];
-    scope: "tenant";
-    tenantId: string;
+    scope: "workspace";
+    workspaceId: string;
   } | null;
-  principalType: "integration" | "platform" | "tenant";
+  principalType: "integration" | "platform" | "workspace";
   sessionId?: string;
-  tenantId: string | null;
+  workspaceId: string | null;
   tokenKind?: "integration" | "session";
   userId: string;
 };
@@ -96,10 +95,9 @@ export type AccessAuthSessionService = {
 };
 
 export type AccessCheckContext = {
-  organizationId?: string | null;
-  principalType?: "integration" | "platform" | "tenant";
+  principalType?: "integration" | "platform" | "workspace";
   scopeLevel?: RequestScopeLevel;
-  tenantId?: string | null;
+  workspaceId?: string | null;
   targetUserId?: string | null;
 };
 

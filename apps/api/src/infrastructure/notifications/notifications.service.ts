@@ -7,13 +7,13 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import {
-  User,
+  Account,
   UserNotification,
   type UserNotificationKind,
   type UserNotificationStatus,
 } from "@hermes-swarm/core";
 import { In, IsNull } from "typeorm";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 import { RealtimeEventBus } from "../realtime/realtime-event-bus.service.js";
 
@@ -33,7 +33,7 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceContext: WorkspaceContextService,
     @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
     @Inject(RealtimeEventBus)
@@ -41,14 +41,14 @@ export class NotificationsService {
   ) {}
 
   async createForUser(input: CreateUserNotificationInput) {
-    const tenantId = this.tenantId;
-    const entityInput = toNotificationEntityInput(input, tenantId);
-    await this.requireTenantRecipients(tenantId, [entityInput.recipientUserId]);
+    const workspaceId = this.workspaceId;
+    const entityInput = toNotificationEntityInput(input, workspaceId);
+    await this.requireWorkspaceRecipients(workspaceId, [entityInput.recipientUserId]);
     const notification = await this.notifications.save(
       this.notifications.create(entityInput),
     );
     const dto = toNotificationDto(notification);
-    this.publishCreatedNotification(tenantId, entityInput.recipientUserId, dto);
+    this.publishCreatedNotification(workspaceId, entityInput.recipientUserId, dto);
     return dto;
   }
 
@@ -58,20 +58,20 @@ export class NotificationsService {
   ) {
     const recipientUserIds = normalizeRecipientUserIds(userIds);
     if (recipientUserIds.length === 0) return [];
-    const tenantId = this.tenantId;
-    await this.requireTenantRecipients(tenantId, recipientUserIds);
+    const workspaceId = this.workspaceId;
+    await this.requireWorkspaceRecipients(workspaceId, recipientUserIds);
 
     const savedNotifications = await this.notifications.save(
       recipientUserIds.map((recipientUserId) =>
         this.notifications.create(
-          toNotificationEntityInput({ ...input, recipientUserId }, tenantId),
+          toNotificationEntityInput({ ...input, recipientUserId }, workspaceId),
         ),
       ),
     );
     const dtos = savedNotifications.map(toNotificationDto);
     for (let index = 0; index < dtos.length; index += 1) {
       this.publishCreatedNotification(
-        tenantId,
+        workspaceId,
         recipientUserIds[index]!,
         dtos[index]!,
       );
@@ -84,7 +84,7 @@ export class NotificationsService {
     payload: unknown,
   ) {
     const session = await this.requireSession(authorization);
-    this.requireSessionTenantId(session);
+    this.requireSessionWorkspaceId(session);
     const input = parseSendNotificationPayload(payload);
     return this.createForUsers(input.recipientUserIds, {
       actorUserId: session.userId,
@@ -102,7 +102,7 @@ export class NotificationsService {
     options: { status?: UserNotificationStatus; take?: number } = {},
   ) {
     const session = await this.requireSession(authorization);
-    const tenantId = this.requireSessionTenantId(session);
+    const workspaceId = this.requireSessionWorkspaceId(session);
     const take = normalizeTake(options.take);
     const status = normalizeNotificationStatus(options.status);
     const items = await this.notifications.find({
@@ -112,7 +112,7 @@ export class NotificationsService {
         ...(status ? { status } : {}),
         dismissedAt: IsNull(),
         recipientUserId: session.userId,
-        tenantId,
+        workspaceId,
       },
     });
     return items.map(toNotificationDto);
@@ -120,14 +120,14 @@ export class NotificationsService {
 
   async unreadCount(authorization: string | undefined) {
     const session = await this.requireSession(authorization);
-    const tenantId = this.requireSessionTenantId(session);
+    const workspaceId = this.requireSessionWorkspaceId(session);
     return {
       count: await this.notifications.count({
         where: {
           dismissedAt: IsNull(),
           recipientUserId: session.userId,
           status: "unread",
-          tenantId,
+          workspaceId,
         },
       }),
     };
@@ -135,13 +135,13 @@ export class NotificationsService {
 
   async markRead(authorization: string | undefined, notificationId: string) {
     const session = await this.requireSession(authorization);
-    const tenantId = this.requireSessionTenantId(session);
+    const workspaceId = this.requireSessionWorkspaceId(session);
     const notification = await this.notifications.findOne({
       where: {
         dismissedAt: IsNull(),
         id: notificationId,
         recipientUserId: session.userId,
-        tenantId,
+        workspaceId,
       },
     });
     if (!notification) throw new NotFoundException("通知不存在");
@@ -158,7 +158,7 @@ export class NotificationsService {
     sourceType: string,
     sourceId: string,
   ) {
-    const tenantId = this.tenantId;
+    const workspaceId = this.workspaceId;
     await this.notifications.update(
       {
         dismissedAt: IsNull(),
@@ -166,7 +166,7 @@ export class NotificationsService {
         sourceId,
         sourceType,
         status: "unread",
-        tenantId,
+        workspaceId,
       },
       {
         readAt: new Date(),
@@ -177,13 +177,13 @@ export class NotificationsService {
 
   async markAllRead(authorization: string | undefined) {
     const session = await this.requireSession(authorization);
-    const tenantId = this.requireSessionTenantId(session);
+    const workspaceId = this.requireSessionWorkspaceId(session);
     await this.notifications.update(
       {
         dismissedAt: IsNull(),
         recipientUserId: session.userId,
         status: "unread",
-        tenantId,
+        workspaceId,
       },
       {
         readAt: new Date(),
@@ -195,13 +195,13 @@ export class NotificationsService {
 
   async dismissRead(authorization: string | undefined) {
     const session = await this.requireSession(authorization);
-    const tenantId = this.requireSessionTenantId(session);
+    const workspaceId = this.requireSessionWorkspaceId(session);
     await this.notifications.update(
       {
         dismissedAt: IsNull(),
         recipientUserId: session.userId,
         status: "read",
-        tenantId,
+        workspaceId,
       },
       {
         dismissedAt: new Date(),
@@ -212,13 +212,13 @@ export class NotificationsService {
 
   async dismiss(authorization: string | undefined, notificationId: string) {
     const session = await this.requireSession(authorization);
-    const tenantId = this.requireSessionTenantId(session);
+    const workspaceId = this.requireSessionWorkspaceId(session);
     const notification = await this.notifications.findOne({
       where: {
         dismissedAt: IsNull(),
         id: notificationId,
         recipientUserId: session.userId,
-        tenantId,
+        workspaceId,
       },
     });
     if (!notification) throw new NotFoundException("通知不存在");
@@ -237,13 +237,13 @@ export class NotificationsService {
   }
 
   private publishCreatedNotification(
-    tenantId: string,
+    workspaceId: string,
     recipientUserId: string,
     dto: ReturnType<typeof toNotificationDto>,
   ) {
     try {
       void Promise.resolve(
-        this.realtimeEventBus.publishToUser(tenantId, recipientUserId, {
+        this.realtimeEventBus.publishToUser(workspaceId, recipientUserId, {
           type: "notification.created",
           payload: dto,
         }),
@@ -263,41 +263,41 @@ export class NotificationsService {
     }
   }
 
-  private requireSessionTenantId(session: { tenantId?: string | null }) {
-    const tenantId = session.tenantId?.trim();
-    if (!tenantId || tenantId !== this.tenantId) {
-      throw new UnauthorizedException("登录会话租户上下文无效");
+  private requireSessionWorkspaceId(session: { workspaceId?: string | null }) {
+    const workspaceId = session.workspaceId?.trim();
+    if (!workspaceId || workspaceId !== this.workspaceId) {
+      throw new UnauthorizedException("登录会话工作空间上下文无效");
     }
-    return tenantId;
+    return workspaceId;
   }
 
-  private async requireTenantRecipients(tenantId: string, userIds: string[]) {
+  private async requireWorkspaceRecipients(workspaceId: string, userIds: string[]) {
     const users = await this.users.find({
       select: { id: true },
-      where: { id: In(userIds), status: "active", tenantId },
+      where: { id: In(userIds), status: "active" },
     });
     const found = new Set(users.map((user) => user.id));
     if (userIds.some((userId) => !found.has(userId))) {
-      throw new BadRequestException("接收人不属于当前租户或不可用");
+      throw new BadRequestException("接收人不属于当前工作空间或不可用");
     }
   }
 
-  private get tenantId() {
-    return this.tenantContext.current()!.tenantId;
+  private get workspaceId() {
+    return this.workspaceContext.current()!.workspaceId;
   }
 
   private get notifications() {
-    return this.tenantContext.repository(UserNotification);
+    return this.workspaceContext.repository(UserNotification);
   }
 
   private get users() {
-    return this.tenantContext.repository(User);
+    return this.workspaceContext.repository(Account);
   }
 }
 
 function toNotificationEntityInput(
   input: CreateUserNotificationInput,
-  tenantId: string,
+  workspaceId: string,
 ) {
   return {
     body: optionalString(input.body),
@@ -312,7 +312,7 @@ function toNotificationEntityInput(
     }),
     status: "unread" as const,
     title: normalizeTitle(input.title),
-    tenantId,
+    workspaceId,
   };
 }
 
@@ -348,7 +348,7 @@ function toNotificationDto(notification: UserNotification) {
     sourceType: notification.sourceType,
     status: notification.status,
     title: notification.title,
-    tenantId: notification.tenantId,
+    workspaceId: notification.workspaceId,
     updatedAt: notification.updatedAt,
   };
 }

@@ -1,17 +1,17 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  Account,
   AccessAuditLog,
   LoginAuditLog,
   Permission,
-  PlatformUser,
-  Tenant,
+  Workspace,
 } from "@hermes-swarm/core";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import {
   PlatformAuditController,
-  TenantAuditController,
+  WorkspaceAuditController,
 } from "./audit.controller.js";
 import { AuditQueryService } from "./audit-query.service.js";
 import { LoginAuditService } from "./login-audit.service.js";
@@ -20,11 +20,11 @@ import { LoginAuditService } from "./login-audit.service.js";
   imports: [
     DatabaseModule,
     TypeOrmModule.forFeature(
-      [AccessAuditLog, LoginAuditLog, Permission, PlatformUser, Tenant],
+      [AccessAuditLog, Account, LoginAuditLog, Permission, Workspace],
       PLATFORM_DATA_SOURCE,
     ),
   ],
-  controllers: [PlatformAuditController, TenantAuditController],
+  controllers: [PlatformAuditController, WorkspaceAuditController],
   providers: [AuditQueryService, LoginAuditService],
   exports: [LoginAuditService],
 })

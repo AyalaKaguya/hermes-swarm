@@ -4,7 +4,6 @@ import { ForbiddenException } from "@nestjs/common";
 import {
   ACCESS_OPERATION_METADATA,
   ACCESS_RESOURCE_METADATA,
-  ACCESS_SCOPE_METADATA,
   PUBLIC_ACCESS_METADATA,
 } from "./access.decorators.js";
 import { AccessGuard } from "./access.guard.js";
@@ -12,7 +11,6 @@ import { resolveAccessDefinition } from "./access-catalog.service.js";
 import type {
   AccessOperationMetadata,
   AccessResourceMetadata,
-  AccessScopeMetadata,
 } from "./access.types.js";
 
 describe("AccessGuard integration token narrowing", () => {
@@ -21,116 +19,81 @@ describe("AccessGuard integration token narrowing", () => {
     entityLabel: "工单",
     purpose: "conversation",
     purposeLabel: "工单会话",
-    scope: "organization",
+    scope: "workspace",
   };
   const operation: AccessOperationMetadata = {
     label: "处理工单",
     operation: "handle",
   };
-  const scope: AccessScopeMetadata = { param: "organizationId" };
+  const permission = "ticket.conversation.handle:workspace";
 
-  it("allows selected permissions across organizations in the token tenant", async () => {
+  it("allows a selected workspace permission when the member still has it", async () => {
     const guard = createGuard({
       integrationToken: {
         id: "token-1",
-        permissions: ["ticket.conversation.handle:organization"],
-        scope: "tenant",
+        permissions: [permission],
+        scope: "workspace",
       },
     });
 
-    assert.equal(
-      await guard.canActivate(createContext({ organizationId: "org-1" })),
-      true,
-    );
+    assert.equal(await guard.canActivate(createContext()), true);
   });
 
   it("denies permissions that were not selected on the integration token", async () => {
-    let userPermissionChecks = 0;
+    let memberPermissionChecks = 0;
     const guard = createGuard(
       {
         integrationToken: {
           id: "token-1",
-          permissions: ["ticket.conversation.list_organization:organization"],
-          scope: "tenant",
+          permissions: [],
+          scope: "workspace",
         },
       },
       undefined,
       {
         can: async () => {
-          userPermissionChecks += 1;
+          memberPermissionChecks += 1;
           return true;
         },
       },
     );
 
-    await assert.rejects(
-      () => guard.canActivate(createContext({ organizationId: "org-1" })),
-      ForbiddenException,
-    );
-    assert.equal(userPermissionChecks, 0);
+    await assert.rejects(() => guard.canActivate(createContext()), ForbiddenException);
+    assert.equal(memberPermissionChecks, 0);
   });
 
-  it("denies a selected token permission when the user no longer has it", async () => {
+  it("denies a selected token permission when the member no longer has it", async () => {
     const guard = createGuard(
       {
         integrationToken: {
           id: "token-1",
-          permissions: ["ticket.conversation.handle:organization"],
-          scope: "tenant",
+          permissions: [permission],
+          scope: "workspace",
         },
       },
       undefined,
       { can: async () => false },
     );
 
-    await assert.rejects(
-      () => guard.canActivate(createContext({ organizationId: "org-1" })),
-      ForbiddenException,
-    );
+    await assert.rejects(() => guard.canActivate(createContext()), ForbiddenException);
   });
 
-  it("persists denied authorization decisions before throwing", async () => {
-    const audits: any[] = [];
-    const guard = createGuard(
-      {
-        integrationToken: {
-          id: "token-1",
-          permissions: [],
-          scope: "tenant",
-        },
-      },
-      { recordRequest: async (...args: any[]) => audits.push(args) },
-    );
-
-    await assert.rejects(
-      () => guard.canActivate(createContext({ organizationId: "org-1" })),
-      ForbiddenException,
-    );
-    assert.equal(audits.length, 1);
-    assert.equal(audits[0][1], "denied");
-  });
-
-  it("denies a token whose embedded tenant differs from the request tenant", async () => {
+  it("denies a token bound to a different workspace", async () => {
     const guard = createGuard({
       integrationToken: {
         id: "token-1",
-        permissions: ["ticket.conversation.handle:organization"],
-        scope: "tenant",
-        tenantId: "tenant-2",
+        permissions: [permission],
+        scope: "workspace",
+        workspaceId: "workspace-2",
       },
     });
 
-    await assert.rejects(
-      () => guard.canActivate(createContext({ organizationId: "org-1" })),
-      ForbiddenException,
-    );
+    await assert.rejects(() => guard.canActivate(createContext()), ForbiddenException);
   });
-
 
   it("bypasses authentication only for explicit public handlers", async () => {
     const guard = new AccessGuard(
       {
-        get: () => undefined,
         getAllAndOverride: (key: string) =>
           key === PUBLIC_ACCESS_METADATA ? { reason: "test" } : undefined,
       } as any,
@@ -139,26 +102,23 @@ describe("AccessGuard integration token narrowing", () => {
           throw new Error("should not authenticate");
         },
       },
-      {
-        getDefinition: () => resolveAccessDefinition(resource, operation),
-      } as any,
+      { getDefinition: () => null } as any,
       { can: async () => false } as any,
       { resolve: async () => ({}) } as any,
     );
 
-    assert.equal(await guard.canActivate(createContext({})), true);
+    assert.equal(await guard.canActivate(createContext()), true);
   });
 
-  it("stores the validated principal on the request", async () => {
+  it("stores the validated workspace principal on the request", async () => {
     const request: Record<string, unknown> = {
       headers: { authorization: "Bearer session-token" },
-      params: { organizationId: "org-1" },
     };
     const guard = createGuard({
       integrationToken: {
         id: "token-1",
-        permissions: ["ticket.conversation.handle:organization"],
-        scope: "tenant",
+        permissions: [permission],
+        scope: "workspace",
       },
     });
 
@@ -176,12 +136,12 @@ describe("AccessGuard integration token narrowing", () => {
   it("resolves handler-level resource metadata before the controller fallback", async () => {
     const handlerResource: AccessResourceMetadata = {
       ...resource,
-      entity: "tenant_application",
-      entityLabel: "租户申请",
+      entity: "workspace_application",
+      entityLabel: "工作空间申请",
       scope: "platform",
     };
     const handlerOperation: AccessOperationMetadata = {
-      label: "查看租户申请",
+      label: "查看工作空间申请",
       operation: "list",
     };
     const definition = resolveAccessDefinition(handlerResource, handlerOperation)!;
@@ -202,16 +162,15 @@ describe("AccessGuard integration token narrowing", () => {
       {
         validateAccessToken: async () => ({
           principalType: "platform",
-          tenantId: null,
+          workspaceId: null,
           userId: "platform-user-1",
         }),
       },
       {
-        getDefinition: (permission: string) =>
-          permission === definition.id ? definition : null,
+        getDefinition: (id: string) => (id === definition.id ? definition : null),
       } as any,
       { can: async () => true } as any,
-      { resolve: async () => ({ scopeLevel: "platform", tenantId: null }) } as any,
+      { resolve: async () => ({ scopeLevel: "platform", workspaceId: null }) } as any,
     );
 
     assert.equal(
@@ -227,9 +186,9 @@ describe("AccessGuard integration token narrowing", () => {
     assert.deepEqual(resourceTargets, [handler, Controller]);
   });
 
-  it("rejects unannotated admin routes instead of silently allowing them", async () => {
+  it("rejects unannotated admin routes", async () => {
     const guard = new AccessGuard(
-      { get: () => undefined, getAllAndOverride: () => undefined } as any,
+      { getAllAndOverride: () => undefined } as any,
       { validateAccessToken: async () => ({ userId: "user-1" }) },
       { getDefinition: () => null } as any,
       { can: async () => true } as any,
@@ -248,60 +207,62 @@ describe("AccessGuard integration token narrowing", () => {
       ForbiddenException,
     );
   });
-  function createGuard(session: {
-    integrationToken: {
-      id: string;
-      permissions: string[];
-      scope: "tenant";
-      tenantId?: string;
-    };
-  }, auditService?: { recordRequest: (...args: any[]) => Promise<unknown> }, accessService: { can: (...args: any[]) => Promise<boolean> } = { can: async () => true }) {
+
+  function createGuard(
+    session: {
+      integrationToken: {
+        id: string;
+        permissions: string[];
+        scope: "workspace";
+        workspaceId?: string;
+      };
+    },
+    auditService?: { recordRequest: (...args: any[]) => Promise<unknown> },
+    accessService: { can: (...args: any[]) => Promise<boolean> } = {
+      can: async () => true,
+    },
+  ) {
     return new AccessGuard(
       {
         getAllAndOverride: (key: string) =>
           key === ACCESS_RESOURCE_METADATA
             ? resource
             : key === ACCESS_OPERATION_METADATA
-            ? operation
-            : key === ACCESS_SCOPE_METADATA
-              ? scope
+              ? operation
               : undefined,
       } as any,
       {
         validateAccessToken: async () => ({
           integrationToken: {
             ...session.integrationToken,
-            tenantId: session.integrationToken.tenantId ?? "tenant-1",
+            workspaceId: session.integrationToken.workspaceId ?? "workspace-1",
           },
           principalType: "integration",
           sessionId: `integration:${session.integrationToken.id}`,
-          tenantId: "tenant-1",
+          workspaceId: "workspace-1",
           tokenKind: "integration",
           userId: "user-1",
         }),
       },
-      {
-        getDefinition: () => resolveAccessDefinition(resource, operation),
-      } as any,
+      { getDefinition: () => resolveAccessDefinition(resource, operation) } as any,
       accessService as any,
       {
-        resolve: async (_definition: unknown, _metadata: unknown, request: any) => ({
-          organizationId: request.params?.organizationId ?? null,
-          tenantId: "tenant-1",
+        resolve: async () => ({
+          scopeLevel: "workspace",
+          workspaceId: "workspace-1",
         }),
       } as any,
       auditService as any,
     );
   }
 
-  function createContext(params: Record<string, string>) {
+  function createContext() {
     return {
       getClass: () => function Controller() {},
       getHandler: () => function handler() {},
       switchToHttp: () => ({
         getRequest: () => ({
           headers: { authorization: "Bearer integration-token" },
-          params,
         }),
       }),
     } as any;

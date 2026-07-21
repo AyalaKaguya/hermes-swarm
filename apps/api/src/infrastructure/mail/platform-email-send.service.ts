@@ -21,7 +21,7 @@ export type SendPlatformEmailContext = {
   templateName: string;
 };
 
-/** Sends control-plane mail without creating or reading a tenant context. */
+/** Sends control-plane mail without creating or reading a workspace context. */
 @Injectable()
 export class PlatformEmailSendService {
   private readonly logger = new Logger(PlatformEmailSendService.name);

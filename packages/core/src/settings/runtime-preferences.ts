@@ -1,7 +1,7 @@
 import { PLATFORM_SETTING_KEYS } from "./definitions.js";
 
 export type CanonicalLanguage = "en" | "zh-Hans" | "zh-Hant";
-export type RuntimePreferenceSource = "code" | "platform" | "tenant" | "user";
+export type RuntimePreferenceSource = "code" | "platform" | "workspace" | "user";
 
 export type RuntimePreferences = {
   currency: string;
@@ -112,9 +112,9 @@ function settingValue(
 
 function settingSource(
   setting: RuntimePreferenceSetting | null | undefined,
-): "code" | "platform" | "tenant" {
+): "code" | "platform" | "workspace" {
   if (!normalizedText(setting?.value)) return "code";
-  return setting?.scope === "tenant" ? "tenant" : "platform";
+  return setting?.scope === "workspace" ? "workspace" : "platform";
 }
 
 function normalizedText(value: string | null | undefined) {

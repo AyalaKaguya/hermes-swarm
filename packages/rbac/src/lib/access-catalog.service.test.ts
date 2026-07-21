@@ -6,14 +6,14 @@ import {
 } from "./access-catalog.service.js";
 
 describe("AccessCatalogService catalog sync", () => {
-  it("assigns tenant fallback operations to tenant roles", () => {
+  it("assigns workspace fallback operations to workspace roles", () => {
     const definition = resolveAccessDefinition(
       {
         entity: "user",
-        entityLabel: "用户",
-        purpose: "tenant_user",
-        purposeLabel: "租户用户",
-        scope: "tenant",
+        entityLabel: "成员",
+        purpose: "workspace_user",
+        purposeLabel: "工作空间成员",
+        scope: "workspace",
       },
       {
         label: "查看用户列表",
@@ -22,8 +22,8 @@ describe("AccessCatalogService catalog sync", () => {
     );
 
     assert.deepEqual(definition?.defaultRoles, [
-      "tenant-owner",
-      "tenant-admin",
+      "workspace-owner",
+      "workspace-admin",
     ]);
   });
 
@@ -34,7 +34,7 @@ describe("AccessCatalogService catalog sync", () => {
         entityLabel: "工单",
         purpose: "conversation",
         purposeLabel: "工单会话",
-        scope: "organization",
+        scope: "workspace",
       },
       {
         label: "查看工单消息",
@@ -43,8 +43,8 @@ describe("AccessCatalogService catalog sync", () => {
       },
     );
 
-    assert.ok(definition?.defaultRoles.includes("tenant-owner"));
-    assert.ok(definition?.defaultRoles.includes("tenant-member"));
+    assert.ok(definition?.defaultRoles.includes("workspace-owner"));
+    assert.ok(definition?.defaultRoles.includes("workspace-member"));
     assert.equal(definition?.defaultRoles.includes("owner"), false);
     assert.equal(definition?.defaultRoles.includes("member"), false);
   });
@@ -72,9 +72,8 @@ describe("AccessCatalogService catalog sync", () => {
           }
           return [];
         },
-        save: async (permission: { code?: string | null }) => {
-          savedPermissions.push(permission);
-          return permission;
+        upsert: async (permissions: Array<{ code?: string | null }>) => {
+          savedPermissions.push(...permissions);
         },
         create: (value: Record<string, unknown>) => ({ ...value }),
       } as any,

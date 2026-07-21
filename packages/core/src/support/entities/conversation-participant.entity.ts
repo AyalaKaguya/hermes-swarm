@@ -1,6 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
-import type { User } from "../../identity/entities/user.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
+import type { Account } from "../../identity/entities/account.entity.js";
 import type { Conversation } from "./conversation.entity.js";
 
 export type ConversationParticipantRole = "participant";
@@ -12,9 +12,9 @@ export type ConversationParticipantJoinedReason =
   | "reply";
 
 @Entity({ name: "conversation_participants" })
-@Index(["tenantId", "conversationId", "userId"], { unique: true })
-@Index(["tenantId", "userId", "updatedAt"])
-export class ConversationParticipant extends TenantOwnedBaseEntity {
+@Index(["workspaceId", "conversationId", "userId"], { unique: true })
+@Index(["workspaceId", "userId", "updatedAt"])
+export class ConversationParticipant extends WorkspaceOwnedBaseEntity {
   @Column({ name: "conversation_id", type: "uuid" })
   @Index()
   conversationId!: string;
@@ -27,9 +27,9 @@ export class ConversationParticipant extends TenantOwnedBaseEntity {
   @Index()
   userId!: string;
 
-  @ManyToOne("User", { onDelete: "CASCADE" })
+  @ManyToOne("Account", { onDelete: "RESTRICT" })
   @JoinColumn({ name: "user_id" })
-  user!: User;
+  user!: Account;
 
   @Column({ type: "varchar", length: 24, default: "participant" })
   role!: ConversationParticipantRole;

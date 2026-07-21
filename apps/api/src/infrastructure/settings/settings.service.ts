@@ -12,11 +12,11 @@ import {
   PLATFORM_SETTING_DEFINITIONS,
   SECRET_SETTING_MASK,
   PlatformSetting,
-  TenantSetting,
+  WorkspaceSetting,
   getFeatureSettingDefaultValue,
   getSettingDefinitionByKey,
   maskSettingValue,
-  mergeEffectiveTenantSettings,
+  mergeEffectiveWorkspaceSettings,
   resolveRuntimePreferences,
   resolveSettingValueOptions,
   resolveSettingValueType,
@@ -27,7 +27,7 @@ import {
 import type { EntityManager, Repository } from "typeorm";
 import type { SaveSettingsPayload } from "../../common/admin-api.types.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
   normalizeSettingEntry,
@@ -50,10 +50,10 @@ export class SettingsService implements OnModuleInit {
     private readonly platformSettingRepository: Repository<PlatformSetting>,
     private readonly redisService: RedisService,
     @Optional()
-    @InjectRepository(TenantSetting)
-    private readonly tenantSettingRepository?: Repository<TenantSetting>,
+    @InjectRepository(WorkspaceSetting)
+    private readonly workspaceSettingRepository?: Repository<WorkspaceSetting>,
     @Optional()
-    private readonly tenantContext?: TenantContextService,
+    private readonly workspaceContext?: WorkspaceContextService,
     @Optional()
     private readonly configService?: ConfigService,
   ) {}
@@ -64,26 +64,26 @@ export class SettingsService implements OnModuleInit {
     });
   }
 
-  async listTenantSettings(tenantId: string) {
-    const [tenantSettings, platformSettings] = await Promise.all([
-      this.findTenantSettings(tenantId),
+  async listWorkspaceSettings(workspaceId: string) {
+    const [workspaceSettings, platformSettings] = await Promise.all([
+      this.findWorkspaceSettings(workspaceId),
       this.platformSettingRepository.find({ order: { name: "ASC" } }),
     ]);
-    return mergeEffectiveTenantSettings(
-      tenantSettings,
-      platformSettings.filter(isTenantOverridableSetting),
-      tenantId,
+    return mergeEffectiveWorkspaceSettings(
+      workspaceSettings,
+      platformSettings.filter(isWorkspaceOverridableSetting),
+      workspaceId,
     );
   }
 
-  async saveTenantSettings(tenantId: string, payload: SaveSettingsPayload) {
+  async saveWorkspaceSettings(workspaceId: string, payload: SaveSettingsPayload) {
     const entries = parseSettingsPayload(payload);
     const platformSettings = await this.platformSettingRepository.find();
-    const invalidations = await this.runTenantTransaction((manager) =>
-      this.saveTenantSettingsInTransaction(manager, tenantId, entries, platformSettings),
+    const invalidations = await this.runWorkspaceTransaction((manager) =>
+      this.saveWorkspaceSettingsInTransaction(manager, workspaceId, entries, platformSettings),
     );
     for (const invalidation of invalidations) await this.applySettingsInvalidation(invalidation);
-    return this.listTenantSettings(tenantId);
+    return this.listWorkspaceSettings(workspaceId);
   }
 
   async listPlatformSettings() {
@@ -122,11 +122,11 @@ export class SettingsService implements OnModuleInit {
     return value;
   }
 
-  async getTenantValue(tenantId: string, name: string, fallback: string | null = null) {
-    const cacheKey = this.tenantCacheKey(tenantId, name);
+  async getWorkspaceValue(workspaceId: string, name: string, fallback: string | null = null) {
+    const cacheKey = this.workspaceCacheKey(workspaceId, name);
     const cached = await this.getCache(cacheKey);
     if (cached !== null) return this.decodeCachedSettingValue(cached);
-    const setting = await this.tenantSettingRepository?.findOne({ where: { name, tenantId } });
+    const setting = await this.workspaceSettingRepository?.findOne({ where: { name, workspaceId } });
     if (setting?.value !== null && setting?.value !== undefined) {
       const value = this.decodePersistedSettingValue(
         setting.name,
@@ -142,11 +142,11 @@ export class SettingsService implements OnModuleInit {
     return this.getPlatformValue(name, fallback);
   }
 
-  async resolveTenantRuntimePreferences(
-    tenantId: string,
+  async resolveWorkspaceRuntimePreferences(
+    workspaceId: string,
     user: RuntimePreferenceUser | null | undefined,
   ) {
-    return resolveRuntimePreferences(user, await this.listTenantSettings(tenantId));
+    return resolveRuntimePreferences(user, await this.listWorkspaceSettings(workspaceId));
   }
 
   async resolvePlatformRuntimePreferences(
@@ -211,7 +211,7 @@ export class SettingsService implements OnModuleInit {
     entries: ReturnType<typeof parseSettingsPayload>,
   ) {
     const repository = manager.getRepository(PlatformSetting);
-    const tenantRepository = manager.getRepository(TenantSetting);
+    const workspaceRepository = manager.getRepository(WorkspaceSetting);
     const invalidations: AppliedSettingsInvalidation[] = [];
     for (const entry of entries) {
       const definition = getSettingDefinitionByKey(entry.name);
@@ -219,19 +219,19 @@ export class SettingsService implements OnModuleInit {
         if (definition) {
           throw new BadRequestException("预定义设置不能删除");
         }
-        const tenantOverrides = await tenantRepository.find({
-          select: { name: true, tenantId: true },
+        const workspaceOverrides = await workspaceRepository.find({
+          select: { name: true, workspaceId: true },
           where: { name: entry.name },
         });
-        await tenantRepository.delete({ name: entry.name });
+        await workspaceRepository.delete({ name: entry.name });
         await repository.delete({ name: entry.name });
         invalidations.push({ cacheKey: this.platformCacheKey(entry.name), name: entry.name, scope: "platform", value: null });
-        for (const override of tenantOverrides) {
+        for (const override of workspaceOverrides) {
           invalidations.push({
-            cacheKey: this.tenantCacheKey(override.tenantId, entry.name),
+            cacheKey: this.workspaceCacheKey(override.workspaceId, entry.name),
             name: entry.name,
-            scope: "tenant",
-            tenantId: override.tenantId,
+            scope: "workspace",
+            workspaceId: override.workspaceId,
             value: null,
           });
         }
@@ -263,43 +263,43 @@ export class SettingsService implements OnModuleInit {
     return invalidations;
   }
 
-  private async saveTenantSettingsInTransaction(
+  private async saveWorkspaceSettingsInTransaction(
     manager: EntityManager,
-    tenantId: string,
+    workspaceId: string,
     entries: ReturnType<typeof parseSettingsPayload>,
     platformSettings: PlatformSetting[],
   ) {
-    const repository = manager.getRepository(TenantSetting);
+    const repository = manager.getRepository(WorkspaceSetting);
     const platformByName = new Map(platformSettings.map((setting) => [setting.name, setting]));
     const invalidations: AppliedSettingsInvalidation[] = [];
     for (const entry of entries) {
-      const existing = await repository.findOne({ where: { name: entry.name, tenantId } });
+      const existing = await repository.findOne({ where: { name: entry.name, workspaceId } });
       const platformSetting = platformByName.get(entry.name) ?? null;
-      if (entry.scope !== undefined && entry.scope !== "tenant") {
-        throw new BadRequestException("工作空间参数范围必须为 tenant");
+      if (entry.scope !== undefined && entry.scope !== "workspace") {
+        throw new BadRequestException("工作空间参数范围必须为 workspace");
       }
       if (entry.value === null || entry.value === undefined) {
-        if (platformSetting && !isTenantOverridableSetting(platformSetting)) {
+        if (platformSetting && !isWorkspaceOverridableSetting(platformSetting)) {
           throw new BadRequestException("该设置不允许工作空间覆盖");
         }
         if (!platformSetting && !existing) {
           throw new BadRequestException("未知的工作空间设置");
         }
-        await repository.delete({ name: entry.name, tenantId });
-        invalidations.push({ cacheKey: this.tenantCacheKey(tenantId, entry.name), name: entry.name, scope: "tenant", tenantId, value: null });
+        await repository.delete({ name: entry.name, workspaceId });
+        invalidations.push({ cacheKey: this.workspaceCacheKey(workspaceId, entry.name), name: entry.name, scope: "workspace", workspaceId, value: null });
         continue;
       }
-      if (platformSetting && !isTenantOverridableSetting(platformSetting)) {
+      if (platformSetting && !isWorkspaceOverridableSetting(platformSetting)) {
         throw new BadRequestException("该设置不允许工作空间覆盖");
       }
-      if (!platformSetting && !existing && entry.scope !== "tenant") {
-        throw new BadRequestException("新增工作空间参数必须显式使用 tenant 范围");
+      if (!platformSetting && !existing && entry.scope !== "workspace") {
+        throw new BadRequestException("新增工作空间参数必须显式使用 workspace 范围");
       }
       const normalized = normalizeSettingEntry(entry, [
         existing,
         platformSetting,
       ]);
-      const setting = existing ?? repository.create({ name: entry.name, tenantId });
+      const setting = existing ?? repository.create({ name: entry.name, workspaceId });
       setting.value = this.encodePersistedSettingValue(
         normalized.value,
         normalized.valueType,
@@ -310,10 +310,10 @@ export class SettingsService implements OnModuleInit {
       setting.valueType = normalized.valueType;
       const persisted = await repository.save(setting);
       invalidations.push({
-        cacheKey: this.tenantCacheKey(tenantId, entry.name),
+        cacheKey: this.workspaceCacheKey(workspaceId, entry.name),
         name: entry.name,
-        scope: "tenant",
-        tenantId,
+        scope: "workspace",
+        workspaceId,
         value: persisted.value,
         valueType: persisted.valueType,
       });
@@ -335,35 +335,35 @@ export class SettingsService implements OnModuleInit {
     await this.publishSettingsInvalidation(
       invalidation.scope === "platform"
         ? { name: invalidation.name, scope: "platform" }
-        : { name: invalidation.name, scope: "tenant", tenantId: invalidation.tenantId },
+        : { name: invalidation.name, scope: "workspace", workspaceId: invalidation.workspaceId },
     );
   }
 
-  private findTenantSettings(tenantId: string) {
+  private findWorkspaceSettings(workspaceId: string) {
     const repository =
-      this.tenantContext
+      this.workspaceContext
         ?.current(false)
-        ?.manager.getRepository(TenantSetting) ??
-      this.tenantSettingRepository;
+        ?.manager.getRepository(WorkspaceSetting) ??
+      this.workspaceSettingRepository;
     return (
       repository?.find({
         order: { name: "ASC" },
-        where: { tenantId },
+        where: { workspaceId },
       }) ?? Promise.resolve([])
     );
   }
 
-  private runTenantTransaction<T>(work: (manager: EntityManager) => Promise<T>) {
-    const manager = this.tenantContext?.current(false)?.manager;
+  private runWorkspaceTransaction<T>(work: (manager: EntityManager) => Promise<T>) {
+    const manager = this.workspaceContext?.current(false)?.manager;
     if (manager) return work(manager);
-    if (!this.tenantSettingRepository) throw new Error("TenantSetting repository is not configured");
-    return this.tenantSettingRepository.manager.transaction(work);
+    if (!this.workspaceSettingRepository) throw new Error("WorkspaceSetting repository is not configured");
+    return this.workspaceSettingRepository.manager.transaction(work);
   }
 
-  private requireTenantId(explicitTenantId?: string) {
-    const tenantId = explicitTenantId?.trim() ?? this.tenantContext?.current(false)?.tenantId;
-    if (!tenantId) throw new Error("Tenant context is required for settings");
-    return tenantId;
+  private requireWorkspaceId(explicitWorkspaceId?: string) {
+    const workspaceId = explicitWorkspaceId?.trim() ?? this.workspaceContext?.current(false)?.workspaceId;
+    if (!workspaceId) throw new Error("Workspace context is required for settings");
+    return workspaceId;
   }
 
   private encodePersistedSettingValue(
@@ -437,7 +437,7 @@ export class SettingsService implements OnModuleInit {
   }
 
   private platformCacheKey(name: string) { return `settings:platform:${name}`; }
-  private tenantCacheKey(tenantId: string, name: string) { return `settings:${tenantId}:tenant:${name}`; }
+  private workspaceCacheKey(workspaceId: string, name: string) { return `settings:${workspaceId}:workspace:${name}`; }
 
   private async getCache(key: string) {
     const client = await this.getRedisClient();
@@ -466,7 +466,7 @@ export class SettingsService implements OnModuleInit {
 
 type SettingsInvalidationEvent =
   | { name: string; scope: "platform" }
-  | { name: string; scope: "tenant"; tenantId: string };
+  | { name: string; scope: "workspace"; workspaceId: string };
 type AppliedSettingsInvalidation =
   | {
       cacheKey: string;
@@ -478,8 +478,8 @@ type AppliedSettingsInvalidation =
   | {
       cacheKey: string;
       name: string;
-      scope: "tenant";
-      tenantId: string;
+      scope: "workspace";
+      workspaceId: string;
       value: string | null;
       valueType?: SettingValueType;
     };
@@ -503,13 +503,13 @@ function toPlatformSettingDto(setting: PlatformSetting) {
   };
 }
 
-function isTenantOverridableSetting(setting: PlatformSetting) {
+function isWorkspaceOverridableSetting(setting: PlatformSetting) {
   const definition = getSettingDefinitionByKey(setting.name);
-  return definition ? definition.scope === "tenant" : setting.scope === "tenant";
+  return definition ? definition.scope === "workspace" : setting.scope === "workspace";
 }
 
-function normalizeSettingScope(value: unknown): "platform" | "tenant" {
-  if (value === "platform" || value === "tenant") return value;
+function normalizeSettingScope(value: unknown): "platform" | "workspace" {
+  if (value === "platform" || value === "workspace") return value;
   throw new BadRequestException("设置范围无效");
 }
 

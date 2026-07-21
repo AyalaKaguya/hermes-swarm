@@ -9,7 +9,7 @@ export type ConversationSource = {
   sourceType: string;
   status?: "archived" | "closed" | "open";
   subject: string;
-  tenantId: string;
+  workspaceId: string;
 };
 
 export type ConversationNotificationPayload = {

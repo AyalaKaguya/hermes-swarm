@@ -18,7 +18,8 @@ import { RedisModule } from "./common/redis/redis.module.js";
 import { RbacModule } from "@hermes-swarm/rbac";
 import { AuthModule } from "./infrastructure/auth/auth.module.js";
 import { AuthSessionService } from "./infrastructure/auth/auth-session.service.js";
-import { TenantTransactionInterceptor } from "./common/database/tenant-transaction.interceptor.js";
+import { WorkspaceTransactionInterceptor } from "./common/database/workspace-transaction.interceptor.js";
+import { AdminContractInterceptor } from "./common/contracts/contract-validation.js";
 
 @Module({
   imports: [
@@ -47,7 +48,11 @@ import { TenantTransactionInterceptor } from "./common/database/tenant-transacti
   providers: [
     {
       provide: APP_INTERCEPTOR,
-      useClass: TenantTransactionInterceptor,
+      useClass: AdminContractInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: WorkspaceTransactionInterceptor,
     },
   ],
 })

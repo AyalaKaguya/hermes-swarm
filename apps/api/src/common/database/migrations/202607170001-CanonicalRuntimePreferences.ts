@@ -21,7 +21,7 @@ export class CanonicalRuntimePreferences2026071700001
       ALTER COLUMN "preferred_language" DROP NOT NULL
     `);
     await queryRunner.query(`
-      UPDATE "platform_users"
+      UPDATE "workspace_applications"
       SET "preferred_language" = CASE
         WHEN "preferred_language" IN ('zh', 'zh-CN') THEN 'zh-Hans'
         WHEN "preferred_language" IN ('zh-TW', 'zh-HK') THEN 'zh-Hant'
@@ -30,20 +30,7 @@ export class CanonicalRuntimePreferences2026071700001
       END
     `);
     await queryRunner.query(`
-      ALTER TABLE "platform_users"
-      ALTER COLUMN "preferred_language" SET DEFAULT 'zh-Hans'
-    `);
-    await queryRunner.query(`
-      UPDATE "tenant_applications"
-      SET "preferred_language" = CASE
-        WHEN "preferred_language" IN ('zh', 'zh-CN') THEN 'zh-Hans'
-        WHEN "preferred_language" IN ('zh-TW', 'zh-HK') THEN 'zh-Hant'
-        WHEN "preferred_language" IN ('en-US', 'en-GB') THEN 'en'
-        ELSE "preferred_language"
-      END
-    `);
-    await queryRunner.query(`
-      ALTER TABLE "tenant_applications"
+      ALTER TABLE "workspace_applications"
       ALTER COLUMN "preferred_language" SET DEFAULT 'zh-Hans'
     `);
     await queryRunner.query(`
@@ -54,7 +41,7 @@ export class CanonicalRuntimePreferences2026071700001
         WHEN "value" IN ('en-US', 'en-GB') THEN 'en'
         ELSE "value"
       END
-      WHERE "name" = 'tenant.defaultLanguage'
+      WHERE "name" = 'workspace.defaultLanguage'
     `);
   }
 
@@ -74,7 +61,7 @@ export class CanonicalRuntimePreferences2026071700001
       ALTER COLUMN "preferred_language" SET NOT NULL
     `);
     await queryRunner.query(`
-      UPDATE "platform_users"
+      UPDATE "workspace_applications"
       SET "preferred_language" = CASE
         WHEN "preferred_language" = 'zh-Hans' THEN 'zh-CN'
         WHEN "preferred_language" = 'zh-Hant' THEN 'zh-TW'
@@ -82,19 +69,7 @@ export class CanonicalRuntimePreferences2026071700001
       END
     `);
     await queryRunner.query(`
-      ALTER TABLE "platform_users"
-      ALTER COLUMN "preferred_language" SET DEFAULT 'zh-CN'
-    `);
-    await queryRunner.query(`
-      UPDATE "tenant_applications"
-      SET "preferred_language" = CASE
-        WHEN "preferred_language" = 'zh-Hans' THEN 'zh-CN'
-        WHEN "preferred_language" = 'zh-Hant' THEN 'zh-TW'
-        ELSE "preferred_language"
-      END
-    `);
-    await queryRunner.query(`
-      ALTER TABLE "tenant_applications"
+      ALTER TABLE "workspace_applications"
       ALTER COLUMN "preferred_language" SET DEFAULT 'zh-CN'
     `);
     await queryRunner.query(`
@@ -104,7 +79,7 @@ export class CanonicalRuntimePreferences2026071700001
         WHEN "value" = 'zh-Hant' THEN 'zh-TW'
         ELSE "value"
       END
-      WHERE "name" = 'tenant.defaultLanguage'
+      WHERE "name" = 'workspace.defaultLanguage'
     `);
   }
 }

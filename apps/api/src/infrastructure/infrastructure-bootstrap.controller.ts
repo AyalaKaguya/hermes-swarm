@@ -9,11 +9,11 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
+  Account,
   Permission,
-  PlatformRole,
-  PlatformRolePermission,
-  PlatformUser,
-  PlatformUserRole,
+  PlatformMembership,
+  Role,
+  RolePermission,
 } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
 import { PublicAccess } from "@hermes-swarm/rbac";
@@ -26,16 +26,16 @@ import { PLATFORM_DATA_SOURCE } from "../common/database/database.constants.js";
 @Controller("admin")
 export class InfrastructureBootstrapController {
   constructor(
-    @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
-    private readonly platformUserRepository: Repository<PlatformUser>,
-    @InjectRepository(PlatformRole, PLATFORM_DATA_SOURCE)
-    private readonly platformRoleRepository: Repository<PlatformRole>,
-    @InjectRepository(PlatformUserRole, PLATFORM_DATA_SOURCE)
-    private readonly platformUserRoleRepository: Repository<PlatformUserRole>,
+    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    private readonly accountRepository: Repository<Account>,
+    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    private readonly platformMembershipRepository: Repository<PlatformMembership>,
+    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
+    private readonly roleRepository: Repository<Role>,
     @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
     private readonly permissionRepository: Repository<Permission>,
-    @InjectRepository(PlatformRolePermission, PLATFORM_DATA_SOURCE)
-    private readonly platformRolePermissionRepository: Repository<PlatformRolePermission>,
+    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
+    private readonly rolePermissionRepository: Repository<RolePermission>,
     private readonly authService: AuthService,
     private readonly settingsService: SettingsService,
   ) {}
@@ -44,12 +44,11 @@ export class InfrastructureBootstrapController {
   @PublicAccess({ reason: "Bootstrap state is required before a platform operator can log in." })
   async getPublicBootstrap() {
     const [platformUserCount, systemSettings] = await Promise.all([
-      this.platformUserRepository.count(),
+      this.platformMembershipRepository.count(),
       this.settingsService.listPlatformSettings(),
     ]);
     return {
       onboardingRequired: platformUserCount === 0,
-      organizations: [],
       systemSettings,
     };
   }
@@ -61,38 +60,46 @@ export class InfrastructureBootstrapController {
     @Req() request: any,
     @Res({ passthrough: true }) response: any,
   ) {
-    if ((await this.platformUserRepository.count()) > 0) {
+    if ((await this.platformMembershipRepository.count()) > 0) {
       throw new BadRequestException("平台已经完成初始化");
     }
     const displayName = requireText(payload.adminName, "管理员名称");
     const email = normalizeEmail(payload.adminEmail);
     const password = requirePassword(payload.adminPassword);
 
-    await this.platformUserRepository.manager.transaction(async (manager) => {
-      const user = await manager.save(
-        PlatformUser,
-        manager.create(PlatformUser, {
+    await this.accountRepository.manager.transaction(async (manager) => {
+      const account = await manager.save(
+        Account,
+        manager.create(Account, {
           displayName,
           email,
+          emailVerified: true,
+          nickname: displayName,
           passwordHash: await hashPassword(password),
-          preferredLanguage: "zh-CN",
+          preferredLanguage: "zh-Hans",
           status: "active",
+          type: "user",
         }),
       );
       const role = await manager.save(
-        PlatformRole,
-        manager.create(PlatformRole, {
+        Role,
+        manager.create(Role, {
           description: "Platform administrator with all platform permissions.",
+          displayName: "Platform Admin",
           isSystem: true,
           label: "Platform Admin",
           name: "platform-admin",
+          scope: "platform",
+          workspaceId: null,
         }),
       );
       await manager.save(
-        PlatformUserRole,
-        manager.create(PlatformUserRole, {
-          platformRoleId: role.id,
-          platformUserId: user.id,
+        PlatformMembership,
+        manager.create(PlatformMembership, {
+          accountId: account.id,
+          removedAt: null,
+          roleId: role.id,
+          status: "active",
         }),
       );
       const permissions = await manager.find(Permission, {
@@ -101,17 +108,17 @@ export class InfrastructureBootstrapController {
       const rows = permissions
         .filter((permission) => permission.defaultRoles?.includes("platform-admin"))
         .map((permission) =>
-          this.platformRolePermissionRepository.create({
+          this.rolePermissionRepository.create({
             enabled: true,
             permissionId: permission.id,
-            platformRoleId: role.id,
+            roleId: role.id,
           }),
         );
-      if (rows.length) await manager.save(PlatformRolePermission, rows);
+      if (rows.length) await manager.save(RolePermission, rows);
     });
 
-    return this.authService.loginPlatform(
-      { email, password },
+    return this.authService.login(
+      { contextType: "platform", email, password },
       request,
       response,
     );

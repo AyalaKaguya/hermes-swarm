@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { User, UserNotification, UserOrganization } from "@hermes-swarm/core";
+import { Account, UserNotification } from "@hermes-swarm/core";
 import { NotificationsService } from "./notifications.service.js";
 
 describe("NotificationsService", () => {
   it("normalizes notification list query limits before querying", async () => {
     const observedTakes: number[] = [];
-    const observedTenantIds: string[] = [];
+    const observedWorkspaceIds: string[] = [];
     const service = createNotificationsService(
       {
         find: async (options: any) => {
           observedTakes.push(options.take);
-          observedTenantIds.push(options.where.tenantId);
+          observedWorkspaceIds.push(options.where.workspaceId);
           return [];
         },
       } as any,
@@ -28,7 +28,7 @@ describe("NotificationsService", () => {
     await service.listForAuthorization("Bearer token", { take: 999 });
 
     assert.deepEqual(observedTakes, [50, 1, 100]);
-    assert.deepEqual(observedTenantIds, ["tenant-1", "tenant-1", "tenant-1"]);
+    assert.deepEqual(observedWorkspaceIds, ["workspace-1", "workspace-1", "workspace-1"]);
   });
 
   it("rejects invalid notification list filters before querying", async () => {
@@ -64,17 +64,12 @@ describe("NotificationsService", () => {
     assert.equal(queried, false);
   });
 
-  it("lets a user send organization-scoped notifications to active co-members", async () => {
+  it("lets a member send notifications to active workspace members", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const published: any[] = [];
     const service = createNotificationsService(
       notificationRepository.repository,
-      {
-        find: async () => [
-          { organizationId: "org-1", status: "active", userId: "sender" },
-          { organizationId: "org-1", status: "active", userId: "recipient" },
-        ],
-      } as any,
+      {} as any,
       {
         validateAccessToken: async () => ({ sessionId: "s1", userId: "sender" }),
       } as any,
@@ -88,7 +83,6 @@ describe("NotificationsService", () => {
     const result = await service.sendFromAuthorization("Bearer token", {
       body: "hello",
       kind: "success",
-      organizationId: "org-1",
       recipientUserIds: ["recipient", "recipient"],
       title: " Notice ",
     });
@@ -103,7 +97,7 @@ describe("NotificationsService", () => {
     assert.equal(published[0].userId, "recipient");
   });
 
-  it("uses the current tenant transaction before publishing realtime events", async () => {
+  it("uses the current workspace transaction before publishing realtime events", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const published: any[] = [];
     const service = createNotificationsService(
@@ -232,7 +226,7 @@ describe("NotificationsService", () => {
     assert.equal(notificationRepository.saved.length, 0);
   });
 
-  it("routes notifications by tenant recipient without organization destinations", async () => {
+  it("routes notifications directly by workspace recipient", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const service = createNotificationsService(
       notificationRepository.repository,
@@ -251,20 +245,20 @@ describe("NotificationsService", () => {
     assert.equal(notificationRepository.saved[0]?.recipientUserId, "recipient");
   });
 
-  it("rejects recipients that are outside the active tenant", async () => {
+  it("rejects recipients that are outside the active workspace", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const service = createNotificationsService(
       notificationRepository.repository,
       {} as any,
       {} as any,
       {} as any,
-      { tenantId: "tenant-1", userIds: ["inside"] },
+      { workspaceId: "workspace-1", userIds: ["inside"] },
     );
 
     await assert.rejects(
       () =>
         service.createForUser({
-          recipientUserId: "other-tenant-user",
+          recipientUserId: "other-workspace-user",
           title: "Notice",
         }),
       BadRequestException,
@@ -339,7 +333,7 @@ describe("NotificationsService", () => {
       "dismissedAt",
       "recipientUserId",
       "status",
-      "tenantId",
+      "workspaceId",
     ]);
   });
 
@@ -368,27 +362,26 @@ describe("NotificationsService", () => {
 
 function createNotificationsService(
   notificationRepository: any,
-  membershipRepository: any,
+  _legacyRepository: any,
   authSessionService: any,
   realtimeEventBus: any,
-  options: { tenantId?: string; userIds?: string[] } = {},
+  options: { workspaceId?: string; userIds?: string[] } = {},
 ) {
-  const tenantId = options.tenantId ?? "tenant-1";
+  const workspaceId = options.workspaceId ?? "workspace-1";
   const userRepository = {
     find: async ({ where }: any) => {
       const requested = where.id?._value ?? where.id?.value ?? [];
       const allowed = options.userIds ?? requested;
       return requested
         .filter((id: string) => allowed.includes(id))
-        .map((id: string) => ({ id, status: "active", tenantId }));
+        .map((id: string) => ({ id, status: "active", workspaceId }));
     },
   };
-  const tenantContext = {
-    current: () => ({ tenantId }),
+  const workspaceContext = {
+    current: () => ({ workspaceId }),
     repository: (target: unknown) => {
       if (target === UserNotification) return notificationRepository;
-      if (target === UserOrganization) return membershipRepository;
-      if (target === User) return userRepository;
+      if (target === Account) return userRepository;
       throw new Error("Unexpected repository");
     },
   };
@@ -397,19 +390,19 @@ function createNotificationsService(
         ...authSessionService,
         validateAccessToken: async (...args: any[]) => {
           const session = await authSessionService.validateAccessToken(...args);
-          return { tenantId: session.tenantId ?? tenantId, ...session };
+          return { workspaceId: session.workspaceId ?? workspaceId, ...session };
         },
       }
     : authSessionService;
   const eventBus = realtimeEventBus?.publishToUser
     ? {
         ...realtimeEventBus,
-        publishToUser: (_tenantId: string, userId: string, event: unknown) =>
+        publishToUser: (_workspaceId: string, userId: string, event: unknown) =>
           realtimeEventBus.publishToUser(userId, event),
       }
     : realtimeEventBus;
   return new NotificationsService(
-    tenantContext as any,
+    workspaceContext as any,
     sessionService,
     eventBus,
   );

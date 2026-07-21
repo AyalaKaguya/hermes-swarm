@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import { PlatformRolesService } from "./platform-roles.service.js";
 
-describe("PlatformRolesService independent platform roles", () => {
-  it("creates roles in the dedicated platform role repository", async () => {
+describe("PlatformRolesService unified roles", () => {
+  it("creates a platform-scoped role in the unified role repository", async () => {
     const saved: any[] = [];
     const service = createService({
       roleRepository: repository([], saved),
@@ -14,7 +14,7 @@ describe("PlatformRolesService independent platform roles", () => {
 
     assert.equal(role.scope, "platform");
     assert.equal(saved[0]?.name, "support-ops");
-    assert.equal("tenantId" in saved[0], false);
+    assert.equal(saved[0]?.workspaceId, null);
   });
 
   it("keeps the system platform-admin role immutable", async () => {
@@ -26,6 +26,8 @@ describe("PlatformRolesService independent platform roles", () => {
           label: "Platform Admin",
           name: "platform-admin",
           rolePermissions: [],
+          scope: "platform",
+          workspaceId: null,
         },
       ]),
     });
@@ -36,7 +38,7 @@ describe("PlatformRolesService independent platform roles", () => {
     );
   });
 
-  it("replaces permissions through PlatformRolePermission", async () => {
+  it("replaces permissions through RolePermission", async () => {
     const deleted: unknown[] = [];
     const saved: any[] = [];
     const role = {
@@ -45,16 +47,19 @@ describe("PlatformRolesService independent platform roles", () => {
       label: "Support",
       name: "support",
       rolePermissions: [],
+      scope: "platform",
+      workspaceId: null,
     };
     const service = createService({
       permissionRepository: repository([
-        { code: "tenant.application.approve:platform", id: "permission-1", scope: "platform" },
+        { code: "workspace.application.approve:platform", id: "permission-1", scope: "platform" },
       ]),
       rolePermissionRepository: {
         create: (value: any) => value,
         manager: {
           transaction: async (work: any) =>
             work({
+              create: (_target: unknown, value: any) => value,
               delete: async (...args: unknown[]) => deleted.push(args),
               save: async (_target: unknown, rows: any[]) => {
                 saved.push(...rows);
@@ -68,7 +73,7 @@ describe("PlatformRolesService independent platform roles", () => {
 
     await service.replacePermissions("role-1", {
       permissions: [
-        { enabled: true, permission: "tenant.application.approve:platform" },
+        { enabled: true, permission: "workspace.application.approve:platform" },
       ],
     });
 
@@ -76,7 +81,7 @@ describe("PlatformRolesService independent platform roles", () => {
     assert.deepEqual(saved[0], {
       enabled: true,
       permissionId: "permission-1",
-      platformRoleId: "role-1",
+      roleId: "role-1",
     });
   });
 });
@@ -101,7 +106,11 @@ function repository(items: any[], saved: any[] = []) {
     find: async () => items,
     findOne: async ({ where }: any) =>
       items.find((item) =>
-        Object.entries(where).every(([key, value]) => item[key] === value),
+        Object.entries(where).every(([key, value]) =>
+          key === "workspaceId" && typeof value === "object"
+            ? item[key] == null
+            : item[key] === value,
+        ),
       ) ?? null,
     manager: { transaction: async (work: any) => work({}) },
     save: async (value: any) => {

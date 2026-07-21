@@ -2,8 +2,7 @@ export const PERMISSION_ACTIONS = [] as const;
 
 export const PERMISSION_SCOPES = [
   "platform",
-  "tenant",
-  "organization",
+  "workspace",
   "own",
 ] as const;
 

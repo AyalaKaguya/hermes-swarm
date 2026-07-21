@@ -1,4 +1,4 @@
-export { TenantSetting } from "./tenant-setting.entity.js";
+export { WorkspaceSetting } from "./workspace-setting.entity.js";
 export {
   PlatformSetting,
   PlatformSetting as SystemSetting,

@@ -1,15 +1,15 @@
 import { Column, Entity, Index } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
 
 @Entity({ name: "email_templates" })
-@Index("UQ_email_templates_tenant_name_language", ["tenantId", "name", "languageCode"], {
+@Index("UQ_email_templates_workspace_name_language", ["workspaceId", "name", "languageCode"], {
   unique: true,
 })
 /**
  * Stores customizable email template content scoped globally or to one
- * organization.
+ * workspace.
  */
-export class EmailTemplate extends TenantOwnedBaseEntity {
+export class EmailTemplate extends WorkspaceOwnedBaseEntity {
   /**
    * Stable template name, such as welcome-user or password-reset.
    */

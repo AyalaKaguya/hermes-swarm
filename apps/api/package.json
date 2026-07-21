@@ -23,6 +23,8 @@
     "clean": "node -e \"const {rmSync}=require('node:fs'); for (const path of ['dist','tsconfig.tsbuildinfo']) rmSync(path,{recursive:true,force:true})\""
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
+    "@hermes-swarm/api-contracts": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@hermes-swarm/rbac": "workspace:*",
     "@hermes-swarm/rbac-api": "workspace:*",
@@ -37,7 +39,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "^1.0.0"
+    "typeorm": "^1.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.1.27",
@@ -48,13 +51,20 @@
   },
   "nx": {
     "projectType": "application",
-    "tags": ["type:app", "scope:backend"],
+    "tags": [
+      "type:app",
+      "scope:backend"
+    ],
     "targets": {
       "dev": {
-        "dependsOn": ["^build"]
+        "dependsOn": [
+          "^build"
+        ]
       },
       "openapi:generate": {
-        "dependsOn": ["build"],
+        "dependsOn": [
+          "build"
+        ],
         "command": "node dist/openapi.generate.js",
         "options": {
           "cwd": "apps/api"

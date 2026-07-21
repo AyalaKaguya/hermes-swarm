@@ -11,126 +11,108 @@ describe("development seed contract", () => {
       /DEV_SEED_OWNER_PASSWORD is required/,
     );
     assert.throws(
-      () =>
-        readDevelopmentSeedConfig({
-          DEV_SEED_OWNER_PASSWORD: "owner-pass",
-        }),
+      () => readDevelopmentSeedConfig({ DEV_SEED_OWNER_PASSWORD: "owner-pass" }),
       /DEV_SEED_PLATFORM_ADMIN_PASSWORD is required/,
     );
   });
 
   it("normalizes the repeatable development identities", () => {
     const config = readDevelopmentSeedConfig({
-      DEV_SEED_ORGANIZATION_SLUG: " Main Office ",
       DEV_SEED_OWNER_EMAIL: "OWNER@EXAMPLE.COM",
       DEV_SEED_OWNER_PASSWORD: "owner-pass",
       DEV_SEED_PLATFORM_ADMIN_EMAIL: "ADMIN@EXAMPLE.COM",
       DEV_SEED_PLATFORM_ADMIN_PASSWORD: "platform-pass",
-      DEV_SEED_TENANT_SLUG: "Demo Tenant",
+      DEV_SEED_WORKSPACE_SLUG: "Demo Workspace",
     });
-    assert.equal(config.organizationSlug, "main-office");
     assert.equal(config.ownerEmail, "owner@example.com");
     assert.equal(config.platformAdminEmail, "admin@example.com");
-    assert.equal(config.tenantSlug, "demo-tenant");
+    assert.equal(config.workspaceSlug, "demo-workspace");
   });
 
-  it("rebuilds platform, tenant, organization and navigation permissions", () => {
+  it("rebuilds only platform, workspace, own and navigation permissions", () => {
     const catalog = buildSeedPermissionCatalog();
     assert.ok(catalog.some((item) => item.scope === "platform"));
-    assert.ok(catalog.some((item) => item.scope === "tenant"));
-    assert.ok(catalog.some((item) => item.scope === "organization"));
-    assert.equal(catalog.some((item) => item.scope === "department"), false);
+    assert.ok(catalog.some((item) => item.scope === "workspace"));
+    assert.ok(catalog.some((item) => item.scope === "own"));
     assert.ok(catalog.some((item) => item.source === "navigation"));
     assert.equal(new Set(catalog.map((item) => item.id)).size, catalog.length);
+    assert.deepEqual(
+      [...new Set(catalog.map((item) => item.scope))].sort(),
+      ["own", "platform", "workspace"],
+    );
   });
 
-  it("grants tenant users the personal integration token contract", () => {
+  it("grants workspace members the personal integration token contract", () => {
     const catalog = buildSeedPermissionCatalog();
-    const operations = ["capabilities", "list", "create", "revoke"];
-
-    for (const operation of operations) {
+    for (const operation of ["capabilities", "list", "create", "revoke"]) {
       const definition = catalog.find(
         (item) =>
-          item.id ===
-          `integration_token.personal_api_token.${operation}:own`,
+          item.id === `integration_token.personal_api_token.${operation}:own`,
       );
       assert.deepEqual(definition?.defaultRoles, [
-        "tenant-owner",
-        "tenant-admin",
-        "tenant-member",
+        "workspace-owner",
+        "workspace-admin",
+        "workspace-member",
       ]);
     }
   });
 
-  it("grants tenant roles the organization directory contract", () => {
-    const catalog = buildSeedPermissionCatalog();
-    const expectedRoles = new Map([
-      ["list", ["tenant-owner", "tenant-admin", "tenant-member"]],
-      ["create", ["tenant-owner", "tenant-admin"]],
-      ["delete", ["tenant-owner", "tenant-admin"]],
-    ]);
-
-    for (const [operation, roles] of expectedRoles) {
-      const definition = catalog.find(
-        (item) =>
-          item.id === `organization.tenant_organization.${operation}:tenant`,
-      );
-      assert.deepEqual(definition?.defaultRoles, roles);
-    }
-  });
-
-  it("grants the tenant owner every tenant-scoped operation", () => {
-    const tenantDefinitions = buildSeedPermissionCatalog().filter(
-      (item) => item.scope === "tenant",
+  it("grants the workspace owner every workspace-scoped operation", () => {
+    const workspaceDefinitions = buildSeedPermissionCatalog().filter(
+      (item) => item.scope === "workspace",
     );
 
-    assert.ok(tenantDefinitions.length > 0);
+    assert.ok(workspaceDefinitions.length > 0);
     assert.deepEqual(
-      tenantDefinitions
-        .filter((item) => !item.defaultRoles.includes("tenant-owner"))
+      workspaceDefinitions
+        .filter((item) => !item.defaultRoles.includes("workspace-owner"))
         .map((item) => item.id),
       [],
     );
     assert.ok(
-      tenantDefinitions.some(
-        (item) => item.id === "user.tenant_user.delete:tenant",
+      workspaceDefinitions.some(
+        (item) => item.id === "membership.workspace_member.remove:workspace",
       ),
     );
     assert.ok(
-      tenantDefinitions.some(
-        (item) => item.id === "mail.tenant_mail.delete_template:tenant",
+      workspaceDefinitions.some(
+        (item) => item.id === "ticket.conversation.submit:workspace",
+      ),
+    );
+    assert.ok(
+      workspaceDefinitions.some(
+        (item) => item.id === "ticket.conversation.handle:workspace",
       ),
     );
   });
 
   it("grants ticket participants own-resource conversation permissions", () => {
     const catalog = buildSeedPermissionCatalog();
-    for (const operation of ["view", "list_messages", "send_message", "close", "mark_read"]) {
+    for (const operation of [
+      "view",
+      "list_messages",
+      "send_message",
+      "close",
+      "mark_read",
+    ]) {
       const definition = catalog.find(
         (item) => item.id === `ticket.conversation.${operation}:own`,
       );
-      assert.ok(definition?.defaultRoles.includes("tenant-owner"));
-      assert.ok(definition?.defaultRoles.includes("tenant-member"));
-      assert.equal(definition?.defaultRoles.includes("owner"), false);
-      assert.equal(definition?.defaultRoles.includes("member"), false);
+      assert.ok(definition?.defaultRoles.includes("workspace-owner"));
+      assert.ok(definition?.defaultRoles.includes("workspace-member"));
     }
   });
 
-  it("covers the default organization business states without unsupported values", () => {
+  it("covers only workspace member and ticket business states", () => {
     assert.deepEqual(DEVELOPMENT_FIXTURE_SCENARIOS.ticketStatuses, [
       "open",
       "closed",
       "archived",
     ]);
-    assert.deepEqual(DEVELOPMENT_FIXTURE_SCENARIOS.organizationTree, [
-      "root",
-      "engineering",
-      "support",
+    assert.deepEqual(DEVELOPMENT_FIXTURE_SCENARIOS.userStates, [
+      "active",
+      "disabled",
     ]);
-    assert.ok(DEVELOPMENT_FIXTURE_SCENARIOS.userStates.includes("disabled"));
-    assert.ok(
-      DEVELOPMENT_FIXTURE_SCENARIOS.userStates.includes("multi-organization"),
-    );
   });
 
   it("uses only inactive integration token fixtures", async () => {

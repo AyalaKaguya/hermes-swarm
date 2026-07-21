@@ -13,7 +13,7 @@ import {
   PlatformEmailTemplate,
   PlatformSmtp,
 } from "@hermes-swarm/core";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import Handlebars from "handlebars";
 import { QueryFailedError, Repository, type EntityManager } from "typeorm";
@@ -67,7 +67,7 @@ export class MailService implements OnModuleInit {
     private readonly platformTemplateRepository: Repository<PlatformEmailTemplate>,
     @InjectRepository(PlatformSmtp, PLATFORM_DATA_SOURCE)
     private readonly platformSmtpRepository: Repository<PlatformSmtp>,
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async onModuleInit() {
@@ -83,12 +83,12 @@ export class MailService implements OnModuleInit {
     return record ? toSmtpDto(record) : null;
   }
 
-  async getTenantSmtp() {
+  async getWorkspaceSmtp() {
     const record = await this.findGlobalSmtpRecord();
     return record ? toSmtpDto(record) : null;
   }
 
-  async saveTenantSmtp(payload: SmtpPayload) {
+  async saveWorkspaceSmtp(payload: SmtpPayload) {
     const parsedPayload = parseSmtpPayload(payload);
     const entity = await this.findOrCreateSmtpRecord();
     applySmtpPayload(entity, parsedPayload);
@@ -122,34 +122,29 @@ export class MailService implements OnModuleInit {
     return validateSmtpPayload(parseSmtpPayload(payload));
   }
 
-  async listTemplates(organizationId: string | null) {
+  async listPlatformTemplates() {
     await this.ensureDefaultPlatformTemplates();
-
-    if (organizationId === null) {
-      return (
-        await this.platformTemplateRepository.find({
-          order: { name: "ASC", languageCode: "ASC" },
-        })
-      ).map((template) => toTemplateDto(template));
-    }
-
-    return this.listTenantTemplates();
+    return (
+      await this.platformTemplateRepository.find({
+        order: { name: "ASC", languageCode: "ASC" },
+      })
+    ).map((template) => toTemplateDto(template));
   }
 
-  async listTenantTemplates() {
+  async listWorkspaceTemplates() {
     await Promise.all([
       this.ensureDefaultPlatformTemplates(),
-      this.ensureDefaultTenantTemplates(this.requireTenantId()),
+      this.ensureDefaultWorkspaceTemplates(this.requireWorkspaceId()),
     ]);
-    const [platformTemplates, tenantTemplates] = await Promise.all([
+    const [platformTemplates, workspaceTemplates] = await Promise.all([
       this.platformTemplateRepository.find({
         order: { name: "ASC", languageCode: "ASC" },
       }).then((templates) =>
-        templates.filter((template) => isTenantMailTemplate(template.name)),
+        templates.filter((template) => isWorkspaceMailTemplate(template.name)),
       ),
       this.emailTemplateRepository.find({
         order: { name: "ASC", languageCode: "ASC" },
-        where: { tenantId: this.requireTenantId() },
+        where: { workspaceId: this.requireWorkspaceId() },
       }),
     ]);
     const byKey = new Map(
@@ -158,7 +153,7 @@ export class MailService implements OnModuleInit {
         toTemplateDto(item, { hasPlatformDefault: true, inherited: true }),
       ]),
     );
-    for (const template of tenantTemplates) {
+    for (const template of workspaceTemplates) {
       byKey.set(
         templateKey(template),
         toTemplateDto(template, { hasPlatformDefault: true, inherited: false }),
@@ -167,7 +162,7 @@ export class MailService implements OnModuleInit {
     return [...byKey.values()];
   }
 
-  async createTenantTemplate(payload: EmailTemplatePayload) {
+  async createWorkspaceTemplate(payload: EmailTemplatePayload) {
     const parsed = parseTemplatePayload(payload);
     const template = this.emailTemplateRepository.create({
       description: normalizeOptionalText(parsed.description, 240),
@@ -177,74 +172,57 @@ export class MailService implements OnModuleInit {
       mjml: normalizeOptionalText(parsed.mjml),
       name: requireText(parsed.name, "模板名称", 120),
       subject: normalizeOptionalText(parsed.subject, 240),
-      tenantId: this.requireTenantId(),
+      workspaceId: this.requireWorkspaceId(),
     });
     return toTemplateDto(await saveTemplateOrThrow(this.emailTemplateRepository, template));
   }
 
-  async updateTenantTemplate(templateId: string, payload: EmailTemplatePayload) {
+  async updateWorkspaceTemplate(templateId: string, payload: EmailTemplatePayload) {
     const template = await this.getTemplateOrThrow(templateId);
     applyTemplatePatch(template, parseTemplatePayload(payload));
     return toTemplateDto(await saveTemplateOrThrow(this.emailTemplateRepository, template));
   }
 
-  async deleteTenantTemplate(templateId: string) {
+  async deleteWorkspaceTemplate(templateId: string) {
     const template = await this.getTemplateOrThrow(templateId);
     if (template.isSystem) throw new BadRequestException("系统模板不能删除");
     await this.emailTemplateRepository.remove(template);
     return { id: templateId };
   }
 
-  async createTemplate(organizationId: string | null, payload: EmailTemplatePayload) {
+  async createPlatformTemplate(payload: EmailTemplatePayload) {
     const parsedPayload = parseTemplatePayload(payload);
-    if (organizationId === null) {
-      const template = this.platformTemplateRepository.create({
-        description: normalizeOptionalText(parsedPayload.description, 240),
-        hbs: requireText(parsedPayload.hbs, "模板内容"),
-        isSystem: normalizeBoolean(parsedPayload.isSystem, "系统模板"),
-        languageCode: requireText(parsedPayload.languageCode, "语言编码", 16),
-        mjml: normalizeOptionalText(parsedPayload.mjml),
-        name: requireText(parsedPayload.name, "模板名称", 120),
-        subject: normalizeOptionalText(parsedPayload.subject, 240),
-      });
-      return toTemplateDto(
-        await saveTemplateOrThrow(this.platformTemplateRepository, template),
-      );
-    }
-    return this.createTenantTemplate(parsedPayload);
+    const template = this.platformTemplateRepository.create({
+      description: normalizeOptionalText(parsedPayload.description, 240),
+      hbs: requireText(parsedPayload.hbs, "模板内容"),
+      isSystem: normalizeBoolean(parsedPayload.isSystem, "系统模板"),
+      languageCode: requireText(parsedPayload.languageCode, "语言编码", 16),
+      mjml: normalizeOptionalText(parsedPayload.mjml),
+      name: requireText(parsedPayload.name, "模板名称", 120),
+      subject: normalizeOptionalText(parsedPayload.subject, 240),
+    });
+    return toTemplateDto(
+      await saveTemplateOrThrow(this.platformTemplateRepository, template),
+    );
   }
 
-  async updateTemplate(
-    organizationId: string | null,
+  async updatePlatformTemplate(
     templateId: string,
     payload: EmailTemplatePayload,
   ) {
     const parsedPayload = parseTemplatePayload(payload);
-    if (organizationId === null) {
-      const template = await this.getPlatformTemplateOrThrow(templateId);
-      applyTemplatePatch(template, parsedPayload);
-      return toTemplateDto(
-        await saveTemplateOrThrow(this.platformTemplateRepository, template),
-      );
-    }
-    return this.updateTenantTemplate(templateId, parsedPayload);
+    const template = await this.getPlatformTemplateOrThrow(templateId);
+    applyTemplatePatch(template, parsedPayload);
+    return toTemplateDto(
+      await saveTemplateOrThrow(this.platformTemplateRepository, template),
+    );
   }
 
-  async deleteTemplate(organizationId: string | null, templateId: string) {
-    if (organizationId === null) {
-      const template = await this.getPlatformTemplateOrThrow(templateId);
-      if (template.isSystem) throw new BadRequestException("系统模板不能删除");
-      await this.platformTemplateRepository.remove(template);
-      return { id: templateId };
-    }
-    return this.deleteTenantTemplate(templateId);
-  }
-
-  async ensureDefaultTemplatesForOrganization(
-    _organizationId: string,
-    manager?: EntityManager,
-  ) {
-    await this.ensureDefaultTenantTemplates(this.requireTenantId(), manager);
+  async deletePlatformTemplate(templateId: string) {
+    const template = await this.getPlatformTemplateOrThrow(templateId);
+    if (template.isSystem) throw new BadRequestException("系统模板不能删除");
+    await this.platformTemplateRepository.remove(template);
+    return { id: templateId };
   }
 
   async ensureDefaultPlatformTemplates(manager?: EntityManager) {
@@ -284,7 +262,7 @@ export class MailService implements OnModuleInit {
     const logs = await this.emailLogRepository.find({
       where: {
         isArchived: false,
-        tenantId: this.requireTenantId(),
+        workspaceId: this.requireWorkspaceId(),
       },
       order: { createdAt: "DESC" },
     });
@@ -297,7 +275,7 @@ export class MailService implements OnModuleInit {
       content: normalizeOptionalText(parsedPayload.content),
       email: requireText(parsedPayload.email, "收件邮箱", 240),
       isArchived: normalizeBoolean(parsedPayload.isArchived, "归档状态"),
-      tenantId: this.requireTenantId(),
+      workspaceId: this.requireWorkspaceId(),
       status: normalizeEmailLogStatus(parsedPayload.status),
       subject: normalizeOptionalText(parsedPayload.subject, 240),
       templateName: normalizeOptionalText(parsedPayload.templateName, 120),
@@ -309,7 +287,7 @@ export class MailService implements OnModuleInit {
     const template = await this.emailTemplateRepository.findOne({
       where: {
         id: templateId,
-        tenantId: this.requireTenantId(),
+        workspaceId: this.requireWorkspaceId(),
       },
     });
     if (!template) throw new NotFoundException("邮件模板不存在");
@@ -326,14 +304,14 @@ export class MailService implements OnModuleInit {
 
   private async findGlobalSmtpRecord() {
     return this.smtpRepository.findOne({
-      where: { tenantId: this.requireTenantId() },
+      where: { workspaceId: this.requireWorkspaceId() },
       order: { createdAt: "DESC" },
     });
   }
 
   private async findOrCreateSmtpRecord() {
     const existing = await this.smtpRepository.findOne({
-      where: { tenantId: this.requireTenantId() },
+      where: { workspaceId: this.requireWorkspaceId() },
       order: { createdAt: "DESC" },
     });
     return (
@@ -341,7 +319,7 @@ export class MailService implements OnModuleInit {
       this.smtpRepository.create({
         fromAddress: null,
         host: "",
-        tenantId: this.requireTenantId(),
+        workspaceId: this.requireWorkspaceId(),
         password: null,
         port: 587,
         secure: false,
@@ -350,16 +328,16 @@ export class MailService implements OnModuleInit {
     );
   }
 
-  private async ensureDefaultTenantTemplates(
-    tenantId: string,
+  private async ensureDefaultWorkspaceTemplates(
+    workspaceId: string,
     manager: EntityManager = this.emailTemplateRepository.manager,
   ) {
-    for (const definition of DEFAULT_TENANT_EMAIL_TEMPLATES) {
+    for (const definition of DEFAULT_WORKSPACE_EMAIL_TEMPLATES) {
       const existing = await manager.findOne(EmailTemplate, {
         where: {
           languageCode: definition.languageCode,
           name: definition.name,
-          tenantId,
+          workspaceId,
         },
       });
       if (existing) continue;
@@ -369,7 +347,7 @@ export class MailService implements OnModuleInit {
           this.emailTemplateRepository.create({
             ...definition,
             isSystem: true,
-            tenantId,
+            workspaceId,
           }),
         );
       } catch (error) {
@@ -379,24 +357,24 @@ export class MailService implements OnModuleInit {
     }
   }
 
-  private requireTenantId() {
-    const tenantId = this.tenantContext.current(false)?.tenantId;
-    if (!tenantId) throw new BadRequestException("请求缺少租户上下文");
-    return tenantId;
+  private requireWorkspaceId() {
+    const workspaceId = this.workspaceContext.current(false)?.workspaceId;
+    if (!workspaceId) throw new BadRequestException("请求缺少工作空间上下文");
+    return workspaceId;
   }
 
   private get smtpRepository() {
-    return this.tenantContext.current(false)?.manager?.getRepository(CustomSmtp) ??
+    return this.workspaceContext.current(false)?.manager?.getRepository(CustomSmtp) ??
       this.smtpBaseRepository;
   }
 
   private get emailTemplateRepository() {
-    return this.tenantContext.current(false)?.manager?.getRepository(EmailTemplate) ??
+    return this.workspaceContext.current(false)?.manager?.getRepository(EmailTemplate) ??
       this.emailTemplateBaseRepository;
   }
 
   private get emailLogRepository() {
-    return this.tenantContext.current(false)?.manager?.getRepository(EmailLog) ??
+    return this.workspaceContext.current(false)?.manager?.getRepository(EmailLog) ??
       this.emailLogBaseRepository;
   }
 }
@@ -609,18 +587,18 @@ function isUniqueConstraintError(error: unknown) {
   return driverError?.code === "23505";
 }
 
-const DEFAULT_TENANT_EMAIL_TEMPLATES = [
+const DEFAULT_WORKSPACE_EMAIL_TEMPLATES = [
   {
-    description: "发送给被邀请加入组织的用户。",
+    description: "发送给被邀请加入工作空间的用户。",
     hbs: [
-      "<p>{{organizationName}} 邀请你加入组织。</p>",
+      "<p>{{workspaceName}} 邀请你加入工作空间。</p>",
       "<p><a href=\"{{inviteLink}}\">打开邀请链接</a></p>",
       "<p>有效期：{{expiresAt}}</p>",
     ].join("\n"),
     languageCode: "zh-CN",
     mjml: null,
-    name: "organization-invite",
-    subject: "邀请加入 {{organizationName}}",
+    name: "workspace-invite",
+    subject: "邀请加入 {{workspaceName}}",
   },
   {
     description: "发送给请求重置密码的用户。",
@@ -635,16 +613,16 @@ const DEFAULT_TENANT_EMAIL_TEMPLATES = [
     subject: "重置密码",
   },
   {
-    description: "Sent to users invited to join an organization.",
+    description: "Sent to users invited to join a workspace.",
     hbs: [
-      "<p>{{organizationName}} invited you to join the organization.</p>",
+      "<p>{{workspaceName}} invited you to join the workspace.</p>",
       "<p><a href=\"{{inviteLink}}\">Open invitation</a></p>",
       "<p>Expires at: {{expiresAt}}</p>",
     ].join("\n"),
     languageCode: "en",
     mjml: null,
-    name: "organization-invite",
-    subject: "Invitation to join {{organizationName}}",
+    name: "workspace-invite",
+    subject: "Invitation to join {{workspaceName}}",
   },
   {
     description: "Sent to users who request a password reset.",
@@ -662,20 +640,46 @@ const DEFAULT_TENANT_EMAIL_TEMPLATES = [
 
 const DEFAULT_CONTROL_PLANE_EMAIL_TEMPLATES = [
   {
-    description: "发送给租户申请人的邮箱验证邮件。",
+    description: "发送给新平台成员的账号邀请邮件。",
+    hbs: [
+      "<p>你好：</p>",
+      "<p>你已受邀加入 Hermes Swarm 平台控制台。</p>",
+      "<p><a href=\"{{inviteLink}}\">接受邀请并创建账号</a></p>",
+      "<p>邀请有效期至 {{expiresAt}}。</p>",
+    ].join("\n"),
+    languageCode: "zh-CN",
+    mjml: null,
+    name: "platform-invite",
+    subject: "加入 Hermes Swarm 平台控制台",
+  },
+  {
+    description: "Sent to new platform members to create their account.",
+    hbs: [
+      "<p>Hello,</p>",
+      "<p>You have been invited to the Hermes Swarm platform console.</p>",
+      "<p><a href=\"{{inviteLink}}\">Accept the invitation and create your account</a></p>",
+      "<p>This invitation is valid until {{expiresAt}}.</p>",
+    ].join("\n"),
+    languageCode: "en",
+    mjml: null,
+    name: "platform-invite",
+    subject: "Join the Hermes Swarm platform console",
+  },
+  {
+    description: "发送给工作空间申请人的邮箱验证邮件。",
     hbs: [
       "<p>{{ownerDisplayName}}，你好：</p>",
-      "<p>请验证邮箱，以继续申请租户 {{requestedName}}。</p>",
+      "<p>请验证邮箱，以继续申请工作空间 {{requestedName}}。</p>",
       "<p><a href=\"{{verificationLink}}\">验证邮箱</a></p>",
       "<p>如果不再申请，可<a href=\"{{cancellationLink}}\">取消申请</a>。</p>",
     ].join("\n"),
     languageCode: "zh-CN",
     mjml: null,
-    name: "tenant-application-verification",
+    name: "workspace-application-verification",
     subject: "验证邮箱以继续申请 {{requestedName}}",
   },
   {
-    description: "Sent to tenant applicants to verify their email address.",
+    description: "Sent to workspace applicants to verify their email address.",
     hbs: [
       "<p>Hello {{ownerDisplayName}},</p>",
       "<p>Verify your email to continue the application for {{requestedName}}.</p>",
@@ -684,44 +688,44 @@ const DEFAULT_CONTROL_PLANE_EMAIL_TEMPLATES = [
     ].join("\n"),
     languageCode: "en",
     mjml: null,
-    name: "tenant-application-verification",
+    name: "workspace-application-verification",
     subject: "Verify your email for {{requestedName}}",
   },
   {
-    description: "租户获批后发送给 Owner 的账号激活邮件。",
+    description: "工作空间获批后发送给 Owner 的账号激活邮件。",
     hbs: [
       "<p>{{ownerDisplayName}}，你好：</p>",
-      "<p>租户 {{tenantName}} 已获批准。</p>",
-      "<p><a href=\"{{activationLink}}\">设置密码并激活租户</a></p>",
+      "<p>工作空间 {{workspaceName}} 已获批准。</p>",
+      "<p><a href=\"{{activationLink}}\">设置密码并激活工作空间</a></p>",
       "<p>激活链接将在 {{expiresIn}} 后失效。</p>",
     ].join("\n"),
     languageCode: "zh-CN",
     mjml: null,
-    name: "tenant-owner-activation",
-    subject: "激活租户 {{tenantName}}",
+    name: "workspace-owner-activation",
+    subject: "激活工作空间 {{workspaceName}}",
   },
   {
-    description: "Sent to the owner after a tenant application is approved.",
+    description: "Sent to the owner after a workspace application is approved.",
     hbs: [
       "<p>Hello {{ownerDisplayName}},</p>",
-      "<p>Your tenant {{tenantName}} has been approved.</p>",
-      "<p><a href=\"{{activationLink}}\">Set a password and activate the tenant</a></p>",
+      "<p>Your workspace {{workspaceName}} has been approved.</p>",
+      "<p><a href=\"{{activationLink}}\">Set a password and activate the workspace</a></p>",
       "<p>This activation link expires in {{expiresIn}}.</p>",
     ].join("\n"),
     languageCode: "en",
     mjml: null,
-    name: "tenant-owner-activation",
-    subject: "Activate {{tenantName}}",
+    name: "workspace-owner-activation",
+    subject: "Activate {{workspaceName}}",
   },
 ] satisfies EmailTemplatePayload[];
 
 const DEFAULT_PLATFORM_EMAIL_TEMPLATES = [
-  ...DEFAULT_TENANT_EMAIL_TEMPLATES,
+  ...DEFAULT_WORKSPACE_EMAIL_TEMPLATES,
   ...DEFAULT_CONTROL_PLANE_EMAIL_TEMPLATES,
 ];
 
-function isTenantMailTemplate(name: string) {
-  return DEFAULT_TENANT_EMAIL_TEMPLATES.some(
+function isWorkspaceMailTemplate(name: string) {
+  return DEFAULT_WORKSPACE_EMAIL_TEMPLATES.some(
     (definition) => definition.name === name,
   );
 }
@@ -732,12 +736,11 @@ const EMAIL_TEMPLATE_PREVIEW_LOCALS = {
   expiresIn: "30 minutes",
   inviteLink: "https://app.hermes.local/invitations/example",
   name: "Alex Chen",
-  organizationName: "Hermes Organization",
   ownerDisplayName: "Alex Chen",
   requestedName: "Hermes Development",
   resetLink: "https://app.hermes.local/reset-password/example",
   verificationLink: "https://app.hermes.local/apply?applicationId=example&token=example",
   cancellationLink: "https://app.hermes.local/apply?applicationId=example&cancelToken=example",
   activationLink: "https://app.hermes.local/reset-password?email=alex%40example.com&token=example",
-  tenantName: "Hermes Development",
+  workspaceName: "Hermes Development",
 };

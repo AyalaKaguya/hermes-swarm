@@ -1,6 +1,12 @@
-import type { Role, User } from "@hermes-swarm/core";
+import type {
+  Account,
+  Role,
+  RolePermission,
+  Workspace,
+  WorkspaceMembership,
+} from "@hermes-swarm/core";
 
-export function toUserDto(user: User, tenantRole: Role | null = null) {
+export function toAccountDto(user: Account) {
   return {
     avatarUrl: user.avatarUrl,
     createdAt: user.createdAt,
@@ -16,20 +22,63 @@ export function toUserDto(user: User, tenantRole: Role | null = null) {
     preferredLanguage: user.preferredLanguage,
     status: user.status,
     timeZone: user.timeZone,
-    tenantRole: tenantRole
-      ? {
-          color: tenantRole.color,
-          description: tenantRole.description,
-          displayName: tenantRole.displayName,
-          id: tenantRole.id,
-          isSystem: tenantRole.isSystem,
-          label: tenantRole.label,
-          name: tenantRole.name,
-          scope: tenantRole.scope,
-        }
-      : null,
     type: user.type,
     updatedAt: user.updatedAt,
     username: user.username,
+  };
+}
+
+export function toUserDto(user: Account, workspaceRole: Role | null = null) {
+  return {
+    ...toAccountDto(user),
+    workspaceRole: workspaceRole ? toRoleDto(workspaceRole) : null,
+  };
+}
+
+export function toWorkspaceMemberDto(
+  membership: WorkspaceMembership,
+  account: Account,
+  role: Role | null = membership.role ?? null,
+) {
+  return {
+    account: toAccountDto(account),
+    membershipId: membership.id,
+    removedAt: membership.removedAt,
+    role: role ? toRoleDto(role) : null,
+    status: membership.status,
+  };
+}
+
+export function toRoleDto(role: Role, permissions?: RolePermission[]) {
+  const result = {
+    color: role.color,
+    description: role.description,
+    displayName: role.displayName,
+    id: role.id,
+    isSystem: role.isSystem,
+    label: role.label,
+    name: role.name,
+    scope: role.scope,
+  };
+  return permissions === undefined
+    ? result
+    : {
+        ...result,
+        permissions: permissions.map((permission) => ({
+          enabled: permission.enabled,
+          id: permission.id,
+          permission: permission.permission,
+          permissionId: permission.permissionId,
+          roleId: permission.roleId,
+        })),
+      };
+}
+
+export function toWorkspaceDto(workspace: Workspace) {
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    slug: workspace.slug,
+    status: workspace.status,
   };
 }

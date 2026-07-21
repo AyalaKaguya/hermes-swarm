@@ -6,12 +6,11 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   Permission,
-  PlatformRole,
-  PlatformRolePermission,
-  PlatformUserRole,
-  PlatformUser,
+  PlatformMembership,
+  Role,
+  RolePermission,
 } from "@hermes-swarm/core";
-import { Repository } from "typeorm";
+import { IsNull, Repository } from "typeorm";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import type { ReplaceRolePermissionsPayload } from "../../common/admin-api.types.js";
 import type { PlatformRolePayload } from "./platform-roles.controller.js";
@@ -20,10 +19,10 @@ import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 @Injectable()
 export class PlatformRolesService {
   constructor(
-    @InjectRepository(PlatformRole, PLATFORM_DATA_SOURCE)
-    private readonly roleRepository: Repository<PlatformRole>,
-    @InjectRepository(PlatformRolePermission, PLATFORM_DATA_SOURCE)
-    private readonly rolePermissionRepository: Repository<PlatformRolePermission>,
+    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
+    private readonly roleRepository: Repository<Role>,
+    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
+    private readonly rolePermissionRepository: Repository<RolePermission>,
     @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
     private readonly permissionRepository: Repository<Permission>,
     private readonly grantPolicy: RoleGrantPolicyService =
@@ -33,7 +32,8 @@ export class PlatformRolesService {
   async list() {
     const roles = await this.roleRepository.find({
       order: { createdAt: "ASC" },
-      relations: { rolePermissions: { permission: true } },
+      relations: { rolePermissions: { permissionRecord: true } },
+      where: { scope: "platform", workspaceId: IsNull() },
     });
     return roles.map(toRoleDto);
   }
@@ -47,10 +47,14 @@ export class PlatformRolesService {
       return toRoleDto(
         await this.roleRepository.save(
           this.roleRepository.create({
+            color: normalizeNullableText(input.color),
             description: normalizeNullableText(input.description),
+            displayName: label,
             isSystem: false,
             label,
             name,
+            scope: "platform",
+            workspaceId: null,
           }),
         ),
       );
@@ -68,12 +72,14 @@ export class PlatformRolesService {
     this.assertMutableRole(role);
     if (input.displayName !== undefined) {
       role.label = requireText(input.displayName, "角色名称");
+      role.displayName = role.label;
     }
     if (input.name !== undefined) {
       const name = normalizeSlug(input.name, "platform-role");
       if (name !== role.name) await this.assertUniqueRoleName(name, role.id);
       role.name = name;
     }
+    if (input.color !== undefined) role.color = normalizeNullableText(input.color);
     if (input.description !== undefined) {
       role.description = normalizeNullableText(input.description);
     }
@@ -83,7 +89,7 @@ export class PlatformRolesService {
   async replacePermissions(
     roleId: string,
     payload: ReplaceRolePermissionsPayload,
-    actorUserId?: string,
+    actorAccountId?: string,
   ) {
     const role = await this.getRoleOrThrow(roleId);
     this.assertMutableRole(role);
@@ -91,24 +97,18 @@ export class PlatformRolesService {
     const permissions = await Promise.all(
       permissionKeys.map((key) => this.getPermissionOrThrow(key)),
     );
-    if (actorUserId) {
-      const actor = await this.roleRepository.manager.findOne(PlatformUser, {
-        relations: {
-          roles: {
-            platformRole: { rolePermissions: { permission: true } },
-          },
-        },
-        where: { id: actorUserId, status: "active" },
+    if (actorAccountId) {
+      const actor = await this.roleRepository.manager.findOne(PlatformMembership, {
+        relations: { role: { rolePermissions: { permissionRecord: true } } },
+        where: { accountId: actorAccountId, status: "active" },
       });
       const actorPermissions = [
         ...new Set(
-          (actor?.roles ?? []).flatMap((assignment) =>
-            (assignment.platformRole?.rolePermissions ?? [])
-              .filter((item) => item.enabled)
-              .flatMap((item) =>
-                item.permission?.code ? [item.permission.code] : [],
-              ),
-          ),
+          (actor?.role?.rolePermissions ?? [])
+            .filter((item) => item.enabled)
+            .flatMap((item) =>
+              item.permissionRecord?.code ? [item.permissionRecord.code] : [],
+            ),
         ),
       ];
       this.grantPolicy.assertCanReplacePermissions(
@@ -119,17 +119,15 @@ export class PlatformRolesService {
       );
     }
     return this.rolePermissionRepository.manager.transaction(async (manager) => {
-      await manager.delete(PlatformRolePermission, {
-        platformRoleId: role.id,
-      });
+      await manager.delete(RolePermission, { roleId: role.id });
       const rows = permissions.map((permission) =>
-        this.rolePermissionRepository.create({
+        manager.create(RolePermission, {
           enabled: true,
           permissionId: permission.id,
-          platformRoleId: role.id,
+          roleId: role.id,
         }),
       );
-      return rows.length ? manager.save(PlatformRolePermission, rows) : [];
+      return rows.length ? manager.save(RolePermission, rows) : [];
     });
   }
 
@@ -137,29 +135,36 @@ export class PlatformRolesService {
     const role = await this.getRoleOrThrow(roleId);
     this.assertMutableRole(role);
     await this.roleRepository.manager.transaction(async (manager) => {
-      await manager.delete(PlatformUserRole, { platformRoleId: role.id });
-      await manager.delete(PlatformRolePermission, { platformRoleId: role.id });
-      await manager.delete(PlatformRole, { id: role.id });
+      const assigned = await manager.count(PlatformMembership, {
+        where: { roleId: role.id },
+      });
+      if (assigned > 0) {
+        throw new BadRequestException("角色仍被平台成员使用，不能删除");
+      }
+      await manager.delete(RolePermission, { roleId: role.id });
+      await manager.delete(Role, { id: role.id, scope: "platform" });
     });
   }
 
   private async getRoleOrThrow(roleId: string) {
     const role = await this.roleRepository.findOne({
-      relations: { rolePermissions: { permission: true } },
-      where: { id: roleId },
+      relations: { rolePermissions: { permissionRecord: true } },
+      where: { id: roleId, scope: "platform", workspaceId: IsNull() },
     });
     if (!role) throw new NotFoundException("平台角色不存在");
     return role;
   }
 
-  private assertMutableRole(role: PlatformRole) {
+  private assertMutableRole(role: Role) {
     if (role.isSystem || role.name === "platform-admin") {
       throw new BadRequestException("系统平台角色不能修改或删除");
     }
   }
 
   private async assertUniqueRoleName(name: string, exceptRoleId?: string) {
-    const existing = await this.roleRepository.findOne({ where: { name } });
+    const existing = await this.roleRepository.findOne({
+      where: { name, scope: "platform", workspaceId: IsNull() },
+    });
     if (existing && existing.id !== exceptRoleId) {
       throw new BadRequestException("角色标识已被使用");
     }
@@ -212,10 +217,11 @@ function isUniqueConstraintError(error: unknown) {
   return typed.code === "23505" || typed.driverError?.code === "23505";
 }
 
-function toRoleDto(role: PlatformRole) {
+function toRoleDto(role: Role) {
   return {
+    color: role.color,
     description: role.description,
-    displayName: role.label,
+    displayName: role.displayName ?? role.label,
     id: role.id,
     isSystem: role.isSystem,
     label: role.label,
@@ -223,9 +229,9 @@ function toRoleDto(role: PlatformRole) {
     permissions: role.rolePermissions?.map((item) => ({
       enabled: item.enabled,
       id: item.id,
-      permission: item.permission?.code,
+      permission: item.permissionRecord?.code ?? "",
       permissionId: item.permissionId,
-      roleId: item.platformRoleId,
+      roleId: item.roleId,
     })) ?? [],
     scope: "platform" as const,
   };

@@ -13,9 +13,11 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
+  Account,
   IntegrationToken,
-  PlatformUser,
-  User,
+  PlatformMembership,
+  Workspace,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import {
   DataSource,
@@ -24,7 +26,7 @@ import {
   Repository,
   type EntityManager,
 } from "typeorm";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
@@ -40,6 +42,7 @@ export type AuthRequestContext = {
 };
 
 export type AuthSessionRecord = {
+  accountId: string | null;
   browser: string;
   credentialVersion: number;
   createdAt: string;
@@ -47,28 +50,31 @@ export type AuthSessionRecord = {
   expiresAt: string;
   ipAddress: string | null;
   lastSeenAt: string;
+  membershipId: string | null;
   os: string;
-  principalType: "platform" | "tenant";
+  principalType: "platform" | "workspace";
   refreshTokenHash: string;
   revokedAt: string | null;
   sessionId: string;
-  tenantId: string | null;
+  workspaceId: string | null;
   userAgent: string | null;
   userId: string;
 };
 
 export type ValidatedAuthSession = {
+  accountId: string | null;
   integrationToken?: {
     id: string;
     permissions: string[];
     scope: IntegrationToken["scope"];
-    tenantId: string;
+    workspaceId: string;
   } | null;
   jti: string;
-  principalType: "integration" | "platform" | "tenant";
+  membershipId: string | null;
+  principalType: "integration" | "platform" | "workspace";
   record: AuthSessionRecord;
   sessionId: string;
-  tenantId: string | null;
+  workspaceId: string | null;
   tokenKind: "integration" | "session";
   userId: string;
 };
@@ -76,16 +82,23 @@ export type ValidatedAuthSession = {
 export type IssuedAuthSession = {
   accessToken: string;
   expiresAt: string;
-  principalType: "platform" | "tenant";
+  principalType: "platform" | "workspace";
   refreshToken: string;
   sessionId: string;
-  tenantId: string | null;
+  workspaceId: string | null;
 };
 
 export type RealtimeTicketSession = {
   sessionId: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
+};
+
+export type ContextSelectionRecord = {
+  accountId: string;
+  credentialVersion: number;
+  contextMembershipIds: string[];
+  expiresAt: string;
 };
 
 @Injectable()
@@ -93,29 +106,72 @@ export class AuthSessionService {
   constructor(
     @InjectRepository(IntegrationToken)
     private readonly integrationTokenRepository: Repository<IntegrationToken>,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
-    private readonly platformUserRepository: Repository<PlatformUser>,
+    @InjectRepository(Account)
+    private readonly accountRepository: Repository<Account>,
+    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    private readonly platformAccountRepository: Repository<Account>,
+    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    private readonly platformMembershipRepository: Repository<PlatformMembership>,
     private readonly dataSource: DataSource,
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceContext: WorkspaceContextService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {}
 
+  async createContextSelection(
+    accountId: string,
+    credentialVersion: number,
+    contextMembershipIds: string[],
+  ) {
+    const selectionToken = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const record: ContextSelectionRecord = {
+      accountId,
+      credentialVersion,
+      contextMembershipIds: [...new Set(contextMembershipIds)],
+      expiresAt,
+    };
+    await (await this.redisService.getClient()).set(
+      this.contextSelectionKey(hashToken(selectionToken)),
+      JSON.stringify(record),
+      { EX: 300 },
+    );
+    return { expiresAt, selectionToken };
+  }
+
+  async consumeContextSelection(selectionToken: string) {
+    const raw = await this.getAndDelete(
+      await this.redisService.getClient(),
+      this.contextSelectionKey(hashToken(selectionToken)),
+    );
+    if (!raw) throw new UnauthorizedException("上下文选择凭证无效或已过期");
+    const parsed = JSON.parse(raw) as ContextSelectionRecord;
+    if (
+      !parsed.accountId ||
+      !Array.isArray(parsed.contextMembershipIds) ||
+      new Date(parsed.expiresAt).getTime() <= Date.now()
+    ) {
+      throw new UnauthorizedException("上下文选择凭证无效或已过期");
+    }
+    return parsed;
+  }
+
   async createSession(
     userId: string,
-    tenantId: string | null,
-    principalType: "platform" | "tenant" = "tenant",
+    workspaceId: string | null,
+    principalType: "platform" | "workspace" = "workspace",
     context: AuthRequestContext = {},
   ) {
-    assertPrincipalTenantContext(principalType, tenantId);
+    assertPrincipalWorkspaceContext(principalType, workspaceId);
     const principal = await this.ensureActivePrincipal(
       userId,
-      tenantId,
+      workspaceId,
       principalType,
     );
     const credentialVersion = principal.credentialVersion ?? 0;
+    const membershipId = principalType === "workspace" && workspaceId
+      ? await this.resolveActiveMembershipId(userId, workspaceId)
+      : await this.resolveActivePlatformMembershipId(userId);
     const sessionId = randomUUID();
     const refreshToken = createRefreshToken();
     const now = new Date();
@@ -124,6 +180,7 @@ export class AuthSessionService {
     );
     const device = parseAuthDevice(context.userAgent);
     const record: AuthSessionRecord = {
+      accountId: userId,
       browser: device.browser,
       credentialVersion,
       createdAt: now.toISOString(),
@@ -131,27 +188,35 @@ export class AuthSessionService {
       expiresAt: expiresAt.toISOString(),
       ipAddress: context.ipAddress ?? null,
       lastSeenAt: now.toISOString(),
+      membershipId,
       os: device.os,
       principalType,
       refreshTokenHash: hashToken(refreshToken),
       revokedAt: null,
       sessionId,
-      tenantId,
+      workspaceId,
       userAgent: context.userAgent ?? null,
       userId,
     };
 
     await this.saveSession(record);
-    await this.indexRefreshToken(record.refreshTokenHash, tenantId, sessionId);
-    await this.addUserSession(tenantId, userId, sessionId);
+    await this.indexRefreshToken(record.refreshTokenHash, workspaceId, sessionId);
+    await this.addUserSession(
+      workspaceId,
+      userId,
+      sessionId,
+      principalType,
+      membershipId,
+    );
 
     return {
       ...this.issueAccessToken(
         userId,
-        tenantId,
+        workspaceId,
         principalType,
         sessionId,
         credentialVersion,
+        membershipId,
       ),
       refreshToken,
       sessionId,
@@ -190,8 +255,8 @@ export class AuthSessionService {
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
 
-      const { sessionId, tenantId } = refreshIndex;
-      const record = await this.getSessionRecord(tenantId, sessionId);
+      const { sessionId, workspaceId } = refreshIndex;
+      const record = await this.getSessionRecord(workspaceId, sessionId);
       if (
         !record ||
         record.revokedAt ||
@@ -205,7 +270,7 @@ export class AuthSessionService {
       }
       const principal = await this.ensureActivePrincipal(
         record.userId,
-        record.tenantId,
+        record.workspaceId,
         record.principalType,
       );
       this.assertCredentialVersion(record, principal.credentialVersion ?? 0);
@@ -232,21 +297,28 @@ export class AuthSessionService {
       const issued = {
         ...this.issueAccessToken(
           record.userId,
-          record.tenantId,
+          record.workspaceId,
           record.principalType,
           sessionId,
           record.credentialVersion,
+          record.membershipId,
         ),
         refreshToken: nextRefreshToken,
         sessionId,
-        tenantId: record.tenantId,
+        workspaceId: record.workspaceId,
         userId: record.userId,
       };
 
       await Promise.all([
         this.saveSession(nextRecord),
-        this.indexRefreshToken(nextHash, record.tenantId, sessionId),
-        this.addUserSession(record.tenantId, record.userId, sessionId),
+        this.indexRefreshToken(nextHash, record.workspaceId, sessionId),
+        this.addUserSession(
+          record.workspaceId,
+          record.userId,
+          sessionId,
+          record.principalType,
+          record.membershipId,
+        ),
       ]);
       await this.saveRefreshRotationResult(client, refreshTokenHash, issued);
       await client.del(this.refreshIndexKey(refreshTokenHash));
@@ -272,11 +344,11 @@ export class AuthSessionService {
       return this.validateIntegrationToken(accessToken, payload);
     }
 
-    const record = await this.getSessionRecord(payload.tenantId, payload.sessionId);
+    const record = await this.getSessionRecord(payload.workspaceId, payload.sessionId);
     if (
       !record ||
       record.userId !== payload.userId ||
-      record.tenantId !== payload.tenantId ||
+      record.workspaceId !== payload.workspaceId ||
       record.principalType !== payload.principalType ||
       record.credentialVersion !== payload.credentialVersion ||
       record.revokedAt ||
@@ -286,23 +358,25 @@ export class AuthSessionService {
     }
     const principal = await this.ensureActivePrincipal(
       payload.userId,
-      payload.tenantId,
+      payload.workspaceId,
       payload.principalType,
     );
     this.assertCredentialVersion(record, principal.credentialVersion ?? 0);
 
     const touchedRecord = await this.touchSession(
       payload.sessionId,
-      payload.tenantId,
+      payload.workspaceId,
       payload.userId,
     );
 
     return {
+      accountId: record.accountId ?? record.userId,
       jti: payload.jti,
+      membershipId: record.membershipId,
       principalType: payload.principalType,
       record: touchedRecord,
       sessionId: payload.sessionId,
-      tenantId: payload.tenantId,
+      workspaceId: payload.workspaceId,
       tokenKind: "session",
       userId: payload.userId,
     } satisfies ValidatedAuthSession;
@@ -315,11 +389,11 @@ export class AuthSessionService {
     const ticketHash = hashToken(ticket);
     await Promise.all([
       client.set(
-        this.realtimeTicketKey(session.tenantId, ticketHash),
+        this.realtimeTicketKey(session.workspaceId, ticketHash),
         JSON.stringify(session satisfies RealtimeTicketSession),
         { EX: 30 },
       ),
-      client.set(this.realtimeTicketIndexKey(ticketHash), session.tenantId, {
+      client.set(this.realtimeTicketIndexKey(ticketHash), session.workspaceId, {
         EX: 30,
       }),
     ]);
@@ -333,11 +407,11 @@ export class AuthSessionService {
 
     const client = await this.redisService.getClient();
     const indexKey = this.realtimeTicketIndexKey(hashToken(ticket));
-    const tenantId = await this.getAndDelete(client, indexKey);
-    if (!tenantId) {
+    const workspaceId = await this.getAndDelete(client, indexKey);
+    if (!workspaceId) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
-    const key = this.realtimeTicketKey(tenantId, hashToken(ticket));
+    const key = this.realtimeTicketKey(workspaceId, hashToken(ticket));
     const rawValue = await this.getAndDelete(client, key);
     if (!rawValue) {
       throw new UnauthorizedException("登录已失效，请重新登录");
@@ -351,41 +425,41 @@ export class AuthSessionService {
     }
 
     const record = await this.getSessionRecord(
-      ticketSession.tenantId,
+      ticketSession.workspaceId,
       ticketSession.sessionId,
     );
     if (
       !record ||
       record.userId !== ticketSession.userId ||
-      record.tenantId !== ticketSession.tenantId ||
+      record.workspaceId !== ticketSession.workspaceId ||
       record.revokedAt ||
       isSessionExpired(record)
     ) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
-    await this.ensureActiveUser(ticketSession.userId, ticketSession.tenantId);
+    await this.ensureActiveUser(ticketSession.userId, ticketSession.workspaceId);
 
     await this.touchSession(
       ticketSession.sessionId,
-      ticketSession.tenantId,
+      ticketSession.workspaceId,
       ticketSession.userId,
     );
     return ticketSession;
   }
 
   async listSessions(
-    tenantId: string | null,
+    workspaceId: string | null,
     userId: string,
     currentSessionId: string,
   ) {
     const client = await this.redisService.getClient();
-    const sessionIds = await client.sMembers(this.userSessionsKey(tenantId, userId));
+    const sessionIds = await client.sMembers(this.userSessionsKey(workspaceId, userId));
     const records = await Promise.all(
-      sessionIds.map((sessionId) => this.getSessionRecord(tenantId, sessionId)),
+      sessionIds.map((sessionId) => this.getSessionRecord(workspaceId, sessionId)),
     );
     const missingSessionIds = sessionIds.filter((_, index) => !records[index]);
     if (missingSessionIds.length > 0) {
-      await client.sRem(this.userSessionsKey(tenantId, userId), missingSessionIds);
+      await client.sRem(this.userSessionsKey(workspaceId, userId), missingSessionIds);
     }
 
     return records
@@ -411,11 +485,11 @@ export class AuthSessionService {
   }
 
   async revokeSession(
-    tenantId: string | null,
+    workspaceId: string | null,
     sessionId: string,
     expectedUserId?: string,
   ) {
-    const record = await this.getSessionRecord(tenantId, sessionId);
+    const record = await this.getSessionRecord(workspaceId, sessionId);
     if (!record || (expectedUserId && record.userId !== expectedUserId)) {
       return;
     }
@@ -432,41 +506,78 @@ export class AuthSessionService {
   }
 
   async revokeOtherSessions(
-    tenantId: string | null,
+    workspaceId: string | null,
     userId: string,
     currentSessionId: string,
   ) {
     const sessionIds = await (
       await this.redisService.getClient()
-    ).sMembers(this.userSessionsKey(tenantId, userId));
+    ).sMembers(this.userSessionsKey(workspaceId, userId));
     await Promise.all(
       sessionIds
         .filter((sessionId) => sessionId !== currentSessionId)
-        .map((sessionId) => this.revokeSession(tenantId, sessionId, userId)),
+        .map((sessionId) => this.revokeSession(workspaceId, sessionId, userId)),
     );
   }
 
   async revokeUserSessions(
-    tenantId: string,
+    workspaceId: string,
     userId: string,
   ) {
     const sessionIds = await (
       await this.redisService.getClient()
-    ).sMembers(this.userSessionsKey(tenantId, userId));
+    ).sMembers(this.userSessionsKey(workspaceId, userId));
     await Promise.all(
       sessionIds.map((sessionId) =>
-        this.revokeSession(tenantId, sessionId, userId),
+        this.revokeSession(workspaceId, sessionId, userId),
       ),
     );
   }
 
+  async revokeAccountSessions(accountId: string) {
+    const client = await this.redisService.getClient();
+    const entries = await client.sMembers(this.accountSessionsKey(accountId));
+    await Promise.all(
+      entries.map(async (entry) => {
+        const [contextId, sessionId] = entry.split(":", 2);
+        if (contextId && sessionId) {
+          await this.revokeSession(
+            contextId === "platform" ? null : contextId,
+            sessionId,
+            accountId,
+          );
+        }
+      }),
+    );
+  }
+
+  async revokeMembershipSessions(
+    principalType: "platform" | "workspace",
+    membershipId: string,
+  ) {
+    const client = await this.redisService.getClient();
+    const key = this.membershipSessionsKey(principalType, membershipId);
+    const entries = await client.sMembers(key);
+    await Promise.all(
+      entries.map(async (entry) => {
+        const [contextId, sessionId] = entry.split(":", 2);
+        if (contextId && sessionId) {
+          await this.revokeSession(
+            contextId === "platform" ? null : contextId,
+            sessionId,
+          );
+        }
+      }),
+    );
+  }
+
   async deleteSessionRecord(
-    tenantId: string | null,
+    workspaceId: string | null,
     sessionId: string,
     expectedUserId: string,
     currentSessionId: string,
   ) {
-    const record = await this.getSessionRecord(tenantId, sessionId);
+    const record = await this.getSessionRecord(workspaceId, sessionId);
     if (!record || record.userId !== expectedUserId) return;
     if (record.sessionId === currentSessionId && !record.revokedAt) {
       throw new BadRequestException("不能删除当前活跃设备");
@@ -477,10 +588,10 @@ export class AuthSessionService {
 
     const client = await this.redisService.getClient();
     await Promise.all([
-      client.del(this.sessionKey(record.tenantId, record.sessionId)),
+      client.del(this.sessionKey(record.workspaceId, record.sessionId)),
       client.del(this.refreshIndexKey(record.refreshTokenHash)),
       client.sRem(
-        this.userSessionsKey(record.tenantId, record.userId),
+        this.userSessionsKey(record.workspaceId, record.userId),
         record.sessionId,
       ),
     ]);
@@ -511,10 +622,11 @@ export class AuthSessionService {
 
   private issueAccessToken(
     userId: string,
-    tenantId: string | null,
-    principalType: "platform" | "tenant",
+    workspaceId: string | null,
+    principalType: "platform" | "workspace",
     sessionId: string,
     credentialVersion: number,
+    membershipId: string | null,
   ) {
     const ttlSeconds = this.accessTokenTtlSeconds;
     const expiresAt = new Date(
@@ -522,11 +634,13 @@ export class AuthSessionService {
     ).toISOString();
     const accessToken = createAuthSessionToken(
       {
+        accountId: userId,
         credentialVersion,
         jti: randomUUID(),
+        membershipId,
         principalType,
         sessionId,
-        tenantId,
+        workspaceId,
         userId,
       },
       {
@@ -535,27 +649,27 @@ export class AuthSessionService {
         ttlSeconds,
       },
     );
-    return { accessToken, expiresAt, principalType, tenantId };
+    return { accessToken, expiresAt, principalType, workspaceId };
   }
 
   private async validateIntegrationToken(
     token: string,
     payload: NonNullable<ReturnType<typeof parseAuthSessionToken>>,
   ) {
-    if (!payload.tenantId || payload.principalType !== "integration") {
+    if (!payload.workspaceId || payload.principalType !== "integration") {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
     const tokenId = payload.sessionId.slice(INTEGRATION_SESSION_PREFIX.length);
     if (!tokenId) throw new UnauthorizedException("登录已失效，请重新登录");
-    const { record, tenantId } = await this.runInTenantContext(
-      payload.tenantId,
+    const { membershipId, record, workspaceId } = await this.runInWorkspaceContext(
+      payload.workspaceId,
       async (manager) => {
         const repository = manager.getRepository(IntegrationToken);
         const record = await repository.findOne({
           where: {
             id: tokenId,
             ownerUserId: payload.userId,
-            tenantId: payload.tenantId!,
+            workspaceId: payload.workspaceId!,
             tokenHash: hashToken(token),
           },
         });
@@ -566,16 +680,17 @@ export class AuthSessionService {
         ) {
           throw new UnauthorizedException("登录已失效，请重新登录");
         }
-        const tenantId = requireUserTenantId(
-          await this.ensureActiveUserWithManager(
-            manager,
-            record.ownerUserId,
-            payload.tenantId!,
-          ),
+        await this.ensureActiveUserWithManager(
+          manager,
+          record.ownerUserId,
+          payload.workspaceId!,
         );
-        if (tenantId !== payload.tenantId) {
-          throw new UnauthorizedException("登录已失效，请重新登录");
-        }
+        const workspaceId = payload.workspaceId!;
+        const membership = await manager.getRepository(WorkspaceMembership).findOne({
+          select: { id: true },
+          where: { accountId: record.ownerUserId, status: "active", workspaceId },
+        });
+        if (!membership) throw new UnauthorizedException("登录已失效，请重新登录");
         const lastUsedAt = new Date();
         const updateResult = await repository.update(
           {
@@ -583,7 +698,7 @@ export class AuthSessionService {
             id: record.id,
             ownerUserId: record.ownerUserId,
             revokedAt: IsNull(),
-            tenantId,
+            workspaceId,
             tokenHash: hashToken(token),
           },
           { lastUsedAt },
@@ -592,19 +707,22 @@ export class AuthSessionService {
           throw new UnauthorizedException("登录已失效，请重新登录");
         }
         record.lastUsedAt = lastUsedAt;
-        return { record, tenantId };
+        return { membershipId: membership.id, record, workspaceId };
       },
     );
 
     return {
+      accountId: record.ownerUserId,
       integrationToken: {
         id: record.id,
         permissions: record.permissions ?? [],
         scope: record.scope,
-        tenantId,
+        workspaceId,
       },
       jti: payload.jti,
+      membershipId,
       record: {
+        accountId: record.ownerUserId,
         browser: "Integration Token",
         credentialVersion: payload.credentialVersion,
         createdAt: record.createdAt.toISOString(),
@@ -612,27 +730,28 @@ export class AuthSessionService {
         expiresAt: record.expiresAt.toISOString(),
         ipAddress: null,
         lastSeenAt: (record.lastUsedAt ?? record.updatedAt).toISOString(),
+        membershipId,
         os: "API",
-        principalType: "tenant",
+        principalType: "workspace",
         refreshTokenHash: "",
         revokedAt: null,
         sessionId: payload.sessionId,
-        tenantId,
+        workspaceId,
         userAgent: null,
         userId: record.ownerUserId,
       },
       sessionId: payload.sessionId,
       principalType: "integration",
-      tenantId,
+      workspaceId,
       tokenKind: "integration",
       userId: record.ownerUserId,
     } satisfies ValidatedAuthSession;
   }
 
-  private async getSessionRecord(tenantId: string | null, sessionId: string) {
+  private async getSessionRecord(workspaceId: string | null, sessionId: string) {
     const rawValue = await (
       await this.redisService.getClient()
-    ).get(this.sessionKey(tenantId, sessionId));
+    ).get(this.sessionKey(workspaceId, sessionId));
     if (!rawValue) return null;
     try {
       return JSON.parse(rawValue) as AuthSessionRecord;
@@ -644,21 +763,21 @@ export class AuthSessionService {
   private async saveSession(record: AuthSessionRecord) {
     await (
       await this.redisService.getClient()
-    ).set(this.sessionKey(record.tenantId, record.sessionId), JSON.stringify(record), {
+    ).set(this.sessionKey(record.workspaceId, record.sessionId), JSON.stringify(record), {
       EX: this.sessionHistoryTtlSeconds,
     });
   }
 
   private async indexRefreshToken(
     refreshTokenHash: string,
-    tenantId: string | null,
+    workspaceId: string | null,
     sessionId: string,
   ) {
     await (
       await this.redisService.getClient()
     ).set(
       this.refreshIndexKey(refreshTokenHash),
-      JSON.stringify({ sessionId, tenantId }),
+      JSON.stringify({ sessionId, workspaceId }),
       {
       EX: this.refreshTokenTtlSeconds,
       },
@@ -666,22 +785,33 @@ export class AuthSessionService {
   }
 
   private async addUserSession(
-    tenantId: string | null,
+    workspaceId: string | null,
     userId: string,
     sessionId: string,
+    principalType: "platform" | "workspace",
+    membershipId: string | null,
   ) {
     const client = await this.redisService.getClient();
-    const key = this.userSessionsKey(tenantId, userId);
+    const key = this.userSessionsKey(workspaceId, userId);
     await client.sAdd(key, sessionId);
     await client.expire(key, this.sessionHistoryTtlSeconds);
+    const contextId = workspaceId ?? "platform";
+    const accountKey = this.accountSessionsKey(userId);
+    await client.sAdd(accountKey, `${contextId}:${sessionId}`);
+    await client.expire(accountKey, this.sessionHistoryTtlSeconds);
+    if (membershipId) {
+      const membershipKey = this.membershipSessionsKey(principalType, membershipId);
+      await client.sAdd(membershipKey, `${contextId}:${sessionId}`);
+      await client.expire(membershipKey, this.sessionHistoryTtlSeconds);
+    }
   }
 
   private async touchSession(
     sessionId: string,
-    tenantId: string | null,
+    workspaceId: string | null,
     userId: string,
   ) {
-    const latestRecord = await this.getSessionRecord(tenantId, sessionId);
+    const latestRecord = await this.getSessionRecord(workspaceId, sessionId);
     if (
       !latestRecord ||
       latestRecord.userId !== userId ||
@@ -699,87 +829,110 @@ export class AuthSessionService {
     return touchedRecord;
   }
 
-  private async ensureActiveUser(userId: string, tenantId: string) {
-    return this.runInTenantContext(tenantId, (manager) =>
-      this.ensureActiveUserWithManager(manager, userId, tenantId),
+  private async ensureActiveUser(userId: string, workspaceId: string) {
+    return this.runInWorkspaceContext(workspaceId, (manager) =>
+      this.ensureActiveUserWithManager(manager, userId, workspaceId),
     );
   }
 
   private async ensureActiveUserWithManager(
     manager: EntityManager,
     userId: string,
-    tenantId: string,
+    workspaceId: string,
   ) {
-    const user = await manager.getRepository(User).findOne({
-        relations: { tenant: true },
-        where: { id: userId, tenantId },
-      });
+    const membership = await manager.getRepository(WorkspaceMembership).findOne({
+      relations: { account: true },
+      where: { accountId: userId, status: "active", workspaceId },
+    });
+    const user = membership?.account;
     if (!user || user.status !== "active") {
       throw new UnauthorizedException("用户不可用");
     }
-    if (requireUserTenantId(user) !== tenantId) {
-      throw new UnauthorizedException("用户不可用");
-    }
-    const tenant = (user as User & { tenant?: { status?: string } }).tenant;
+    const workspace = await manager.getRepository(Workspace).findOne({
+      where: { id: workspaceId },
+    });
     if (
-      !tenant ||
-      (tenant.status !== "active" && tenant.status !== "provisioning")
+      !workspace ||
+      (workspace.status !== "active" && workspace.status !== "provisioning")
     ) {
-      throw new UnauthorizedException("租户不可用");
+      throw new UnauthorizedException("工作空间不可用");
     }
     return user;
   }
 
-  private runInTenantContext<T>(
-    tenantId: string,
+  private async resolveActiveMembershipId(accountId: string, workspaceId: string) {
+    return this.runInWorkspaceContext(workspaceId, async (manager) => {
+      const membership = await manager.getRepository(WorkspaceMembership).findOne({
+        select: { id: true },
+        where: { accountId, status: "active", workspaceId },
+      });
+      if (!membership) throw new UnauthorizedException("工作空间成员关系不可用");
+      return membership.id;
+    });
+  }
+
+  private async resolveActivePlatformMembershipId(accountId: string) {
+    const membership = await this.platformMembershipRepository.findOne({
+      select: { id: true },
+      where: { accountId, status: "active" },
+    });
+    if (!membership) throw new UnauthorizedException("平台成员关系不可用");
+    return membership.id;
+  }
+
+  private runInWorkspaceContext<T>(
+    workspaceId: string,
     work: (manager: EntityManager) => Promise<T>,
   ) {
     return this.dataSource.transaction(async (manager) => {
       await manager.query(
-        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', 'tenant', true)",
-        [tenantId],
+        "SELECT set_config('app.workspace_id', $1, true), set_config('app.scope_level', 'workspace', true)",
+        [workspaceId],
       );
-      return this.tenantContext.run(
+      return this.workspaceContext.run(
         {
           manager,
-          organizationId: null,
-          scopeLevel: "tenant",
-          tenantId,
+          scopeLevel: "workspace",
+          workspaceId,
         },
         () => work(manager),
       );
     });
   }
 
-  private async ensureActivePlatformUser(platformUserId: string) {
-    const user = await this.platformUserRepository.findOne({
-      where: { id: platformUserId },
+  private async ensureActivePlatformAccount(accountId: string) {
+    const membership = await this.platformMembershipRepository.findOne({
+      relations: { account: true, role: true },
+      where: { accountId, status: "active" },
     });
-    if (!user || user.status !== "active") {
+    const account = membership?.account ?? await this.platformAccountRepository.findOne({
+      where: { id: accountId },
+    });
+    if (!membership?.roleId || membership.role?.scope !== "platform" || !account || account.status !== "active") {
       throw new UnauthorizedException("平台账号不可用");
     }
-    return user;
+    return account;
   }
 
   private ensureActivePrincipal(
     userId: string,
-    tenantId: string | null,
-    principalType: "integration" | "platform" | "tenant",
+    workspaceId: string | null,
+    principalType: "integration" | "platform" | "workspace",
   ) {
     if (principalType === "platform") {
-      if (tenantId !== null) throw new UnauthorizedException("平台会话无效");
-      return this.ensureActivePlatformUser(userId);
+      if (workspaceId !== null) throw new UnauthorizedException("平台会话无效");
+      return this.ensureActivePlatformAccount(userId);
     }
-    if (!tenantId) throw new UnauthorizedException("登录会话缺少租户上下文");
-    return this.ensureActiveUser(userId, tenantId);
+    if (!workspaceId) throw new UnauthorizedException("登录会话缺少工作空间上下文");
+    return this.ensureActiveUser(userId, workspaceId);
   }
 
   private assertCredentialVersion(
-    record: Pick<AuthSessionRecord, "credentialVersion" | "tenantId" | "userId">,
+    record: Pick<AuthSessionRecord, "accountId" | "credentialVersion" | "workspaceId" | "userId">,
     currentVersion: number,
   ) {
     if (record.credentialVersion === currentVersion) return;
-    void this.revokeAllPrincipalSessions(record.tenantId, record.userId).catch(
+    void this.revokeAccountSessions(record.accountId ?? record.userId).catch(
       () => undefined,
     );
     throw new UnauthorizedException({
@@ -787,21 +940,6 @@ export class AuthSessionService {
       message: "登录凭据已变更，请重新登录",
       statusCode: 401,
     });
-  }
-
-  private revokeAllPrincipalSessions(tenantId: string | null, userId: string) {
-    return tenantId
-      ? this.revokeUserSessions(tenantId, userId)
-      : this.revokePlatformUserSessions(userId);
-  }
-
-  private async revokePlatformUserSessions(userId: string) {
-    const sessionIds = await (
-      await this.redisService.getClient()
-    ).sMembers(this.userSessionsKey(null, userId));
-    await Promise.all(
-      sessionIds.map((sessionId) => this.revokeSession(null, sessionId, userId)),
-    );
   }
 
   private async waitForRefreshRotation(
@@ -866,8 +1004,8 @@ export class AuthSessionService {
     return rawValue;
   }
 
-  private sessionKey(tenantId: string | null, sessionId: string) {
-    return `auth:${tenantNamespace(tenantId)}:session:${sessionId}`;
+  private sessionKey(workspaceId: string | null, sessionId: string) {
+    return `auth:${workspaceNamespace(workspaceId)}:session:${sessionId}`;
   }
 
   private refreshIndexKey(refreshTokenHash: string) {
@@ -882,12 +1020,27 @@ export class AuthSessionService {
     return `auth:refresh_rotation:${refreshTokenHash}`;
   }
 
-  private userSessionsKey(tenantId: string | null, userId: string) {
-    return `auth:${tenantNamespace(tenantId)}:user_sessions:${userId}`;
+  private userSessionsKey(workspaceId: string | null, userId: string) {
+    return `auth:${workspaceNamespace(workspaceId)}:user_sessions:${userId}`;
   }
 
-  private realtimeTicketKey(tenantId: string, ticketHash: string) {
-    return `auth:${tenantId}:realtime_ticket:${ticketHash}`;
+  private accountSessionsKey(accountId: string) {
+    return `auth:account:${accountId}:sessions`;
+  }
+
+  private contextSelectionKey(tokenHash: string) {
+    return `auth:context_selection:${tokenHash}`;
+  }
+
+  private membershipSessionsKey(
+    principalType: "platform" | "workspace",
+    membershipId: string,
+  ) {
+    return `auth:membership:${principalType}:${membershipId}:sessions`;
+  }
+
+  private realtimeTicketKey(workspaceId: string, ticketHash: string) {
+    return `auth:${workspaceId}:realtime_ticket:${ticketHash}`;
   }
 
   private realtimeTicketIndexKey(ticketHash: string) {
@@ -925,25 +1078,19 @@ export class AuthSessionService {
   }
 }
 
-function requireUserTenantId(user: User) {
-  const tenantId = (user as User & { tenantId?: string | null }).tenantId;
-  if (!tenantId) throw new UnauthorizedException("用户不可用");
-  return tenantId;
+function workspaceNamespace(workspaceId: string | null) {
+  return workspaceId ?? "platform";
 }
 
-function tenantNamespace(tenantId: string | null) {
-  return tenantId ?? "platform";
-}
-
-function assertPrincipalTenantContext(
-  principalType: "platform" | "tenant",
-  tenantId: string | null,
+function assertPrincipalWorkspaceContext(
+  principalType: "platform" | "workspace",
+  workspaceId: string | null,
 ) {
   if (
-    (principalType === "platform" && tenantId !== null) ||
-    (principalType === "tenant" && !tenantId)
+    (principalType === "platform" && workspaceId !== null) ||
+    (principalType === "workspace" && !workspaceId)
   ) {
-    throw new UnauthorizedException("登录会话租户上下文无效");
+    throw new UnauthorizedException("登录会话工作空间上下文无效");
   }
 }
 
@@ -952,11 +1099,11 @@ function parseRefreshIndex(value: string | null) {
   try {
     const parsed = JSON.parse(value) as {
       sessionId?: unknown;
-      tenantId?: unknown;
+      workspaceId?: unknown;
     };
     return typeof parsed.sessionId === "string" &&
-      (typeof parsed.tenantId === "string" || parsed.tenantId === null)
-      ? { sessionId: parsed.sessionId, tenantId: parsed.tenantId }
+      (typeof parsed.workspaceId === "string" || parsed.workspaceId === null)
+      ? { sessionId: parsed.sessionId, workspaceId: parsed.workspaceId }
       : null;
   } catch {
     return null;
@@ -969,7 +1116,7 @@ const REFRESH_ROTATION_WAIT_MS = 2_000;
 const REFRESH_ROTATION_POLL_MS = 50;
 
 type RefreshRotationResult = IssuedAuthSession & {
-  tenantId: string | null;
+  workspaceId: string | null;
   userId: string;
 };
 
@@ -1009,12 +1156,12 @@ function decryptRefreshRotation(value: string, secret: string): RefreshRotationR
     if (
       typeof issued.accessToken !== "string" ||
       typeof issued.expiresAt !== "string" ||
-      (issued.principalType !== "platform" && issued.principalType !== "tenant") ||
+      (issued.principalType !== "platform" && issued.principalType !== "workspace") ||
       typeof issued.refreshToken !== "string" ||
       typeof issued.sessionId !== "string" ||
       (issued.principalType === "platform"
-        ? issued.tenantId !== null
-        : typeof issued.tenantId !== "string") ||
+        ? issued.workspaceId !== null
+        : typeof issued.workspaceId !== "string") ||
       typeof issued.userId !== "string"
     ) {
       return null;

@@ -1,12 +1,12 @@
 import { Column, Entity, Index } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
 
 export type ConversationStatus = "open" | "closed" | "archived";
 
 @Entity({ name: "conversations" })
-@Index(["tenantId", "sourceType", "sourceId"], { unique: true })
-@Index(["tenantId", "status", "updatedAt"])
-export class Conversation extends TenantOwnedBaseEntity {
+@Index(["workspaceId", "sourceType", "sourceId"], { unique: true })
+@Index(["workspaceId", "status", "updatedAt"])
+export class Conversation extends WorkspaceOwnedBaseEntity {
   @Column({ name: "source_type", type: "varchar", length: 80 })
   sourceType!: string;
 

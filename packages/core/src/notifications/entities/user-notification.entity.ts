@@ -1,28 +1,28 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
-import type { User } from "../../identity/entities/user.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
+import type { Account } from "../../identity/entities/account.entity.js";
 
 export type UserNotificationStatus = "read" | "unread";
 export type UserNotificationKind = "info" | "success" | "warning" | "error";
 
 @Entity({ name: "user_notifications" })
-@Index(["tenantId", "recipientUserId", "status", "createdAt"])
-export class UserNotification extends TenantOwnedBaseEntity {
+@Index(["workspaceId", "recipientUserId", "status", "createdAt"])
+export class UserNotification extends WorkspaceOwnedBaseEntity {
   @Column({ name: "recipient_user_id", type: "uuid" })
   @Index()
   recipientUserId!: string;
 
-  @ManyToOne("User", { onDelete: "CASCADE" })
+  @ManyToOne("Account", { onDelete: "RESTRICT" })
   @JoinColumn({ name: "recipient_user_id" })
-  recipientUser!: User;
+  recipientUser!: Account;
 
   @Column({ name: "actor_user_id", type: "uuid", nullable: true })
   @Index()
   actorUserId!: string | null;
 
-  @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
+  @ManyToOne("Account", { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "actor_user_id" })
-  actorUser!: User | null;
+  actorUser!: Account | null;
 
   @Column({ type: "varchar", length: 24, default: "info" })
   kind!: UserNotificationKind;

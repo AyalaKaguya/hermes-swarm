@@ -2,27 +2,30 @@ import "reflect-metadata";
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { DataSource } from "typeorm";
-import { Organization, Tenant, Ticket, User } from "@hermes-swarm/core";
+import {
+  Account,
+  Role,
+  Ticket,
+  Workspace,
+  WorkspaceMembership,
+} from "@hermes-swarm/core";
 import { DATABASE_ENTITIES } from "../common/database/database-entities.js";
 import { WorkspaceModelBaseline2026071500001 } from "../common/database/migrations/202607150001-WorkspaceModelBaseline.js";
 import { AuditLogs2026071700002 } from "../common/database/migrations/202607170002-AuditLogs.js";
 import { CredentialVersion2026072000001 } from "../common/database/migrations/2026072000001-CredentialVersion.js";
-import { OrganizationScopeRls2026072000002 } from "../common/database/migrations/2026072000002-OrganizationScopeRls.js";
 
 const databaseUrl =
   process.env.POSTGRES_E2E_URL ??
   "postgresql://hermes:hermes_dev_pwd@localhost:5432/hermes-e2e";
 
 const ids = {
-  organizationA: "00000000-0000-4000-8000-000000000201",
-  organizationAChild: "00000000-0000-4000-8000-000000000203",
-  organizationB: "00000000-0000-4000-8000-000000000202",
-  tenantA: "00000000-0000-4000-8000-000000000001",
-  tenantB: "00000000-0000-4000-8000-000000000002",
+  workspaceA: "00000000-0000-4000-8000-000000000001",
+  workspaceB: "00000000-0000-4000-8000-000000000002",
   userA: "00000000-0000-4000-8000-000000000101",
   userB: "00000000-0000-4000-8000-000000000102",
+  roleA: "00000000-0000-4000-8000-000000000201",
+  roleB: "00000000-0000-4000-8000-000000000202",
   ticketA: "00000000-0000-4000-8000-000000000301",
-  ticketAChild: "00000000-0000-4000-8000-000000000302",
 };
 
 describe("workspace database baseline e2e", { concurrency: false }, () => {
@@ -37,7 +40,6 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
         WorkspaceModelBaseline2026071500001,
         AuditLogs2026071700002,
         CredentialVersion2026072000001,
-        OrganizationScopeRls2026072000002,
       ],
       migrationsRun: false,
       synchronize: false,
@@ -47,45 +49,35 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
     await dataSource.query("CREATE SCHEMA public");
     await dataSource.runMigrations();
 
-    await dataSource.getRepository(Tenant).save([
-      { id: ids.tenantA, name: "Workspace A", slug: "workspace-a", status: "active", subdomain: null },
-      { id: ids.tenantB, name: "Workspace B", slug: "workspace-b", status: "active", subdomain: null },
-    ]);
-    await seedTenant(ids.tenantA, ids.userA, ids.organizationA);
-    await seedTenant(ids.tenantB, ids.userB, ids.organizationB);
-    await inTenant(ids.tenantA, async (manager) => {
-      await manager.getRepository(Organization).save({
-        id: ids.organizationAChild,
-        name: "Organization A Child",
-        parentOrganizationId: ids.organizationA,
-        slug: "organization-a-child",
+    await dataSource.getRepository(Workspace).save([
+      {
+        id: ids.workspaceA,
+        name: "Workspace A",
+        slug: "workspace-a",
         status: "active",
-        tenantId: ids.tenantA,
+        subdomain: null,
+      },
+      {
+        id: ids.workspaceB,
+        name: "Workspace B",
+        slug: "workspace-b",
+        status: "active",
+        subdomain: null,
+      },
+    ]);
+    await seedWorkspace(ids.workspaceA, ids.userA);
+    await seedWorkspace(ids.workspaceB, ids.userB);
+    await inWorkspace(ids.workspaceA, async (manager) => {
+      await manager.getRepository(Ticket).save({
+        assigneeUserId: null,
+        conversationId: null,
+        id: ids.ticketA,
+        participantUserIds: [ids.userA],
+        requesterUserId: ids.userA,
+        status: "open",
+        subject: "Workspace A ticket",
+        workspaceId: ids.workspaceA,
       });
-      await manager.getRepository(Ticket).save([
-        {
-          assigneeUserId: null,
-          conversationId: null,
-          id: ids.ticketA,
-          participantUserIds: [],
-          requesterUserId: ids.userA,
-          sourceOrganizationId: ids.organizationA,
-          status: "open",
-          subject: "Root organization ticket",
-          tenantId: ids.tenantA,
-        },
-        {
-          assigneeUserId: null,
-          conversationId: null,
-          id: ids.ticketAChild,
-          participantUserIds: [],
-          requesterUserId: ids.userA,
-          sourceOrganizationId: ids.organizationAChild,
-          status: "open",
-          subject: "Child organization ticket",
-          tenantId: ids.tenantA,
-        },
-      ]);
     });
   });
 
@@ -93,62 +85,46 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
     await dataSource?.destroy();
   });
 
-  it("allows the same normalized email in different tenants but not twice in one tenant", async () => {
-    assert.equal(await dataSource.getRepository(User).count(), 2);
+  it("keeps normalized email unique at the global account boundary", async () => {
+    assert.equal(await dataSource.getRepository(Account).count(), 2);
     await assert.rejects(
       () =>
-        inTenant(ids.tenantA, (manager) =>
-          manager.getRepository(User).save(user("00000000-0000-4000-8000-000000000103", ids.tenantA)),
+        dataSource.getRepository(Account).save(
+          account(
+            "00000000-0000-4000-8000-000000000103",
+            `${ids.userA}@example.com`,
+          ),
         ),
       (error: unknown) => databaseErrorCode(error) === "23505",
     );
   });
 
-  it("enforces one active root organization per tenant", async () => {
+  it("rejects business references to members from another workspace", async () => {
     await assert.rejects(
       () =>
-        inTenant(ids.tenantA, (manager) =>
-          manager.getRepository(Organization).save({
-            id: "00000000-0000-4000-8000-000000000203",
-            name: "Second root",
-            parentOrganizationId: null,
-            slug: "second-root",
-            status: "active",
-            tenantId: ids.tenantA,
-          }),
-        ),
-      (error: unknown) => databaseErrorCode(error) === "23505",
-    );
-  });
-
-  it("rejects a ticket whose source organization belongs to another tenant", async () => {
-    await assert.rejects(
-      () =>
-        inTenant(ids.tenantA, (manager) =>
+        inWorkspace(ids.workspaceA, (manager) =>
           manager.getRepository(Ticket).save({
             assigneeUserId: null,
             conversationId: null,
             participantUserIds: [],
-            requesterUserId: ids.userA,
-            sourceOrganizationId: ids.organizationB,
+            requesterUserId: ids.userB,
             status: "open",
-            subject: "Cross tenant ticket",
-            tenantId: ids.tenantA,
+            subject: "Cross workspace ticket",
+            workspaceId: ids.workspaceA,
           }),
         ),
       (error: unknown) => databaseErrorCode(error) === "23503",
     );
   });
 
-  it("restricts organization-scoped ticket reads to the exact organization", async () => {
+  it("restricts workspace-role reads to the current workspace", async () => {
     const visibleIds = await dataSource.transaction(async (manager) => {
-      await manager.query("SET LOCAL ROLE hermes_tenant_app");
+      await manager.query("SET LOCAL ROLE hermes_workspace_app");
       await manager.query(
         `SELECT
-          set_config('app.tenant_id', $1, true),
-          set_config('app.scope_level', 'organization', true),
-          set_config('app.organization_id', $2, true)`,
-        [ids.tenantA, ids.organizationAChild],
+          set_config('app.workspace_id', $1, true),
+          set_config('app.scope_level', 'workspace', true)`,
+        [ids.workspaceA],
       );
       const rows = (await manager.query(
         `SELECT "id" FROM "tickets" ORDER BY "id"`,
@@ -156,48 +132,47 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
       return rows.map((row) => row.id);
     });
 
-    assert.deepEqual(visibleIds, [ids.ticketAChild]);
+    assert.deepEqual(visibleIds, [ids.ticketA]);
   });
 
-  it("isolates login audit rows through the tenant database role and keeps audit tables append-only", async () => {
+  it("isolates login audit rows and keeps audit tables append-only", async () => {
     await dataSource.query(
       `
         INSERT INTO "login_audit_logs"
-          ("tenant_id", "scope_type", "attempted_email", "result")
+          ("workspace_id", "scope_type", "attempted_email", "result")
         VALUES
-          ($1, 'tenant', 'user-a@example.com', 'success'),
-          ($2, 'tenant', 'user-b@example.com', 'failed'),
-          (NULL, 'tenant', 'unknown@example.com', 'failed'),
+          ($1, 'workspace', 'user-a@example.com', 'success'),
+          ($2, 'workspace', 'user-b@example.com', 'failed'),
           (NULL, 'platform', 'platform@example.com', 'success')
       `,
-      [ids.tenantA, ids.tenantB],
+      [ids.workspaceA, ids.workspaceB],
     );
 
     const visibleRows = await dataSource.transaction(async (manager) => {
-      await manager.query("SET LOCAL ROLE hermes_tenant_app");
-      await manager.query("SELECT set_config('app.tenant_id', $1, true)", [
-        ids.tenantA,
+      await manager.query("SET LOCAL ROLE hermes_workspace_app");
+      await manager.query("SELECT set_config('app.workspace_id', $1, true)", [
+        ids.workspaceA,
       ]);
       return manager.query(
-        `SELECT "tenant_id", "attempted_email" FROM "login_audit_logs" ORDER BY "attempted_email"`,
+        `SELECT "workspace_id", "attempted_email" FROM "login_audit_logs" ORDER BY "attempted_email"`,
       );
     });
 
     assert.deepEqual(visibleRows, [
       {
         attempted_email: "user-a@example.com",
-        tenant_id: ids.tenantA,
+        workspace_id: ids.workspaceA,
       },
     ]);
 
     const [privileges] = await dataSource.query(`
       SELECT
-        has_table_privilege('hermes_tenant_app', 'login_audit_logs', 'SELECT') AS "loginSelect",
-        has_table_privilege('hermes_tenant_app', 'login_audit_logs', 'INSERT') AS "loginInsert",
-        has_table_privilege('hermes_tenant_app', 'login_audit_logs', 'UPDATE') AS "loginUpdate",
-        has_table_privilege('hermes_tenant_app', 'login_audit_logs', 'DELETE') AS "loginDelete",
-        has_table_privilege('hermes_tenant_app', 'access_audit_logs', 'UPDATE') AS "operationUpdate",
-        has_table_privilege('hermes_tenant_app', 'access_audit_logs', 'DELETE') AS "operationDelete"
+        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'SELECT') AS "loginSelect",
+        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'INSERT') AS "loginInsert",
+        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'UPDATE') AS "loginUpdate",
+        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'DELETE') AS "loginDelete",
+        has_table_privilege('hermes_workspace_app', 'access_audit_logs', 'UPDATE') AS "operationUpdate",
+        has_table_privilege('hermes_workspace_app', 'access_audit_logs', 'DELETE') AS "operationDelete"
     `);
     assert.deepEqual(privileges, {
       loginDelete: false,
@@ -209,38 +184,54 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
     });
   });
 
-  async function seedTenant(tenantId: string, userId: string, organizationId: string) {
-    await inTenant(tenantId, async (manager) => {
-      await manager.getRepository(User).save(user(userId, tenantId));
-      await manager.getRepository(Organization).save({
-        id: organizationId,
-        name: `Organization ${tenantId.at(-1)}`,
-        parentOrganizationId: null,
-        slug: `organization-${tenantId.at(-1)}`,
+  async function seedWorkspace(workspaceId: string, userId: string) {
+    const roleId = workspaceId === ids.workspaceA ? ids.roleA : ids.roleB;
+    await dataSource.getRepository(Account).save(
+      account(userId, `${userId}@example.com`),
+    );
+    await inWorkspace(workspaceId, async (manager) => {
+      await manager.getRepository(Role).save({
+        id: roleId,
+        isSystem: true,
+        label: "Workspace Member",
+        name: "workspace-member",
+        scope: "workspace",
+        workspaceId,
+      });
+      await manager.getRepository(WorkspaceMembership).save({
+        accountId: userId,
+        removedAt: null,
+        roleId,
         status: "active",
-        tenantId,
+        workspaceId,
       });
     });
   }
 
-  function inTenant<T>(tenantId: string, work: (manager: any) => Promise<T>) {
+  function inWorkspace<T>(
+    workspaceId: string,
+    work: (manager: any) => Promise<T>,
+  ) {
     return dataSource.transaction(async (manager) => {
-      await manager.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
-      await manager.query("SELECT set_config('app.scope_level', 'tenant', true)");
+      await manager.query("SELECT set_config('app.workspace_id', $1, true)", [
+        workspaceId,
+      ]);
+      await manager.query(
+        "SELECT set_config('app.scope_level', 'workspace', true)",
+      );
       return work(manager);
     });
   }
 });
 
-function user(id: string, tenantId: string) {
+function account(id: string, email: string) {
   return {
     displayName: "Shared User",
-    email: "shared@example.com",
+    email,
     emailVerified: true,
     id,
     preferredLanguage: "zh-Hans" as const,
     status: "active" as const,
-    tenantId,
     type: "user" as const,
   };
 }

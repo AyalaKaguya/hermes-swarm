@@ -3,44 +3,42 @@ import { InjectRepository } from "@nestjs/typeorm";
 import {
   AccessAuditLog,
   LoginAuditLog,
-  Organization,
   Permission,
-  PlatformUser,
-  Tenant,
-  User,
+  Workspace,
+  Account,
 } from "@hermes-swarm/core";
 import { In, type Repository, type SelectQueryBuilder } from "typeorm";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import type { AuditListQuery } from "./audit-query.js";
 
-type AuditPrincipalScope = "platform" | "tenant";
+type AuditPrincipalScope = "platform" | "workspace";
 
 @Injectable()
 export class AuditQueryService {
   constructor(
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(AccessAuditLog, PLATFORM_DATA_SOURCE)
     private readonly platformAccessAuditRepository: Repository<AccessAuditLog>,
     @InjectRepository(LoginAuditLog, PLATFORM_DATA_SOURCE)
     private readonly platformLoginAuditRepository: Repository<LoginAuditLog>,
     @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
     private readonly permissionRepository: Repository<Permission>,
-    @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
-    private readonly platformUserRepository: Repository<PlatformUser>,
-    @InjectRepository(Tenant, PLATFORM_DATA_SOURCE)
-    private readonly tenantRepository: Repository<Tenant>,
+    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    private readonly platformAccountRepository: Repository<Account>,
+    @InjectRepository(Workspace, PLATFORM_DATA_SOURCE)
+    private readonly workspaceRepository: Repository<Workspace>,
   ) {}
 
   async listLoginLogs(scope: AuditPrincipalScope, query: AuditListQuery) {
     const repository =
       scope === "platform"
         ? this.platformLoginAuditRepository
-        : this.tenantContext.repository(LoginAuditLog);
+        : this.workspaceContext.repository(LoginAuditLog);
     const builder = repository
       .createQueryBuilder("log")
       .leftJoin(
-        scope === "platform" ? PlatformUser : User,
+        Account,
         "actor",
         "actor.id = log.actor_id",
       )
@@ -86,7 +84,7 @@ export class AuditQueryService {
         result: row.result,
         scopeType: row.scopeType,
         sessionId: row.sessionId,
-        tenantId: row.tenantId,
+        workspaceId: row.workspaceId,
         userAgent: row.userAgent,
       })),
       page: query.page,
@@ -99,18 +97,18 @@ export class AuditQueryService {
     const repository =
       scope === "platform"
         ? this.platformAccessAuditRepository
-        : this.tenantContext.repository(AccessAuditLog);
+        : this.workspaceContext.repository(AccessAuditLog);
     const builder = repository
       .createQueryBuilder("log")
       .leftJoin(
-        scope === "platform" ? PlatformUser : User,
+        Account,
         "actor",
         "actor.id = log.actor_id",
       );
     if (scope === "platform") {
       builder.where("log.principal_type = 'platform'");
     } else {
-      builder.where("log.principal_type IN ('tenant', 'integration')");
+      builder.where("log.principal_type IN ('workspace', 'integration')");
     }
     applyDateFilters(builder, query);
     if (query.actorId) {
@@ -146,24 +144,17 @@ export class AuditQueryService {
       .skip((query.page - 1) * query.pageSize)
       .take(query.pageSize);
     const [rows, total] = await builder.getManyAndCount();
-    const [actors, permissions, organizations, targetTenants] =
+    const [actors, permissions, targetWorkspaces] =
       await Promise.all([
         this.resolveActors(
           scope,
           rows.flatMap((row) => (row.actorId ? [row.actorId] : [])),
         ),
         this.resolvePermissions(rows.map((row) => row.permission)),
-        scope === "tenant"
-          ? this.resolveOrganizations(
-              rows.flatMap((row) =>
-                row.organizationId ? [row.organizationId] : [],
-              ),
-            )
-          : Promise.resolve(new Map<string, NamedReference>()),
         scope === "platform"
-          ? this.resolveTargetTenants(
+          ? this.resolveTargetWorkspaces(
               rows.flatMap((row) =>
-                row.targetTenantId ? [row.targetTenantId] : [],
+                row.targetWorkspaceId ? [row.targetWorkspaceId] : [],
               ),
             )
           : Promise.resolve(new Map<string, NamedReference>()),
@@ -181,23 +172,18 @@ export class AuditQueryService {
           id: row.id,
           ipAddress: row.ipAddress,
           operationLabel: permission?.operationLabel ?? row.permission,
-          organization:
-            row.organizationId
-              ? organizations.get(row.organizationId) ?? null
-              : null,
-          organizationId: row.organizationId,
           permission: row.permission,
           principalType: row.principalType,
           result: row.result,
           scopeType: row.scopeType,
           sessionId: row.sessionId,
           statusCode: row.statusCode,
-          targetTenant:
-            row.targetTenantId
-              ? targetTenants.get(row.targetTenantId) ?? null
+          targetWorkspace:
+            row.targetWorkspaceId
+              ? targetWorkspaces.get(row.targetWorkspaceId) ?? null
               : null,
-          targetTenantId: row.targetTenantId,
-          tenantId: row.tenantId,
+          targetWorkspaceId: row.targetWorkspaceId,
+          workspaceId: row.workspaceId,
           userAgent: row.userAgent,
         };
       }),
@@ -212,8 +198,8 @@ export class AuditQueryService {
     if (!uniqueIds.length) return new Map<string, ActorReference>();
     const repository =
       scope === "platform"
-        ? this.platformUserRepository
-        : this.tenantContext.repository(User);
+        ? this.platformAccountRepository
+        : this.workspaceContext.repository(Account);
     const rows = await repository.find({
       withDeleted: true,
       where: { id: In(uniqueIds) },
@@ -241,22 +227,10 @@ export class AuditQueryService {
     );
   }
 
-  private async resolveOrganizations(ids: string[]) {
+  private async resolveTargetWorkspaces(ids: string[]) {
     const uniqueIds = [...new Set(ids)];
     if (!uniqueIds.length) return new Map<string, NamedReference>();
-    const rows = await this.tenantContext.repository(Organization).find({
-      withDeleted: true,
-      where: { id: In(uniqueIds) },
-    });
-    return new Map(
-      rows.map((row) => [row.id, { id: row.id, name: row.name }]),
-    );
-  }
-
-  private async resolveTargetTenants(ids: string[]) {
-    const uniqueIds = [...new Set(ids)];
-    if (!uniqueIds.length) return new Map<string, NamedReference>();
-    const rows = await this.tenantRepository.find({
+    const rows = await this.workspaceRepository.find({
       withDeleted: true,
       where: { id: In(uniqueIds) },
     });

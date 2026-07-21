@@ -1,0 +1,77 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  AuthenticatedLoginInternalSchema,
+  AuthenticatedLoginResponseSchema,
+  LoginRequestSchema,
+} from "./auth.js";
+import {
+  adminContractList,
+  adminContracts,
+  assertUniqueAdminContracts,
+  findAdminContract,
+  responseSchemaFor,
+} from "./contracts.js";
+import { AuditLogQuerySchema, SaveSettingsRequestSchema } from "./domains.js";
+import { IsoDateTimeSchema } from "./models.js";
+
+describe("admin API contracts", () => {
+  it("registers unique method and path pairs with responses", () => {
+    assert.doesNotThrow(() => assertUniqueAdminContracts());
+    assert.ok(adminContractList.length >= 80);
+  });
+
+  it("matches concrete paths and extracts decoded params", () => {
+    const match = findAdminContract("DELETE", "/api/admin/auth/sessions/session%201");
+    assert.equal(match?.contract.id, "auth.sessions.revoke");
+    assert.deepEqual(match?.params, { sessionId: "session 1" });
+  });
+
+  it("rejects unknown request keys", () => {
+    const result = LoginRequestSchema.safeParse({
+      email: "admin@example.com",
+      password: "secret",
+      ignored: true,
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("coerces query pagination without weakening object strictness", () => {
+    assert.deepEqual(
+      AuditLogQuerySchema.parse({ page: "2", pageSize: "25" }),
+      { page: 2, pageSize: 25 },
+    );
+    assert.throws(() => AuditLogQuerySchema.parse({ page: "2", extra: "x" }));
+  });
+
+  it("accepts JSON setting maps and rejects undefined values", () => {
+    assert.deepEqual(SaveSettingsRequestSchema.parse({ feature: true }), { feature: true });
+    assert.throws(() => SaveSettingsRequestSchema.parse({ feature: undefined }));
+  });
+
+  it("requires timezone-aware ISO timestamps", () => {
+    assert.equal(IsoDateTimeSchema.safeParse("2026-07-21T10:00:00.000Z").success, true);
+    assert.equal(IsoDateTimeSchema.safeParse("2026-07-21 10:00:00").success, false);
+  });
+
+  it("requires exact API status codes while allowing browser 2xx normalization", () => {
+    assert.equal(responseSchemaFor(adminContracts.authLogin, 200), undefined);
+    assert.ok(responseSchemaFor(adminContracts.authLogin, 200, true));
+    assert.ok(responseSchemaFor(adminContracts.authLogin, 201));
+  });
+
+  it("keeps access tokens out of browser responses", () => {
+    assert.equal("accessToken" in AuthenticatedLoginInternalSchema.shape, true);
+    assert.equal("accessToken" in AuthenticatedLoginResponseSchema.shape, false);
+    assert.equal(
+      AuthenticatedLoginResponseSchema.safeParse({
+        accessToken: "secret",
+        expiresAt: "2026-07-21T10:00:00.000Z",
+        sessionId: "session-1",
+        snapshot: {},
+        status: "authenticated",
+      }).success,
+      false,
+    );
+  });
+});

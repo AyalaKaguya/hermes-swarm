@@ -7,8 +7,6 @@ import {
 } from "@hermes-swarm/rbac-api";
 import {
   Permission,
-  PlatformRole,
-  PlatformRolePermission,
   Role,
   RolePermission,
   type PermissionScope,
@@ -30,19 +28,17 @@ import type {
 import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 const SCOPE_LABELS: Record<PermissionScope, string> = {
-  organization: "组织",
   own: "个人",
   platform: "平台",
-  tenant: "工作空间",
+  workspace: "工作空间",
 };
 const METHOD_METADATA = "method";
 const PATH_METADATA = "path";
 
 const SCOPE_ORDER: Record<PermissionScope, number> = {
   platform: 0,
-  tenant: 1,
-  organization: 2,
-  own: 3,
+  workspace: 1,
+  own: 2,
 };
 
 @Injectable()
@@ -58,10 +54,6 @@ export class AccessCatalogService implements OnModuleInit {
     private readonly roleRepository: Repository<Role>,
     @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
     private readonly rolePermissionRepository: Repository<RolePermission>,
-    @InjectRepository(PlatformRole, PLATFORM_DATA_SOURCE)
-    private readonly platformRoleRepository: Repository<PlatformRole>,
-    @InjectRepository(PlatformRolePermission, PLATFORM_DATA_SOURCE)
-    private readonly platformRolePermissionRepository: Repository<PlatformRolePermission>,
   ) {}
 
   async onModuleInit() {
@@ -233,41 +225,34 @@ export class AccessCatalogService implements OnModuleInit {
 
     await this.pruneStaleCatalogPermissions(codes);
 
-    const existing = await this.permissionRepository.find({
-      where: { code: In(codes) },
-    });
-    const existingByCode = new Map(
-      existing
-        .filter((permission) => permission.code)
-        .map((permission) => [permission.code as string, permission]),
+    await this.permissionRepository.upsert(
+      this.definitions.map((definition) =>
+        this.permissionRepository.create({
+          action:
+            definition.source === "navigation"
+              ? "access"
+              : definition.operation,
+          code: definition.id,
+          defaultRoles: definition.defaultRoles,
+          description: definition.description,
+          entity: definition.entity,
+          entityLabel: definition.entityLabel,
+          entityOrder: definition.entityOrder ?? null,
+          isDangerous: definition.isDangerous,
+          operation: definition.operation,
+          operationLabel: definition.operationLabel,
+          operationOrder: definition.operationOrder,
+          purpose: definition.purpose,
+          purposeLabel: definition.purposeLabel,
+          purposeOrder: definition.purposeOrder ?? null,
+          scope: definition.scope,
+          source: definition.source ?? "controller",
+        }),
+      ),
+      ["code"],
     );
 
-    for (const definition of this.definitions) {
-      const permission =
-        existingByCode.get(definition.id) ??
-        this.permissionRepository.create({ code: definition.id });
-      permission.code = definition.id;
-      permission.entity = definition.entity;
-      permission.entityLabel = definition.entityLabel;
-      permission.entityOrder = definition.entityOrder ?? null;
-      permission.purpose = definition.purpose;
-      permission.purposeLabel = definition.purposeLabel;
-      permission.purposeOrder = definition.purposeOrder ?? null;
-      permission.operation = definition.operation;
-      permission.operationLabel = definition.operationLabel;
-      permission.operationOrder = definition.operationOrder;
-      permission.action =
-        definition.source === "navigation" ? "access" : definition.operation;
-      permission.scope = definition.scope;
-      permission.description = definition.description;
-      permission.isDangerous = definition.isDangerous;
-      permission.source = definition.source ?? "controller";
-      permission.defaultRoles = definition.defaultRoles;
-      await this.permissionRepository.save(permission);
-    }
-
     await this.backfillMissingDefaultRolePermissions();
-    await this.backfillPlatformDefaultRolePermissions();
   }
 
   private async pruneStaleCatalogPermissions(activeCodes: string[]) {
@@ -277,13 +262,11 @@ export class AccessCatalogService implements OnModuleInit {
         source: In(["controller", "navigation"]),
       },
     });
-    const staleCodes = stalePermissions
-      .map((permission) => permission.code)
-      .filter((code): code is string => Boolean(code));
-    if (staleCodes.length === 0) return;
+    const staleIds = stalePermissions.map((permission) => permission.id);
+    if (staleIds.length === 0) return;
 
-    await this.rolePermissionRepository.delete({ permission: In(staleCodes) });
-    await this.permissionRepository.delete({ code: In(staleCodes) });
+    await this.rolePermissionRepository.delete({ permissionId: In(staleIds) });
+    await this.permissionRepository.delete({ id: In(staleIds) });
   }
 
   private async backfillMissingDefaultRolePermissions() {
@@ -299,32 +282,27 @@ export class AccessCatalogService implements OnModuleInit {
       where: { roleId: In(roles.map((role) => role.id)) },
     });
     const existing = new Set(
-      existingRows.map((row) => `${row.roleId}:${row.permission}`),
+      existingRows.map((row) => `${row.roleId}:${row.permissionId}`),
     );
     const missingRows: RolePermission[] = [];
 
     for (const role of roles) {
       const rolePermissions = permissions.filter((permission) => {
         if (!permission.defaultRoles?.includes(role.name)) return false;
-        if (role.scope === "tenant") {
-          return permission.scope === "tenant" || permission.scope === "own";
-        }
-        return permission.scope === "organization";
+        return role.scope === "platform"
+          ? permission.scope === "platform"
+          : permission.scope === "workspace" || permission.scope === "own";
       });
 
       for (const permission of rolePermissions) {
-        const permissionCode = permission.code;
-        if (!permissionCode) continue;
-        const key = `${role.id}:${permissionCode}`;
+        const key = `${role.id}:${permission.id}`;
         if (existing.has(key)) continue;
         existing.add(key);
         missingRows.push(
           this.rolePermissionRepository.create({
             enabled: true,
-            permission: permissionCode,
             permissionId: permission.id,
             roleId: role.id,
-            tenantId: role.tenantId,
           }),
         );
       }
@@ -335,34 +313,6 @@ export class AccessCatalogService implements OnModuleInit {
     }
   }
 
-  private async backfillPlatformDefaultRolePermissions() {
-    const roles = await this.platformRoleRepository.find({
-      where: { isSystem: true },
-    });
-    if (roles.length === 0) return;
-    const permissions = await this.permissionRepository.find({
-      where: { scope: "platform" },
-    });
-    const existing = await this.platformRolePermissionRepository.find({
-      where: { platformRoleId: In(roles.map((role) => role.id)) },
-    });
-    const keys = new Set(
-      existing.map((item) => `${item.platformRoleId}:${item.permissionId}`),
-    );
-    const rows = roles.flatMap((role) =>
-      permissions
-        .filter((permission) => permission.defaultRoles?.includes(role.name))
-        .filter((permission) => !keys.has(`${role.id}:${permission.id}`))
-        .map((permission) =>
-          this.platformRolePermissionRepository.create({
-            enabled: true,
-            permissionId: permission.id,
-            platformRoleId: role.id,
-          }),
-        ),
-    );
-    if (rows.length) await this.platformRolePermissionRepository.save(rows);
-  }
 }
 
 type ScopeNode = {
@@ -453,9 +403,9 @@ function resolveFallbackDefaultRoles(
   operation: AccessOperationMetadata,
 ): AccessDefaultRole[] {
   if (scope === "platform") return ["platform-admin"];
-  if (scope === "tenant") return ["tenant-owner", "tenant-admin"];
+  if (scope === "workspace") return ["workspace-owner", "workspace-admin"];
   if (scope === "own") {
-    return ["tenant-owner", "tenant-admin", "tenant-member"];
+    return ["workspace-owner", "workspace-admin", "workspace-member"];
   }
   if (operation.isDangerous) return ["owner"];
   if (/^(list|view|get|read|search)/.test(operation.operation)) {

@@ -10,7 +10,7 @@ import {
   PlatformEmailTemplate,
   PlatformSmtp,
 } from "@hermes-swarm/core";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import { SettingsService } from "../settings/settings.service.js";
@@ -19,7 +19,7 @@ export type EmailLanguageCode = "en" | "zh-CN" | "zh-Hans" | "zh-Hant";
 
 export type SendEmailContext = {
   email: string;
-  tenantId?: string;
+  workspaceId?: string;
   templateName: string;
   languageCode?: EmailLanguageCode;
   locals?: Record<string, unknown>;
@@ -51,19 +51,19 @@ export class EmailSendService {
     @InjectRepository(PlatformSmtp, PLATFORM_DATA_SOURCE)
     private readonly platformSmtpRepository: Repository<PlatformSmtp>,
     private readonly settingsService: SettingsService,
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async send(ctx: SendEmailContext): Promise<SendEmailResult> {
-    const tenantId =
-      ctx.tenantId ?? this.tenantContext.current(false)?.tenantId ?? null;
-    if (!tenantId) return { sent: false, reason: "send_failed" };
+    const workspaceId =
+      ctx.workspaceId ?? this.workspaceContext.current(false)?.workspaceId ?? null;
+    if (!workspaceId) return { sent: false, reason: "send_failed" };
     const recipient = ctx.email?.trim();
     if (!recipient) {
       await this.recordLog({
         content: null,
         email: "",
-        tenantId,
+        workspaceId,
         status: "skipped",
         subject: null,
         templateName: ctx.templateName,
@@ -73,13 +73,13 @@ export class EmailSendService {
 
     let smtp: CustomSmtp | PlatformSmtp | null;
     try {
-      smtp = await this.findSmtpRecord(tenantId);
+      smtp = await this.findSmtpRecord(workspaceId);
     } catch (error) {
       this.logger.error("Failed to resolve SMTP config:", error);
       await this.recordLog({
         content: null,
         email: recipient,
-        tenantId,
+        workspaceId,
         status: "failed",
         subject: null,
         templateName: ctx.templateName,
@@ -88,11 +88,11 @@ export class EmailSendService {
     }
 
     if (!smtp || !smtp.host) {
-      this.logger.warn(`No SMTP config for tenant ${tenantId}`);
+      this.logger.warn(`No SMTP config for workspace ${workspaceId}`);
       await this.recordLog({
         content: null,
         email: recipient,
-        tenantId,
+        workspaceId,
         status: "skipped",
         subject: null,
         templateName: ctx.templateName,
@@ -106,14 +106,14 @@ export class EmailSendService {
       template = await this.resolveTemplate(
         ctx.templateName,
         langCode,
-        tenantId,
+        workspaceId,
       );
     } catch (error) {
       this.logger.error("Failed to resolve email template:", error);
       await this.recordLog({
         content: null,
         email: recipient,
-        tenantId,
+        workspaceId,
         status: "failed",
         subject: null,
         templateName: ctx.templateName,
@@ -126,7 +126,7 @@ export class EmailSendService {
       await this.recordLog({
         content: null,
         email: recipient,
-        tenantId,
+        workspaceId,
         status: "skipped",
         subject: null,
         templateName: ctx.templateName,
@@ -152,7 +152,7 @@ export class EmailSendService {
       await this.recordLog({
         content: html,
         email: recipient,
-        tenantId,
+        workspaceId,
         status: "sent",
         subject,
         templateName: ctx.templateName,
@@ -163,7 +163,7 @@ export class EmailSendService {
       await this.recordLog({
         content: null,
         email: recipient,
-        tenantId,
+        workspaceId,
         status: "failed",
         subject: null,
         templateName: ctx.templateName,
@@ -186,7 +186,7 @@ export class EmailSendService {
   private async resolveTemplate(
     name: string,
     languageCode: string,
-    tenantId: string,
+    workspaceId: string,
   ): Promise<EmailTemplate | PlatformEmailTemplate | null> {
     const languageCodes = getTemplateLanguageCandidates(languageCode);
 
@@ -195,7 +195,7 @@ export class EmailSendService {
         where: {
           name,
           languageCode: candidate,
-          tenantId,
+          workspaceId,
         },
       });
       if (template) return template;
@@ -212,13 +212,13 @@ export class EmailSendService {
   }
 
   private async findSmtpRecord(
-    tenantId: string,
+    workspaceId: string,
   ): Promise<CustomSmtp | PlatformSmtp | null> {
-    const tenantSmtp = await this.smtpRepository.findOne({
-      where: { tenantId },
+    const workspaceSmtp = await this.smtpRepository.findOne({
+      where: { workspaceId },
       order: { createdAt: "DESC" },
     });
-    if (tenantSmtp) return tenantSmtp;
+    if (workspaceSmtp) return workspaceSmtp;
     const publicSmtpEnabled = await this.settingsService.getPlatformValue(
       PLATFORM_SETTING_KEYS.publicSmtpEnabled,
       "false",
@@ -230,7 +230,7 @@ export class EmailSendService {
   private async recordLog(entry: {
     content: string | null;
     email: string;
-    tenantId: string;
+    workspaceId: string;
     status: "sent" | "failed" | "skipped";
     subject: string | null;
     templateName: string;
@@ -253,17 +253,17 @@ export class EmailSendService {
   }
 
   private get smtpRepository() {
-    return this.tenantContext.current(false)?.manager?.getRepository(CustomSmtp) ??
+    return this.workspaceContext.current(false)?.manager?.getRepository(CustomSmtp) ??
       this.smtpBaseRepository;
   }
 
   private get templateRepository() {
-    return this.tenantContext.current(false)?.manager?.getRepository(EmailTemplate) ??
+    return this.workspaceContext.current(false)?.manager?.getRepository(EmailTemplate) ??
       this.templateBaseRepository;
   }
 
   private get emailLogRepository() {
-    return this.tenantContext.current(false)?.manager?.getRepository(EmailLog) ??
+    return this.workspaceContext.current(false)?.manager?.getRepository(EmailLog) ??
       this.emailLogBaseRepository;
   }
 }
@@ -271,7 +271,7 @@ export class EmailSendService {
 function normalizeEmailLogEntry(entry: {
   content: string | null;
   email: string;
-  tenantId: string;
+  workspaceId: string;
   status: "sent" | "failed" | "skipped";
   subject: string | null;
   templateName: string;

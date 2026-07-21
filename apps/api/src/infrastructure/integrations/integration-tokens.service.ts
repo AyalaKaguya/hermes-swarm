@@ -11,13 +11,11 @@ import {
   IntegrationToken,
   Permission,
   RolePermission,
-  UserOrganization,
-  UserOrganizationRole,
-  UserTenantRole,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { In } from "typeorm";
 import type { CreateIntegrationTokenPayload } from "../../common/admin-api.types.js";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { INTEGRATION_SESSION_PREFIX, createAuthSessionToken } from "../auth/auth-session.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 
@@ -30,7 +28,7 @@ export class IntegrationTokensService {
     @Inject(AuthSessionService)
     private readonly authSessionService: AuthSessionService,
     private readonly configService: ConfigService,
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async capabilities(authorization: string | undefined) {
@@ -43,7 +41,7 @@ export class IntegrationTokensService {
           permissions: permissions.map((permission) =>
             toPermissionCapability(permission, definitionsByCode.get(permission)),
           ),
-          scope: "tenant" as const,
+          scope: "workspace" as const,
         },
       ],
     };
@@ -54,7 +52,7 @@ export class IntegrationTokensService {
     return (
       await this.tokenRepository.find({
         order: { createdAt: "DESC" },
-        where: { ownerUserId: session.userId, tenantId: this.tenantId },
+        where: { ownerUserId: session.userId, workspaceId: this.workspaceId },
       })
     ).map(toIntegrationTokenDto);
   }
@@ -81,7 +79,7 @@ export class IntegrationTokensService {
         jti: randomUUID(),
         principalType: "integration",
         sessionId: `${INTEGRATION_SESSION_PREFIX}${id}`,
-        tenantId: session.tenantId,
+        workspaceId: session.workspaceId,
         userId: session.userId,
       },
       {
@@ -97,8 +95,8 @@ export class IntegrationTokensService {
         ownerUserId: session.userId,
         permissions,
         revokedAt: null,
-        scope: "tenant",
-        tenantId: this.tenantId,
+        scope: "workspace",
+        workspaceId: this.workspaceId,
         tokenHash: hashToken(token),
         tokenPrefix: token.slice(0, 24),
       }),
@@ -112,7 +110,7 @@ export class IntegrationTokensService {
       where: {
         id: tokenId,
         ownerUserId: session.userId,
-        tenantId: this.tenantId,
+        workspaceId: this.workspaceId,
       },
     });
     if (!token) throw new NotFoundException("Token 不存在");
@@ -122,50 +120,19 @@ export class IntegrationTokensService {
   }
 
   private async effectivePermissions(userId: string) {
-    const tenantAssignments = await this.tenantContext.repository(UserTenantRole).find({
+    const workspaceAssignments = await this.workspaceContext.repository(WorkspaceMembership).find({
       relations: { role: true },
-      where: { tenantId: this.tenantId, userId },
+      where: { accountId: userId, status: "active", workspaceId: this.workspaceId },
     });
-    const memberships = await this.tenantContext.repository(UserOrganization).find({
-      where: { status: "active", tenantId: this.tenantId, userId },
-    });
-    const membershipsById = new Map(
-      memberships.map((membership) => [membership.id, membership]),
-    );
-    const organizationAssignments = memberships.length
-      ? await this.tenantContext.repository(UserOrganizationRole).find({
-          relations: { role: true },
-          where: {
-            membershipId: In(memberships.map((membership) => membership.id)),
-            tenantId: this.tenantId,
-          },
-        })
-      : [];
-    const roleIds = [
-      ...tenantAssignments
-        .filter(
-          (assignment) =>
-            assignment.role?.scope === "tenant" &&
-            assignment.role.organizationId === null,
-        )
-        .map((assignment) => assignment.roleId),
-      ...organizationAssignments
-        .filter((assignment) => {
-          const membership = membershipsById.get(assignment.membershipId);
-          return (
-            membership?.organizationId === assignment.organizationId &&
-            assignment.role?.scope === "organization" &&
-            assignment.role.organizationId === assignment.organizationId
-          );
-        })
-        .map((assignment) => assignment.roleId),
-    ];
+    const roleIds = workspaceAssignments
+      .filter((assignment) => assignment.role?.scope === "workspace")
+      .map((assignment) => assignment.roleId);
     if (!roleIds.length) return [];
-    const rows = await this.tenantContext.repository(RolePermission).find({
+    const rows = await this.workspaceContext.repository(RolePermission).find({
+      relations: { permissionRecord: true },
       where: {
         enabled: true,
         roleId: In([...new Set(roleIds)]),
-        tenantId: this.tenantId,
       },
     });
     return [
@@ -180,7 +147,7 @@ export class IntegrationTokensService {
   private async delegatablePermissions(userId: string) {
     const effectivePermissions = await this.effectivePermissions(userId);
     const definitions = effectivePermissions.length
-      ? await this.tenantContext.repository(Permission).find({
+      ? await this.workspaceContext.repository(Permission).find({
           where: { code: In(effectivePermissions) },
         })
       : [];
@@ -202,18 +169,18 @@ export class IntegrationTokensService {
   private async requirePersonalSession(authorization: string | undefined) {
     const session = await this.authSessionService.validateAccessToken(extractBearerToken(authorization));
     if (session.tokenKind === "integration") throw new ForbiddenException("个人 API Token 不能管理其他 Token");
-    if (session.principalType !== "tenant" || session.tenantId !== this.tenantId) {
+    if (session.principalType !== "workspace" || session.workspaceId !== this.workspaceId) {
       throw new ForbiddenException("当前会话不能管理个人 API Token");
     }
     return session;
   }
 
-  private get tokenRepository() { return this.tenantContext.repository(IntegrationToken); }
-  private get tenantId() { return this.tenantContext.current()!.tenantId; }
+  private get tokenRepository() { return this.workspaceContext.repository(IntegrationToken); }
+  private get workspaceId() { return this.workspaceContext.current()!.workspaceId; }
 }
 
 function toPermissionCapability(code: string, definition?: Permission) {
-  const [path, scope = "tenant"] = code.split(":");
+  const [path, scope = "workspace"] = code.split(":");
   const [fallbackEntity = "permission", fallbackPurpose = "general", fallbackOperation = "access"] = path.split(".");
   const entity = definition?.entity ?? fallbackEntity;
   const purpose = definition?.purpose ?? fallbackPurpose;

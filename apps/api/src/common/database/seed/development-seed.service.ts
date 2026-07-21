@@ -1,23 +1,17 @@
 import {
-  Organization,
   Permission,
-  PlatformRole,
-  PlatformRolePermission,
-  PlatformUser,
-  PlatformUserRole,
+  PlatformMembership,
   Role,
   RolePermission,
-  Tenant,
-  User,
-  UserOrganization,
-  UserOrganizationRole,
-  UserTenantRole,
+  Account,
+  WorkspaceMembership,
+  Workspace,
 } from "@hermes-swarm/core";
 import type { ResolvedAccessDefinition } from "@hermes-swarm/rbac";
-import { DataSource, IsNull, type EntityManager } from "typeorm";
+import { DataSource, In, IsNull, type EntityManager } from "typeorm";
 import { hashPassword } from "../../security/password-hash.js";
-import { TenantContextService } from "../tenant-context.service.js";
-import { TENANT_DATABASE_GUCS } from "../tenant-database.constants.js";
+import { WorkspaceContextService } from "../workspace-context.service.js";
+import { WORKSPACE_DATABASE_GUCS } from "../workspace-database.constants.js";
 import { buildSeedPermissionCatalog } from "./seed-permission-catalog.js";
 import {
   seedDevelopmentFixtures,
@@ -25,32 +19,29 @@ import {
 } from "./development-seed-fixtures.js";
 
 export type DevelopmentSeedConfig = {
-  organizationName: string;
-  organizationSlug: string;
   ownerDisplayName: string;
   ownerEmail: string;
   ownerPassword: string;
   platformAdminDisplayName: string;
   platformAdminEmail: string;
   platformAdminPassword: string;
-  tenantName: string;
-  tenantSlug: string;
+  workspaceName: string;
+  workspaceSlug: string;
 };
 
 export type DevelopmentSeedResult = {
   fixtures: DevelopmentFixtureCounts;
-  organizationId: string;
   ownerUserId: string;
   permissionCount: number;
   platformAdminId: string;
-  tenantId: string;
+  workspaceId: string;
 };
 
 export class DevelopmentSeedService {
   constructor(
     private readonly platformDataSource: DataSource,
-    private readonly tenantDataSource: DataSource,
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceDataSource: DataSource,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async run(config: DevelopmentSeedConfig): Promise<DevelopmentSeedResult> {
@@ -58,25 +49,42 @@ export class DevelopmentSeedService {
     const platform = await this.platformDataSource.transaction((manager) =>
       seedPlatform(manager, config, definitions),
     );
-    const tenant = await this.tenantDataSource.transaction(async (manager) => {
-      await configureSeedTenantContext(manager, platform.tenant.id);
-      return this.tenantContext.run(
+    const workspace = await this.platformDataSource.transaction(async (manager) => {
+      await configureSeedWorkspaceContext(manager, platform.workspace.id);
+      return this.workspaceContext.run(
         {
           manager,
-          organizationId: null,
-          scopeLevel: "tenant",
-          tenantId: platform.tenant.id,
+          scopeLevel: "workspace",
+          workspaceId: platform.workspace.id,
         },
-        () => seedTenantData(manager, platform.tenant, config, definitions),
+        () => seedWorkspaceData(manager, platform.workspace, config, definitions, "workspaceOwner", platform.admin),
+      );
+    });
+    await this.platformDataSource.transaction(async (manager) => {
+      await configureSeedWorkspaceContext(manager, platform.secondaryWorkspace.id);
+      await this.workspaceContext.run(
+        {
+          manager,
+          scopeLevel: "workspace",
+          workspaceId: platform.secondaryWorkspace.id,
+        },
+        () =>
+          seedWorkspaceData(
+            manager,
+            platform.secondaryWorkspace,
+            config,
+            definitions,
+            "workspaceAdmin",
+            platform.admin,
+          ),
       );
     });
     return {
-      fixtures: tenant.fixtures,
-      organizationId: tenant.organization.id,
-      ownerUserId: tenant.owner.id,
+      fixtures: workspace.fixtures,
+      ownerUserId: workspace.owner.id,
       permissionCount: definitions.length,
       platformAdminId: platform.admin.id,
-      tenantId: platform.tenant.id,
+      workspaceId: platform.workspace.id,
     };
   }
 }
@@ -87,66 +95,88 @@ async function seedPlatform(
   definitions: ResolvedAccessDefinition[],
 ) {
   const permissions = await seedPermissions(manager, definitions);
-  let role = await manager.findOne(PlatformRole, {
-    where: { name: "platform-admin" },
+  let role = await manager.findOne(Role, {
+    where: { name: "platform-admin", scope: "platform", workspaceId: IsNull() },
   });
-  role ??= manager.create(PlatformRole, { name: "platform-admin" });
+  role ??= manager.create(Role, {
+    name: "platform-admin",
+    scope: "platform",
+    workspaceId: null,
+  });
   Object.assign(role, {
     description: "Platform administrator with all platform permissions.",
     isSystem: true,
     label: "Platform Admin",
+    displayName: "Platform Admin",
+    scope: "platform",
+    workspaceId: null,
   });
-  role = await manager.save(PlatformRole, role);
+  role = await manager.save(Role, role);
 
-  let admin = await manager.findOne(PlatformUser, {
+  let admin = await manager.findOne(Account, {
     where: { email: config.platformAdminEmail },
     withDeleted: true,
   });
-  admin ??= manager.create(PlatformUser, { email: config.platformAdminEmail });
+  admin ??= manager.create(Account, { email: config.platformAdminEmail });
   Object.assign(admin, {
     deletedAt: null,
     displayName: config.platformAdminDisplayName,
     passwordHash: await hashPassword(config.platformAdminPassword),
-    preferredLanguage: "zh-CN",
+    emailVerified: true,
+    nickname: config.platformAdminDisplayName,
+    preferredLanguage: "zh-Hans",
     status: "active",
+    type: "user",
   });
-  admin = await manager.save(PlatformUser, admin);
-  await ensurePlatformUserRole(manager, admin.id, role.id);
+  admin = await manager.save(Account, admin);
+  await ensurePlatformMembership(manager, admin.id, role.id);
 
-  const platformPermissions = permissions.filter(
-    (permission) =>
-      permission.scope === "platform" &&
-      permission.defaultRoles?.includes("platform-admin"),
+  await replacePlatformRolePermissions(
+    manager,
+    role.id,
+    permissions
+      .filter(
+        (permission) =>
+          permission.scope === "platform" &&
+          permission.defaultRoles?.includes("platform-admin"),
+      )
+      .map((permission) => permission.id),
   );
-  for (const permission of platformPermissions) {
-    await ensurePlatformRolePermission(manager, role.id, permission.id);
-  }
 
-  let tenant = await manager.findOne(Tenant, {
-    where: { deletedAt: IsNull(), slug: config.tenantSlug },
+  let workspace = await manager.findOne(Workspace, {
+    where: { deletedAt: IsNull(), slug: config.workspaceSlug },
   });
-  tenant ??= manager.create(Tenant, { slug: config.tenantSlug });
-  Object.assign(tenant, {
+  workspace ??= manager.create(Workspace, { slug: config.workspaceSlug });
+  Object.assign(workspace, {
     deletedAt: null,
-    name: config.tenantName,
+    name: config.workspaceName,
     status: "active",
-    subdomain: config.tenantSlug,
+    subdomain: config.workspaceSlug,
   });
-  tenant = await manager.save(Tenant, tenant);
-  return { admin, tenant };
+  workspace = await manager.save(Workspace, workspace);
+  const secondarySlug = `${config.workspaceSlug}-lab`;
+  let secondaryWorkspace = await manager.findOne(Workspace, {
+    where: { deletedAt: IsNull(), slug: secondarySlug },
+  });
+  secondaryWorkspace ??= manager.create(Workspace, { slug: secondarySlug });
+  Object.assign(secondaryWorkspace, {
+    deletedAt: null,
+    name: `${config.workspaceName} Lab`,
+    status: "active",
+    subdomain: secondarySlug,
+  });
+  secondaryWorkspace = await manager.save(Workspace, secondaryWorkspace);
+  return { admin, secondaryWorkspace, workspace };
 }
 
 async function seedPermissions(
   manager: EntityManager,
   definitions: ResolvedAccessDefinition[],
 ) {
-  const permissions: Permission[] = [];
-  for (const definition of definitions) {
-    let permission = await manager.findOne(Permission, {
-      where: { code: definition.id },
-    });
-    permission ??= manager.create(Permission, { code: definition.id });
-    Object.assign(permission, {
+  await manager.upsert(
+    Permission,
+    definitions.map((definition) =>
+      manager.create(Permission, {
       action: definition.source === "navigation" ? "access" : definition.operation,
       code: definition.id,
       defaultRoles: definition.defaultRoles,
@@ -163,223 +193,107 @@ async function seedPermissions(
       purposeOrder: definition.purposeOrder ?? null,
       scope: definition.scope,
       source: definition.source ?? "controller",
-    });
-    permissions.push(await manager.save(Permission, permission));
-  }
-  return permissions;
+      }),
+    ),
+    ["code"],
+  );
+  return manager.find(Permission, {
+    where: { code: In(definitions.map((definition) => definition.id)) },
+  });
 }
 
-async function seedTenantData(
+async function seedWorkspaceData(
   manager: EntityManager,
-  tenant: Tenant,
+  workspace: Workspace,
   config: DevelopmentSeedConfig,
   definitions: ResolvedAccessDefinition[],
+  ownerRole: "workspaceAdmin" | "workspaceOwner" = "workspaceOwner",
+  sharedAccount?: Account,
 ) {
-  const current = await manager.findOne(Tenant, { where: { id: tenant.id } });
-  if (!current) throw new Error("Seed tenant is not visible in tenant context");
-
-  let owner = await manager.findOne(User, {
-    where: { email: config.ownerEmail, tenantId: tenant.id },
-    withDeleted: true,
+  const visibleWorkspace = await manager.findOne(Workspace, {
+    where: { id: workspace.id },
   });
-  owner ??= manager.create(User, {
+  if (!visibleWorkspace) {
+    throw new Error("Seed workspace is not visible in workspace context");
+  }
+
+  let owner = sharedAccount ?? await manager.findOne(Account, {
+    where: { email: config.ownerEmail }, withDeleted: true,
+  });
+  owner ??= manager.create(Account, {
     email: config.ownerEmail,
-    tenantId: tenant.id,
   });
   Object.assign(owner, {
     deletedAt: null,
     displayName: config.ownerDisplayName,
     emailVerified: true,
     nickname: config.ownerDisplayName,
-    passwordHash: await hashPassword(config.ownerPassword),
-    preferredLanguage: "zh-CN",
+    passwordHash: sharedAccount?.passwordHash ?? await hashPassword(config.ownerPassword),
+    preferredLanguage: "zh-Hans",
     status: "active",
     type: "user",
   });
-  owner = await manager.save(User, owner);
+  owner = await manager.save(Account, owner);
 
-  let organization = await manager.findOne(Organization, {
-    where: {
-      deletedAt: IsNull(),
-      slug: config.organizationSlug,
-      tenantId: tenant.id,
-    },
-  });
-  organization ??= manager.create(Organization, {
-    slug: config.organizationSlug,
-    tenantId: tenant.id,
-  });
-  Object.assign(organization, {
-    createdByUserId: owner.id,
-    deletedAt: null,
-    name: config.organizationName,
-    parentOrganizationId: null,
-    status: "active",
-  });
-  organization = await manager.save(Organization, organization);
-
-  const tenantOwnerRole = await ensureRole(manager, {
-    description: "Tenant owner with tenant governance access.",
-    label: "Tenant Owner",
-    name: "tenant-owner",
-    scope: "tenant",
-    organizationId: null,
-    tenantId: tenant.id,
-  });
-  const organizationOwnerRole = await ensureRole(manager, {
-    description: "Organization owner with administration access.",
-    label: "Owner",
-    name: "owner",
-    scope: "organization",
-    organizationId: organization.id,
-    tenantId: tenant.id,
-  });
-  const tenantAdminRole = await ensureRole(manager, {
-    description: "Tenant administrator with tenant governance access.",
-    label: "Tenant Admin",
-    name: "tenant-admin",
-    scope: "tenant",
-    organizationId: null,
-    tenantId: tenant.id,
-  });
-  const tenantMemberRole = await ensureRole(manager, {
-    description: "Tenant member with standard tenant access.",
-    label: "Tenant Member",
-    name: "tenant-member",
-    scope: "tenant",
-    organizationId: null,
-    tenantId: tenant.id,
-  });
-  const organizationAdminRole = await ensureRole(manager, {
-    description: "Organization administrator for membership and settings.",
-    label: "Admin",
-    name: "admin",
-    scope: "organization",
-    organizationId: organization.id,
-    tenantId: tenant.id,
-  });
-  const organizationMemberRole = await ensureRole(manager, {
-    description: "Organization member with standard business access.",
-    label: "Member",
-    name: "member",
-    scope: "organization",
-    organizationId: organization.id,
-    tenantId: tenant.id,
-  });
-  const organizationViewerRole = await ensureRole(manager, {
-    description: "Organization viewer with read-oriented access.",
-    label: "Viewer",
-    name: "viewer",
-    scope: "organization",
-    organizationId: organization.id,
-    tenantId: tenant.id,
-  });
-
-  let membership = await manager.findOne(UserOrganization, {
-    where: {
-      organizationId: organization.id,
-      tenantId: tenant.id,
-      userId: owner.id,
-    },
-  });
-  membership ??= manager.create(UserOrganization, {
-    organizationId: organization.id,
-    tenantId: tenant.id,
-    userId: owner.id,
-  });
-  Object.assign(membership, {
-    displayName: owner.displayName,
-    isDefault: true,
-    joinedAt: membership.joinedAt ?? new Date(),
-    status: "active",
-  });
-  membership = await manager.save(UserOrganization, membership);
-  await ensureTenantRoleAssignment(manager, tenant.id, owner.id, tenantOwnerRole.id);
-  await ensureOrganizationRoleAssignment(
-    manager,
-    tenant.id,
-    organization.id,
-    membership.id,
-    organizationOwnerRole.id,
-  );
+  const roles = {
+    workspaceAdmin: await ensureRole(manager, workspace.id, {
+      description: "Workspace administrator with governance access.",
+      label: "Workspace Admin",
+      name: "workspace-admin",
+    }),
+    workspaceMember: await ensureRole(manager, workspace.id, {
+      description: "Workspace member with standard access.",
+      label: "Workspace Member",
+      name: "workspace-member",
+    }),
+    workspaceOwner: await ensureRole(manager, workspace.id, {
+      description: "Workspace owner with full governance access.",
+      label: "Workspace Owner",
+      name: "workspace-owner",
+    }),
+  };
 
   const permissions = await manager.find(Permission);
-  await seedRolePermissions(
-    manager,
-    tenantOwnerRole,
-    permissions,
-    definitions,
-    "tenant-owner",
-  );
-  await seedRolePermissions(
-    manager,
-    organizationOwnerRole,
-    permissions,
-    definitions,
-    "owner",
-  );
-  const fixtureRoles = [
-    [tenantAdminRole, "tenant-admin"],
-    [tenantMemberRole, "tenant-member"],
-    [organizationAdminRole, "admin"],
-    [organizationMemberRole, "member"],
-    [organizationViewerRole, "viewer"],
-  ] as const;
-  for (const [role, defaultRole] of fixtureRoles) {
-    await seedRolePermissions(
-      manager,
-      role,
-      permissions,
-      definitions,
-      defaultRole,
-    );
+  for (const [roleName, role] of Object.entries(roles)) {
+    await seedRolePermissions(manager, role, permissions, definitions, roleName);
   }
+  await ensureWorkspaceRoleAssignment(
+    manager,
+    workspace.id,
+    owner.id,
+    roles[ownerRole].id,
+  );
+
   const fixtures = await seedDevelopmentFixtures({
     manager,
-    organization,
     owner,
-    ownerPassword: config.ownerPassword,
-    roles: {
-      organizationAdmin: organizationAdminRole,
-      organizationMember: organizationMemberRole,
-      organizationOwner: organizationOwnerRole,
-      organizationViewer: organizationViewerRole,
-      tenantAdmin: tenantAdminRole,
-      tenantMember: tenantMemberRole,
-      tenantOwner: tenantOwnerRole,
-    },
-    tenantId: tenant.id,
+    ownerPassword: sharedAccount ? config.platformAdminPassword : config.ownerPassword,
+    roles,
+    workspaceId: workspace.id,
   });
-  return { fixtures: fixtures.counts, organization, owner };
+  return { fixtures: fixtures.counts, owner };
 }
 
 async function ensureRole(
   manager: EntityManager,
-  input: {
-    description: string;
-    label: string;
-    name: string;
-    organizationId: string | null;
-    scope: "organization" | "tenant";
-    tenantId: string;
-  },
+  workspaceId: string,
+  input: { description: string; label: string; name: string },
 ) {
   let role = await manager.findOne(Role, {
-    where: {
-      name: input.name,
-      organizationId: input.organizationId ?? IsNull(),
-      scope: input.scope,
-      tenantId: input.tenantId,
-    },
+    where: { name: input.name, workspaceId },
   });
-  role ??= manager.create(Role, input);
+  role ??= manager.create(Role, {
+    name: input.name,
+    scope: "workspace",
+    workspaceId,
+  });
   Object.assign(role, {
-    color: input.scope === "tenant" ? "#7c3aed" : "#2563eb",
+    color: "#7c3aed",
     description: input.description,
     displayName: input.label,
     isSystem: true,
     label: input.label,
-    organizationId: input.organizationId,
+    scope: "workspace",
   });
   return manager.save(Role, role);
 }
@@ -392,112 +306,99 @@ async function seedRolePermissions(
   defaultRole: string,
 ) {
   const definitionsById = new Map(definitions.map((item) => [item.id, item]));
-  const allowedScopes =
-    role.scope === "tenant"
-      ? new Set(["tenant", "own"])
-      : new Set(["organization"]);
   await manager.delete(RolePermission, {
     roleId: role.id,
-    tenantId: role.tenantId,
   });
-  for (const permission of permissions) {
-    const definition = permission.code
-      ? definitionsById.get(permission.code)
-      : undefined;
+  const grants = permissions.flatMap((permission) => {
+    if (!permission.code) return [];
+    const definition = definitionsById.get(permission.code);
     if (
-      !permission.code ||
-      !allowedScopes.has(permission.scope) ||
-      (defaultRole !== "tenant-owner" &&
-        !definition?.defaultRoles.includes(defaultRole))
+      !["workspace", "own"].includes(permission.scope) ||
+      (defaultRole !== "workspaceOwner" &&
+        !definition?.defaultRoles.includes(kebabRoleName(defaultRole)))
     ) {
-      continue;
+      return [];
     }
-    const row = manager.create(RolePermission, {
-      permission: permission.code,
-      roleId: role.id,
-      tenantId: role.tenantId,
-    });
-    Object.assign(row, {
-      enabled: true,
-      permissionId: permission.id,
-    });
-    await manager.save(RolePermission, row);
+    return [
+      manager.create(RolePermission, {
+        enabled: true,
+        permissionId: permission.id,
+        roleId: role.id,
+      }),
+    ];
+  });
+  if (grants.length > 0) {
+    await manager.insert(RolePermission, grants);
   }
 }
 
-async function ensurePlatformUserRole(
-  manager: EntityManager,
-  platformUserId: string,
-  platformRoleId: string,
-) {
-  const existing = await manager.findOne(PlatformUserRole, {
-    where: { platformRoleId, platformUserId },
-  });
-  if (!existing) {
-    await manager.save(
-      PlatformUserRole,
-      manager.create(PlatformUserRole, { platformRoleId, platformUserId }),
-    );
-  }
+function kebabRoleName(value: string) {
+  return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
-async function ensurePlatformRolePermission(
+async function ensurePlatformMembership(
   manager: EntityManager,
-  platformRoleId: string,
-  permissionId: string,
+  accountId: string,
+  roleId: string,
 ) {
-  let existing = await manager.findOne(PlatformRolePermission, {
-    where: { permissionId, platformRoleId },
-  });
-  existing ??= manager.create(PlatformRolePermission, {
-    permissionId,
-    platformRoleId,
-  });
-  existing.enabled = true;
-  await manager.save(PlatformRolePermission, existing);
+  await manager.upsert(
+    PlatformMembership,
+    manager.create(PlatformMembership, {
+      accountId,
+      removedAt: null,
+      roleId,
+      status: "active",
+    }),
+    ["accountId"],
+  );
 }
 
-async function ensureTenantRoleAssignment(
+async function replacePlatformRolePermissions(
   manager: EntityManager,
-  tenantId: string,
+  roleId: string,
+  permissionIds: string[],
+) {
+  await manager.delete(RolePermission, { roleId });
+  if (permissionIds.length === 0) return;
+  await manager.insert(
+    RolePermission,
+    permissionIds.map((permissionId) =>
+      manager.create(RolePermission, {
+        enabled: true,
+        permissionId,
+        roleId,
+      }),
+    ),
+  );
+}
+
+async function ensureWorkspaceRoleAssignment(
+  manager: EntityManager,
+  workspaceId: string,
   userId: string,
   roleId: string,
 ) {
-  await manager.delete(UserTenantRole, { tenantId, userId });
-  await manager.save(
-    UserTenantRole,
-    manager.create(UserTenantRole, { roleId, tenantId, userId }),
-  );
-}
-
-async function ensureOrganizationRoleAssignment(
-  manager: EntityManager,
-  tenantId: string,
-  organizationId: string,
-  membershipId: string,
-  roleId: string,
-) {
-  await manager.delete(UserOrganizationRole, { membershipId, tenantId });
-  await manager.save(
-    UserOrganizationRole,
-    manager.create(UserOrganizationRole, {
-      membershipId,
-      organizationId,
+  await manager.upsert(
+    WorkspaceMembership,
+    {
+      accountId: userId,
+      removedAt: null,
       roleId,
-      tenantId,
-    }),
+      status: "active",
+      workspaceId,
+    },
+    ["workspaceId", "accountId"],
   );
 }
 
-async function configureSeedTenantContext(
+async function configureSeedWorkspaceContext(
   manager: EntityManager,
-  tenantId: string,
+  workspaceId: string,
 ) {
   await manager.query(
     `SELECT
-      set_config('${TENANT_DATABASE_GUCS.tenantId}', $1, true),
-      set_config('${TENANT_DATABASE_GUCS.scopeLevel}', 'tenant', true),
-      set_config('${TENANT_DATABASE_GUCS.organizationId}', '', true)`,
-    [tenantId],
+      set_config('${WORKSPACE_DATABASE_GUCS.workspaceId}', $1, true),
+      set_config('${WORKSPACE_DATABASE_GUCS.scopeLevel}', 'workspace', true)`,
+    [workspaceId],
   );
 }

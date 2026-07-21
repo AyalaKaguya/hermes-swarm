@@ -1,6 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
-import type { User } from "../../identity/entities/user.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
+import type { Account } from "../../identity/entities/account.entity.js";
 import type { Ticket } from "./ticket.entity.js";
 
 export type TicketMessageKind = "message" | "system";
@@ -14,8 +14,8 @@ export type TicketMessageAttachment = {
 };
 
 @Entity({ name: "ticket_messages" })
-@Index(["tenantId", "ticketId", "createdAt"])
-export class TicketMessage extends TenantOwnedBaseEntity {
+@Index(["workspaceId", "ticketId", "createdAt"])
+export class TicketMessage extends WorkspaceOwnedBaseEntity {
   @Column({ name: "ticket_id", type: "uuid" })
   @Index()
   ticketId!: string;
@@ -28,9 +28,9 @@ export class TicketMessage extends TenantOwnedBaseEntity {
   @Index()
   authorUserId!: string | null;
 
-  @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
+  @ManyToOne("Account", { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "author_user_id" })
-  authorUser!: User | null;
+  authorUser!: Account | null;
 
   @Column({ type: "varchar", length: 24, default: "message" })
   kind!: TicketMessageKind;

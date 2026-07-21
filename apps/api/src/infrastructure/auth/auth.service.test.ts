@@ -4,8 +4,8 @@ import { UnauthorizedException } from "@nestjs/common";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { AuthService } from "./auth.service.js";
 
-describe("AuthService identity plane isolation", () => {
-  it("logs platform users into a tenantless platform session", async () => {
+describe("AuthService unified account contexts", () => {
+  it("logs a global account into a workspaceless platform context", async () => {
     const created: unknown[][] = [];
     const service = createService({
       authSessionService: {
@@ -16,23 +16,18 @@ describe("AuthService identity plane isolation", () => {
         getRefreshCookieName: () => "refresh",
         getRefreshCookieOptions: () => ({}),
       },
-      platformUserRepository: {
-        findOne: async () => ({
-          displayName: "Platform Admin",
-          email: "admin@example.com",
-          id: "platform-user",
-          passwordHash: hashPassword("password-123"),
-          roles: [],
-          status: "active",
-        }),
+      accountRepository: { findOne: async () => platformAccount() },
+      membershipRepository: { find: async () => [] },
+      platformMembershipRepository: {
+        findOne: async () => platformMembership(),
       },
     });
-    const result = await service.loginPlatform(
-      { email: "admin@example.com", password: "password-123" },
+    const result = await service.login(
+      { contextType: "platform", email: "admin@example.com", password: "password-123" },
       {},
       { cookie() {} },
     );
-    assert.deepEqual(created[0]?.slice(0, 3), ["platform-user", null, "platform"]);
+    assert.deepEqual(created[0]?.slice(0, 3), ["account-platform", null, "platform"]);
     assert.equal(result.snapshot.principalType, "platform");
   });
 
@@ -43,101 +38,77 @@ describe("AuthService identity plane isolation", () => {
         getRefreshCookieName: () => "refresh",
         getRefreshCookieOptions: () => ({}),
       },
-      platformUserRepository: {
-        findOne: async () => ({
-          displayName: "Platform Admin",
-          email: "admin@example.com",
-          id: "platform-user",
-          passwordHash: hashPassword("password-123"),
-          roles: [
-            {
-              platformRole: {
-                description: "Platform administrator",
-                id: "platform-role",
-                isSystem: true,
-                label: "Platform Admin",
-                name: "platform-admin",
-                rolePermissions: [
-                  {
-                    enabled: true,
-                    id: "platform-role-permission",
-                    permission: {
-                      code: "role.platform_role.list:platform",
-                    },
-                    permissionId: "permission",
-                    platformRoleId: "platform-role",
-                  },
-                ],
-              },
-            },
-          ],
-          status: "active",
-        }),
-      },
+      accountRepository: { findOne: async () => platformAccount() },
+      membershipRepository: { find: async () => [] },
+      platformMembershipRepository: { findOne: async () => platformMembership() },
     });
 
-    const result = await service.loginPlatform(
-      { email: "admin@example.com", password: "password-123" },
+    const result = await service.login(
+      { contextType: "platform", email: "admin@example.com", password: "password-123" },
       {},
       { cookie() {} },
     );
 
-    assert.deepEqual(result.snapshot.platformUser.roles[0]?.permissions, [
-      {
-        enabled: true,
-        id: "platform-role-permission",
-        permission: "role.platform_role.list:platform",
-        permissionId: "permission",
-        roleId: "platform-role",
-      },
+    assert.deepEqual(result.snapshot.permissions, [
+      "role.platform_role.list:platform",
     ]);
   });
 
-  it("queries tenant users only inside the resolved tenant", async () => {
-    const queries: unknown[] = [];
-    const user = {
+  it("verifies the global account before selecting its requested workspace membership", async () => {
+    const accountQueries: unknown[] = [];
+    const account = {
       email: "shared@example.com",
-      id: "user-a",
-      passwordHash: hashPassword("tenant-password"),
+      id: "account-a",
+      passwordHash: hashPassword("workspace-password"),
       status: "active",
-      tenantId: "tenant-a",
     };
     const service = createService({
-      dataSource: {
-        transaction: async (work: (manager: unknown) => unknown) =>
-          work({
-            getRepository: () => ({
-              findOne: async (query: unknown) => {
-                queries.push(query);
-                return user;
-              },
-            }),
-            query: async () => undefined,
-          }),
+      accountRepository: {
+        findOne: async (query: unknown) => {
+          accountQueries.push(query);
+          return account;
+        },
       },
-      tenantLoginResolver: {
-        resolve: async () => ({ source: "workspace", tenant: { id: "tenant-a", name: "A", slug: "a" } }),
+      membershipRepository: {
+        find: async () => [{
+          accountId: "account-a",
+          id: "membership-a",
+          role: { id: "role-a", name: "workspace-member", scope: "workspace" },
+          roleId: "role-a",
+          status: "active",
+          workspace: { id: "workspace-a", name: "A", slug: "a", status: "active" },
+          workspaceId: "workspace-a",
+        }],
+      },
+      workspaceLoginResolver: {
+        resolve: async () => ({ source: "workspace", workspace: { id: "workspace-a", name: "A", slug: "a" } }),
       },
     });
-    (service as unknown as { createLoginResponse: (user: unknown) => unknown }).createLoginResponse =
-      async () => ({ userId: "user-a" });
+    (service as unknown as { createWorkspaceLoginResponse: (account: unknown) => unknown }).createWorkspaceLoginResponse =
+      async () => ({ accountId: "account-a" });
     const result = await service.login(
-      { email: "Shared@Example.com", password: "tenant-password", tenantSlug: "a" },
+      { email: "Shared@Example.com", password: "workspace-password", workspaceSlug: "a" },
       {},
       { cookie() {} },
     );
-    assert.deepEqual((queries[0] as { where: unknown }).where, {
+    assert.deepEqual((accountQueries[0] as { where: unknown }).where, {
       email: "shared@example.com",
-      tenantId: "tenant-a",
     });
-    assert.deepEqual(result, { userId: "user-a" });
+    assert.deepEqual(result, { accountId: "account-a" });
   });
 
-  it("never falls back to a global user lookup without tenant resolution", async () => {
-    let transactionStarted = false;
+  it("does not establish a session when a global account has no active membership", async () => {
     const service = createService({
-      dataSource: { transaction: async () => { transactionStarted = true; } },
-      tenantLoginResolver: { resolve: async () => null },
+      accountRepository: {
+        findOne: async () => ({
+          email: "shared@example.com",
+          id: "account-a",
+          passwordHash: hashPassword("password-123"),
+          status: "active",
+        }),
+      },
+      membershipRepository: { find: async () => [] },
+      workspaceLoginResolver: { resolve: async () => null },
     });
     await assert.rejects(
       service.login(
@@ -147,7 +118,6 @@ describe("AuthService identity plane isolation", () => {
       ),
       UnauthorizedException,
     );
-    assert.equal(transactionStarted, false);
   });
 
   it("records successful platform logins without exposing credentials", async () => {
@@ -161,20 +131,15 @@ describe("AuthService identity plane isolation", () => {
       loginAuditService: {
         record: async (row: Record<string, unknown>) => auditRows.push(row),
       },
-      platformUserRepository: {
-        findOne: async () => ({
-          displayName: "Platform Admin",
-          email: "admin@example.com",
-          id: "00000000-0000-4000-8000-000000000001",
-          passwordHash: hashPassword("password-123"),
-          roles: [],
-          status: "active",
-        }),
+      accountRepository: {
+        findOne: async () => ({ ...platformAccount(), id: "00000000-0000-4000-8000-000000000001" }),
       },
+      membershipRepository: { find: async () => [] },
+      platformMembershipRepository: { findOne: async () => platformMembership() },
     });
 
-    await service.loginPlatform(
-      { email: "Admin@Example.com", password: "password-123" },
+    await service.login(
+      { contextType: "platform", email: "Admin@Example.com", password: "password-123" },
       {
         headers: {
           "user-agent": "Mozilla/5.0 Chrome/120.0 Windows NT 10.0",
@@ -193,18 +158,20 @@ describe("AuthService identity plane isolation", () => {
         scopeType: "platform",
         sessionId: "session",
         userAgent: "Mozilla/5.0 Chrome/120.0 Windows NT 10.0",
+        workspaceId: null,
       },
     ]);
     assert.equal("password" in auditRows[0], false);
   });
 
-  it("records unresolved tenant login failures without assigning a tenant", async () => {
+  it("records unresolved workspace login failures without assigning a workspace", async () => {
     const auditRows: Array<Record<string, unknown>> = [];
     const service = createService({
+      accountRepository: { findOne: async () => null },
       loginAuditService: {
         record: async (row: Record<string, unknown>) => auditRows.push(row),
       },
-      tenantLoginResolver: { resolve: async () => null },
+      workspaceLoginResolver: { resolve: async () => null },
     });
 
     await assert.rejects(
@@ -212,7 +179,7 @@ describe("AuthService identity plane isolation", () => {
         {
           email: "owner@example.com",
           password: "wrong-password",
-          tenantSlug: "missing",
+          workspaceSlug: "missing",
         },
         {},
         { cookie() {} },
@@ -220,19 +187,19 @@ describe("AuthService identity plane isolation", () => {
       UnauthorizedException,
     );
 
-    assert.equal(auditRows[0]?.failureCode, "tenant_unresolved");
-    assert.equal(auditRows[0]?.scopeType, "tenant");
-    assert.equal(auditRows[0]?.tenantId, null);
+    assert.equal(auditRows[0]?.failureCode, "invalid_credentials");
+    assert.equal(auditRows[0]?.scopeType, "workspace");
+    assert.equal(auditRows[0]?.workspaceId, null);
   });
 });
 
 function createService(options: Record<string, Record<string, unknown>> = {}) {
   return new AuthService(
     (options.authSessionService ?? {}) as never,
-    (options.platformUserRepository ?? {}) as never,
+    (options.platformMembershipRepository ?? { findOne: async () => null }) as never,
     (options.dataSource ?? {}) as never,
     { run: (_context: unknown, work: () => unknown) => work() } as never,
-    (options.tenantLoginResolver ?? { resolve: async () => null }) as never,
+    (options.workspaceLoginResolver ?? { resolve: async () => null }) as never,
     (options.settingsService ?? {
       resolvePlatformRuntimePreferences: async () => ({
         currency: "CNY",
@@ -250,16 +217,55 @@ function createService(options: Record<string, Record<string, unknown>> = {}) {
       }),
     }) as never,
     options.loginAuditService as never,
+    options.accountRepository as never,
+    options.membershipRepository as never,
   );
 }
 
-function issuedSession(principalType: "platform" | "tenant") {
+function platformAccount() {
+  return {
+    credentialVersion: 0,
+    displayName: "Platform Admin",
+    email: "admin@example.com",
+    id: "account-platform",
+    passwordHash: hashPassword("password-123"),
+    status: "active",
+  };
+}
+
+function platformMembership() {
+  return {
+    accountId: "account-platform",
+    id: "platform-membership",
+    role: {
+      description: "Platform administrator",
+      displayName: "Platform Admin",
+      id: "platform-role",
+      isSystem: true,
+      label: "Platform Admin",
+      name: "platform-admin",
+      rolePermissions: [{
+        enabled: true,
+        id: "platform-role-permission",
+        permissionId: "permission",
+        permissionRecord: { code: "role.platform_role.list:platform" },
+        roleId: "platform-role",
+      }],
+      scope: "platform",
+      workspaceId: null,
+    },
+    roleId: "platform-role",
+    status: "active",
+  };
+}
+
+function issuedSession(principalType: "platform" | "workspace") {
   return {
     accessToken: "access",
     expiresAt: "2030-01-01T00:00:00.000Z",
     principalType,
     refreshToken: "refresh",
     sessionId: "session",
-    tenantId: principalType === "tenant" ? "tenant-a" : null,
+    workspaceId: principalType === "workspace" ? "workspace-a" : null,
   };
 }

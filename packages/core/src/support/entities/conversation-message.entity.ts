@@ -1,6 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
-import type { User } from "../../identity/entities/user.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
+import type { Account } from "../../identity/entities/account.entity.js";
 import type { Conversation } from "./conversation.entity.js";
 
 export type ConversationMessageKind = "message" | "system";
@@ -14,8 +14,8 @@ export type ConversationMessageAttachment = {
 };
 
 @Entity({ name: "conversation_messages" })
-@Index(["tenantId", "conversationId", "createdAt"])
-export class ConversationMessage extends TenantOwnedBaseEntity {
+@Index(["workspaceId", "conversationId", "createdAt"])
+export class ConversationMessage extends WorkspaceOwnedBaseEntity {
   @Column({ name: "conversation_id", type: "uuid" })
   @Index()
   conversationId!: string;
@@ -28,9 +28,9 @@ export class ConversationMessage extends TenantOwnedBaseEntity {
   @Index()
   authorUserId!: string | null;
 
-  @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
+  @ManyToOne("Account", { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "author_user_id" })
-  authorUser!: User | null;
+  authorUser!: Account | null;
 
   @Column({ type: "varchar", length: 24, default: "message" })
   kind!: ConversationMessageKind;

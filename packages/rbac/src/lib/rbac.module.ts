@@ -5,7 +5,6 @@ import { AccessAuditInterceptor } from "./access-audit.interceptor.js";
 import { AccessGuard } from "./access.guard.js";
 import { AccessNestModule } from "./access-nest.module.js";
 import {
-  OrganizationPermissionsController,
   PlatformPermissionsController,
   PermissionsController,
 } from "./permissions.controller.js";
@@ -23,7 +22,6 @@ export class RbacModule {
       module: RbacModule,
       imports: [...(options.imports ?? []), AccessNestModule],
       controllers: [
-        OrganizationPermissionsController,
         PermissionsController,
         PlatformPermissionsController,
       ],

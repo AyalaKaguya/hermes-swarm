@@ -16,10 +16,7 @@ describe("route pattern matching", () => {
 
   it("matches parameterized segments at the same depth", () => {
     assert.equal(
-      matchRoutePattern(
-        "/settings/organizations/:organizationId",
-        "/settings/organizations/org-123",
-      ),
+      matchRoutePattern("/tickets/:ticketId", "/tickets/ticket-123"),
       true,
     );
   });
@@ -40,68 +37,56 @@ describe("permission keys", () => {
 
   it("formats page access permission identifiers", () => {
     assert.equal(
-      getPageAccessPermissionId("settings.workspace-access", "tenant"),
-      "page.settings.workspace-access.access:tenant",
+      getPageAccessPermissionId("settings.workspace-access", "workspace"),
+      "page.settings.workspace-access.access:workspace",
     );
   });
 });
 
 describe("page access definitions", () => {
-  it("hydrates definitions with their permission ids", () => {
-    const definition = getPageAccessDefinition("settings.users");
+  it("hydrates workspace member management with its permission id", () => {
+    const definition = getPageAccessDefinition("settings.workspace.members");
 
-    assert.equal(definition?.permission, "page.settings.users.access:tenant");
-    assert.deepEqual(definition?.defaultRoles, ["tenant-owner", "tenant-admin"]);
+    assert.equal(
+      definition?.permission,
+      "page.settings.workspace.members.access:workspace",
+    );
+    assert.equal(definition?.href, "/settings/workspace/members");
+    assert.deepEqual(definition?.defaultRoles, [
+      "workspace-owner",
+      "workspace-admin",
+    ]);
   });
 
-  it("exposes role management as tenant governance", () => {
+  it("exposes role management as workspace governance", () => {
     const definition = getPageAccessDefinition("settings.workspace-access");
 
     assert.equal(
       definition?.permission,
-      "page.settings.workspace-access.access:tenant",
+      "page.settings.workspace-access.access:workspace",
     );
-    assert.equal(definition?.scope, "tenant");
-    assert.equal(definition?.section, "tenant");
-    assert.deepEqual(definition?.defaultRoles, ["tenant-owner", "tenant-admin"]);
+    assert.equal(definition?.scope, "workspace");
+    assert.equal(definition?.section, "workspace");
+    assert.deepEqual(definition?.defaultRoles, [
+      "workspace-owner",
+      "workspace-admin",
+    ]);
   });
 
-  it("returns null for unknown page keys", () => {
-    assert.equal(getPageAccessDefinition("missing.page"), null);
-  });
-
-  it("does not expose the removed external notification destination page", () => {
+  it("finds canonical workspace routes without legacy aliases", () => {
     assert.equal(
-      getPageAccessDefinition("settings.notification-destinations"),
-      null,
+      findPageAccessDefinitionByPath("/settings/workspace")?.key,
+      "settings.workspace",
     );
     assert.equal(
-      findPageAccessDefinitionByPath("/settings/notification-destinations"),
-      null,
+      findPageAccessDefinitionByPath("/settings/workspace/members")?.key,
+      "settings.workspace.members",
     );
-  });
-
-  it("finds the first page definition for a route", () => {
-    assert.equal(
-      findPageAccessDefinitionByPath("/settings/organization")?.key,
-      "settings.organization",
-    );
-    assert.equal(
-      findPageAccessDefinitionByPath("/settings/organizations")?.key,
-      "settings.organizations",
-    );
-    assert.equal(
-      findPageAccessDefinitionByPath("/settings/organizations/org-123")?.key,
-      "settings.organizations",
-    );
-  });
-
-  it("keeps tenant organization detail routes single-owned", () => {
     assert.deepEqual(
-      findPageAccessDefinitionsByPath("/settings/organizations/org-123").map(
+      findPageAccessDefinitionsByPath("/settings/workspace/access").map(
         (definition) => definition.key,
       ),
-      ["settings.organizations"],
+      ["settings.workspace-access"],
     );
   });
 
@@ -109,66 +94,31 @@ describe("page access definitions", () => {
     const definition = getPageAccessDefinition("settings.api-tokens");
 
     assert.equal(definition?.scope, "own");
-    assert.equal(
-      definition?.permission,
-      "page.settings.api-tokens.access:own",
-    );
+    assert.equal(definition?.permission, "page.settings.api-tokens.access:own");
     assert.equal(getPageAccessDefinition("settings.platform-integrations"), null);
   });
 
-  it("defines explicit workspace governance ownership", () => {
-    const tenant = getPageAccessDefinition("settings.tenant");
-    const users = getPageAccessDefinition("settings.users");
-    const invites = getPageAccessDefinition("settings.invites");
-
-    assert.equal(tenant?.scope, "tenant");
-    assert.equal(tenant?.href, "/settings/tenant");
-    assert.equal(tenant?.section, "tenant");
-    assert.equal(tenant?.sectionLabel, "工作空间");
-    assert.equal(users?.scope, "tenant");
-    assert.equal(invites?.scope, "tenant");
-    assert.equal(
-      getPageAccessDefinition("settings.organizations")?.section,
-      "tenant",
-    );
-    assert.deepEqual(
-      findPageAccessDefinitionsByPath("/settings/users").map(
-        (definition) => definition.key,
-      ),
-      ["settings.users"],
-    );
-    assert.equal(getPageAccessDefinition("settings.organization.departments"), null);
-    assert.equal(
-      getPageAccessDefinition("settings.organization.members")?.scope,
-      "organization",
-    );
-    assert.equal(
-      getPageAccessDefinition("settings.organization.roles")?.scope,
-      "organization",
-    );
-  });
-
-  it("defines scope-isolated tenant and platform audit pages", () => {
-    const tenantAudit = getPageAccessDefinition("settings.audit-logs");
+  it("defines scope-isolated workspace and platform audit pages", () => {
+    const workspaceAudit = getPageAccessDefinition("settings.audit-logs");
     const platformAudit = getPageAccessDefinition("platform.audit");
 
-    assert.equal(tenantAudit?.href, "/settings/audit-logs");
-    assert.equal(tenantAudit?.scope, "tenant");
-    assert.deepEqual(tenantAudit?.defaultRoles, [
-      "tenant-owner",
-      "tenant-admin",
-    ]);
+    assert.equal(workspaceAudit?.href, "/settings/audit-logs");
+    assert.equal(workspaceAudit?.scope, "workspace");
     assert.equal(platformAudit?.href, "/platform");
     assert.equal(platformAudit?.scope, "platform");
     assert.deepEqual(
-      findPageAccessDefinitionsByPath("/platform").map((item) => item.key),
-      ["platform.audit"],
-    );
-    assert.deepEqual(
-      findPageAccessDefinitionsByPath("/platform/tenants").map(
+      findPageAccessDefinitionsByPath("/platform/workspaces").map(
         (item) => item.key,
       ),
-      ["platform.tenants"],
+      ["platform.workspaces"],
+    );
+  });
+
+  it("returns null for unknown page keys and removed pages", () => {
+    assert.equal(getPageAccessDefinition("missing.page"), null);
+    assert.equal(
+      getPageAccessDefinition("settings.notification-destinations"),
+      null,
     );
   });
 });

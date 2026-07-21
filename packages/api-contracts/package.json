@@ -1,0 +1,53 @@
+{
+  "name": "@hermes-swarm/api-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./auth": { "types": "./dist/auth.d.ts", "import": "./dist/auth.js" },
+    "./sessions": { "types": "./dist/sessions.d.ts", "import": "./dist/sessions.js" },
+    "./workspaces": { "types": "./dist/workspaces.d.ts", "import": "./dist/workspaces.js" },
+    "./members": { "types": "./dist/members.d.ts", "import": "./dist/members.js" },
+    "./roles": { "types": "./dist/roles.d.ts", "import": "./dist/roles.js" },
+    "./invites": { "types": "./dist/invites.d.ts", "import": "./dist/invites.js" },
+    "./users": { "types": "./dist/users.d.ts", "import": "./dist/users.js" },
+    "./account": { "types": "./dist/account.d.ts", "import": "./dist/account.js" },
+    "./settings": { "types": "./dist/settings.d.ts", "import": "./dist/settings.js" },
+    "./integrations": { "types": "./dist/integrations.d.ts", "import": "./dist/integrations.js" },
+    "./tokens": { "types": "./dist/tokens.d.ts", "import": "./dist/tokens.js" },
+    "./audit": { "types": "./dist/audit.d.ts", "import": "./dist/audit.js" },
+    "./notifications": { "types": "./dist/notifications.d.ts", "import": "./dist/notifications.js" },
+    "./tickets": { "types": "./dist/tickets.d.ts", "import": "./dist/tickets.js" },
+    "./messages": { "types": "./dist/messages.d.ts", "import": "./dist/messages.js" },
+    "./mail": { "types": "./dist/mail.d.ts", "import": "./dist/mail.js" },
+    "./files": { "types": "./dist/files.d.ts", "import": "./dist/files.js" },
+    "./errors": { "types": "./dist/errors.d.ts", "import": "./dist/errors.js" },
+    "./pagination": { "types": "./dist/pagination.d.ts", "import": "./dist/pagination.js" },
+    "./contracts": { "types": "./dist/contracts.d.ts", "import": "./dist/contracts.js" },
+    "./realtime": { "types": "./dist/realtime.d.ts", "import": "./dist/realtime.js" }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"const {rmSync}=require('node:fs'); for (const path of ['dist','tsconfig.tsbuildinfo']) rmSync(path,{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "tslib": "^2.3.0",
+    "zod": "^4.0.0"
+  },
+  "nx": {
+    "projectType": "library",
+    "tags": ["type:lib", "scope:shared", "layer:contracts"],
+    "targets": {
+      "coverage": {
+        "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
+        "options": { "cwd": "packages/api-contracts" }
+      }
+    }
+  }
+}

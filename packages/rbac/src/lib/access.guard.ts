@@ -89,7 +89,7 @@ export class AccessGuard implements CanActivate {
     }
 
     request.accessPrincipal = session;
-    request.accessAudit = { definition, scope: { tenantId: session.tenantId } };
+    request.accessAudit = { definition, scope: { workspaceId: session.workspaceId } };
     let scopeContext;
     try {
       scopeContext = await this.scopeService.resolve(
@@ -105,7 +105,7 @@ export class AccessGuard implements CanActivate {
     const accessContext = {
       ...scopeContext,
       principalType: session.principalType,
-      tenantId: session.tenantId,
+      workspaceId: session.workspaceId,
     };
     const tokenAllowed = integrationTokenAllows(
       session,
@@ -206,14 +206,13 @@ function integrationTokenAllows(
   session: Awaited<ReturnType<AccessAuthSessionService["validateAccessToken"]>>,
   definition: ResolvedAccessDefinition,
   scopeContext: {
-    organizationId?: string | null;
     targetUserId?: string | null;
-    tenantId?: string | null;
+    workspaceId?: string | null;
   },
 ) {
   const token = session.integrationToken;
   if (!token) return true;
-  if (token.tenantId !== (scopeContext.tenantId ?? null)) return false;
+  if (token.workspaceId !== (scopeContext.workspaceId ?? null)) return false;
   if (definition.scope === "platform") return false;
   if (!token.permissions.includes(definition.id)) return false;
   return true;

@@ -1,213 +1,222 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
+  Account,
   PLATFORM_ADMIN_ROLE_NAME,
-  PlatformRole,
-  PlatformUser,
-  PlatformUserRole,
-  type PlatformUserStatus,
+  PlatformMembership,
+  Role,
+  type PlatformMembershipStatus,
 } from "@hermes-swarm/core";
-import { Repository } from "typeorm";
-import { hashPassword } from "../../common/security/password-hash.js";
+import { IsNull, Repository } from "typeorm";
 import type { PlatformMemberPayload } from "./platform-members.controller.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
+import { InviteService } from "../invite/invite.service.js";
+import { AuthSessionService } from "../auth/auth-session.service.js";
 
 @Injectable()
 export class PlatformMembersService {
   constructor(
-    @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
-    private readonly userRepository: Repository<PlatformUser>,
-    @InjectRepository(PlatformRole, PLATFORM_DATA_SOURCE)
-    private readonly roleRepository: Repository<PlatformRole>,
-    @InjectRepository(PlatformUserRole, PLATFORM_DATA_SOURCE)
-    private readonly userRoleRepository: Repository<PlatformUserRole>,
+    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    private readonly accountRepository: Repository<Account>,
+    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
+    private readonly roleRepository: Repository<Role>,
+    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    private readonly membershipRepository: Repository<PlatformMembership>,
+    private readonly inviteService: InviteService,
+    private readonly authSessionService: AuthSessionService,
     private readonly grantPolicy: RoleGrantPolicyService =
       new RoleGrantPolicyService(),
   ) {}
 
   async list() {
-    const users = await this.userRepository.find({
+    const memberships = await this.membershipRepository.find({
       order: { createdAt: "ASC" },
-      relations: { roles: { platformRole: true } },
+      relations: { account: true, role: true },
     });
-    return users.map(toPlatformUserDto);
+    return memberships.map(toPlatformMemberDto);
   }
 
-  async create(payload: PlatformMemberPayload, actorUserId?: string) {
+  async create(payload: PlatformMemberPayload, actorAccountId?: string) {
     const input = requirePayload(payload);
-    const role = await this.resolveRole(input.roleId);
-    if (role && actorUserId) {
-      await this.assertCanGrantPlatformRole(actorUserId, input.userId, role);
+    const role = await this.resolveRole(requireText(input.roleId, "角色 ID"));
+    if (actorAccountId) {
+      await this.assertCanGrantPlatformRole(actorAccountId, undefined, role);
     }
-    let user = input.userId
-      ? await this.userRepository.findOne({ where: { id: input.userId } })
-      : null;
-    if (!user) {
-      const email = normalizeEmail(input.email);
-      if (await this.userRepository.findOne({ where: { email } })) {
-        throw new BadRequestException("平台账号邮箱已被使用");
-      }
-      const displayName = requireText(input.displayName, "显示名称");
-      const password = requireText(input.password, "密码");
-      if (password.length < 8) throw new BadRequestException("密码至少需要 8 位");
-      user = await this.userRepository.save(
-        this.userRepository.create({
-          displayName,
-          email,
-          passwordHash: await hashPassword(password),
-          preferredLanguage: "zh-CN",
-          status: normalizeStatus(input.status),
-        }),
-      );
+    const email = normalizeEmail(input.email);
+    const account = await this.accountRepository.findOne({ where: { email } });
+    if (!account) {
+      return {
+        invite: await this.inviteService.createPlatform(
+          actorAccountId ?? null,
+          {
+            email,
+            expiresIn: input.expiresIn,
+            roleId: role.id,
+          },
+        ),
+        status: "invited" as const,
+      };
     }
-    if (role) await this.assignRole(user.id, role.id);
-    return toPlatformUserDto(await this.getUserOrThrow(user.id));
+    if (account.status !== "active") {
+      throw new BadRequestException("账号不可用");
+    }
+
+    const membership = await this.membershipRepository.findOne({
+      where: { accountId: account.id },
+    });
+    if (membership && membership.status !== "removed") {
+      throw new ConflictException("该账号已经拥有平台访问关系");
+    }
+    const saved = await this.membershipRepository.save(
+      Object.assign(
+        membership ?? this.membershipRepository.create(),
+        {
+          accountId: account.id,
+          removedAt: null,
+          roleId: role.id,
+          status: "active" as const,
+        },
+      ),
+    );
+    saved.account = account;
+    saved.role = role;
+    return toPlatformMemberDto(saved);
   }
 
   async update(
-    platformUserId: string,
+    membershipId: string,
     payload: Partial<PlatformMemberPayload>,
-    actorUserId?: string,
+    actorAccountId?: string,
   ) {
     const input = requirePayload(payload);
-    await this.userRepository.manager.transaction(async (manager) => {
-      const user = await manager.findOne(PlatformUser, {
+    await this.membershipRepository.manager.transaction(async (manager) => {
+      const membership = await manager.findOne(PlatformMembership, {
         lock: { mode: "pessimistic_write" },
-        relations: { roles: { platformRole: true } },
-        where: { id: platformUserId },
+        relations: { account: true, role: true },
+        where: { id: membershipId },
       });
-      if (!user) throw new NotFoundException("平台账号不存在");
-      const wasAdmin = isActivePlatformAdmin(user);
-      if (input.displayName !== undefined) {
-        user.displayName = requireText(input.displayName, "显示名称");
-      }
-      if (input.status !== undefined) user.status = normalizeStatus(input.status);
+      if (!membership) throw new NotFoundException("平台成员关系不存在");
+      const wasAdmin = isActivePlatformAdmin(membership);
+
       if (input.roleId !== undefined) {
-        await manager.delete(PlatformUserRole, { platformUserId: user.id });
         const role = await this.resolveRole(input.roleId, manager);
-        if (role && actorUserId) {
+        if (actorAccountId) {
           await this.assertCanGrantPlatformRole(
-            actorUserId,
-            platformUserId,
+            actorAccountId,
+            membership.accountId,
             role,
             manager,
           );
         }
-        if (role) {
-          await manager.save(
-            PlatformUserRole,
-            manager.create(PlatformUserRole, {
-              platformRoleId: role.id,
-              platformUserId: user.id,
-            }),
-          );
-          user.roles = [{ platformRole: role }] as PlatformUserRole[];
-        } else {
-          user.roles = [];
-        }
+        membership.roleId = role.id;
+        membership.role = role;
       }
-      if (wasAdmin && !isActivePlatformAdmin(user)) {
-        await this.assertAnotherAdmin(user.id, manager);
+      if (input.status !== undefined) {
+        membership.status = normalizeStatus(input.status);
+        membership.removedAt = null;
       }
-      await manager.save(PlatformUser, user);
+      if (wasAdmin && !isActivePlatformAdmin(membership)) {
+        await this.assertAnotherAdmin(membership.id, manager);
+      }
+      await manager.save(PlatformMembership, membership);
     });
-    return toPlatformUserDto(await this.getUserOrThrow(platformUserId));
+    await this.authSessionService.revokeMembershipSessions("platform", membershipId);
+    return toPlatformMemberDto(await this.getMembershipOrThrow(membershipId));
   }
 
-  async remove(platformUserId: string) {
-    await this.userRepository.manager.transaction(async (manager) => {
-      const user = await manager.findOne(PlatformUser, {
+  async remove(membershipId: string) {
+    await this.membershipRepository.manager.transaction(async (manager) => {
+      const membership = await manager.findOne(PlatformMembership, {
         lock: { mode: "pessimistic_write" },
-        relations: { roles: { platformRole: true } },
-        where: { id: platformUserId },
+        relations: { account: true, role: true },
+        where: { id: membershipId },
       });
-      if (!user) throw new NotFoundException("平台账号不存在");
-      if (isActivePlatformAdmin(user)) await this.assertAnotherAdmin(user.id, manager);
-      await manager.delete(PlatformUserRole, { platformUserId: user.id });
-      await manager.softDelete(PlatformUser, { id: user.id });
+      if (!membership) throw new NotFoundException("平台成员关系不存在");
+      if (isActivePlatformAdmin(membership)) {
+        await this.assertAnotherAdmin(membership.id, manager);
+      }
+      membership.roleId = null;
+      membership.role = null;
+      membership.status = "removed";
+      membership.removedAt = new Date();
+      await manager.save(PlatformMembership, membership);
     });
+    await this.authSessionService.revokeMembershipSessions("platform", membershipId);
   }
 
-  private async getUserOrThrow(id: string) {
-    const user = await this.userRepository.findOne({
-      relations: { roles: { platformRole: true } },
+  private async getMembershipOrThrow(id: string) {
+    const membership = await this.membershipRepository.findOne({
+      relations: { account: true, role: true },
       where: { id },
     });
-    if (!user) throw new NotFoundException("平台账号不存在");
-    return user;
+    if (!membership) throw new NotFoundException("平台成员关系不存在");
+    return membership;
   }
 
-  private async resolveRole(roleId: string | null | undefined, manager = this.roleRepository.manager) {
-    if (roleId === null || roleId === undefined) return null;
+  private async resolveRole(
+    roleId: string | null | undefined,
+    manager = this.roleRepository.manager,
+  ) {
     const id = requireText(roleId, "角色 ID");
-    const role = await manager.findOne(PlatformRole, {
-      relations: { rolePermissions: { permission: true } },
-      where: { id },
+    const role = await manager.findOne(Role, {
+      relations: { rolePermissions: { permissionRecord: true } },
+      where: { id, scope: "platform", workspaceId: IsNull() },
     });
     if (!role) throw new BadRequestException("平台角色不存在");
     return role;
   }
 
-  private async assignRole(platformUserId: string, platformRoleId: string) {
-    const exists = await this.userRoleRepository.findOne({
-      where: { platformRoleId, platformUserId },
-    });
-    if (!exists) {
-      await this.userRoleRepository.save(
-        this.userRoleRepository.create({ platformRoleId, platformUserId }),
-      );
-    }
-  }
-
-  private async assertAnotherAdmin(currentUserId: string, manager: Repository<PlatformUser>["manager"]) {
-    const users = await manager.find(PlatformUser, {
+  private async assertAnotherAdmin(
+    currentMembershipId: string,
+    manager: Repository<PlatformMembership>["manager"],
+  ) {
+    const memberships = await manager.find(PlatformMembership, {
       lock: { mode: "pessimistic_write" },
-      relations: { roles: { platformRole: true } },
+      relations: { role: true },
       where: { status: "active" },
     });
-    if (!users.some((user) => user.id !== currentUserId && isActivePlatformAdmin(user))) {
+    if (
+      !memberships.some(
+        (membership) =>
+          membership.id !== currentMembershipId &&
+          isActivePlatformAdmin(membership),
+      )
+    ) {
       throw new BadRequestException("平台至少需要保留一个 Platform Admin");
     }
   }
 
   private async assertCanGrantPlatformRole(
-    actorUserId: string,
-    targetUserId: string | undefined,
-    targetRole: PlatformRole,
-    manager = this.userRepository.manager,
+    actorAccountId: string,
+    targetAccountId: string | undefined,
+    targetRole: Role,
+    manager = this.accountRepository.manager,
   ) {
-    const actor = await manager.findOne(PlatformUser, {
-      relations: {
-        roles: {
-          platformRole: { rolePermissions: { permission: true } },
-        },
-      },
-      where: { id: actorUserId, status: "active" },
+    const actor = await manager.findOne(PlatformMembership, {
+      relations: { role: { rolePermissions: { permissionRecord: true } } },
+      where: { accountId: actorAccountId, status: "active" },
     });
-    const roles =
-      actor?.roles?.map((assignment) => assignment.platformRole).filter(Boolean) ??
-      [];
+    const role = actor?.role;
     this.grantPolicy.assertCanGrant({
-      actor: { principalType: "platform", tenantId: null, userId: actorUserId },
-      actorPermissionCodes: [
-        ...new Set(
-          roles.flatMap((role) =>
-            (role.rolePermissions ?? [])
-              .filter((permission) => permission.enabled)
-              .flatMap((permission) =>
-                permission.permission?.code
-                  ? [permission.permission.code]
-                  : [],
-              ),
-          ),
+      actor: {
+        principalType: "platform",
+        workspaceId: null,
+        userId: actorAccountId,
+      },
+      actorPermissionCodes: (role?.rolePermissions ?? [])
+        .filter((permission) => permission.enabled)
+        .flatMap((permission) =>
+          permission.permissionRecord?.code
+            ? [permission.permissionRecord.code]
+            : [],
         ),
-      ],
-      actorRoleNames: roles.map((role) => role.name),
+      actorRoleNames: role ? [role.name] : [],
       scope: "platform",
       targetRole: {
         id: targetRole.id,
@@ -215,10 +224,12 @@ export class PlatformMembersService {
         permissionCodes: (targetRole.rolePermissions ?? [])
           .filter((permission) => permission.enabled)
           .flatMap((permission) =>
-            permission.permission?.code ? [permission.permission.code] : [],
+            permission.permissionRecord?.code
+              ? [permission.permissionRecord.code]
+              : [],
           ),
       },
-      targetUserId,
+      targetUserId: targetAccountId,
     });
   }
 }
@@ -242,27 +253,27 @@ function normalizeEmail(value: unknown) {
   return email;
 }
 
-function normalizeStatus(value: unknown): PlatformUserStatus {
-  if (value === undefined || value === null) return "active";
+function normalizeStatus(value: unknown): Exclude<PlatformMembershipStatus, "removed"> {
   if (value === "active" || value === "disabled") return value;
-  throw new BadRequestException("平台账号状态无效");
+  throw new BadRequestException("平台成员状态无效");
 }
 
-function isActivePlatformAdmin(user: PlatformUser) {
-  return user.status === "active" &&
-    user.roles?.some((item) => item.platformRole?.name === PLATFORM_ADMIN_ROLE_NAME);
+function isActivePlatformAdmin(membership: PlatformMembership) {
+  return membership.status === "active" &&
+    membership.role?.name === PLATFORM_ADMIN_ROLE_NAME;
 }
 
-function toPlatformUserDto(user: PlatformUser) {
-  const roles = user.roles?.map((item) => item.platformRole).filter(Boolean) ?? [];
+function toPlatformMemberDto(membership: PlatformMembership) {
+  const account = membership.account;
   return {
-    displayName: user.displayName,
-    email: user.email,
-    id: user.id,
-    role: roles[0] ?? null,
-    roleId: roles[0]?.id ?? null,
-    roles,
-    status: user.status,
-    userId: user.id,
+    account,
+    displayName: account?.displayName ?? "",
+    email: account?.email ?? "",
+    id: membership.id,
+    membershipId: membership.id,
+    role: membership.role,
+    roleId: membership.roleId,
+    status: membership.status,
+    userId: membership.accountId,
   };
 }

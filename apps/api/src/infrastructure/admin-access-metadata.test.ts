@@ -14,10 +14,13 @@ import {
   resolveAccessDefinition,
 } from "@hermes-swarm/rbac";
 import { PermissionsController } from "@hermes-swarm/rbac";
-import { AppModule } from "../app.module.js";
 
 describe("admin route access metadata", () => {
-  it("requires every admin handler to explicitly declare access or public behavior", () => {
+  it("requires every admin handler to explicitly declare access or public behavior", async () => {
+    process.env.NODE_ENV = "test";
+    process.env.POSTGRES_TEST_URL ??=
+      "postgresql://hermes:hermes_dev_pwd@localhost:5432/hermes-test";
+    const { AppModule } = await import("../app.module.js");
     const missing: string[] = [];
     const invalid: string[] = [];
 
@@ -68,13 +71,13 @@ describe("admin route access metadata", () => {
     assert.deepEqual(invalid, []);
   });
 
-  it("allows tenant governors to read the role permission catalog", () => {
+  it("allows workspace governors to read the role permission catalog", () => {
     const operation = Reflect.getMetadata(
       ACCESS_OPERATION_METADATA,
       PermissionsController.prototype.catalog,
     );
 
-    assert.deepEqual(operation?.defaultRoles, ["tenant-owner", "tenant-admin"]);
+    assert.deepEqual(operation?.defaultRoles, ["workspace-owner", "workspace-admin"]);
   });
 });
 

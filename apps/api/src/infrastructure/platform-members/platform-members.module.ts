@@ -1,18 +1,22 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
-  PlatformRole,
-  PlatformUser,
-  PlatformUserRole,
+  Account,
+  PlatformMembership,
+  Role,
 } from "@hermes-swarm/core";
 import { PlatformMembersController } from "./platform-members.controller.js";
 import { PlatformMembersService } from "./platform-members.service.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
+import { InviteModule } from "../invite/invite.module.js";
+import { AuthModule } from "../auth/auth.module.js";
 
 @Module({
   imports: [
+    AuthModule,
+    InviteModule,
     TypeOrmModule.forFeature(
-      [PlatformRole, PlatformUser, PlatformUserRole],
+      [Account, PlatformMembership, Role],
       PLATFORM_DATA_SOURCE,
     ),
   ],

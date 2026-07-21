@@ -1,12 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
-  PlatformRolePermission,
-  PlatformUserRole,
+  PlatformMembership,
   RolePermission,
-  UserOrganization,
-  UserOrganizationRole,
-  UserTenantRole,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { DataSource, In, Repository, type EntityManager } from "typeorm";
 import type {
@@ -18,16 +15,12 @@ import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 @Injectable()
 export class AccessService {
   constructor(
-    @InjectRepository(PlatformUserRole, PLATFORM_DATA_SOURCE)
-    private readonly platformUserRoleRepository: Repository<PlatformUserRole>,
-    @InjectRepository(PlatformRolePermission, PLATFORM_DATA_SOURCE)
-    private readonly platformRolePermissionRepository: Repository<PlatformRolePermission>,
-    @InjectRepository(UserTenantRole)
-    private readonly tenantRoleRepository: Repository<UserTenantRole>,
-    @InjectRepository(UserOrganization)
-    private readonly membershipRepository: Repository<UserOrganization>,
-    @InjectRepository(UserOrganizationRole)
-    private readonly organizationRoleRepository: Repository<UserOrganizationRole>,
+    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    private readonly platformMembershipRepository: Repository<PlatformMembership>,
+    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
+    private readonly platformRolePermissionRepository: Repository<RolePermission>,
+    @InjectRepository(WorkspaceMembership)
+    private readonly workspaceRoleRepository: Repository<WorkspaceMembership>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
     private readonly dataSource: DataSource,
@@ -45,25 +38,24 @@ export class AccessService {
     }
     if (context.principalType === "platform") return false;
 
-    const tenantId = context.tenantId ?? undefined;
-    if (!tenantId) return false;
+    const workspaceId = context.workspaceId ?? undefined;
+    if (!workspaceId) return false;
 
     return this.dataSource.transaction(async (manager) => {
       await manager.query(
-        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', $2, true), set_config('app.organization_id', $3, true)",
+        "SELECT set_config('app.workspace_id', $1, true), set_config('app.scope_level', $2, true)",
         [
-          tenantId,
+          workspaceId,
           context.scopeLevel ?? scopeLevelForPermission(definition.scope),
-          context.organizationId ?? "",
         ],
       );
-      return this.canInTenant(userId, tenantId, definition, context, manager);
+      return this.canInWorkspace(userId, workspaceId, definition, context, manager);
     });
   }
 
-  private async canInTenant(
+  private async canInWorkspace(
     userId: string,
-    tenantId: string,
+    workspaceId: string,
     definition: ResolvedAccessDefinition,
     context: AccessCheckContext,
     manager: EntityManager,
@@ -71,98 +63,60 @@ export class AccessService {
 
     if (definition.scope === "own") {
       if (context.targetUserId !== userId) return false;
-      const tenantRoleIds = await this.findTenantRoleIds(tenantId, userId, manager);
-      return this.anyTenantRoleAllows(
-        tenantId,
-        tenantRoleIds,
+      const workspaceRoleIds = await this.findWorkspaceRoleIds(workspaceId, userId, manager);
+      return this.anyWorkspaceRoleAllows(
+        workspaceId,
+        workspaceRoleIds,
         definition.id,
         manager,
       );
     }
 
-    const roleIds = await this.findTenantRoleIds(tenantId, userId, manager);
-    if (definition.scope === "tenant") {
-      return this.anyTenantRoleAllows(tenantId, roleIds, definition.id, manager);
+    const roleIds = await this.findWorkspaceRoleIds(workspaceId, userId, manager);
+    if (definition.scope === "workspace") {
+      return this.anyWorkspaceRoleAllows(workspaceId, roleIds, definition.id, manager);
     }
 
-    const membership = await this.findOrganizationMembership(
-      tenantId,
-      userId,
-      context.organizationId ?? undefined,
-      manager,
-    );
-    if (!membership) return false;
-    return this.anyTenantRoleAllows(
-      tenantId,
-      await this.findOrganizationRoleIds(tenantId, membership, manager),
-      definition.id,
-      manager,
-    );
+    return false;
   }
 
-  private async platformRoleAllows(platformUserId: string, permission: string) {
-    const assignments = await this.platformUserRoleRepository.find({
-      where: { platformUserId },
+  private async platformRoleAllows(accountId: string, permission: string) {
+    const membership = await this.platformMembershipRepository.findOne({
+      relations: { role: true },
+      where: { accountId, status: "active" },
     });
-    if (assignments.length === 0) return false;
+    if (!membership?.roleId || membership.role?.scope !== "platform") return false;
     return Boolean(
       await this.platformRolePermissionRepository.findOne({
-        relations: { permission: true },
+        relations: { permissionRecord: true },
         where: {
           enabled: true,
-          permission: { code: permission },
-          platformRoleId: In(assignments.map((item) => item.platformRoleId)),
+          permissionRecord: { code: permission },
+          roleId: membership.roleId,
         },
       }),
     );
   }
 
-  private async findTenantRoleIds(
-    tenantId: string,
+  private async findWorkspaceRoleIds(
+    workspaceId: string,
     userId: string,
     manager: EntityManager,
   ) {
-    const assignments = await manager.getRepository(UserTenantRole).find({
+    const assignments = await manager.getRepository(WorkspaceMembership).find({
       relations: { role: true },
-      where: { tenantId, userId },
-    });
-    return assignments
-      .filter((item) => item.role?.scope === "tenant")
-      .map((item) => item.roleId);
-  }
-
-  private async findOrganizationMembership(
-    tenantId: string,
-    userId: string,
-    organizationId: string | undefined,
-    manager: EntityManager,
-  ) {
-    if (!organizationId) return null;
-    return manager.getRepository(UserOrganization).findOne({
-      where: { organizationId, status: "active", tenantId, userId },
-    });
-  }
-
-  private async findOrganizationRoleIds(
-    tenantId: string,
-    membership: UserOrganization,
-    manager: EntityManager,
-  ) {
-    const assignments = await manager.getRepository(UserOrganizationRole).find({
-      relations: { role: true },
-      where: { membershipId: membership.id, tenantId },
+      where: { accountId: userId, status: "active", workspaceId },
     });
     return assignments
       .filter(
-        (item) =>
-          item.role?.scope === "organization" &&
-          item.role.organizationId === membership.organizationId,
+        (item): item is WorkspaceMembership & { roleId: string } =>
+          item.role?.scope === "workspace" && Boolean(item.roleId),
       )
       .map((item) => item.roleId);
   }
 
-  private async anyTenantRoleAllows(
-    tenantId: string,
+  private async anyWorkspaceRoleAllows(
+    workspaceId: string,
     roleIds: string[],
     permission: string,
     manager: EntityManager,
@@ -171,11 +125,11 @@ export class AccessService {
     if (uniqueRoleIds.length === 0) return false;
     return Boolean(
       await manager.getRepository(RolePermission).findOne({
+        relations: { permissionRecord: true },
         where: {
           enabled: true,
-          permission,
+          permissionRecord: { code: permission },
           roleId: In(uniqueRoleIds),
-          tenantId,
         },
       }),
     );
@@ -183,6 +137,5 @@ export class AccessService {
 }
 
 function scopeLevelForPermission(scope: ResolvedAccessDefinition["scope"]) {
-  if (scope === "organization") return "organization";
-  return "tenant";
+  return "workspace";
 }

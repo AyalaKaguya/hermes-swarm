@@ -5,8 +5,8 @@ import { RoleGrantPolicyService } from "./role-grant-policy.service.js";
 describe("RoleGrantPolicyService", () => {
   const service = new RoleGrantPolicyService();
   const actor = {
-    principalType: "tenant" as const,
-    tenantId: "tenant-1",
+    principalType: "workspace" as const,
+    workspaceId: "workspace-1",
     userId: "actor-1",
   };
 
@@ -15,10 +15,10 @@ describe("RoleGrantPolicyService", () => {
       () =>
         service.assertCanGrant({
           actor,
-          actorPermissionCodes: ["user.role.replace:tenant"],
-          actorRoleNames: ["tenant-admin"],
-          scope: "tenant",
-          targetRole: { id: "owner-role", name: "tenant-owner" },
+          actorPermissionCodes: ["user.role.replace:workspace"],
+          actorRoleNames: ["workspace-admin"],
+          scope: "workspace",
+          targetRole: { id: "owner-role", name: "workspace-owner" },
           targetUserId: "user-2",
         }),
       (error: any) =>
@@ -32,9 +32,9 @@ describe("RoleGrantPolicyService", () => {
       service.assertCanGrant({
         actor,
         actorPermissionCodes: [],
-        actorRoleNames: ["tenant-owner"],
-        scope: "tenant",
-        targetRole: { id: "owner-role", name: "tenant-owner" },
+        actorRoleNames: ["workspace-owner"],
+        scope: "workspace",
+        targetRole: { id: "owner-role", name: "workspace-owner" },
         targetUserId: "user-2",
       }),
     );
@@ -44,8 +44,8 @@ describe("RoleGrantPolicyService", () => {
     assert.throws(
       () =>
         service.assertCanReplacePermissions(
-          ["user.list:tenant"],
-          ["user.list:tenant", "user.delete:tenant"],
+          ["user.list:workspace"],
+          ["user.list:workspace", "user.delete:workspace"],
         ),
       (error: any) =>
         error?.getResponse?.().code === "PERMISSION_GRANT_EXCEEDS_ACTOR",
@@ -57,13 +57,13 @@ describe("RoleGrantPolicyService", () => {
       () =>
         service.assertCanGrant({
           actor,
-          actorPermissionCodes: ["user.list:tenant"],
-          actorRoleNames: ["tenant-admin"],
-          scope: "tenant",
+          actorPermissionCodes: ["user.list:workspace"],
+          actorRoleNames: ["workspace-admin"],
+          scope: "workspace",
           targetRole: {
             id: "custom-role",
             name: "custom",
-            permissionCodes: ["user.delete:tenant"],
+            permissionCodes: ["user.delete:workspace"],
           },
           targetUserId: actor.userId,
         }),

@@ -1,24 +1,24 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { mergeEffectiveTenantSettings } from "./effective-settings.js";
+import { mergeEffectiveWorkspaceSettings } from "./effective-settings.js";
 
 describe("workspace settings", () => {
-  it("resolves platform defaults through tenant overrides", () => {
-    const result = mergeEffectiveTenantSettings(
-      [{ id: "tenant-setting", name: "locale", value: "zh-CN" }],
+  it("resolves platform defaults through workspace overrides", () => {
+    const result = mergeEffectiveWorkspaceSettings(
+      [{ id: "workspace-setting", name: "locale", value: "zh-CN" }],
       [{ id: "platform-setting", name: "locale", value: "en" }],
-      "tenant-a",
+      "workspace-a",
     );
     assert.equal(result[0]?.value, "zh-CN");
     assert.equal(result[0]?.defaultValue, "en");
-    assert.equal(result[0]?.scope, "tenant");
+    assert.equal(result[0]?.scope, "workspace");
   });
 
-  it("identifies inherited platform values without an organization layer", () => {
-    const result = mergeEffectiveTenantSettings(
+  it("identifies inherited platform values at workspace scope", () => {
+    const result = mergeEffectiveWorkspaceSettings(
       [],
       [{ id: "platform", name: "language", value: "en" }],
-      "tenant-a",
+      "workspace-a",
     );
     assert.equal(result[0]?.value, "en");
     assert.equal(result[0]?.scope, "platform");
@@ -26,15 +26,15 @@ describe("workspace settings", () => {
   });
 
   it("treats workspace-only parameters as editable custom values", () => {
-    const result = mergeEffectiveTenantSettings(
+    const result = mergeEffectiveWorkspaceSettings(
       [{
-        id: "tenant-secret",
+        id: "workspace-secret",
         name: "DATABASE_PASSWORD",
         value: "database-password",
         valueType: "secret",
       }],
       [],
-      "tenant-a",
+      "workspace-a",
     );
 
     assert.equal(result[0]?.isCustom, true);

@@ -15,7 +15,7 @@ export type ScopedSettingRecord = {
   scope?: string | null;
 };
 
-export type EffectiveTenantSetting = {
+export type EffectiveWorkspaceSetting = {
   defaultValue: string | null;
   id: string;
   isCustom: boolean;
@@ -24,49 +24,49 @@ export type EffectiveTenantSetting = {
   isOverridden: boolean;
   name: string;
   overrideValue: string | null;
-  scope: "platform" | "tenant";
-  tenantId: string;
+  scope: "platform" | "workspace";
+  workspaceId: string;
   value: string | null;
   valueOptions: readonly SettingValueOption[] | null;
   valueType: SettingValueType;
 };
 
-export function mergeEffectiveTenantSettings(
-  tenantSettings: readonly ScopedSettingRecord[],
+export function mergeEffectiveWorkspaceSettings(
+  workspaceSettings: readonly ScopedSettingRecord[],
   platformSettings: readonly ScopedSettingRecord[],
-  tenantId: string,
-): EffectiveTenantSetting[] {
-  const tenantByName = new Map(tenantSettings.map((setting) => [setting.name, setting]));
+  workspaceId: string,
+): EffectiveWorkspaceSetting[] {
+  const workspaceByName = new Map(workspaceSettings.map((setting) => [setting.name, setting]));
   const platformByName = new Map(platformSettings.map((setting) => [setting.name, setting]));
-  const names = [...new Set([...platformByName.keys(), ...tenantByName.keys()])].sort();
+  const names = [...new Set([...platformByName.keys(), ...workspaceByName.keys()])].sort();
 
   return names.map((name) => {
-    const tenantSetting = tenantByName.get(name) ?? null;
+    const workspaceSetting = workspaceByName.get(name) ?? null;
     const platformSetting = platformByName.get(name) ?? null;
     const valueType = resolveSettingValueType(
       name,
-      tenantSetting?.valueType ?? platformSetting?.valueType,
+      workspaceSetting?.valueType ?? platformSetting?.valueType,
     );
     const valueOptions = resolveSettingValueOptions(
       name,
-      tenantSetting?.valueOptions ?? platformSetting?.valueOptions,
+      workspaceSetting?.valueOptions ?? platformSetting?.valueOptions,
     );
-    const isOverridden = Boolean(tenantSetting);
-    const isCustom = Boolean(tenantSetting && !platformSetting);
+    const isOverridden = Boolean(workspaceSetting);
+    const isCustom = Boolean(workspaceSetting && !platformSetting);
     const isOrphaned = false;
     const defaultValue = platformSetting?.value ?? null;
-    const overrideValue = tenantSetting?.value ?? null;
+    const overrideValue = workspaceSetting?.value ?? null;
     return {
       defaultValue: maskSettingValue(defaultValue, valueType),
-      id: tenantSetting?.id ?? platformSetting?.id ?? `${tenantId}:${name}`,
+      id: workspaceSetting?.id ?? platformSetting?.id ?? `${workspaceId}:${name}`,
       isCustom,
       isEditable: isCustom || platformSetting?.scope !== "platform",
       isOrphaned,
       isOverridden,
       name,
       overrideValue: maskSettingValue(overrideValue, valueType),
-      scope: isOverridden ? "tenant" : "platform",
-      tenantId,
+      scope: isOverridden ? "workspace" : "platform",
+      workspaceId,
       value: maskSettingValue(
         isOverridden ? overrideValue : defaultValue,
         valueType,

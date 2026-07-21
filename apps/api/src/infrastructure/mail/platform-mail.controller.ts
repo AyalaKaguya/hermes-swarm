@@ -69,7 +69,7 @@ export class PlatformMailController {
     sortOrder: 10,
   })
   listTemplates() {
-    return this.mailService.listTemplates(null);
+    return this.mailService.listPlatformTemplates();
   }
 
   @Post("templates")
@@ -80,7 +80,7 @@ export class PlatformMailController {
     sortOrder: 20,
   })
   createTemplate(@Body() payload: unknown) {
-    return this.mailService.createTemplate(null, payload as never);
+    return this.mailService.createPlatformTemplate(payload as never);
   }
 
   @Post("templates/preview")
@@ -105,7 +105,7 @@ export class PlatformMailController {
     @Param("templateId") templateId: string,
     @Body() payload: unknown,
   ) {
-    return this.mailService.updateTemplate(null, templateId, payload as never);
+    return this.mailService.updatePlatformTemplate(templateId, payload as never);
   }
 
   @Delete("templates/:templateId")
@@ -117,6 +117,6 @@ export class PlatformMailController {
     sortOrder: 90,
   })
   deleteTemplate(@Param("templateId") templateId: string) {
-    return this.mailService.deleteTemplate(null, templateId);
+    return this.mailService.deletePlatformTemplate(templateId);
   }
 }

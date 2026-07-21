@@ -1,7 +1,8 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import type { User } from "./user.entity.js";
+import { Check, Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
+import type { Account } from "./account.entity.js";
 import type { Role } from "./role.entity.js";
-import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
+import type { Workspace } from "./workspace.entity.js";
+import { BaseEntity } from "./base.entity.js";
 
 /**
  * Invite lifecycle status.
@@ -12,16 +13,35 @@ export type InviteStatus =
   | "expired"
   | "invited"
   | "revoked";
+export type InviteContextType = "platform" | "workspace";
 
 @Entity({ name: "invites" })
-@Index("UQ_invites_active_tenant_email", ["tenantId", "email"], {
+@Index("UQ_invites_active_workspace_email", ["workspaceId", "email"], {
   unique: true,
-  where: "status = 'invited' AND email IS NOT NULL",
+  where: "context_type = 'workspace' AND status = 'invited' AND email IS NOT NULL",
 })
+@Index("UQ_invites_active_platform_email", ["email"], {
+  unique: true,
+  where: "context_type = 'platform' AND status = 'invited' AND email IS NOT NULL",
+})
+@Check(
+  "CHK_invites_context_workspace",
+  `(context_type = 'platform' AND workspace_id IS NULL) OR (context_type = 'workspace' AND workspace_id IS NOT NULL)`,
+)
 /**
- * Invitation records for onboarding new users into an organization.
+ * Invitation records for onboarding new users into a workspace.
  */
-export class Invite extends TenantOwnedBaseEntity {
+export class Invite extends BaseEntity {
+  @Column({ name: "context_type", type: "varchar", length: 24, default: "workspace" })
+  contextType!: InviteContextType;
+
+  @Column({ name: "workspace_id", type: "uuid", nullable: true })
+  @Index()
+  workspaceId!: string | null;
+
+  @ManyToOne("Workspace", { nullable: true, onDelete: "CASCADE" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace!: Workspace | null;
   /**
    * JWT token used to validate invite acceptance.
    */
@@ -30,7 +50,7 @@ export class Invite extends TenantOwnedBaseEntity {
   token!: string;
 
   /**
-   * Invitee email address. Null means this is a reusable organization invite
+   * Invitee email address. Null means this is a reusable workspace invite
    * link rather than a directed email invite.
    */
   @Column({ type: "varchar", length: 240, nullable: true })
@@ -55,7 +75,7 @@ export class Invite extends TenantOwnedBaseEntity {
   actionDate!: Date | null;
 
   /**
-   * When the invite link was closed by an organization administrator.
+   * When the invite link was closed by a workspace administrator.
    */
   @Column({ name: "closed_at", type: "timestamptz", nullable: true })
   closedAt!: Date | null;
@@ -73,9 +93,9 @@ export class Invite extends TenantOwnedBaseEntity {
   @Index()
   acceptedUserId!: string | null;
 
-  @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
+  @ManyToOne("Account", { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "accepted_user_id" })
-  acceptedUser!: User | null;
+  acceptedUser!: Account | null;
 
   /**
    * User who sent the invitation.
@@ -84,25 +104,32 @@ export class Invite extends TenantOwnedBaseEntity {
   @Index()
   invitedById!: string | null;
 
-  @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
+  @ManyToOne("Account", { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "invited_by_id" })
-  invitedBy!: User | null;
+  invitedBy!: Account | null;
 
-  @Column({ name: "workspace_role_id", type: "uuid" })
+  @Column({ name: "role_id", type: "uuid" })
   @Index()
-  workspaceRoleId!: string;
+  roleId!: string;
 
   @ManyToOne("Role", { onDelete: "RESTRICT" })
-  @JoinColumn([
-    { name: "tenant_id", referencedColumnName: "tenantId" },
-    { name: "workspace_role_id", referencedColumnName: "id" },
-  ])
-  workspaceRole!: Role;
+  @JoinColumn({ name: "role_id" })
+  role!: Role;
 
-  @Column({ name: "organization_assignments", type: "jsonb", default: () => "'[]'::jsonb" })
-  organizationAssignments!: Array<{
-    isDefault?: boolean;
-    organizationId: string;
-    roleId: string;
-  }>;
+  /** Workspace invitation compatibility alias; platform invitations use roleId. */
+  get workspaceRoleId() {
+    return this.roleId;
+  }
+
+  set workspaceRoleId(value: string) {
+    this.roleId = value;
+  }
+
+  get workspaceRole() {
+    return this.role;
+  }
+
+  set workspaceRole(value: Role) {
+    this.role = value;
+  }
 }

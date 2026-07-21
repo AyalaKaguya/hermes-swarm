@@ -7,16 +7,14 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import {
-  Organization,
   RolePermission,
   Ticket,
-  UserOrganization,
-  UserOrganizationRole,
+  WorkspaceMembership,
   type ConversationMessageAttachment,
   type TicketStatus,
 } from "@hermes-swarm/core";
 import { LessThan } from "typeorm";
-import { TenantContextService } from "../../../common/database/tenant-context.service.js";
+import { WorkspaceContextService } from "../../../common/database/workspace-context.service.js";
 import { AuthSessionService } from "../../../infrastructure/auth/auth-session.service.js";
 import type {
   ConversationAccessResolver,
@@ -28,8 +26,8 @@ import {
 } from "../conversations/conversations.service.js";
 
 const TICKET_SOURCE_TYPE = "ticket";
-const TICKET_SUBMIT_PERMISSION = "ticket.conversation.submit:organization";
-const TICKET_HANDLE_PERMISSION = "ticket.conversation.handle:organization";
+const TICKET_SUBMIT_PERMISSION = "ticket.conversation.submit:workspace";
+const TICKET_HANDLE_PERMISSION = "ticket.conversation.handle:workspace";
 const MAX_TICKET_ATTACHMENTS = 6;
 const MAX_TICKET_ATTACHMENT_SIZE = 2 * 1024 * 1024;
 
@@ -52,24 +50,21 @@ export class TicketsService {
     private readonly authSessionService: AuthSessionService,
     @Inject(ConversationCapabilityService)
     private readonly conversationsService: ConversationCapabilityService,
-    private readonly tenantContext: TenantContextService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async listTickets(
     authorization: string | undefined,
-    options: { sourceOrganizationId?: string; status?: string } = {},
+    options: { status?: string } = {},
   ) {
-    const session = await this.requireTenantSession(authorization);
+    const session = await this.requireWorkspaceSession(authorization);
     const status = parseOptionalTicketStatus(options.status);
     const tickets = await this.tickets.find({
       order: { updatedAt: "DESC" },
-      relations: { assigneeUser: true, requesterUser: true, sourceOrganization: true },
+      relations: { assigneeUser: true, requesterUser: true },
       where: {
-        ...(options.sourceOrganizationId
-          ? { sourceOrganizationId: options.sourceOrganizationId }
-          : {}),
         ...(status ? { status } : {}),
-        tenantId: session.tenantId,
+        workspaceId: session.workspaceId,
       },
     });
     const visible: Ticket[] = [];
@@ -80,25 +75,11 @@ export class TicketsService {
   }
 
   async createTicket(authorization: string | undefined, payload: unknown) {
-    const session = await this.requireTenantSession(authorization);
+    const session = await this.requireWorkspaceSession(authorization);
     const input = parseCreateTicketPayload(payload);
-    const membership = await this.requireActiveMembership(
-      session.tenantId,
-      session.userId,
-      input.sourceOrganizationId,
-    );
-    await this.requireOrganizationPermission(
-      membership,
-      TICKET_SUBMIT_PERMISSION,
-    );
-    const organization = await this.organizations.findOne({
-      where: {
-        id: input.sourceOrganizationId,
-        status: "active",
-        tenantId: session.tenantId,
-      },
-    });
-    if (!organization) throw new BadRequestException("提交组织不存在或已停用");
+    if (!(await this.hasWorkspacePermission(session.userId, TICKET_SUBMIT_PERMISSION))) {
+      throw new ForbiddenException("没有提交工单的权限");
+    }
 
     let ticket!: Ticket;
     let firstMessage!: Awaited<ReturnType<ConversationCapabilityService["createMessageInTransaction"]>>["message"];
@@ -115,10 +96,9 @@ export class TicketsService {
           participantUserIds: [session.userId],
           requesterClosedAt: null,
           requesterUserId: session.userId,
-          sourceOrganizationId: organization.id,
           status: "open",
           subject: input.subject,
-          tenantId: session.tenantId,
+          workspaceId: session.workspaceId,
         }),
       );
       const source = toConversationSource(ticket);
@@ -208,25 +188,21 @@ export class TicketsService {
     });
   }
 
-  async handlingCapability(authorization: string | undefined, organizationId?: string) {
-    const session = await this.requireTenantSession(authorization);
-    if (!organizationId) return { canHandle: false };
-    const membership = await this.memberships.findOne({
-      where: { organizationId, status: "active", tenantId: session.tenantId, userId: session.userId },
-    });
+  async handlingCapability(authorization: string | undefined) {
+    const session = await this.requireWorkspaceSession(authorization);
     return {
-      canHandle: Boolean(
-        membership &&
-          (await this.hasOrganizationPermission(membership, TICKET_HANDLE_PERMISSION)),
+      canHandle: await this.hasWorkspacePermission(
+        session.userId,
+        TICKET_HANDLE_PERMISSION,
       ),
     };
   }
 
-  async archiveExpiredTickets(tenantId: string) {
-    if (tenantId !== this.tenantId) throw new NotFoundException("工作空间不存在");
+  async archiveExpiredTickets(workspaceId: string) {
+    if (workspaceId !== this.workspaceId) throw new NotFoundException("工作空间不存在");
     const threshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const tickets = await this.tickets.find({
-      where: { status: "closed", tenantId, updatedAt: LessThan(threshold) },
+      where: { status: "closed", workspaceId, updatedAt: LessThan(threshold) },
     });
     if (tickets.length === 0) return { archived: 0 };
     const now = new Date();
@@ -241,7 +217,7 @@ export class TicketsService {
   private async canAccessSource(userId: string, source: ConversationSource) {
     if (source.sourceType !== TICKET_SOURCE_TYPE) return false;
     const ticket = await this.tickets.findOne({
-      where: { id: source.sourceId, tenantId: source.tenantId },
+      where: { id: source.sourceId, workspaceId: source.workspaceId },
     });
     return ticket ? this.canAccessTicket(userId, ticket) : false;
   }
@@ -250,10 +226,10 @@ export class TicketsService {
     authorization: string | undefined,
     ticketId: string,
   ) {
-    const session = await this.requireTenantSession(authorization);
+    const session = await this.requireWorkspaceSession(authorization);
     const ticket = await this.tickets.findOne({
-      relations: { assigneeUser: true, requesterUser: true, sourceOrganization: true },
-      where: { id: ticketId, tenantId: session.tenantId },
+      relations: { assigneeUser: true, requesterUser: true },
+      where: { id: ticketId, workspaceId: session.workspaceId },
     });
     if (!ticket) throw new NotFoundException("工单不存在");
     if (!(await this.canAccessTicket(session.userId, ticket))) {
@@ -271,68 +247,33 @@ export class TicketsService {
     ) {
       return true;
     }
-    const membership = await this.memberships.findOne({
-      where: {
-        organizationId: ticket.sourceOrganizationId,
-        status: "active",
-        tenantId: ticket.tenantId,
-        userId,
-      },
-    });
-    return Boolean(
-      membership &&
-        (await this.hasOrganizationPermission(membership, TICKET_HANDLE_PERMISSION)),
-    );
+    return this.hasWorkspacePermission(userId, TICKET_HANDLE_PERMISSION);
   }
 
-  private async requireActiveMembership(
-    tenantId: string,
-    userId: string,
-    organizationId: string,
-  ) {
-    const membership = await this.memberships.findOne({
-      where: { organizationId, status: "active", tenantId, userId },
-    });
-    if (!membership) {
-      throw new ForbiddenException("必须选择已加入的有效组织提交工单");
-    }
-    return membership;
-  }
-
-  private async requireOrganizationPermission(
-    membership: UserOrganization,
-    permission: string,
-  ) {
-    if (!(await this.hasOrganizationPermission(membership, permission))) {
-      throw new ForbiddenException("没有执行该操作的权限");
-    }
-  }
-
-  private async hasOrganizationPermission(
-    membership: UserOrganization,
-    permission: string,
-  ) {
-    const roleAssignment = await this.organizationRoles.findOne({
-      where: {
-        membershipId: membership.id,
-        organizationId: membership.organizationId,
-        tenantId: this.tenantId,
-      },
-    });
-    if (!roleAssignment) return false;
+  private async hasWorkspacePermission(userId: string, permission: string) {
+    const roleAssignment = await this.workspaceContext
+      .repository(WorkspaceMembership)
+      .findOne({
+        where: {
+          accountId: userId,
+          status: "active",
+          workspaceId: this.workspaceId,
+        },
+      });
+    if (!roleAssignment?.roleId) return false;
     return Boolean(
       await this.rolePermissions.findOne({
+        relations: { permissionRecord: true },
         where: {
           enabled: true,
-          permission,
+          permissionRecord: { code: permission },
           roleId: roleAssignment.roleId,
-          tenantId: this.tenantId,
         },
       }),
     );
   }
 
-  private async requireTenantSession(authorization: string | undefined) {
+  private async requireWorkspaceSession(authorization: string | undefined) {
     let session: Awaited<ReturnType<AuthSessionService["validateAccessToken"]>>;
     try {
       session = await this.authSessionService.validateAccessToken(
@@ -342,41 +283,29 @@ export class TicketsService {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
     if (
-      session.principalType !== "tenant" ||
-      !session.tenantId ||
-      session.tenantId !== this.tenantId
+      session.principalType !== "workspace" ||
+      !session.workspaceId ||
+      session.workspaceId !== this.workspaceId
     ) {
       throw new UnauthorizedException("登录会话工作空间上下文无效");
     }
-    return { tenantId: session.tenantId, userId: session.userId };
+    return { workspaceId: session.workspaceId, userId: session.userId };
   }
 
-  private get tenantId() {
-    return this.tenantContext.current()!.tenantId;
+  private get workspaceId() {
+    return this.workspaceContext.current()!.workspaceId;
   }
 
   private get manager() {
-    return this.tenantContext.current()!.manager;
+    return this.workspaceContext.current()!.manager;
   }
 
   private get tickets() {
-    return this.tenantContext.repository(Ticket);
-  }
-
-  private get memberships() {
-    return this.tenantContext.repository(UserOrganization);
-  }
-
-  private get organizations() {
-    return this.tenantContext.repository(Organization);
-  }
-
-  private get organizationRoles() {
-    return this.tenantContext.repository(UserOrganizationRole);
+    return this.workspaceContext.repository(Ticket);
   }
 
   private get rolePermissions() {
-    return this.tenantContext.repository(RolePermission);
+    return this.workspaceContext.repository(RolePermission);
   }
 }
 
@@ -386,7 +315,7 @@ function toConversationSource(ticket: Ticket): ConversationSource {
     sourceType: TICKET_SOURCE_TYPE,
     status: ticket.status,
     subject: ticket.subject,
-    tenantId: ticket.tenantId,
+    workspaceId: ticket.workspaceId,
   };
 }
 
@@ -402,17 +331,9 @@ function toTicketDto(ticket: Ticket) {
     participantUserIds: ticket.participantUserIds,
     requesterClosedAt: ticket.requesterClosedAt,
     requesterUserId: ticket.requesterUserId,
-    sourceOrganization: ticket.sourceOrganization
-      ? {
-          id: ticket.sourceOrganization.id,
-          name: ticket.sourceOrganization.name,
-          slug: ticket.sourceOrganization.slug,
-        }
-      : undefined,
-    sourceOrganizationId: ticket.sourceOrganizationId,
     status: ticket.status,
     subject: ticket.subject,
-    tenantId: ticket.tenantId,
+    workspaceId: ticket.workspaceId,
     updatedAt: ticket.updatedAt,
   };
 }
@@ -422,7 +343,6 @@ function parseCreateTicketPayload(payload: unknown) {
   return {
     attachments: parseAttachments(value.attachments),
     body: requireText(value.body, "工单内容"),
-    sourceOrganizationId: requireText(value.sourceOrganizationId, "提交组织"),
     subject: requireText(value.subject, "工单主题"),
   };
 }

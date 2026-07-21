@@ -1,5 +1,11 @@
 export { BaseEntity } from "./base.entity.js";
 export {
+  Account,
+  type AccountStatus,
+  type AccountType,
+  type PreferredLanguage,
+} from "./account.entity.js";
+export {
   AccessAuditLog,
   type AccessAuditPrincipalType,
   type AccessAuditResult,
@@ -10,16 +16,16 @@ export {
   IntegrationToken,
   type IntegrationTokenScope,
 } from "./integration-token.entity.js";
-export { Invite, type InviteStatus } from "./invite.entity.js";
+export {
+  Invite,
+  type InviteContextType,
+  type InviteStatus,
+} from "./invite.entity.js";
 export {
   LoginAuditLog,
   type LoginAuditResult,
   type LoginAuditScopeType,
 } from "./login-audit-log.entity.js";
-export {
-  Organization,
-  type OrganizationStatus,
-} from "./organization.entity.js";
 export { PasswordReset } from "./password-reset.entity.js";
 export {
   Permission,
@@ -27,33 +33,22 @@ export {
   type PermissionCatalogSource,
   type PermissionScope,
 } from "./permission.entity.js";
-export { PlatformRole } from "./platform-role.entity.js";
-export { PlatformRolePermission } from "./platform-role-permission.entity.js";
 export {
-  PlatformUser,
-  type PlatformUserStatus,
-} from "./platform-user.entity.js";
-export { PlatformUserRole } from "./platform-user-role.entity.js";
+  PlatformMembership,
+  type PlatformMembershipStatus,
+} from "./platform-membership.entity.js";
 export { RolePermission } from "./role-permission.entity.js";
 export { Role, type RoleScope } from "./role.entity.js";
 export {
-  Tenant,
-  type TenantStatus,
-} from "./tenant.entity.js";
+  Workspace,
+  type WorkspaceStatus,
+} from "./workspace.entity.js";
 export {
-  TenantApplication,
-  type TenantApplicationStatus,
-} from "./tenant-application.entity.js";
-export { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
+  WorkspaceApplication,
+  type WorkspaceApplicationStatus,
+} from "./workspace-application.entity.js";
+export { WorkspaceOwnedBaseEntity } from "./workspace-owned-base.entity.js";
 export {
-  UserOrganization,
-  type UserOrganizationStatus,
-} from "./user-organization.entity.js";
-export { UserOrganizationRole } from "./user-organization-role.entity.js";
-export { UserTenantRole } from "./user-tenant-role.entity.js";
-export {
-  User,
-  type PreferredLanguage,
-  type UserStatus,
-  type UserType,
-} from "./user.entity.js";
+  WorkspaceMembership,
+  type WorkspaceMembershipStatus,
+} from "./workspace-membership.entity.js";

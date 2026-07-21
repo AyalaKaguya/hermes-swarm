@@ -16,7 +16,7 @@ apps/api/src/domains/<domain>/<domain>.service.ts
 - 业务接口使用 `@AccessResource` / `@AccessOperation` 声明权限目录。
 - 业务模块可以依赖基础设施公开服务和 `@hermes-swarm/core` / `@hermes-swarm/rbac-api`。
 - 基础设施模块不能反向依赖业务模块。
-- 不要把业务能力放入 `settings`、`organizations`、`platform-*`、`users` 等基础设施目录。
+- 不要把业务能力放入 `settings`、`workspaces`、`platform-*`、`users` 等基础设施目录。
 
 当前业务域：
 

@@ -22,7 +22,7 @@ export const databaseRuntimeConfig = registerAs("database", () => {
     process.env.POSTGRES_URL ??
     `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
   const testUrl = environment === "test" ? process.env.POSTGRES_TEST_URL : undefined;
-  const tenantUrl = testUrl ?? process.env.POSTGRES_TENANT_URL ?? fallbackUrl;
+  const workspaceUrl = testUrl ?? process.env.POSTGRES_WORKSPACE_URL ?? fallbackUrl;
   const platformUrl = testUrl ?? process.env.POSTGRES_PLATFORM_URL ?? fallbackUrl;
   return {
     database,
@@ -33,9 +33,9 @@ export const databaseRuntimeConfig = registerAs("database", () => {
     synchronize: parseBoolean(process.env.DATABASE_SYNCHRONIZE, false),
     strictRls: environment !== "test",
     platformUrl,
-    tenantUrl,
+    workspaceUrl,
     // Backwards-compatible alias used by the migration datasource.
-    url: tenantUrl,
+    url: workspaceUrl,
     user,
   };
 });
@@ -112,7 +112,7 @@ export function validateRuntimeConfig(
   validatePort("API_PORT", config.API_PORT, { fallback: 3200 });
   validateTrustedProxyCidrs(config.TRUSTED_PROXY_CIDRS);
   validateUrl("POSTGRES_URL", config.POSTGRES_URL, "postgresql:");
-  validateUrl("POSTGRES_TENANT_URL", config.POSTGRES_TENANT_URL, "postgresql:");
+  validateUrl("POSTGRES_WORKSPACE_URL", config.POSTGRES_WORKSPACE_URL, "postgresql:");
   validateUrl("POSTGRES_PLATFORM_URL", config.POSTGRES_PLATFORM_URL, "postgresql:");
   validateText("POSTGRES_HOST", config.POSTGRES_HOST, "localhost");
   validatePort("POSTGRES_PORT", config.POSTGRES_PORT, { fallback: 5432 });
@@ -148,26 +148,26 @@ export function validateRuntimeConfig(
     throw new Error("POSTGRES_TEST_URL is required when NODE_ENV=test");
   }
   if (environment !== "test") {
-    if (!config.POSTGRES_TENANT_URL || !config.POSTGRES_PLATFORM_URL) {
+    if (!config.POSTGRES_WORKSPACE_URL || !config.POSTGRES_PLATFORM_URL) {
       throw new Error(
-        "POSTGRES_TENANT_URL and POSTGRES_PLATFORM_URL are required outside tests",
+        "POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required outside tests",
       );
     }
-    if (String(config.POSTGRES_TENANT_URL) === String(config.POSTGRES_PLATFORM_URL)) {
+    if (String(config.POSTGRES_WORKSPACE_URL) === String(config.POSTGRES_PLATFORM_URL)) {
       throw new Error(
-        "POSTGRES_TENANT_URL and POSTGRES_PLATFORM_URL must use separate database credentials",
+        "POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL must use separate database credentials",
       );
     }
-    const tenantUser = databaseUrlUsername(config.POSTGRES_TENANT_URL);
+    const workspaceUser = databaseUrlUsername(config.POSTGRES_WORKSPACE_URL);
     const platformUser = databaseUrlUsername(config.POSTGRES_PLATFORM_URL);
-    if (tenantUser !== "hermes_tenant_app") {
+    if (workspaceUser !== "hermes_workspace_app") {
       throw new Error(
-        "POSTGRES_TENANT_URL must authenticate as hermes_tenant_app",
+        "POSTGRES_WORKSPACE_URL must authenticate as hermes_workspace_app",
       );
     }
-    if (!platformUser || platformUser === tenantUser) {
+    if (!platformUser || platformUser === workspaceUser) {
       throw new Error(
-        "POSTGRES_PLATFORM_URL must use a database user distinct from hermes_tenant_app",
+        "POSTGRES_PLATFORM_URL must use a database user distinct from hermes_workspace_app",
       );
     }
   }

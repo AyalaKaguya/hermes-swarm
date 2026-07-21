@@ -3,9 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   RolePermission,
   Ticket,
-  Organization,
-  UserOrganization,
-  UserOrganizationRole,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { AuthModule } from "../../../infrastructure/auth/auth.module.js";
 import { ConversationsModule } from "../conversations/conversations.module.js";
@@ -13,7 +11,6 @@ import { SettingsModule } from "../../../infrastructure/settings/settings.module
 import { DatabaseModule } from "../../../common/database/database.module.js";
 import { TicketConversationAccessResolver } from "./ticket-conversation-access.resolver.js";
 import { TicketsController } from "./tickets.controller.js";
-import { TicketAccessScopeResolver } from "./ticket-access-scope.resolver.js";
 import { TicketsService } from "./tickets.service.js";
 
 @Module({
@@ -25,14 +22,11 @@ import { TicketsService } from "./tickets.service.js";
     TypeOrmModule.forFeature([
       RolePermission,
       Ticket,
-      Organization,
-      UserOrganization,
-      UserOrganizationRole,
+      WorkspaceMembership,
     ]),
   ],
   controllers: [TicketsController],
   providers: [
-    TicketAccessScopeResolver,
     TicketConversationAccessResolver,
     TicketsService,
   ],

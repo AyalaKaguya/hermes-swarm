@@ -1,14 +1,11 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  Account,
   Invite,
-  Organization,
+  PlatformMembership,
   Role,
-  RolePermission,
-  User,
-  UserOrganization,
-  UserOrganizationRole,
-  UserTenantRole,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { AuthModule } from "../auth/auth.module.js";
 import { MailModule } from "../mail/mail.module.js";
@@ -17,6 +14,7 @@ import { SettingsModule } from "../settings/settings.module.js";
 import { InviteController } from "./invite.controller.js";
 import { InviteService } from "./invite.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
+import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 
 @Module({
   imports: [
@@ -27,14 +25,14 @@ import { DatabaseModule } from "../../common/database/database.module.js";
     SettingsModule,
     TypeOrmModule.forFeature([
       Invite,
-      User,
-      Organization,
+      Account,
       Role,
-      RolePermission,
-      UserOrganization,
-      UserOrganizationRole,
-      UserTenantRole,
+      WorkspaceMembership,
     ]),
+    TypeOrmModule.forFeature(
+      [Account, Invite, PlatformMembership, Role, WorkspaceMembership],
+      PLATFORM_DATA_SOURCE,
+    ),
   ],
   controllers: [InviteController],
   providers: [InviteService],

@@ -1,5 +1,5 @@
 import type { MigrationInterface, QueryRunner } from "typeorm";
-import { TENANT_DATABASE_GUCS } from "../tenant-database.constants.js";
+import { WORKSPACE_DATABASE_GUCS } from "../workspace-database.constants.js";
 
 export class AuditLogs2026071700002 implements MigrationInterface {
   name = "AuditLogs2026071700002";
@@ -16,9 +16,8 @@ export class AuditLogs2026071700002 implements MigrationInterface {
       UPDATE "access_audit_logs"
       SET "scope_type" = CASE
         WHEN "principal_type" = 'platform' THEN 'platform'
-        WHEN "permission" LIKE '%:organization' THEN 'organization'
         WHEN "permission" LIKE '%:own' THEN 'own'
-        ELSE 'tenant'
+        ELSE 'workspace'
       END
     `);
     await queryRunner.query(`
@@ -30,7 +29,7 @@ export class AuditLogs2026071700002 implements MigrationInterface {
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "scope_type" character varying(24) NOT NULL,
-        "tenant_id" uuid,
+        "workspace_id" uuid,
         "actor_id" uuid,
         "attempted_email" character varying(160) NOT NULL,
         "result" character varying(16) NOT NULL,
@@ -46,7 +45,7 @@ export class AuditLogs2026071700002 implements MigrationInterface {
       `CREATE INDEX "IDX_login_audit_scope" ON "login_audit_logs" ("scope_type", "created_at")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_login_audit_tenant" ON "login_audit_logs" ("tenant_id", "created_at")`,
+      `CREATE INDEX "IDX_login_audit_workspace" ON "login_audit_logs" ("workspace_id", "created_at")`,
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_login_audit_actor" ON "login_audit_logs" ("actor_id", "created_at")`,
@@ -54,7 +53,7 @@ export class AuditLogs2026071700002 implements MigrationInterface {
     await queryRunner.query(
       `CREATE INDEX "IDX_login_audit_email" ON "login_audit_logs" ("attempted_email", "created_at")`,
     );
-    const tenantPredicate = `"tenant_id" = NULLIF(current_setting('${TENANT_DATABASE_GUCS.tenantId}', true), '')::uuid`;
+    const workspacePredicate = `"workspace_id" = NULLIF(current_setting('${WORKSPACE_DATABASE_GUCS.workspaceId}', true), '')::uuid`;
     await queryRunner.query(
       `ALTER TABLE "login_audit_logs" ENABLE ROW LEVEL SECURITY`,
     );
@@ -62,23 +61,23 @@ export class AuditLogs2026071700002 implements MigrationInterface {
       `ALTER TABLE "login_audit_logs" FORCE ROW LEVEL SECURITY`,
     );
     await queryRunner.query(
-      `CREATE POLICY "tenant_isolation_login_audit_logs" ON "login_audit_logs" USING (${tenantPredicate}) WITH CHECK (${tenantPredicate})`,
+      `CREATE POLICY "workspace_isolation_login_audit_logs" ON "login_audit_logs" USING (${workspacePredicate}) WITH CHECK (${workspacePredicate})`,
     );
     await queryRunner.query(
-      `GRANT SELECT, INSERT ON "login_audit_logs" TO hermes_tenant_app`,
+      `GRANT SELECT, INSERT ON "login_audit_logs" TO hermes_workspace_app`,
     );
     await queryRunner.query(
-      `REVOKE UPDATE, DELETE ON "access_audit_logs" FROM hermes_tenant_app`,
+      `REVOKE UPDATE, DELETE ON "access_audit_logs" FROM hermes_workspace_app`,
     );
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `DROP POLICY IF EXISTS "tenant_isolation_login_audit_logs" ON "login_audit_logs"`,
+      `DROP POLICY IF EXISTS "workspace_isolation_login_audit_logs" ON "login_audit_logs"`,
     );
     await queryRunner.query(`DROP TABLE "login_audit_logs"`);
     await queryRunner.query(
-      `GRANT UPDATE, DELETE ON "access_audit_logs" TO hermes_tenant_app`,
+      `GRANT UPDATE, DELETE ON "access_audit_logs" TO hermes_workspace_app`,
     );
     await queryRunner.query(`
       ALTER TABLE "access_audit_logs"

@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { mergeAdminContractOpenApi } from "./contract-openapi.js";
 
 export const OPENAPI_DOCS_PATH = "api/docs";
 export const OPENAPI_JSON_PATH = "api/openapi.json";
@@ -12,7 +13,7 @@ export function createOpenApiDocument(app: INestApplication) {
     .addBearerAuth()
     .build();
 
-  return SwaggerModule.createDocument(app, config);
+  return mergeAdminContractOpenApi(SwaggerModule.createDocument(app, config));
 }
 
 export function setupOpenApi(app: INestApplication) {

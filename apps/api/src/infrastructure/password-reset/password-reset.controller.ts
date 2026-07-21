@@ -29,7 +29,7 @@ export class PasswordResetController {
   @Post("request-password")
   @PublicAccess({ reason: "Password reset requests start without a session." })
   async requestPassword(
-    @Body() payload: RequestPasswordResetPayload & { tenantSlug?: string },
+    @Body() payload: RequestPasswordResetPayload & { workspaceSlug?: string },
     @Req() request?: any,
     @Res({ passthrough: true }) response?: any,
   ) {
@@ -41,13 +41,13 @@ export class PasswordResetController {
       },
       {
         key: `password-reset:account:${rateLimitHash(
-          `${payload?.tenantSlug ?? ""}:${payload?.email ?? ""}`,
+          `${payload?.workspaceSlug ?? ""}:${payload?.email ?? ""}`,
         )}`,
         limit: 3,
         windowSeconds: 900,
       },
     ], response);
-    return this.passwordResetService.requestReset(payload, request);
+    return this.passwordResetService.requestReset(payload);
   }
 
   /**
@@ -56,7 +56,7 @@ export class PasswordResetController {
   @Post("reset-password")
   @PublicAccess({ reason: "Password reset tokens authorize this request." })
   async resetPassword(
-    @Body() payload: ResetPasswordPayload & { tenantSlug?: string },
+    @Body() payload: ResetPasswordPayload & { workspaceSlug?: string },
   ) {
     return this.passwordResetService.resetPassword(payload);
   }

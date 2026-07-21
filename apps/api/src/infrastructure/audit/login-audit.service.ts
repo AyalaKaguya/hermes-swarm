@@ -17,7 +17,7 @@ export type LoginAuditRecordInput = {
   result: LoginAuditResult;
   scopeType: LoginAuditScopeType;
   sessionId?: string | null;
-  tenantId?: string | null;
+  workspaceId?: string | null;
   userAgent?: string | null;
 };
 
@@ -45,7 +45,7 @@ export class LoginAuditService {
         result: input.result,
         scopeType: input.scopeType,
         sessionId: normalizeUuid(input.sessionId),
-        tenantId: normalizeUuid(input.tenantId),
+        workspaceId: normalizeUuid(input.workspaceId),
         userAgent,
       });
     } catch (error) {

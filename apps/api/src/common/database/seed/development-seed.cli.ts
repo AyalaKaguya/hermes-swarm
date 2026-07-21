@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { DataSource, type DataSourceOptions } from "typeorm";
 import migrationDataSource from "../migration-data-source.js";
 import { databaseRuntimeConfig } from "../../config/runtime-config.js";
-import { TenantContextService } from "../tenant-context.service.js";
+import { WorkspaceContextService } from "../workspace-context.service.js";
 import {
   DevelopmentSeedService,
   type DevelopmentSeedConfig,
@@ -13,11 +13,7 @@ export function readDevelopmentSeedConfig(
   env: NodeJS.ProcessEnv,
 ): DevelopmentSeedConfig {
   return {
-    organizationName: optionalText(env.DEV_SEED_ORGANIZATION_NAME, "Hermes Dev"),
-    organizationSlug: normalizeSlug(
-      optionalText(env.DEV_SEED_ORGANIZATION_SLUG, "hermes-dev"),
-    ),
-    ownerDisplayName: optionalText(env.DEV_SEED_OWNER_NAME, "Tenant Owner"),
+    ownerDisplayName: optionalText(env.DEV_SEED_OWNER_NAME, "Workspace Owner"),
     ownerEmail: normalizeEmail(
       optionalText(env.DEV_SEED_OWNER_EMAIL, "owner@hermes.local"),
     ),
@@ -33,9 +29,9 @@ export function readDevelopmentSeedConfig(
       env.DEV_SEED_PLATFORM_ADMIN_PASSWORD,
       "DEV_SEED_PLATFORM_ADMIN_PASSWORD",
     ),
-    tenantName: optionalText(env.DEV_SEED_TENANT_NAME, "Hermes Development"),
-    tenantSlug: normalizeSlug(
-      optionalText(env.DEV_SEED_TENANT_SLUG, "hermes-dev"),
+    workspaceName: optionalText(env.DEV_SEED_WORKSPACE_NAME, "Hermes Development"),
+    workspaceSlug: normalizeSlug(
+      optionalText(env.DEV_SEED_WORKSPACE_SLUG, "hermes-dev"),
     ),
   };
 }
@@ -49,22 +45,22 @@ export async function runDevelopmentSeed() {
   }
   const config = readDevelopmentSeedConfig(process.env);
   const database = databaseRuntimeConfig();
-  const tenantDataSource = createSeedDataSource(database.tenantUrl);
+  const workspaceDataSource = createSeedDataSource(database.workspaceUrl);
   const platformDataSource = createSeedDataSource(database.platformUrl);
   try {
     await Promise.all([
-      tenantDataSource.initialize(),
+      workspaceDataSource.initialize(),
       platformDataSource.initialize(),
     ]);
     const result = await new DevelopmentSeedService(
       platformDataSource,
-      tenantDataSource,
-      new TenantContextService(),
+      workspaceDataSource,
+      new WorkspaceContextService(),
     ).run(config);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } finally {
     await Promise.all([
-      tenantDataSource.isInitialized ? tenantDataSource.destroy() : undefined,
+      workspaceDataSource.isInitialized ? workspaceDataSource.destroy() : undefined,
       platformDataSource.isInitialized ? platformDataSource.destroy() : undefined,
     ]);
   }

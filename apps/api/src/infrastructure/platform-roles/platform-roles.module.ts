@@ -2,8 +2,8 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Permission,
-  PlatformRole,
-  PlatformRolePermission,
+  Role,
+  RolePermission,
 } from "@hermes-swarm/core";
 import { PlatformRolesController } from "./platform-roles.controller.js";
 import { PlatformRolesService } from "./platform-roles.service.js";
@@ -12,7 +12,7 @@ import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.j
 @Module({
   imports: [
     TypeOrmModule.forFeature(
-      [Permission, PlatformRole, PlatformRolePermission],
+      [Permission, Role, RolePermission],
       PLATFORM_DATA_SOURCE,
     ),
   ],

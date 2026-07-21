@@ -1,36 +1,34 @@
 import { Check, Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from "typeorm";
-import type { Organization } from "./organization.entity.js";
 import type { RolePermission } from "./role-permission.entity.js";
-import type { UserOrganization } from "./user-organization.entity.js";
-import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
+import type { Workspace } from "./workspace.entity.js";
+import { BaseEntity } from "./base.entity.js";
 
-export type RoleScope = "tenant" | "organization";
+export type RoleScope = "platform" | "workspace";
 
 @Entity({ name: "roles" })
-@Index("UQ_roles_tenant_name", ["tenantId", "name"], {
+@Index("UQ_roles_platform_name", ["name"], {
   unique: true,
-  where: "scope = 'tenant' AND organization_id IS NULL",
+  where: `"scope" = 'platform'`,
 })
-@Index("UQ_roles_organization_name", ["tenantId", "organizationId", "name"], {
+@Index("UQ_roles_workspace_name", ["workspaceId", "name"], {
   unique: true,
-  where: "scope = 'organization' AND organization_id IS NOT NULL",
+  where: `"scope" = 'workspace'`,
 })
-@Index("UQ_roles_tenant_organization_identity", ["tenantId", "organizationId", "id"], { unique: true })
 @Check(
-  "CHK_roles_scope_owner",
-  "(scope = 'tenant' AND organization_id IS NULL) OR (scope = 'organization' AND organization_id IS NOT NULL)",
+  "CHK_roles_scope_workspace",
+  `(scope = 'platform' AND workspace_id IS NULL) OR (scope = 'workspace' AND workspace_id IS NOT NULL)`,
 )
-export class Role extends TenantOwnedBaseEntity {
-  @Column({ type: "varchar", length: 24, default: "tenant" })
-  scope!: RoleScope;
-
-  @Column({ name: "organization_id", type: "uuid", nullable: true })
+export class Role extends BaseEntity {
+  @Column({ name: "workspace_id", type: "uuid", nullable: true })
   @Index()
-  organizationId!: string | null;
+  workspaceId!: string | null;
 
-  @ManyToOne("Organization", { nullable: true, onDelete: "CASCADE" })
-  @JoinColumn({ name: "organization_id" })
-  organization!: Organization | null;
+  @ManyToOne("Workspace", { nullable: true, onDelete: "CASCADE" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace!: Workspace | null;
+
+  @Column({ type: "varchar", length: 24, default: "workspace" })
+  scope!: RoleScope;
 
   @Column({ type: "varchar", length: 80 })
   name!: string;

@@ -25,7 +25,7 @@ export class AccessAuditService {
     input: {
       error?: unknown;
       statusCode?: number | null;
-      targetTenantId?: string | null;
+      targetWorkspaceId?: string | null;
     } = {},
   ) {
     const context = request.accessAudit;
@@ -42,19 +42,18 @@ export class AccessAuditService {
         httpMethod: normalizeText(request.method, 16)?.toUpperCase() ?? null,
         httpPath: path,
         ipAddress: normalizeText(resolveClientIp(request), 64),
-        organizationId: context.scope.organizationId ?? null,
         permission: context.definition.id,
         principalType: principal?.principalType ?? "anonymous",
         result,
         scopeType: context.definition.scope,
         sessionId: normalizeUuid(principal?.sessionId),
         statusCode: input.statusCode ?? resolveStatusCode(input.error),
-        targetTenantId:
-          normalizeText(input.targetTenantId, 80) ?? resolveTargetTenantId(request),
-        tenantId:
+        targetWorkspaceId:
+          normalizeText(input.targetWorkspaceId, 80) ?? resolveTargetWorkspaceId(request),
+        workspaceId:
           principal?.principalType === "platform"
             ? null
-            : principal?.tenantId ?? context.scope.tenantId ?? null,
+            : principal?.workspaceId ?? context.scope.workspaceId ?? null,
         userAgent: normalizeText(readHeader(request, "user-agent"), 500),
       });
     } catch (error) {
@@ -63,11 +62,11 @@ export class AccessAuditService {
   }
 }
 
-function resolveTargetTenantId(request: AccessRequest) {
+function resolveTargetWorkspaceId(request: AccessRequest) {
   if (request.accessPrincipal?.principalType !== "platform") return null;
   return (
-    normalizeText(request.params?.tenantId, 80) ??
-    normalizeText(readHeader(request, "target-tenant-id"), 80)
+    normalizeText(request.params?.workspaceId, 80) ??
+    normalizeText(readHeader(request, "target-workspace-id"), 80)
   );
 }
 

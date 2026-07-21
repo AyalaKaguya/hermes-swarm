@@ -7,39 +7,35 @@ import { AccessAuditService } from "./access-audit.service.js";
 import type { AccessRequest, ResolvedAccessDefinition } from "./access.types.js";
 
 describe("access audit persistence", () => {
-  it("persists tenant scope, actor, permission, and result", async () => {
+  it("persists workspace scope, actor, permission, and result", async () => {
     const rows: any[] = [];
     const service = new AccessAuditService({
-      insert: async (row: any) => {
-        rows.push(row);
-      },
+      insert: async (row: any) => rows.push(row),
     } as any);
-    const request = createRequest();
 
-    await service.recordRequest(request, "allowed", { statusCode: 200 });
+    await service.recordRequest(createRequest(), "allowed", { statusCode: 200 });
 
     assert.deepEqual(rows, [
       {
         actorId: "user-1",
         errorCode: null,
         httpMethod: "PATCH",
-        httpPath: "/api/admin/organizations/org-1",
+        httpPath: "/api/admin/workspace",
         ipAddress: null,
-        organizationId: "org-1",
-        permission: "organization.update:organization",
-        principalType: "tenant",
+        permission: "workspace.profile.update:workspace",
+        principalType: "workspace",
         result: "allowed",
-        scopeType: "organization",
+        scopeType: "workspace",
         sessionId: null,
         statusCode: 200,
-        targetTenantId: null,
-        tenantId: "tenant-1",
+        targetWorkspaceId: null,
+        workspaceId: "workspace-1",
         userAgent: null,
       },
     ]);
   });
 
-  it("records the target tenant for platform control-plane access", async () => {
+  it("records the target workspace for platform control-plane access", async () => {
     const rows: any[] = [];
     const service = new AccessAuditService({
       insert: async (row: any) => rows.push(row),
@@ -47,17 +43,16 @@ describe("access audit persistence", () => {
     const request = createRequest({
       accessPrincipal: {
         principalType: "platform",
-        tenantId: null,
+        workspaceId: null,
         userId: "platform-user-1",
       },
-      params: { tenantId: "tenant-target" },
+      params: { workspaceId: "workspace-target" },
     });
 
     await service.recordRequest(request, "denied", { statusCode: 403 });
 
-    assert.equal(rows[0].principalType, "platform");
-    assert.equal(rows[0].tenantId, null);
-    assert.equal(rows[0].targetTenantId, "tenant-target");
+    assert.equal(rows[0].workspaceId, null);
+    assert.equal(rows[0].targetWorkspaceId, "workspace-target");
     assert.equal(rows[0].result, "denied");
   });
 
@@ -77,33 +72,22 @@ describe("access audit persistence", () => {
     assert.equal(rows[0].errorCode, "OWNER_CONTINUITY_REQUIRED");
   });
 
-  it("records allowed handler completion", async () => {
+  it("records handler completion and preserves handler errors", async () => {
     const calls: any[] = [];
     const interceptor = new AccessAuditInterceptor({
       recordRequest: async (...args: any[]) => calls.push(args),
     } as any);
     const request = createRequest();
 
-    const result = await firstValueFrom(
-      interceptor.intercept(createContext(request, 204), {
-        handle: () => of("ok"),
-      }),
+    assert.equal(
+      await firstValueFrom(
+        interceptor.intercept(createContext(request, 204), {
+          handle: () => of("ok"),
+        }),
+      ),
+      "ok",
     );
-
-    assert.equal(result, "ok");
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0][1], "allowed");
-    assert.equal(calls[0][2].statusCode, 204);
-  });
-
-  it("records handler errors and preserves the original exception", async () => {
-    const calls: any[] = [];
-    const interceptor = new AccessAuditInterceptor({
-      recordRequest: async (...args: any[]) => calls.push(args),
-    } as any);
-    const request = createRequest();
     const error = new BadRequestException("invalid");
-
     await assert.rejects(
       () =>
         firstValueFrom(
@@ -113,12 +97,12 @@ describe("access audit persistence", () => {
         ),
       (received) => received === error,
     );
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0][1], "error");
-    assert.equal(calls[0][2].error, error);
+    assert.equal(calls[0][1], "allowed");
+    assert.equal(calls[1][1], "error");
+    assert.equal(calls[1][2].error, error);
   });
 
-  it("extracts the target tenant created by an allowed platform approval", async () => {
+  it("extracts the workspace created by a platform approval", async () => {
     const calls: any[] = [];
     const interceptor = new AccessAuditInterceptor({
       recordRequest: async (...args: any[]) => calls.push(args),
@@ -126,36 +110,36 @@ describe("access audit persistence", () => {
     const request = createRequest({
       accessPrincipal: {
         principalType: "platform",
-        tenantId: null,
+        workspaceId: null,
         userId: "platform-user-1",
       },
     });
 
     await firstValueFrom(
       interceptor.intercept(createContext(request, 201), {
-        handle: () => of({ tenant: { id: "tenant-created" } }),
+        handle: () => of({ workspace: { id: "workspace-created" } }),
       }),
     );
 
-    assert.equal(calls[0][2].targetTenantId, "tenant-created");
+    assert.equal(calls[0][2].targetWorkspaceId, "workspace-created");
   });
 });
 
 const definition: ResolvedAccessDefinition = {
   defaultRoles: [],
   description: null,
-  entity: "ticket",
-  entityLabel: "工单",
+  entity: "workspace",
+  entityLabel: "工作空间",
   entityOrder: 1,
-  id: "organization.update:organization",
+  id: "workspace.profile.update:workspace",
   isDangerous: false,
-  operation: "handle",
-  operationLabel: "处理工单",
+  operation: "update",
+  operationLabel: "更新工作空间",
   operationOrder: 1,
-  purpose: "conversation",
-  purposeLabel: "工单会话",
+  purpose: "profile",
+  purposeLabel: "工作空间资料",
   purposeOrder: 1,
-  scope: "organization",
+  scope: "workspace",
 };
 
 function createRequest(overrides: Partial<AccessRequest> = {}): AccessRequest {
@@ -163,18 +147,17 @@ function createRequest(overrides: Partial<AccessRequest> = {}): AccessRequest {
     accessAudit: {
       definition,
       scope: {
-        organizationId: "org-1",
-        scopeLevel: "organization",
-        tenantId: "tenant-1",
+        scopeLevel: "workspace",
+        workspaceId: "workspace-1",
       },
     },
     accessPrincipal: {
-      principalType: "tenant",
-      tenantId: "tenant-1",
+      principalType: "workspace",
+      workspaceId: "workspace-1",
       userId: "user-1",
     },
     method: "patch",
-    originalUrl: "/api/admin/organizations/org-1",
+    originalUrl: "/api/admin/workspace",
     params: {},
     ...overrides,
   };

@@ -3,73 +3,124 @@ import { describe, it } from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import { PlatformMembersService } from "./platform-members.service.js";
 
-describe("PlatformMembersService independent platform users", () => {
-  it("creates a platform account without creating a tenant user", async () => {
-    const users: any[] = [];
-    const service = createService({ users });
-
-    const result = await service.create({
-      displayName: "Platform Operator",
+describe("PlatformMembersService unified account membership", () => {
+  it("grants an existing account a platform membership", async () => {
+    const account = {
+      displayName: "Existing Account",
       email: "operator@example.com",
-      password: "password-123",
+      id: "account-1",
+      status: "active",
+    };
+    const state = createService({ accounts: [account] });
+
+    const result = await state.service.create({
+      email: "operator@example.com",
+      roleId: "role-admin",
     });
 
-    assert.equal(result.email, "operator@example.com");
-    assert.equal("user" in result, false);
-    assert.equal(users.length, 1);
-    assert.equal("tenantId" in users[0], false);
-    assert.match(users[0].passwordHash, /^pbkdf2_sha256\$/);
+    assert.equal(result.account.id, "account-1");
+    assert.equal(result.membershipId, "membership-1");
+    assert.equal(state.memberships.length, 1);
+  });
+
+  it("invites an unknown email instead of assigning its password", async () => {
+    const state = createService();
+    const result = await state.service.create({
+      email: "new@example.com",
+      expiresIn: "7d",
+      roleId: "role-admin",
+    });
+
+    assert.equal(result.status, "invited");
+    assert.deepEqual(state.invites, [{
+      actorAccountId: null,
+      email: "new@example.com",
+      expiresIn: "7d",
+      roleId: "role-admin",
+    }]);
   });
 
   it("does not disable the final active platform administrator", async () => {
-    const admin = {
-      displayName: "Admin",
-      email: "admin@example.com",
-      id: "platform-user-1",
-      roles: [{ platformRole: { id: "role-admin", name: "platform-admin" } }],
-      status: "active",
-    };
-    const service = createService({ users: [admin] });
+    const state = createService({
+      accounts: [{ id: "account-1", status: "active" }],
+      memberships: [{
+        accountId: "account-1",
+        id: "membership-1",
+        role: platformAdminRole(),
+        roleId: "role-admin",
+        status: "active",
+      }],
+    });
 
     await assert.rejects(
-      () => service.update(admin.id, { status: "disabled" }),
+      () => state.service.update("membership-1", { status: "disabled" }),
       BadRequestException,
     );
   });
 });
 
-function createService({ users }: { users: any[] }) {
+function createService(options: { accounts?: any[]; memberships?: any[] } = {}) {
+  const accounts = options.accounts ?? [];
+  const memberships = options.memberships ?? [];
+  const invites: any[] = [];
+  const roles = [platformAdminRole()];
   const manager = {
-    create: (_target: unknown, value: any) => value,
-    delete: async () => ({ affected: 1 }),
-    find: async () => users,
-    findOne: async (_target: unknown, { where }: any) =>
-      users.find((item) => item.id === where.id) ?? null,
+    find: async (target: { name?: string }) =>
+      target.name === "PlatformMembership" ? memberships : [],
+    findOne: async (target: { name?: string }, { where }: any) => {
+      if (target.name === "PlatformMembership") {
+        return memberships.find((item) => item.id === where.id) ?? null;
+      }
+      if (target.name === "Role") {
+        return roles.find((item) => item.id === where.id) ?? null;
+      }
+      return null;
+    },
     save: async (_target: unknown, value: any) => value,
-    softDelete: async () => ({ affected: 1 }),
-    transaction: async (work: any) => work(manager),
+    transaction: async (work: (manager: any) => unknown) => work(manager),
   };
-  const userRepository = {
-    create: (value: any) => value,
-    find: async () => users,
+  const membershipRepository = {
+    create: (value: any = {}) => value,
     findOne: async ({ where }: any) =>
-      users.find((item) =>
-        Object.entries(where).every(([key, value]) => item[key] === value),
-      ) ?? null,
+      memberships.find((item) => item.accountId === where.accountId) ?? null,
     manager,
     save: async (value: any) => {
-      const saved = { id: value.id ?? `platform-user-${users.length + 1}`, ...value };
-      users.push(saved);
+      const saved = { id: value.id ?? `membership-${memberships.length + 1}`, ...value };
+      memberships.push(saved);
       return saved;
     },
   };
-  return new PlatformMembersService(
-    userRepository as any,
-    { manager } as any,
+  const service = new PlatformMembersService(
     {
-      create: (value: any) => value,
-      findOne: async () => null,
-      save: async (value: any) => value,
-    } as any,
+      findOne: async ({ where }: any) =>
+        accounts.find((item) => item.email === where.email) ?? null,
+      manager,
+    } as never,
+    {
+      findOne: async ({ where }: any) =>
+        roles.find((item) => item.id === where.id) ?? null,
+      manager,
+    } as never,
+    membershipRepository as never,
+    {
+      createPlatform: async (actorAccountId: string | null, input: any) => {
+        invites.push({ actorAccountId, ...input });
+        return { id: "invite-1", ...input };
+      },
+    } as never,
+    { revokeMembershipSessions: async () => undefined } as never,
   );
+  return { invites, memberships, service };
+}
+
+function platformAdminRole() {
+  return {
+    id: "role-admin",
+    isSystem: true,
+    label: "Platform Admin",
+    name: "platform-admin",
+    rolePermissions: [],
+    scope: "platform",
+    workspaceId: null,
+  };
 }

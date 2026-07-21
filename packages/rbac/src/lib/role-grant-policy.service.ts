@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import type { AccessAuthSession } from "./access.types.js";
 
-export type RoleGrantScope = "organization" | "platform" | "tenant";
+export type RoleGrantScope = "platform" | "workspace";
 
 export type RoleDescriptor = {
   id: string;
@@ -10,7 +10,7 @@ export type RoleDescriptor = {
 };
 
 export type RoleGrantRequest = {
-  actor: Pick<AccessAuthSession, "principalType" | "tenantId" | "userId">;
+  actor: Pick<AccessAuthSession, "principalType" | "workspaceId" | "userId">;
   actorPermissionCodes: string[];
   actorRoleNames: string[];
   scope: RoleGrantScope;
@@ -70,8 +70,7 @@ export class RoleGrantPolicyService {
 
 function protectedRoleName(scope: RoleGrantScope) {
   if (scope === "platform") return "platform-admin";
-  if (scope === "tenant") return "tenant-owner";
-  return "owner";
+  return "workspace-owner";
 }
 
 function grantDenied(code: string, message: string) {

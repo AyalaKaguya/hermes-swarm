@@ -10,24 +10,24 @@ describe("FeatureAccessService", () => {
     assert.deepEqual(calls, ["platform:system:maintenance:enabled"]);
   });
 
-  it("resolves tenant features through the tenant override chain", async () => {
+  it("resolves workspace features through the workspace override chain", async () => {
     const calls: string[] = [];
     const service = createService(calls);
     assert.equal(
       await service.isFeatureEnabled("feature:password-reset:enabled"),
       true,
     );
-    assert.deepEqual(calls, ["tenant:tenant-1:feature:password-reset:enabled"]);
+    assert.deepEqual(calls, ["workspace:workspace-1:feature:password-reset:enabled"]);
   });
 
-  it("resolves email features at workspace scope without an organization lookup", async () => {
+  it("resolves email features directly at workspace scope", async () => {
     const calls: string[] = [];
     const service = createService(calls);
     assert.equal(
       await service.isFeatureEnabled("feature:email:enabled"),
       true,
     );
-    assert.deepEqual(calls, ["tenant:tenant-1:feature:email:enabled"]);
+    assert.deepEqual(calls, ["workspace:workspace-1:feature:email:enabled"]);
   });
 });
 
@@ -37,13 +37,13 @@ function createService(calls: string[]) {
       calls.push(`platform:${name}`);
       return "false";
     },
-    async getTenantValue(tenantId: string, name: string) {
-      calls.push(`tenant:${tenantId}:${name}`);
+    async getWorkspaceValue(workspaceId: string, name: string) {
+      calls.push(`workspace:${workspaceId}:${name}`);
       return "true";
     },
   };
-  const tenantContext = {
-    current: () => ({ tenantId: "tenant-1" }),
+  const workspaceContext = {
+    current: () => ({ workspaceId: "workspace-1" }),
   };
-  return new FeatureAccessService(settings as never, tenantContext as never);
+  return new FeatureAccessService(settings as never, workspaceContext as never);
 }

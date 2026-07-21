@@ -3,17 +3,17 @@ import { describe, it } from "node:test";
 import { DatabaseRoleValidatorService } from "./database-role-validator.service.js";
 
 describe("DatabaseRoleValidatorService", () => {
-  it("accepts a non-bypass tenant role and bypass-capable platform role", async () => {
+  it("accepts a non-bypass workspace role and bypass-capable platform role", async () => {
     const service = createService(
-      role("hermes_tenant_app", false, false),
+      role("hermes_workspace_app", false, false),
       role("hermes_platform_app", true, false),
     );
     await assert.doesNotReject(() => service.onApplicationBootstrap());
   });
 
-  it("rejects a tenant connection that can bypass RLS", async () => {
+  it("rejects a workspace connection that can bypass RLS", async () => {
     const service = createService(
-      role("hermes_tenant_app", false, true),
+      role("hermes_workspace_app", false, true),
       role("hermes_platform_app", true, false),
     );
     await assert.rejects(
@@ -22,22 +22,22 @@ describe("DatabaseRoleValidatorService", () => {
     );
   });
 
-  it("rejects a platform connection that cannot cross tenant RLS", async () => {
+  it("rejects a platform connection that cannot cross workspace RLS", async () => {
     const service = createService(
-      role("hermes_tenant_app", false, false),
+      role("hermes_workspace_app", false, false),
       role("hermes_platform_app", false, false),
     );
     await assert.rejects(
       () => service.onApplicationBootstrap(),
-      /must be allowed to bypass tenant RLS/,
+      /must be allowed to bypass workspace RLS/,
     );
   });
 });
 
-function createService(tenant: unknown, platform: unknown) {
+function createService(workspace: unknown, platform: unknown) {
   return new DatabaseRoleValidatorService(
     { getOrThrow: () => true } as any,
-    { query: async () => [tenant] } as any,
+    { query: async () => [workspace] } as any,
     { query: async () => [platform] } as any,
   );
 }

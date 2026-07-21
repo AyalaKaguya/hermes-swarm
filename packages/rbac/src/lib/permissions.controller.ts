@@ -3,7 +3,6 @@ import {
   Get,
   Headers,
   Inject,
-  Param,
   UnauthorizedException,
 } from "@nestjs/common";
 import { AccessOperation, AccessResource } from "./access.decorators.js";
@@ -11,7 +10,7 @@ import { AccessCatalogService } from "./access-catalog.service.js";
 import type { AccessAuthSessionService } from "./access.types.js";
 import { ACCESS_AUTH_SESSION_SERVICE } from "./tokens.js";
 
-@Controller("admin/permissions")
+@Controller("admin/workspace/permissions")
 @AccessResource({
   entity: "permission",
   entityLabel: "权限",
@@ -30,7 +29,7 @@ export class PermissionsController {
 
   @Get("catalog")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
+    defaultRoles: ["workspace-owner", "workspace-admin"],
     description: "查看当前账号可配置的权限目录。",
     label: "查看权限目录",
     operation: "list",
@@ -40,9 +39,9 @@ export class PermissionsController {
     @Headers("authorization") authorization: string | undefined,
   ) {
     await this.requireSession(authorization);
-    const tenant = this.catalogService.getCatalog("tenant");
+    const workspace = this.catalogService.getCatalog("workspace");
     const own = this.catalogService.getCatalog("own");
-    return { scopes: [...tenant.scopes, ...own.scopes] };
+    return { scopes: [...workspace.scopes, ...own.scopes] };
   }
 
   private async requireSession(authorization: string | undefined) {
@@ -78,31 +77,5 @@ export class PlatformPermissionsController {
   })
   catalog() {
     return this.catalogService.getCatalog("platform");
-  }
-}
-
-@Controller("admin/organizations/:organizationId/permissions")
-@AccessResource({
-  entity: "permission",
-  entityLabel: "权限",
-  entityOrder: 5,
-  purpose: "organization_catalog",
-  purposeLabel: "权限目录",
-  purposeOrder: 10,
-  scope: "organization",
-})
-export class OrganizationPermissionsController {
-  constructor(private readonly catalogService: AccessCatalogService) {}
-
-  @Get("catalog")
-  @AccessOperation({
-    defaultRoles: ["owner", "admin"],
-    description: "查看当前组织可配置的权限目录。",
-    label: "查看权限目录",
-    operation: "list",
-    sortOrder: 10,
-  })
-  catalog(@Param("organizationId") _organizationId: string) {
-    return this.catalogService.getCatalog("organization");
   }
 }

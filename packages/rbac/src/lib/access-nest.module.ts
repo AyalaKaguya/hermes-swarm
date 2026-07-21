@@ -4,14 +4,10 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   AccessAuditLog,
   Permission,
-  PlatformRole,
-  PlatformRolePermission,
-  PlatformUserRole,
+  PlatformMembership,
   Role,
   RolePermission,
-  UserOrganization,
-  UserOrganizationRole,
-  UserTenantRole,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { AccessAuditInterceptor } from "./access-audit.interceptor.js";
 import { AccessAuditService } from "./access-audit.service.js";
@@ -27,17 +23,13 @@ import { RoleGrantPolicyService } from "./role-grant-policy.service.js";
     DiscoveryModule,
     TypeOrmModule.forFeature([
       RolePermission,
-      UserOrganization,
-      UserOrganizationRole,
-      UserTenantRole,
+      WorkspaceMembership,
     ]),
     TypeOrmModule.forFeature(
       [
         Permission,
         AccessAuditLog,
-        PlatformRole,
-        PlatformRolePermission,
-        PlatformUserRole,
+        PlatformMembership,
         Role,
         RolePermission,
       ],

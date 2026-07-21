@@ -32,7 +32,7 @@ export class IntegrationTokensController {
 
   @Get("capabilities")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
     description: "查看当前账号可授权给个人 API Token 的权限。",
     label: "查看可授权权限",
     operation: "capabilities",
@@ -44,7 +44,7 @@ export class IntegrationTokensController {
 
   @Get()
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
     description: "查看当前账号创建的个人 API Token。",
     label: "查看个人 API Token",
     operation: "list",
@@ -56,7 +56,7 @@ export class IntegrationTokensController {
 
   @Post()
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
     description: "创建一个最长 1 年有效的个人 API Token。",
     label: "创建个人 API Token",
     operation: "create",
@@ -71,7 +71,7 @@ export class IntegrationTokensController {
 
   @Delete(":tokenId")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
     description: "撤销当前账号创建的个人 API Token。",
     isDangerous: true,
     label: "撤销个人 API Token",

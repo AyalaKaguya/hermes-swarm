@@ -28,7 +28,7 @@ import { InviteService } from "./invite.service.js";
   purpose: "workspace_invite",
   purposeLabel: "工作空间邀请",
   purposeOrder: 10,
-  scope: "tenant",
+  scope: "workspace",
 })
 export class InviteController {
   constructor(
@@ -87,8 +87,11 @@ export class InviteController {
 
   @Post("accept")
   @PublicAccess({ reason: "An invite token authorizes acceptance before sign-in." })
-  accept(@Body() payload: AcceptInvitePayload) {
-    return this.inviteService.accept(payload);
+  accept(
+    @Body() payload: AcceptInvitePayload,
+    @Headers("authorization") authorization?: string,
+  ) {
+    return this.inviteService.accept(payload, authorization);
   }
 }
 

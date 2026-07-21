@@ -25,10 +25,10 @@ export class AccessScopeService {
     if (scope === "platform") return {};
 
     const principal = request.accessPrincipal;
-    const tenantId = principal?.tenantId;
-    if (!tenantId) throw new UnauthorizedException("登录会话缺少租户上下文");
+    const workspaceId = principal?.workspaceId;
+    if (!workspaceId) throw new UnauthorizedException("登录会话缺少工作空间上下文");
 
-    rejectTenantOverride(request, tenantId);
+    rejectWorkspaceOverride(request, workspaceId);
 
     const defaultParam = scope === "own" ? "userId" : `${scope}Id`;
     const param = metadata?.param ?? defaultParam;
@@ -36,28 +36,21 @@ export class AccessScopeService {
 
     if (scope === "own") {
       return {
-        scopeLevel: "tenant",
+        scopeLevel: "workspace",
         targetUserId: value ?? principal.userId,
-        tenantId,
+        workspaceId,
       };
     }
-    if (scope === "tenant") return { scopeLevel: "tenant", tenantId };
+    if (scope === "workspace") return { scopeLevel: "workspace", workspaceId };
 
-    const organizationId = value;
-    if (!organizationId) {
-      throw new BadRequestException("请求缺少 Organization-Id");
-    }
-    if (scope === "organization") {
-      return { organizationId, scopeLevel: "organization", tenantId };
-    }
     throw new BadRequestException("不支持的请求作用域");
   }
 }
 
-function rejectTenantOverride(request: AccessRequest, tenantId: string) {
-  const supplied = normalizeValue(getHeader(request, "tenant-id"));
+function rejectWorkspaceOverride(request: AccessRequest, workspaceId: string) {
+  const supplied = normalizeValue(getHeader(request, "workspace-id"));
   if (supplied) {
-    throw new BadRequestException("Tenant-Id 不接受客户端传入");
+    throw new BadRequestException("Workspace-Id 不接受客户端传入");
   }
 }
 

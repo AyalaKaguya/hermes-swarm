@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from "@nestjs/common";
-import { AccessOperation, AccessResource, AccessScope } from "@hermes-swarm/rbac";
+import { AccessOperation, AccessResource } from "@hermes-swarm/rbac";
 import { TicketsService } from "./tickets.service.js";
-import { TicketAccessScopeResolver } from "./ticket-access-scope.resolver.js";
 
 @Controller("admin/tickets")
 @AccessResource({
@@ -10,33 +9,31 @@ import { TicketAccessScopeResolver } from "./ticket-access-scope.resolver.js";
   entityOrder: 90,
   purpose: "conversation",
   purposeLabel: "工单会话",
-  scope: "organization",
+  scope: "workspace",
 })
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
   @Get()
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin", "tenant-member"],
+    defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
     label: "查看工单",
     operation: "list",
     scope: "own",
   })
   list(
     @Headers("authorization") authorization: string | undefined,
-    @Query("sourceOrganizationId") sourceOrganizationId?: string,
     @Query("status") status?: string,
   ) {
-    return this.ticketsService.listTickets(authorization, { sourceOrganizationId, status });
+    return this.ticketsService.listTickets(authorization, { status });
   }
 
   @Post()
   @AccessOperation({
-    defaultRoles: ["owner", "admin", "member"],
+    defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
     label: "提交工单",
     operation: "submit",
   })
-  @AccessScope({ resolver: TicketAccessScopeResolver })
   create(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: unknown,
@@ -46,16 +43,14 @@ export class TicketsController {
 
   @Get("handling-capability")
   @AccessOperation({
-    defaultRoles: ["owner", "admin"],
+    defaultRoles: ["workspace-owner", "workspace-admin"],
     label: "处理工单",
     operation: "handle",
   })
-  @AccessScope({ resolver: TicketAccessScopeResolver })
   handlingCapability(
     @Headers("authorization") authorization: string | undefined,
-    @Query("organizationId") organizationId?: string,
   ) {
-    return this.ticketsService.handlingCapability(authorization, organizationId);
+    return this.ticketsService.handlingCapability(authorization);
   }
 
   @Get(":ticketId")

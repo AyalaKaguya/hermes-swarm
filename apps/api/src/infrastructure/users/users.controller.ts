@@ -9,52 +9,42 @@ import {
   Inject,
   Param,
   Patch,
-  Post,
   Put,
   Query,
 } from "@nestjs/common";
 import type {
-  CreateUserPayload,
-  AdminResetUserPasswordPayload,
   SearchUsersQuery,
-  UpdatePreferredLanguagePayload,
   UpdateRuntimePreferencesPayload,
-  UpdateUserPasswordPayload,
-  UpdateManagedUserPayload,
   UpdateSelfProfilePayload,
+  UpdateAccountPasswordPayload,
 } from "../../common/admin-api.types.js";
 import {
   AccessOperation,
   AccessResource,
+  PublicAccess,
 } from "@hermes-swarm/rbac";
 import { UsersService } from "./users.service.js";
 
-@Controller("admin/users")
+@Controller("admin/workspace/members")
 @AccessResource({
-  entity: "user",
-  entityLabel: "用户",
+  entity: "membership",
+  entityLabel: "成员关系",
   entityOrder: 10,
-  purpose: "tenant_user",
-  purposeLabel: "工作空间用户",
+  purpose: "workspace_member",
+  purposeLabel: "工作空间成员",
   purposeOrder: 10,
-  scope: "tenant",
+  scope: "workspace",
 })
-/**
- * Exposes migrated user management endpoints under the admin namespace.
- */
 export class UsersController {
   constructor(
     @Inject(UsersService)
     private readonly usersService: UsersService,
   ) {}
 
-  /**
-   * Lists organization users visible to the current admin.
-   */
   @Get()
   @AccessOperation({
-    description: "查看当前工作空间的用户列表。",
-    label: "查看用户列表",
+    description: "查看当前工作空间的成员关系、状态和角色。",
+    label: "查看成员列表",
     operation: "list",
     sortOrder: 10,
   })
@@ -62,13 +52,10 @@ export class UsersController {
     return this.usersService.list(authorization);
   }
 
-  /**
-   * Searches organization users by a normalized free-text query.
-   */
   @Get("search")
   @AccessOperation({
-    description: "按邮箱、昵称或名称搜索当前工作空间用户。",
-    label: "搜索用户",
+    description: "搜索当前工作空间已有成员。",
+    label: "搜索成员",
     operation: "search",
     sortOrder: 20,
   })
@@ -79,169 +66,123 @@ export class UsersController {
     return this.usersService.search(authorization, query);
   }
 
-  /**
-   * Creates a user in the current organization.
-   */
-  @Post()
+  @Put(":membershipId/role")
   @AccessOperation({
-    description: "在当前工作空间创建用户账号。",
-    label: "创建用户",
-    operation: "create",
-    sortOrder: 30,
+    description: "替换当前成员关系的工作空间角色。",
+    label: "配置成员角色",
+    operation: "replace_role",
+    sortOrder: 40,
   })
-  create(
+  replaceRole(
     @Headers("authorization") authorization: string | undefined,
-    @Body() payload: CreateUserPayload,
+    @Param("membershipId") membershipId: string,
+    @Body() payload: { roleId?: string },
   ) {
-    return this.usersService.create(authorization, payload);
+    return this.usersService.replaceWorkspaceRole(
+      authorization,
+      membershipId,
+      typeof payload?.roleId === "string" ? payload.roleId : "",
+    );
   }
 
-  /**
-   * Updates a global user through platform user management.
-   */
-  @Patch("me")
+  @Patch(":membershipId/status")
   @AccessOperation({
-    description: "更新自己的个人资料。",
-    entity: "user",
-    entityLabel: "用户",
+    description: "停用、恢复或重新激活当前工作空间成员关系。",
+    isDangerous: true,
+    label: "更新成员状态",
+    operation: "update_status",
+    sortOrder: 50,
+  })
+  updateStatus(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("membershipId") membershipId: string,
+    @Body() payload: { roleId?: string; status?: "active" | "disabled" | "removed" },
+  ) {
+    return this.usersService.updateMembershipStatus(
+      authorization,
+      membershipId,
+      payload?.status ?? "disabled",
+      payload?.roleId,
+    );
+  }
+
+  @Delete(":membershipId")
+  @AccessOperation({
+    description: "移除当前工作空间成员关系，不删除全局账号。",
+    isDangerous: true,
+    label: "移除成员",
+    operation: "remove",
+    sortOrder: 90,
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("membershipId") membershipId: string,
+  ) {
+    return this.usersService.removeMembership(authorization, membershipId);
+  }
+}
+
+@Controller("admin/account")
+@AccessResource({
+  entity: "account",
+  entityLabel: "账号",
+  purpose: "self_profile",
+  purposeLabel: "全局账号",
+  scope: "own",
+})
+export class AccountController {
+  constructor(
+    @Inject(UsersService)
+    private readonly usersService: UsersService,
+  ) {}
+
+  @Get()
+  @PublicAccess({ reason: "Current account session validation is handled by UsersService." })
+  get(@Headers("authorization") authorization?: string) {
+    return this.usersService.getAccount(authorization);
+  }
+
+  @Patch()
+  @AccessOperation({
+    description: "更新适用于所有工作空间的全局账号资料。",
+    label: "更新全局账号资料",
     operation: "update_profile",
-    label: "更新个人资料",
-    purpose: "self_profile",
-    purposeLabel: "个人资料",
-    scope: "own",
     sortOrder: 10,
   })
-  updateSelf(
+  update(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: UpdateSelfProfilePayload,
   ) {
-    return this.usersService.updateSelf(authorization, payload);
+    return this.usersService.updateAccount(authorization, payload);
   }
 
-  @Post("me/password")
+  @Patch("preferences")
   @AccessOperation({
-    description: "修改自己的登录密码。",
-    entity: "user",
-    entityLabel: "用户",
-    operation: "change_password",
-    label: "修改密码",
-    purpose: "self_profile",
-    purposeLabel: "个人资料",
-    scope: "own",
+    description: "更新适用于所有工作空间的语言和时区。",
+    label: "更新全局账号偏好",
+    operation: "update_preferences",
     sortOrder: 20,
   })
-  updatePassword(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: UpdateUserPasswordPayload,
-  ) {
-    return this.usersService.updatePassword(authorization, payload);
-  }
-
-  @Patch("me/preferred-language")
-  @AccessOperation({
-    description: "修改自己的界面语言偏好。",
-    entity: "user",
-    entityLabel: "用户",
-    operation: "update_language",
-    label: "修改语言偏好",
-    purpose: "self_profile",
-    purposeLabel: "个人资料",
-    scope: "own",
-    sortOrder: 30,
-  })
-  updatePreferredLanguage(
-    @Headers("authorization") authorization: string | undefined,
-    @Body() payload: UpdatePreferredLanguagePayload,
-  ) {
-    return this.usersService.updatePreferredLanguage(authorization, payload);
-  }
-
-  @Patch("me/preferences")
-  @AccessOperation({
-    description: "修改自己的语言和时区偏好。",
-    entity: "user",
-    entityLabel: "用户",
-    operation: "update_preferences",
-    label: "修改本地化偏好",
-    purpose: "self_profile",
-    purposeLabel: "个人资料",
-    scope: "own",
-    sortOrder: 35,
-  })
-  updateRuntimePreferences(
+  preferences(
     @Headers("authorization") authorization: string | undefined,
     @Body() payload: UpdateRuntimePreferencesPayload,
   ) {
     return this.usersService.updateRuntimePreferences(authorization, payload);
   }
 
-  @Patch(":userId")
+  @Patch("password")
   @AccessOperation({
-    description: "更新当前工作空间用户的基础资料和状态。",
-    label: "更新用户",
-    operation: "update_basic",
-    sortOrder: 40,
-  })
-  updateManaged(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
-    @Body() payload: UpdateManagedUserPayload,
-  ) {
-    return this.usersService.updateManaged(authorization, userId, payload);
-  }
-
-  @Post(":userId/password-reset")
-  @AccessOperation({
-    description: "管理员重置当前工作空间用户的登录密码并撤销旧会话。",
+    description: "修改全局账号密码并撤销所有工作空间会话。",
     isDangerous: true,
-    label: "重置用户密码",
-    operation: "admin_reset_password",
-    sortOrder: 60,
+    label: "修改全局账号密码",
+    operation: "change_password",
+    sortOrder: 30,
   })
-  adminResetPassword(
+  password(
     @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
-    @Body() payload: AdminResetUserPasswordPayload,
+    @Body() payload: UpdateAccountPasswordPayload,
   ) {
-    return this.usersService.adminResetPassword(
-      authorization,
-      userId,
-      payload,
-    );
-  }
-
-  @Put(":userId/role")
-  @AccessOperation({
-    description: "替换当前工作空间用户的工作空间角色。",
-    label: "配置工作空间角色",
-    operation: "replace_roles",
-    sortOrder: 50,
-  })
-  replaceTenantRoles(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
-    @Body() payload: { roleId?: string },
-  ) {
-    return this.usersService.replaceTenantRole(
-      authorization,
-      userId,
-      typeof payload?.roleId === "string" ? payload.roleId : "",
-    );
-  }
-
-  @Delete(":userId")
-  @AccessOperation({
-    description: "删除当前工作空间用户账号。",
-    isDangerous: true,
-    label: "删除用户",
-    operation: "delete",
-    sortOrder: 90,
-  })
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteManaged(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("userId") userId: string,
-  ) {
-    await this.usersService.deleteManaged(authorization, userId);
+    return this.usersService.updatePassword(authorization, payload);
   }
 }

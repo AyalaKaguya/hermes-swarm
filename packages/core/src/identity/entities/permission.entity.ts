@@ -5,8 +5,7 @@ import { BaseEntity } from "./base.entity.js";
 export type PermissionAction = string;
 export type PermissionScope =
   | "platform"
-  | "tenant"
-  | "organization"
+  | "workspace"
   | "own";
 export type PermissionCatalogSource = "controller" | "manual" | "navigation";
 

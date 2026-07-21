@@ -11,19 +11,17 @@ import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { FilesController } from "../../../infrastructure/files/files.controller.js";
 import {
   PlatformAuditController,
-  TenantAuditController,
+  WorkspaceAuditController,
 } from "../../../infrastructure/audit/audit.controller.js";
 import { IntegrationTokensController } from "../../../infrastructure/integrations/integration-tokens.controller.js";
 import { InviteController } from "../../../infrastructure/invite/invite.controller.js";
-import { TenantMailController } from "../../../infrastructure/mail/mail.controller.js";
+import { WorkspaceMailController } from "../../../infrastructure/mail/mail.controller.js";
 import { PlatformMailController } from "../../../infrastructure/mail/platform-mail.controller.js";
-import { MembershipsController } from "../../../infrastructure/memberships/memberships.controller.js";
 import { NotificationsController } from "../../../infrastructure/notifications/notifications.controller.js";
-import { OrganizationsController } from "../../../infrastructure/organizations/organizations.controller.js";
 import { PlatformMembersController } from "../../../infrastructure/platform-members/platform-members.controller.js";
 import { PlatformRolesController } from "../../../infrastructure/platform-roles/platform-roles.controller.js";
 import { SettingsController } from "../../../infrastructure/settings/settings.controller.js";
-import { TenantApplicationsController, TenantsController } from "../../../infrastructure/tenants/tenants.controller.js";
+import { WorkspaceApplicationsController, WorkspacesController } from "../../../infrastructure/workspaces/workspaces.controller.js";
 import { TicketsController } from "../../../domains/support/tickets/tickets.controller.js";
 import { UsersController } from "../../../infrastructure/users/users.controller.js";
 
@@ -32,17 +30,15 @@ const ACCESS_CONTROLLERS = [
   PlatformAuditController,
   IntegrationTokensController,
   InviteController,
-  TenantMailController,
+  WorkspaceMailController,
   PlatformMailController,
-  MembershipsController,
   NotificationsController,
-  OrganizationsController,
   PlatformMembersController,
   PlatformRolesController,
   SettingsController,
-  TenantApplicationsController,
-  TenantAuditController,
-  TenantsController,
+  WorkspaceApplicationsController,
+  WorkspaceAuditController,
+  WorkspacesController,
   TicketsController,
   UsersController,
 ] as const;

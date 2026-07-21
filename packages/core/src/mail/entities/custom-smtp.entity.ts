@@ -1,12 +1,12 @@
 import { Column, Entity } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
 
 @Entity({ name: "custom_smtp" })
 /**
  * Stores SMTP settings that override the default mail transport for an
- * organization.
+ * workspace.
  */
-export class CustomSmtp extends TenantOwnedBaseEntity {
+export class CustomSmtp extends WorkspaceOwnedBaseEntity {
   /**
    * Sender address used when composing outbound mail.
    */

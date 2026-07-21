@@ -1,33 +1,33 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BadRequestException } from "@nestjs/common";
-import { PlatformSetting, TenantSetting } from "@hermes-swarm/core";
+import { PlatformSetting, WorkspaceSetting } from "@hermes-swarm/core";
 import { SettingsService } from "./settings.service.js";
 import {
   decryptSettingSecret,
   isEncryptedSettingSecret,
 } from "./settings-secret-codec.js";
 
-describe("SettingsService platform-to-tenant fallback", () => {
+describe("SettingsService platform-to-workspace fallback", () => {
   it("uses the platform value when the workspace has no override", async () => {
     const state = createState();
     assert.equal(
-      await state.service.getTenantValue("tenant-a", "feature:ticketing:enabled"),
+      await state.service.getWorkspaceValue("workspace-a", "feature:ticketing:enabled"),
       "true",
     );
   });
 
   it("uses the workspace override before the hidden platform default", async () => {
-    const state = createState({ tenantValue: "false" });
+    const state = createState({ workspaceValue: "false" });
     assert.equal(
-      await state.service.getTenantValue("tenant-a", "feature:ticketing:enabled"),
+      await state.service.getWorkspaceValue("workspace-a", "feature:ticketing:enabled"),
       "false",
     );
   });
 
-  it("does not expose an organization settings layer", () => {
-    const state = createState({ tenantValue: "false" });
-    assert.equal("getOrganizationValue" in state.service, false);
+  it("exposes only platform and workspace settings layers", () => {
+    const state = createState({ workspaceValue: "false" });
+    assert.equal("getWorkspaceValue" in state.service, true);
   });
 
   it("marks platform runtime defaults as platform sources", async () => {
@@ -35,8 +35,8 @@ describe("SettingsService platform-to-tenant fallback", () => {
       platformSettings: [
         {
           id: "platform-currency",
-          name: "tenant.defaultCurrency",
-          scope: "tenant",
+          name: "workspace.defaultCurrency",
+          scope: "workspace",
           value: "HKD",
           valueOptions: null,
           valueType: "enum",
@@ -55,9 +55,9 @@ describe("SettingsService platform-to-tenant fallback", () => {
       getRepository: () => ({ findOne: async () => null }),
     };
     const save = (name: string) =>
-      (state.service as any).saveTenantSettingsInTransaction(
+      (state.service as any).saveWorkspaceSettingsInTransaction(
         manager,
-        "tenant-a",
+        "workspace-a",
         [{ name, value: "changed" }],
         [
           {
@@ -87,12 +87,12 @@ describe("SettingsService platform-to-tenant fallback", () => {
     };
     const manager = { getRepository: () => repository };
 
-    await (state.service as any).saveTenantSettingsInTransaction(
+    await (state.service as any).saveWorkspaceSettingsInTransaction(
       manager,
-      "tenant-a",
+      "workspace-a",
       [{
         name: "API_BASE_URL",
-        scope: "tenant",
+        scope: "workspace",
         value: "https://api.example.com",
         valueType: "string",
       }],
@@ -100,7 +100,7 @@ describe("SettingsService platform-to-tenant fallback", () => {
     );
 
     assert.equal(saved[0]?.name, "API_BASE_URL");
-    assert.equal(saved[0]?.tenantId, "tenant-a");
+    assert.equal(saved[0]?.workspaceId, "workspace-a");
     assert.equal(saved[0]?.value, "https://api.example.com");
   });
 
@@ -117,12 +117,12 @@ describe("SettingsService platform-to-tenant fallback", () => {
     };
     const manager = { getRepository: () => repository };
 
-    await (state.service as any).saveTenantSettingsInTransaction(
+    await (state.service as any).saveWorkspaceSettingsInTransaction(
       manager,
-      "tenant-a",
+      "workspace-a",
       [{
         name: "DATABASE_PASSWORD",
-        scope: "tenant",
+        scope: "workspace",
         value: "database-password",
         valueType: "secret",
       }],
@@ -142,11 +142,11 @@ describe("SettingsService platform-to-tenant fallback", () => {
 
   it("lists workspace-only parameters through the current RLS manager", async () => {
     let baseRepositoryReads = 0;
-    let tenantContextReads = 0;
-    const tenantSettings = [{
-      id: "tenant-secret",
+    let workspaceContextReads = 0;
+    const workspaceSettings = [{
+      id: "workspace-secret",
       name: "DATABASE_PASSWORD",
-      tenantId: "tenant-a",
+      workspaceId: "workspace-a",
       value: "enc:v1:encrypted",
       valueOptions: null,
       valueType: "secret",
@@ -154,7 +154,7 @@ describe("SettingsService platform-to-tenant fallback", () => {
     const platformRepository = {
       find: async () => [],
     };
-    const tenantRepository = {
+    const workspaceRepository = {
       find: async () => {
         baseRepositoryReads += 1;
         return [];
@@ -162,11 +162,11 @@ describe("SettingsService platform-to-tenant fallback", () => {
     };
     const manager = {
       getRepository: (target: unknown) => {
-        assert.equal(target, TenantSetting);
+        assert.equal(target, WorkspaceSetting);
         return {
           find: async () => {
-            tenantContextReads += 1;
-            return tenantSettings;
+            workspaceContextReads += 1;
+            return workspaceSettings;
           },
         };
       },
@@ -174,14 +174,14 @@ describe("SettingsService platform-to-tenant fallback", () => {
     const service = new SettingsService(
       platformRepository as never,
       { getClient: async () => { throw new Error("redis offline"); } } as never,
-      tenantRepository as never,
-      { current: () => ({ manager, tenantId: "tenant-a" }) } as never,
+      workspaceRepository as never,
+      { current: () => ({ manager, workspaceId: "workspace-a" }) } as never,
     );
 
-    const result = await service.listTenantSettings("tenant-a");
+    const result = await service.listWorkspaceSettings("workspace-a");
 
     assert.equal(baseRepositoryReads, 0);
-    assert.equal(tenantContextReads, 1);
+    assert.equal(workspaceContextReads, 1);
     assert.equal(result[0]?.name, "DATABASE_PASSWORD");
     assert.equal(result[0]?.isCustom, true);
     assert.equal(result[0]?.value, "********");
@@ -196,13 +196,13 @@ describe("SettingsService platform-to-tenant fallback", () => {
         findOne: async () => ({ id: "legacy", name: "legacy.key" }),
       }),
     };
-    await (state.service as any).saveTenantSettingsInTransaction(
+    await (state.service as any).saveWorkspaceSettingsInTransaction(
       manager,
-      "tenant-a",
+      "workspace-a",
       [{ name: "legacy.key", value: null }],
       [],
     );
-    assert.deepEqual(deleted, [{ name: "legacy.key", tenantId: "tenant-a" }]);
+    assert.deepEqual(deleted, [{ name: "legacy.key", workspaceId: "workspace-a" }]);
   });
 
   it("rejects null for unknown and platform-only settings", async () => {
@@ -214,9 +214,9 @@ describe("SettingsService platform-to-tenant fallback", () => {
       }),
     };
     const remove = (name: string) =>
-      (state.service as any).saveTenantSettingsInTransaction(
+      (state.service as any).saveWorkspaceSettingsInTransaction(
         manager,
-        "tenant-a",
+        "workspace-a",
         [{ name, value: null }],
         [
           {
@@ -241,12 +241,12 @@ function createState(options: {
   platformSettings?: Array<{
     id: string;
     name: string;
-    scope: "platform" | "tenant";
+    scope: "platform" | "workspace";
     value: string;
     valueOptions: null;
     valueType: string;
   }>;
-  tenantValue?: string;
+  workspaceValue?: string;
 } = {}) {
   const platformSettings = options.platformSettings ?? [{
     id: "platform-setting",
@@ -256,11 +256,11 @@ function createState(options: {
     valueOptions: null,
     valueType: "boolean",
   }];
-  const tenantSettings = options.tenantValue === undefined ? [] : [{
-    id: "tenant-setting",
+  const workspaceSettings = options.workspaceValue === undefined ? [] : [{
+    id: "workspace-setting",
     name: "feature:ticketing:enabled",
-    tenantId: "tenant-a",
-    value: options.tenantValue,
+    workspaceId: "workspace-a",
+    value: options.workspaceValue,
     valueOptions: null,
     valueType: "boolean",
   }];
@@ -268,16 +268,16 @@ function createState(options: {
     find: async () => platformSettings,
     findOne: async ({ where }: any) => platformSettings.find((item) => item.name === where.name) ?? null,
   };
-  const tenantRepository = {
-    find: async () => tenantSettings,
-    findOne: async ({ where }: any) => tenantSettings.find((item) => item.name === where.name && item.tenantId === where.tenantId) ?? null,
-    manager: { transaction: async (work: (manager: unknown) => unknown) => work({ getRepository: (target: unknown) => target === TenantSetting ? tenantRepository : platformRepository }) },
+  const workspaceRepository = {
+    find: async () => workspaceSettings,
+    findOne: async ({ where }: any) => workspaceSettings.find((item) => item.name === where.name && item.workspaceId === where.workspaceId) ?? null,
+    manager: { transaction: async (work: (manager: unknown) => unknown) => work({ getRepository: (target: unknown) => target === WorkspaceSetting ? workspaceRepository : platformRepository }) },
   };
   const service = new SettingsService(
     platformRepository as never,
     { getClient: async () => { throw new Error("redis offline"); } } as never,
-    tenantRepository as never,
-    { current: () => ({ tenantId: "tenant-a" }) } as never,
+    workspaceRepository as never,
+    { current: () => ({ workspaceId: "workspace-a" }) } as never,
   );
   return { service };
 }

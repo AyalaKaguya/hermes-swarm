@@ -4,14 +4,14 @@ import nodemailer from "nodemailer";
 import { PlatformEmailSendService } from "./platform-email-send.service.js";
 
 describe("PlatformEmailSendService", () => {
-  it("sends localized control-plane mail without a tenant context", async () => {
+  it("sends localized control-plane mail without a workspace context", async () => {
     const deliveries: any[] = [];
     const service = createService({
       templates: [{
-        hbs: "<p>Activate {{tenantName}}</p>",
+        hbs: "<p>Activate {{workspaceName}}</p>",
         languageCode: "en",
-        name: "tenant-owner-activation",
-        subject: "Activate {{tenantName}}",
+        name: "workspace-owner-activation",
+        subject: "Activate {{workspaceName}}",
       }],
     });
     const mutable = nodemailer as unknown as { createTransport: (value: unknown) => any };
@@ -24,8 +24,8 @@ describe("PlatformEmailSendService", () => {
         await service.send({
           email: "owner@example.com",
           languageCode: "en",
-          locals: { tenantName: "North" },
-          templateName: "tenant-owner-activation",
+          locals: { workspaceName: "North" },
+          templateName: "workspace-owner-activation",
         }),
         { sent: true },
       );
@@ -41,7 +41,7 @@ describe("PlatformEmailSendService", () => {
     assert.deepEqual(
       await service.send({
         email: "owner@example.com",
-        templateName: "tenant-application-verification",
+        templateName: "workspace-application-verification",
       }),
       { reason: "smtp_not_configured", sent: false },
     );

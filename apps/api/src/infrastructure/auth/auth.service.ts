@@ -5,23 +5,21 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
-  Organization,
-  PlatformUser,
+  Account,
+  PlatformMembership,
+  Role,
   RolePermission,
-  Tenant,
-  User,
-  UserOrganization,
-  UserOrganizationRole,
-  UserTenantRole,
+  Workspace,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
-import { DataSource, In, IsNull, Repository, type EntityManager } from "typeorm";
-import { TenantContextService } from "../../common/database/tenant-context.service.js";
-import type { LoginPayload } from "../../common/admin-api.types.js";
+import { DataSource, Repository, type EntityManager } from "typeorm";
+import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
+import type { LoginPayload, SelectContextPayload } from "../../common/admin-api.types.js";
 import { AuthSessionService } from "./auth-session.service.js";
 import { verifyPassword } from "../../common/security/password-hash.js";
-import { toUserDto } from "../users/user-dto.js";
+import { toRoleDto, toUserDto, toWorkspaceDto } from "../users/user-dto.js";
 import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
-import { TenantLoginResolverService } from "./tenant-login-resolver.service.js";
+import { WorkspaceLoginResolverService } from "./workspace-login-resolver.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import { LoginAuditService } from "../audit/login-audit.service.js";
 import { resolveClientIp } from "@hermes-swarm/rbac";
@@ -33,14 +31,20 @@ import { resolveClientIp } from "@hermes-swarm/rbac";
 export class AuthService {
   constructor(
     private readonly authSessionService: AuthSessionService,
-    @InjectRepository(PlatformUser, PLATFORM_DATA_SOURCE)
-    private readonly platformUserRepository: Repository<PlatformUser>,
+    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    private readonly platformMembershipRepository: Repository<PlatformMembership>,
     private readonly dataSource: DataSource,
-    private readonly tenantContext: TenantContextService,
-    private readonly tenantLoginResolver: TenantLoginResolverService,
+    private readonly workspaceContext: WorkspaceContextService,
+    private readonly workspaceLoginResolver: WorkspaceLoginResolverService,
     private readonly settingsService: SettingsService,
     @Optional()
     private readonly loginAuditService?: LoginAuditService,
+    @Optional()
+    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    private readonly accountRepository?: Repository<Account>,
+    @Optional()
+    @InjectRepository(WorkspaceMembership, PLATFORM_DATA_SOURCE)
+    private readonly membershipRepository?: Repository<WorkspaceMembership>,
   ) {}
 
   /**
@@ -49,136 +53,77 @@ export class AuthService {
   async login(payload: LoginPayload, request: any, response: any) {
     const requestContext = getRequestContext(request);
     const attemptedEmail = readAttemptedEmail(payload);
-    let tenantId: string | null = null;
-    let tenantResolutionCompleted = false;
+    let workspaceId: string | null = null;
     let recorded = false;
     try {
       const input = requireLoginPayload(payload);
       const email = normalizeEmail(input.email);
       const password = requireText(input.password, "密码");
-      const tenant = (await this.tenantLoginResolver.resolve(
-        request,
-        input.tenantSlug,
-      ))?.tenant;
-      tenantResolutionCompleted = true;
-      tenantId = tenant?.id ?? null;
-      const user = tenant
-        ? await this.runInTenantContext(tenant.id, (manager) =>
-            manager.getRepository(User).findOne({
-              where: { email, tenantId: tenant.id },
-            }),
-          )
-        : null;
+      const requestedContextType = input.contextType ??
+        (input.workspaceSlug ? "workspace" : undefined);
+      const requestedWorkspace = requestedContextType === "platform"
+        ? null
+        : (await this.workspaceLoginResolver.resolve(
+            request,
+            input.workspaceSlug,
+          ))?.workspace;
+      workspaceId = requestedWorkspace?.id ?? null;
+      const account = await this.accountRepository!.findOne({ where: { email } });
       if (
-        !user ||
-        user.status !== "active" ||
-        !(await verifyPassword(password, user.passwordHash))
-      ) {
-        await this.recordLoginAttempt({
-          attemptedEmail: email,
-          failureCode: tenant ? "invalid_credentials" : "tenant_unresolved",
-          ...requestContext,
-          result: "failed",
-          scopeType: "tenant",
-          tenantId,
-        });
-        recorded = true;
-        throw new UnauthorizedException("用户名或密码不正确");
-      }
-
-      const result = await this.createLoginResponse(user, request, response);
-      await this.recordLoginAttempt({
-        actorId: user.id,
-        attemptedEmail: email,
-        ...requestContext,
-        result: "success",
-        scopeType: "tenant",
-        sessionId: result.sessionId,
-        tenantId,
-      });
-      recorded = true;
-      return result;
-    } catch (error) {
-      if (!recorded) {
-        await this.recordLoginAttempt({
-          attemptedEmail,
-          failureCode:
-            tenantResolutionCompleted && !tenantId
-              ? "tenant_unresolved"
-              : error instanceof UnauthorizedException
-                ? "invalid_credentials"
-                : "internal_error",
-          ...requestContext,
-          result: "failed",
-          scopeType: "tenant",
-          tenantId,
-        });
-      }
-      throw error;
-    }
-  }
-
-  async loginPlatform(payload: LoginPayload, request: any, response: any) {
-    const requestContext = getRequestContext(request);
-    const attemptedEmail = readAttemptedEmail(payload);
-    let recorded = false;
-    try {
-      const input = requireLoginPayload(payload);
-      const email = normalizeEmail(input.email);
-      const password = requireText(input.password, "密码");
-      const user = await this.platformUserRepository.findOne({
-        relations: {
-          roles: {
-            platformRole: { rolePermissions: { permission: true } },
-          },
-        },
-        where: { email },
-      });
-      if (
-        !user ||
-        user.status !== "active" ||
-        !(await verifyPassword(password, user.passwordHash))
+        !account ||
+        account.status !== "active" ||
+        !(await verifyPassword(password, account.passwordHash))
       ) {
         await this.recordLoginAttempt({
           attemptedEmail: email,
           failureCode: "invalid_credentials",
           ...requestContext,
           result: "failed",
-          scopeType: "platform",
+          scopeType: "workspace",
+          workspaceId,
         });
         recorded = true;
         throw new UnauthorizedException("用户名或密码不正确");
       }
-      const session = await this.authSessionService.createSession(
-        user.id,
-        null,
-        "platform",
-        requestContext,
-      );
-      setRefreshCookie(
-        response,
-        this.authSessionService.getRefreshCookieName(),
-        session.refreshToken,
-        this.authSessionService.getRefreshCookieOptions(),
-      );
-      const result = {
-        accessToken: session.accessToken,
-        expiresAt: session.expiresAt,
-        sessionId: session.sessionId,
-        snapshot: {
-          platformUser: toPlatformUserDto(user),
-          principalType: "platform" as const,
-          runtimePreferences:
-            await this.settingsService.resolvePlatformRuntimePreferences(user),
-        },
-      };
+
+      const contexts = await this.listAvailableContexts(account.id);
+      const eligible = requestedContextType === "platform"
+        ? contexts.filter((context) => context.type === "platform")
+        : requestedWorkspace
+          ? contexts.filter(
+              (context) => context.type === "workspace" &&
+                context.membership.workspaceId === requestedWorkspace.id,
+            )
+          : contexts;
+      if (eligible.length === 0) {
+        throw new UnauthorizedException("账号没有可用的访问上下文");
+      }
+      if (!requestedContextType && !requestedWorkspace && eligible.length > 1) {
+        const selection = await this.authSessionService.createContextSelection(
+          account.id,
+          account.credentialVersion,
+          eligible.map(contextSelectionKey),
+        );
+        recorded = true;
+        return {
+          ...selection,
+          contexts: eligible.map(toContextOption),
+          status: "context_selection_required" as const,
+        };
+      }
+
+      const context = eligible[0];
+      const result = context.type === "platform"
+        ? await this.createPlatformLoginResponse(account, context.membership, request, response)
+        : await this.createWorkspaceLoginResponse(account, context.membership, request, response);
       await this.recordLoginAttempt({
-        actorId: user.id,
+        actorId: account.id,
         attemptedEmail: email,
         ...requestContext,
         result: "success",
-        scopeType: "platform",
+        scopeType: context.type,
         sessionId: result.sessionId,
+        workspaceId: context.type === "workspace" ? context.membership.workspaceId : null,
       });
       recorded = true;
       return result;
@@ -188,22 +133,28 @@ export class AuthService {
           attemptedEmail,
           failureCode:
             error instanceof UnauthorizedException
-              ? "invalid_credentials"
-              : "internal_error",
+                ? "invalid_credentials"
+                : "internal_error",
           ...requestContext,
           result: "failed",
-          scopeType: "platform",
+          scopeType: "workspace",
+          workspaceId,
         });
       }
       throw error;
     }
   }
 
-  async createLoginResponse(user: User, request: any, response: any) {
+  async createWorkspaceLoginResponse(
+    account: Account,
+    membership: WorkspaceMembership,
+    request: any,
+    response: any,
+  ) {
     const session = await this.authSessionService.createSession(
-      user.id,
-      requireUserTenantId(user),
-      "tenant",
+      account.id,
+      membership.workspaceId,
+      "workspace",
       getRequestContext(request),
     );
     setRefreshCookie(
@@ -216,17 +167,106 @@ export class AuthService {
       accessToken: session.accessToken,
       expiresAt: session.expiresAt,
       sessionId: session.sessionId,
-      snapshot: await this.runInTenantContext(
-        requireUserTenantId(user),
-        (manager) => this.getPrincipalSnapshot(user, manager),
+      status: "authenticated" as const,
+      snapshot: await this.runInWorkspaceContext(
+        membership.workspaceId,
+        (manager) => this.getPrincipalSnapshot(account, membership, manager),
       ),
     };
+  }
+
+  async createPlatformLoginResponse(
+    account: Account,
+    membership: PlatformMembership,
+    request: any,
+    response: any,
+  ) {
+    const session = await this.authSessionService.createSession(
+      account.id,
+      null,
+      "platform",
+      getRequestContext(request),
+    );
+    setRefreshCookie(
+      response,
+      this.authSessionService.getRefreshCookieName(),
+      session.refreshToken,
+      this.authSessionService.getRefreshCookieOptions(),
+    );
+    return {
+      accessToken: session.accessToken,
+      expiresAt: session.expiresAt,
+      sessionId: session.sessionId,
+      status: "authenticated" as const,
+      snapshot: await this.getPlatformPrincipalSnapshot(account, membership),
+    };
+  }
+
+  async selectContext(
+    payload: SelectContextPayload,
+    request: any,
+    response: any,
+  ) {
+    const selectionToken = requireText(payload?.selectionToken, "上下文选择凭证");
+    const contextType = requireContextType(payload?.contextType);
+    const membershipId = requireText(payload?.membershipId, "成员关系");
+    const selection = await this.authSessionService.consumeContextSelection(
+      selectionToken,
+    );
+    const account = await this.accountRepository!.findOne({
+      where: { id: selection.accountId, status: "active" },
+    });
+    if (!account || account.credentialVersion !== selection.credentialVersion) {
+      throw new UnauthorizedException("账号凭据已变更，请重新登录");
+    }
+    const contexts = await this.listAvailableContexts(account.id);
+    const context = contexts.find(
+      (item) => item.type === contextType && item.membership.id === membershipId,
+    );
+    if (!context || !selection.contextMembershipIds.includes(contextSelectionKey(context))) {
+      throw new UnauthorizedException("访问上下文不可用");
+    }
+    return context.type === "platform"
+      ? this.createPlatformLoginResponse(account, context.membership, request, response)
+      : this.createWorkspaceLoginResponse(account, context.membership, request, response);
+  }
+
+  async listAccountContexts(authorization: string | undefined) {
+    const session = await this.validateInteractiveAuthorization(authorization);
+    return (await this.listAvailableContexts(session.accountId ?? session.userId))
+      .map(toContextOption);
+  }
+
+  async switchContext(
+    authorization: string | undefined,
+    payload: { contextType?: string; membershipId?: string },
+    request: any,
+    response: any,
+  ) {
+    const session = await this.validateInteractiveAuthorization(authorization);
+    const contextType = requireContextType(payload?.contextType);
+    const membershipId = requireText(payload?.membershipId, "成员关系");
+    const account = await this.accountRepository!.findOne({
+      where: { id: session.userId, status: "active" },
+    });
+    const context = (await this.listAvailableContexts(session.userId)).find(
+      (item) => item.type === contextType && item.membership.id === membershipId,
+    );
+    if (!account || !context) throw new UnauthorizedException("目标访问上下文不可用");
+    await this.authSessionService.revokeSession(
+      session.workspaceId,
+      session.sessionId,
+      session.userId,
+    );
+    return context.type === "platform"
+      ? this.createPlatformLoginResponse(account, context.membership, request, response)
+      : this.createWorkspaceLoginResponse(account, context.membership, request, response);
   }
 
   async refresh(
     request: any,
     response: any,
-    expectedPrincipalType?: "platform" | "tenant",
+    expectedPrincipalType?: "platform" | "workspace",
   ) {
     const session = await this.authSessionService.refreshSession(
       getCookie(
@@ -240,7 +280,7 @@ export class AuthService {
       session.principalType !== expectedPrincipalType
     ) {
       await this.authSessionService.revokeSession(
-        session.tenantId,
+        session.workspaceId,
         session.sessionId,
         session.userId,
       );
@@ -267,7 +307,7 @@ export class AuthService {
   async logout(authorization: string | undefined, response: any) {
     const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.revokeSession(
-      session.tenantId,
+      session.workspaceId,
       session.sessionId,
       session.userId,
     );
@@ -281,7 +321,7 @@ export class AuthService {
   async listSessions(authorization: string | undefined) {
     const session = await this.validateInteractiveAuthorization(authorization);
     return this.authSessionService.listSessions(
-      session.tenantId,
+      session.workspaceId,
       session.userId,
       session.sessionId,
     );
@@ -290,7 +330,7 @@ export class AuthService {
   async revokeSession(authorization: string | undefined, sessionId: string) {
     const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.revokeSession(
-      session.tenantId,
+      session.workspaceId,
       sessionId,
       session.userId,
     );
@@ -302,7 +342,7 @@ export class AuthService {
   ) {
     const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.deleteSessionRecord(
-      session.tenantId,
+      session.workspaceId,
       sessionId,
       session.userId,
       session.sessionId,
@@ -312,7 +352,7 @@ export class AuthService {
   async revokeOtherSessions(authorization: string | undefined) {
     const session = await this.validateInteractiveAuthorization(authorization);
     await this.authSessionService.revokeOtherSessions(
-      session.tenantId,
+      session.workspaceId,
       session.userId,
       session.sessionId,
     );
@@ -320,12 +360,12 @@ export class AuthService {
 
   async createRealtimeTicket(authorization: string | undefined) {
     const session = await this.validateInteractiveAuthorization(authorization);
-    if (!session.tenantId || session.principalType !== "tenant") {
-      throw new UnauthorizedException("平台会话不支持租户实时通道");
+    if (!session.workspaceId || session.principalType !== "workspace") {
+      throw new UnauthorizedException("平台会话不支持工作空间实时通道");
     }
     return this.authSessionService.createRealtimeTicket({
       sessionId: session.sessionId,
-      tenantId: session.tenantId,
+      workspaceId: session.workspaceId,
       userId: session.userId,
     });
   }
@@ -344,42 +384,34 @@ export class AuthService {
   }
 
   /**
-   * Resolves the current authenticated user, role, permissions, and organization.
+   * Resolves the current authenticated user, workspace role, and permissions.
    */
   async me(authorization: string | undefined) {
     const session = await this.validateAuthorization(authorization);
     if (session.principalType === "platform") {
-      const platformUser = await this.platformUserRepository.findOne({
-        relations: {
-          roles: {
-            platformRole: { rolePermissions: { permission: true } },
-          },
-        },
+      const account = await this.accountRepository!.findOne({
         where: { id: session.userId, status: "active" },
       });
-      if (!platformUser) throw new UnauthorizedException("平台账号不可用");
-      return {
-        platformUser: toPlatformUserDto(platformUser),
-        principalType: "platform",
-        runtimePreferences:
-          await this.settingsService.resolvePlatformRuntimePreferences(
-            platformUser,
-          ),
-      };
+      const membership = await this.platformMembershipRepository.findOne({
+        relations: { role: { rolePermissions: { permissionRecord: true } } },
+        where: {
+          accountId: session.userId,
+          id: session.membershipId ?? undefined,
+          status: "active",
+        },
+      });
+      if (!account || !membership) throw new UnauthorizedException("平台账号不可用");
+      return this.getPlatformPrincipalSnapshot(account, membership);
     }
-    if (!session.tenantId) throw new UnauthorizedException("当前接口需要租户账号");
-    return this.runInTenantContext(session.tenantId, async (manager) => {
-      const user = await this.getUserFromSession(session, manager);
-      return this.getPrincipalSnapshot(user, manager);
+    if (!session.workspaceId) throw new UnauthorizedException("当前接口需要工作空间账号");
+    return this.runInWorkspaceContext(session.workspaceId, async (manager) => {
+      const principal = await this.getUserFromSession(session, manager);
+      return this.getPrincipalSnapshot(
+        principal.account,
+        principal.membership,
+        manager,
+      );
     });
-  }
-
-  async platformMe(authorization: string | undefined) {
-    const session = await this.validateAuthorization(authorization);
-    if (session.principalType !== "platform") {
-      throw new UnauthorizedException("当前接口需要平台账号");
-    }
-    return this.me(authorization);
   }
 
   async validateAuthorization(authorization: string | undefined) {
@@ -400,122 +432,180 @@ export class AuthService {
     session: Awaited<ReturnType<AuthSessionService["validateAccessToken"]>>,
     manager: EntityManager,
   ) {
-    if (session.principalType !== "tenant" || !session.tenantId) {
-      throw new UnauthorizedException("当前接口需要租户账号");
+    if (session.principalType !== "workspace" || !session.workspaceId) {
+      throw new UnauthorizedException("当前接口需要工作空间账号");
     }
 
-    const user = await manager.getRepository(User).findOne({
-      where: { id: session.userId, tenantId: session.tenantId },
+    const membership = await manager.getRepository(WorkspaceMembership).findOne({
+      relations: { account: true, role: true },
+      where: {
+        accountId: session.userId,
+        id: session.membershipId ?? undefined,
+        status: "active",
+        workspaceId: session.workspaceId,
+      },
     });
+    const user = membership?.account;
     if (
       !user ||
-      user.status !== "active" ||
-      requireUserTenantId(user) !== session.tenantId
+      user.status !== "active"
     ) {
       throw new UnauthorizedException("用户不可用");
     }
-    return user;
+    return { account: user, membership };
   }
 
-  private async getPrincipalSnapshot(user: User, manager: EntityManager) {
-    const tenantId = requireUserTenantId(user);
-    const [tenant, rootOrganization, memberships, tenantRoleAssignments] =
-      await Promise.all([
-      manager.getRepository(Tenant).findOne({ where: { id: tenantId } }),
-      manager.getRepository(Organization).findOne({
-        where: { parentOrganizationId: IsNull(), tenantId },
-      }),
-      manager.getRepository(UserOrganization).find({
-        relations: { organization: true, user: true },
-        where: { status: "active", tenantId, userId: user.id },
-      }),
-      manager.getRepository(UserTenantRole).find({
+  private async getPrincipalSnapshot(
+    account: Account,
+    activeMembership: WorkspaceMembership,
+    manager: EntityManager,
+  ) {
+    const workspaceId = activeMembership.workspaceId;
+    const [workspace, membership] = await Promise.all([
+      manager.getRepository(Workspace).findOne({ where: { id: workspaceId } }),
+      manager.getRepository(WorkspaceMembership).findOne({
         relations: { role: true },
-        where: { tenantId, userId: user.id },
+        where: {
+          accountId: account.id,
+          id: activeMembership.id,
+          status: "active",
+          workspaceId,
+        },
       }),
     ]);
 
-    const organizationRoleAssignments = memberships.length
-      ? await manager.getRepository(UserOrganizationRole).find({
-          relations: { role: true },
-          where: { membershipId: In(memberships.map((item) => item.id)), tenantId },
-        })
-      : [];
-
-    const roleIds = [
-      ...tenantRoleAssignments.map((assignment) => assignment.roleId),
-      ...organizationRoleAssignments.map((assignment) => assignment.roleId),
-    ];
+    if (!membership?.roleId || !membership.role) {
+      throw new UnauthorizedException("工作空间成员关系不可用");
+    }
+    const roleIds = [membership.roleId];
     const permissions = roleIds.length
       ? await manager.getRepository(RolePermission).find({
+          relations: { permissionRecord: true },
           where: roleIds.map((roleId) => ({ enabled: true, roleId })),
         })
       : [];
     const permissionsByRoleId = groupPermissionsByRoleId(permissions);
-    const defaultMembership =
-      memberships.find((item) => item.isDefault) ?? memberships[0] ?? null;
 
     return {
-      defaultOrganizationId: defaultMembership?.organizationId ?? null,
-      memberships: memberships.map((membership) => ({
-          displayName: membership.displayName,
-          id: membership.id,
-          isDefault: membership.isDefault,
-          joinedAt: membership.joinedAt,
-          organization: membership.organization,
-          organizationId: membership.organizationId,
-          role: (() => {
-            const assignment = organizationRoleAssignments.find(
-              (item) => item.membershipId === membership.id,
-            );
-            return assignment
-              ? {
-                  ...assignment.role,
-                  permissions: permissionsByRoleId.get(assignment.roleId) ?? [],
-                }
-              : null;
-          })(),
-          status: membership.status,
-      })),
-      onboarding: { rootOrganizationRequired: !rootOrganization },
-      permissions: tenantRoleAssignments.flatMap((assignment) =>
-        (permissionsByRoleId.get(assignment.roleId) ?? []).map(
+      account: toUserDto(account),
+      context: {
+        membershipId: membership.id,
+        type: "workspace" as const,
+        workspace: workspace ? toWorkspaceDto(workspace) : workspace,
+      },
+      membership: {
+        id: membership.id,
+        role: toRoleDto(membership.role),
+        status: membership.status,
+      },
+      permissions: [membership].flatMap((assignment) =>
+        (permissionsByRoleId.get(assignment.roleId!) ?? []).map(
           (permission) => permission.permission,
         ),
       ),
-      principalType: "tenant" as const,
+      principalType: "workspace" as const,
+      role: toRoleDto(
+        membership.role,
+        permissionsByRoleId.get(membership.roleId) ?? [],
+      ),
       runtimePreferences:
-        await this.settingsService.resolveTenantRuntimePreferences(
-          tenantId,
-          user,
+        await this.settingsService.resolveWorkspaceRuntimePreferences(
+          workspaceId,
+          account,
         ),
-      tenant,
-      tenantId,
-      tenantRole: tenantRoleAssignments[0]
-        ? {
-            ...tenantRoleAssignments[0].role,
-            permissions: permissionsByRoleId.get(tenantRoleAssignments[0].roleId) ?? [],
-          }
-        : null,
-      user: toUserDto(user),
+      workspace: workspace ? toWorkspaceDto(workspace) : workspace,
+      workspaceId,
+      workspaceRole: toRoleDto(
+        membership.role,
+        permissionsByRoleId.get(membership.roleId) ?? [],
+      ),
     };
   }
 
-  private runInTenantContext<T>(
-    tenantId: string,
+  private async getPlatformPrincipalSnapshot(
+    account: Account,
+    membership: PlatformMembership,
+  ) {
+    const resolved = membership.role?.rolePermissions
+      ? membership
+      : await this.platformMembershipRepository.findOne({
+          relations: { role: { rolePermissions: { permissionRecord: true } } },
+          where: { id: membership.id, status: "active" },
+        });
+    if (!resolved?.role || resolved.role.scope !== "platform") {
+      throw new UnauthorizedException("平台成员关系不可用");
+    }
+    const permissions = (resolved.role.rolePermissions ?? [])
+      .filter((item) => item.enabled && item.permissionRecord?.code)
+      .map((item) => item.permissionRecord.code!);
+    return {
+      account: toUserDto(account),
+      context: {
+        membershipId: resolved.id,
+        type: "platform" as const,
+      },
+      membership: {
+        id: resolved.id,
+        role: toRoleDto(resolved.role),
+        status: resolved.status,
+      },
+      permissions,
+      principalType: "platform" as const,
+      role: toRoleDto(resolved.role, resolved.role.rolePermissions ?? []),
+      runtimePreferences:
+        await this.settingsService.resolvePlatformRuntimePreferences(account),
+    };
+  }
+
+  private async listAvailableContexts(accountId: string): Promise<AvailableContext[]> {
+    const [platformMembership, workspaceMemberships] = await Promise.all([
+      this.platformMembershipRepository.findOne({
+        relations: { role: true },
+        where: { accountId, status: "active" },
+      }),
+      this.listActiveMemberships(accountId),
+    ]);
+    const contexts: AvailableContext[] = [];
+    if (platformMembership?.role?.scope === "platform") {
+      contexts.push({ membership: platformMembership, type: "platform" });
+    }
+    contexts.push(
+      ...workspaceMemberships
+        .filter((membership) => membership.role?.scope === "workspace")
+        .map((membership) => ({
+          membership,
+          type: "workspace" as const,
+        })),
+    );
+    return contexts;
+  }
+
+  private listActiveMemberships(accountId: string) {
+    return this.membershipRepository!.find({
+      relations: { role: true, workspace: true },
+      where: {
+        accountId,
+        status: "active",
+        workspace: { status: "active" },
+      },
+      order: { createdAt: "ASC" },
+    });
+  }
+
+  private runInWorkspaceContext<T>(
+    workspaceId: string,
     work: (manager: EntityManager) => Promise<T>,
   ) {
     return this.dataSource.transaction(async (manager) => {
       await manager.query(
-        "SELECT set_config('app.tenant_id', $1, true), set_config('app.scope_level', 'tenant', true)",
-        [tenantId],
+        "SELECT set_config('app.workspace_id', $1, true), set_config('app.scope_level', 'workspace', true)",
+        [workspaceId],
       );
-      return this.tenantContext.run(
+      return this.workspaceContext.run(
         {
           manager,
-          organizationId: null,
-          scopeLevel: "tenant",
-          tenantId,
+          scopeLevel: "workspace",
+          workspaceId,
         },
         () => work(manager),
       );
@@ -610,42 +700,60 @@ function clearRefreshCookie(
   response.clearCookie(name, options);
 }
 
-function requireUserTenantId(user: User) {
-  const tenantId = (user as User & { tenantId?: string | null }).tenantId;
-  if (!tenantId) throw new UnauthorizedException("用户不可用");
-  return tenantId;
+function toWorkspaceSelectionOption(membership: WorkspaceMembership) {
+  if (!membership.workspace || !membership.role) {
+    throw new UnauthorizedException("工作空间成员关系不可用");
+  }
+  return {
+    membershipId: membership.id,
+    role: {
+      displayName: membership.role.displayName,
+      id: membership.role.id,
+      name: membership.role.name,
+    },
+    workspace: {
+      id: membership.workspace.id,
+      name: membership.workspace.name,
+      slug: membership.workspace.slug,
+      subdomain: membership.workspace.subdomain,
+    },
+  };
 }
 
-function toPlatformUserDto(user: PlatformUser) {
+type AvailableContext =
+  | { membership: PlatformMembership; type: "platform" }
+  | { membership: WorkspaceMembership; type: "workspace" };
+
+function contextSelectionKey(context: AvailableContext) {
+  return `${context.type}:${context.membership.id}`;
+}
+
+function toContextOption(context: AvailableContext) {
+  if (context.type === "platform") {
+    if (!context.membership.role) {
+      throw new UnauthorizedException("平台成员关系不可用");
+    }
+    return {
+      membershipId: context.membership.id,
+      role: toContextRole(context.membership.role),
+      type: "platform" as const,
+    };
+  }
   return {
-    displayName: user.displayName,
-    email: user.email,
-    id: user.id,
-    roles:
-      user.roles?.map((item) => ({
-        description: item.platformRole.description,
-        id: item.platformRole.id,
-        isSystem: item.platformRole.isSystem,
-        label: item.platformRole.label,
-        name: item.platformRole.name,
-        permissions:
-          item.platformRole.rolePermissions
-            ?.filter((row) => row.enabled)
-            .flatMap((row) => {
-              const permission = row.permission?.code;
-              return permission
-                ? [
-                    {
-                      enabled: row.enabled,
-                      id: row.id,
-                      permission,
-                      permissionId: row.permissionId,
-                      roleId: row.platformRoleId,
-                    },
-                  ]
-                : [];
-            }) ?? [],
-      })) ?? [],
-    status: user.status,
+    ...toWorkspaceSelectionOption(context.membership),
+    type: "workspace" as const,
   };
+}
+
+function toContextRole(role: Role) {
+  return {
+    displayName: role.displayName ?? role.label,
+    id: role.id,
+    name: role.name,
+  };
+}
+
+function requireContextType(value: unknown): "platform" | "workspace" {
+  if (value === "platform" || value === "workspace") return value;
+  throw new UnauthorizedException("访问上下文无效");
 }

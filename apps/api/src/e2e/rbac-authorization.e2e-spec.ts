@@ -16,11 +16,24 @@ describe("workspace admin route contract e2e", { concurrency: false }, () => {
 
   before(async () => {
     const users = {
-      create: async (_authorization: string, value: unknown) => ({ id: "user-2", ...value as object }),
-      deleteManaged: async (_authorization: string, userId: string) => calls.push({ method: "deleteUser", value: userId }),
-      list: async () => [{ email: "owner@example.com", id: "user-1", tenantRole: null }],
-      replaceTenantRole: async (_authorization: string, userId: string, roleId: string) => ({ id: userId, roleId }),
-      updateManaged: async (_authorization: string, userId: string, value: unknown) => ({ id: userId, ...value as object }),
+      list: async () => [{
+        account: { email: "owner@example.com", id: "account-1" },
+        membershipId: "membership-1",
+        role: null,
+        status: "active",
+      }],
+      removeMembership: async (_authorization: string, membershipId: string) =>
+        calls.push({ method: "removeMembership", value: membershipId }),
+      replaceWorkspaceRole: async (
+        _authorization: string,
+        membershipId: string,
+        roleId: string,
+      ) => ({ membershipId, roleId }),
+      updateMembershipStatus: async (
+        _authorization: string,
+        membershipId: string,
+        status: string,
+      ) => ({ membershipId, status }),
     };
     const invites = {
       create: async (userId: string, value: unknown) => ({ id: "invite-1", invitedById: userId, ...value as object }),
@@ -47,46 +60,45 @@ describe("workspace admin route contract e2e", { concurrency: false }, () => {
     await app?.close();
   });
 
-  it("exposes workspace user CRUD and role replacement without legacy tenant paths", async () => {
-    await request(app.getHttpServer()).get("/admin/users").expect(200).expect(({ body }) => {
-      assert.equal(body[0].id, "user-1");
+  it("exposes workspace member CRUD and role replacement", async () => {
+    await request(app.getHttpServer()).get("/admin/workspace/members").expect(200).expect(({ body }) => {
+      assert.equal(body[0].membershipId, "membership-1");
     });
     await request(app.getHttpServer())
-      .patch("/admin/users/user-2")
+      .patch("/admin/workspace/members/membership-2/status")
       .set("Authorization", "Bearer token")
       .send({ status: "disabled" })
       .expect(200)
       .expect(({ body }) => assert.equal(body.status, "disabled"));
     await request(app.getHttpServer())
-      .put("/admin/users/user-2/role")
+      .put("/admin/workspace/members/membership-2/role")
       .set("Authorization", "Bearer token")
       .send({ roleId: "role-1" })
       .expect(200)
       .expect(({ body }) => assert.equal(body.roleId, "role-1"));
     await request(app.getHttpServer())
-      .delete("/admin/users/user-2")
+      .delete("/admin/workspace/members/membership-2")
       .set("Authorization", "Bearer token")
       .expect(204);
-    assert.deepEqual(calls.find((call) => call.method === "deleteUser")?.value, "user-2");
+    assert.deepEqual(
+      calls.find((call) => call.method === "removeMembership")?.value,
+      "membership-2",
+    );
   });
 
-  it("exposes one workspace invite with multiple organization assignments", async () => {
+  it("exposes one workspace invite with one workspace role", async () => {
     await request(app.getHttpServer()).get("/admin/invites").expect(200);
     await request(app.getHttpServer())
       .post("/admin/invites")
       .set("Authorization", "Bearer token")
       .send({
         email: "member@example.com",
-        organizations: [
-          { isDefault: true, organizationId: "org-1", roleId: "role-org-1" },
-          { organizationId: "org-2", roleId: "role-org-2" },
-        ],
-        workspaceRoleId: "role-tenant",
+        workspaceRoleId: "role-workspace",
       })
       .expect(201)
       .expect(({ body }) => {
         assert.equal(body.invitedById, "user-1");
-        assert.equal(body.organizations.length, 2);
+        assert.equal(body.workspaceRoleId, "role-workspace");
       });
     await request(app.getHttpServer())
       .post("/admin/invites/invite-1/resend")

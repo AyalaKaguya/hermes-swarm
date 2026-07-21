@@ -28,7 +28,7 @@ export class AccessAuditInterceptor implements NestInterceptor {
         return from(
           this.auditService.recordRequest(request, "allowed", {
             statusCode: response.statusCode ?? 200,
-            targetTenantId: extractTargetTenantId(value),
+            targetWorkspaceId: extractTargetWorkspaceId(value),
           }),
         ).pipe(map(() => value));
       }),
@@ -41,14 +41,14 @@ export class AccessAuditInterceptor implements NestInterceptor {
   }
 }
 
-function extractTargetTenantId(value: unknown) {
+function extractTargetWorkspaceId(value: unknown) {
   if (!value || typeof value !== "object") return null;
   const record = value as {
-    targetTenantId?: unknown;
-    tenant?: { id?: unknown } | null;
-    tenantId?: unknown;
+    targetWorkspaceId?: unknown;
+    workspace?: { id?: unknown } | null;
+    workspaceId?: unknown;
   };
-  const candidate = record.targetTenantId ?? record.tenantId ?? record.tenant?.id;
+  const candidate = record.targetWorkspaceId ?? record.workspaceId ?? record.workspace?.id;
   return typeof candidate === "string" && candidate.trim()
     ? candidate.trim()
     : null;

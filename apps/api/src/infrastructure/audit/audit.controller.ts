@@ -3,21 +3,21 @@ import { AccessOperation, AccessResource } from "@hermes-swarm/rbac";
 import { AuditQueryService } from "./audit-query.service.js";
 import { parseAuditListQuery } from "./audit-query.js";
 
-@Controller("admin/tenant/audit")
+@Controller("admin/workspace/audit")
 @AccessResource({
   entity: "audit",
   entityLabel: "日志审计",
   entityOrder: 90,
-  purpose: "tenant_audit",
+  purpose: "workspace_audit",
   purposeLabel: "工作空间审计",
-  scope: "tenant",
+  scope: "workspace",
 })
-export class TenantAuditController {
+export class WorkspaceAuditController {
   constructor(private readonly auditQueryService: AuditQueryService) {}
 
   @Get("login-logs")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
+    defaultRoles: ["workspace-owner", "workspace-admin"],
     description: "查看当前工作空间的登录成功和失败记录。",
     label: "查看登录日志",
     operation: "list_login_logs",
@@ -25,22 +25,22 @@ export class TenantAuditController {
   })
   listLoginLogs(@Query() query: Record<string, unknown>) {
     return this.auditQueryService.listLoginLogs(
-      "tenant",
+      "workspace",
       parseAuditListQuery(query, { results: ["failed", "success"] }),
     );
   }
 
   @Get("operation-logs")
   @AccessOperation({
-    defaultRoles: ["tenant-owner", "tenant-admin"],
-    description: "查看当前工作空间及其组织范围内的管理操作。",
+    defaultRoles: ["workspace-owner", "workspace-admin"],
+    description: "查看当前工作空间内的管理操作。",
     label: "查看操作日志",
     operation: "list_operation_logs",
     sortOrder: 20,
   })
   listOperationLogs(@Query() query: Record<string, unknown>) {
     return this.auditQueryService.listOperationLogs(
-      "tenant",
+      "workspace",
       parseAuditListQuery(query, {
         results: ["allowed", "denied", "error"],
       }),

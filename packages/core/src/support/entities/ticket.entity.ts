@@ -1,37 +1,28 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
-import { TenantOwnedBaseEntity } from "../../identity/entities/tenant-owned-base.entity.js";
-import type { Organization } from "../../identity/entities/organization.entity.js";
-import type { User } from "../../identity/entities/user.entity.js";
+import { WorkspaceOwnedBaseEntity } from "../../identity/entities/workspace-owned-base.entity.js";
+import type { Account } from "../../identity/entities/account.entity.js";
 import type { Conversation } from "./conversation.entity.js";
 
 export type TicketStatus = "open" | "closed" | "archived";
 
 @Entity({ name: "tickets" })
-@Index(["tenantId", "sourceOrganizationId", "status", "updatedAt"])
-export class Ticket extends TenantOwnedBaseEntity {
-  @Column({ name: "source_organization_id", type: "uuid" })
-  @Index()
-  sourceOrganizationId!: string;
-
-  @ManyToOne("Organization", { nullable: false, onDelete: "RESTRICT" })
-  @JoinColumn({ name: "source_organization_id" })
-  sourceOrganization!: Organization;
-
+@Index(["workspaceId", "status", "updatedAt"])
+export class Ticket extends WorkspaceOwnedBaseEntity {
   @Column({ name: "requester_user_id", type: "uuid" })
   @Index()
   requesterUserId!: string;
 
-  @ManyToOne("User", { onDelete: "CASCADE" })
+  @ManyToOne("Account", { onDelete: "RESTRICT" })
   @JoinColumn({ name: "requester_user_id" })
-  requesterUser!: User;
+  requesterUser!: Account;
 
   @Column({ name: "assignee_user_id", type: "uuid", nullable: true })
   @Index()
   assigneeUserId!: string | null;
 
-  @ManyToOne("User", { nullable: true, onDelete: "SET NULL" })
+  @ManyToOne("Account", { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "assignee_user_id" })
-  assigneeUser!: User | null;
+  assigneeUser!: Account | null;
 
   @Column({ name: "conversation_id", type: "uuid", nullable: true })
   @Index()

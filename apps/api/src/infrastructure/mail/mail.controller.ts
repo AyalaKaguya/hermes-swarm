@@ -3,30 +3,30 @@ import { AccessOperation, AccessResource } from "@hermes-swarm/rbac";
 import { RequireFeature } from "../feature-access/require-feature.decorator.js";
 import { MailService } from "./mail.service.js";
 
-@Controller("admin/tenant/mail")
+@Controller("admin/workspace/mail")
 @AccessResource({
   entity: "mail",
   entityLabel: "邮件",
   entityOrder: 60,
-  purpose: "tenant_mail",
+  purpose: "workspace_mail",
   purposeLabel: "工作空间邮件",
-  scope: "tenant",
+  scope: "workspace",
 })
-export class TenantMailController {
+export class WorkspaceMailController {
   constructor(private readonly mailService: MailService) {}
 
   @Get("smtp")
   @AccessOperation({ label: "查看工作空间 SMTP", operation: "view_smtp" })
   @RequireFeature("feature:email:enabled")
   getSmtp() {
-    return this.mailService.getTenantSmtp();
+    return this.mailService.getWorkspaceSmtp();
   }
 
   @Put("smtp")
   @AccessOperation({ isDangerous: true, label: "保存工作空间 SMTP", operation: "save_smtp" })
   @RequireFeature("feature:email:enabled")
   saveSmtp(@Body() payload: unknown) {
-    return this.mailService.saveTenantSmtp(payload as never);
+    return this.mailService.saveWorkspaceSmtp(payload as never);
   }
 
   @Post("smtp/validate")
@@ -40,14 +40,14 @@ export class TenantMailController {
   @AccessOperation({ label: "查看工作空间邮件模板", operation: "list_templates" })
   @RequireFeature("feature:email:enabled")
   listTemplates() {
-    return this.mailService.listTenantTemplates();
+    return this.mailService.listWorkspaceTemplates();
   }
 
   @Post("templates")
   @AccessOperation({ label: "创建工作空间邮件模板", operation: "create_template" })
   @RequireFeature("feature:email:enabled")
   createTemplate(@Body() payload: unknown) {
-    return this.mailService.createTenantTemplate(payload as never);
+    return this.mailService.createWorkspaceTemplate(payload as never);
   }
 
   @Post("templates/preview")
@@ -61,14 +61,14 @@ export class TenantMailController {
   @AccessOperation({ label: "更新工作空间邮件模板", operation: "update_template" })
   @RequireFeature("feature:email:enabled")
   updateTemplate(@Param("templateId") templateId: string, @Body() payload: unknown) {
-    return this.mailService.updateTenantTemplate(templateId, payload as never);
+    return this.mailService.updateWorkspaceTemplate(templateId, payload as never);
   }
 
   @Delete("templates/:templateId")
   @AccessOperation({ isDangerous: true, label: "删除工作空间邮件模板", operation: "delete_template" })
   @RequireFeature("feature:email:enabled")
   deleteTemplate(@Param("templateId") templateId: string) {
-    return this.mailService.deleteTenantTemplate(templateId);
+    return this.mailService.deleteWorkspaceTemplate(templateId);
   }
 
   @Get("logs")

@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { PasswordReset, Tenant, User } from "@hermes-swarm/core";
+import { Account, PasswordReset } from "@hermes-swarm/core";
 import { MailModule } from "../mail/mail.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { PasswordResetController } from "./password-reset.controller.js";
@@ -15,8 +15,7 @@ import { AuthModule } from "../auth/auth.module.js";
     AuthModule,
     MailModule,
     SettingsModule,
-    TypeOrmModule.forFeature([PasswordReset, User]),
-    TypeOrmModule.forFeature([Tenant], PLATFORM_DATA_SOURCE),
+    TypeOrmModule.forFeature([Account, PasswordReset], PLATFORM_DATA_SOURCE),
   ],
   controllers: [PasswordResetController],
   providers: [PasswordResetService],

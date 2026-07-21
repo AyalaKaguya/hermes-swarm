@@ -36,8 +36,8 @@ async function generateOpenApi() {
 function preparePreviewEnvironment() {
   // Preview mode does not instantiate database providers, but AppModule config
   // validation still requires the two isolated runtime identities.
-  process.env.POSTGRES_TENANT_URL ??=
-    "postgresql://hermes_tenant_app:openapi@localhost:5432/hermes_openapi";
+  process.env.POSTGRES_WORKSPACE_URL ??=
+    "postgresql://hermes_workspace_app:openapi@localhost:5432/hermes_openapi";
   process.env.POSTGRES_PLATFORM_URL ??=
     "postgresql://hermes_platform:openapi@localhost:5432/hermes_openapi";
 }

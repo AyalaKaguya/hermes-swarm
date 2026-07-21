@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ConversationCapabilityService } from "./conversations.service.js";
 
-describe("ConversationCapabilityService tenant source contract", () => {
-  it("looks up conversations by tenant, source type and source id", async () => {
+describe("ConversationCapabilityService workspace source contract", () => {
+  it("looks up conversations by workspace, source type and source id", async () => {
     const lookups: unknown[] = [];
     const saved: Array<Record<string, unknown>> = [];
     const manager = {
@@ -34,18 +34,18 @@ describe("ConversationCapabilityService tenant source contract", () => {
       sourceType: "ticket",
       status: "open",
       subject: "Need help",
-      tenantId: "tenant-a",
+      workspaceId: "workspace-a",
     });
     assert.deepEqual((lookups[0] as { where: unknown }).where, {
       sourceId: "ticket-a",
       sourceType: "ticket",
-      tenantId: "tenant-a",
+      workspaceId: "workspace-a",
     });
-    assert.equal(result.tenantId, "tenant-a");
+    assert.equal(result.workspaceId, "workspace-a");
     assert.equal(saved.length, 1);
   });
 
-  it("rejects conversation sources without an explicit tenant", async () => {
+  it("rejects conversation sources without an explicit workspace", async () => {
     const service = new ConversationCapabilityService(
       { manager: { transaction: async (work: (manager: unknown) => unknown) => work({}) } } as never,
       {} as never,
@@ -59,7 +59,7 @@ describe("ConversationCapabilityService tenant source contract", () => {
       service.ensureConversationForSource({
         sourceId: "ticket-a",
         sourceType: "ticket",
-        tenantId: "",
+        workspaceId: "",
       }),
     );
   });

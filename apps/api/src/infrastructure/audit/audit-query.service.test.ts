@@ -4,30 +4,30 @@ import { AccessAuditLog, LoginAuditLog } from "@hermes-swarm/core";
 import { AuditQueryService } from "./audit-query.service.js";
 
 describe("AuditQueryService scope isolation", () => {
-  it("uses the RLS tenant repository for tenant logs", async () => {
+  it("uses the RLS workspace repository for workspace logs", async () => {
     const targets: unknown[] = [];
-    const tenantRepository = createRepository();
+    const workspaceRepository = createRepository();
     const service = createService({
-      tenantContext: {
+      workspaceContext: {
         repository: (target: unknown) => {
           targets.push(target);
-          return tenantRepository;
+          return workspaceRepository;
         },
       },
     });
 
-    await service.listLoginLogs("tenant", query());
-    await service.listOperationLogs("tenant", query());
+    await service.listLoginLogs("workspace", query());
+    await service.listOperationLogs("workspace", query());
 
     assert.equal(targets.includes(LoginAuditLog), true);
     assert.equal(targets.includes(AccessAuditLog), true);
     assert.equal(
-      tenantRepository.builders[0]?.whereClauses[0]?.sql,
+      workspaceRepository.builders[0]?.whereClauses[0]?.sql,
       "log.scope_type = :scope",
     );
     assert.match(
-      tenantRepository.builders[1]?.whereClauses[0]?.sql ?? "",
-      /tenant.*integration/,
+      workspaceRepository.builders[1]?.whereClauses[0]?.sql ?? "",
+      /workspace.*integration/,
     );
   });
 
@@ -47,11 +47,11 @@ describe("AuditQueryService scope isolation", () => {
 function createService(
   options: {
     platformAccess?: ReturnType<typeof createRepository>;
-    tenantContext?: { repository: (target: unknown) => unknown };
+    workspaceContext?: { repository: (target: unknown) => unknown };
   } = {},
 ) {
   return new AuditQueryService(
-    (options.tenantContext ?? {
+    (options.workspaceContext ?? {
       repository: () => createRepository(),
     }) as never,
     (options.platformAccess ?? createRepository()) as never,

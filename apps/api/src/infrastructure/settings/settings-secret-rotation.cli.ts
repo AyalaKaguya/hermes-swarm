@@ -10,7 +10,7 @@ import {
   type SettingSecretKeyring,
 } from "./settings-secret-codec.js";
 
-const SETTING_TABLES = ["platform_settings", "tenant_settings"] as const;
+const SETTING_TABLES = ["platform_settings", "workspace_settings"] as const;
 
 export type SettingSecretRotationSummary = {
   failed: number;

@@ -16,7 +16,7 @@ export type SettingValueType = (typeof SETTING_VALUE_TYPES)[number];
 
 export type SettingValueOption = SettingOption;
 
-export type SettingScope = "platform" | "tenant";
+export type SettingScope = "platform" | "workspace";
 
 export const SECRET_SETTING_MASK = "********";
 
@@ -55,7 +55,7 @@ export type PlatformDefaultSetting = {
   valueType: SettingValueType;
 };
 
-export type TenantDefaultFieldDefinition = {
+export type WorkspaceDefaultFieldDefinition = {
   field: "currency" | "dateFormat" | "preferredLanguage" | "regionCode" | "timeZone";
   key: string;
   label: string;
@@ -63,7 +63,7 @@ export type TenantDefaultFieldDefinition = {
   valueType: SettingValueType;
 };
 
-export type TenantControlSettingDefinition = {
+export type WorkspaceControlSettingDefinition = {
   key: string;
   label: string;
   options: readonly SettingOption[];
@@ -75,7 +75,7 @@ export type FeatureSettingDefinition = {
   description: string;
   key: string;
   label: string;
-  scope: "platform" | "tenant";
+  scope: "platform" | "workspace";
   valueOptions?: readonly SettingValueOption[];
   valueType: "boolean";
 };
@@ -83,7 +83,6 @@ export type FeatureSettingDefinition = {
 export const FEATURE_SETTING_KEYS = {
   email: "feature:email:enabled",
   invite: "feature:invite:enabled",
-  organizationManagement: "feature:org-management:enabled",
   passwordReset: "feature:password-reset:enabled",
   ticketing: "feature:ticketing:enabled",
   ticketingHandling: "feature:ticketing:handling:enabled",
@@ -92,14 +91,12 @@ export const FEATURE_SETTING_KEYS = {
 export const PLATFORM_TITLE_SETTING_KEY = "platform.title";
 
 export const PLATFORM_SETTING_KEYS = {
-  allowOrganizationCreation: "platform.allowOrganizationCreation",
   workspaceApplicationsEnabled: "platform.workspaceApplicationsEnabled",
-  defaultCurrency: "tenant.defaultCurrency",
-  defaultDateFormat: "tenant.defaultDateFormat",
-  defaultLanguage: "tenant.defaultLanguage",
-  defaultOrganizationStatus: "platform.defaultOrganizationStatus",
-  defaultRegionCode: "tenant.defaultRegionCode",
-  defaultTimeZone: "tenant.defaultTimeZone",
+  defaultCurrency: "workspace.defaultCurrency",
+  defaultDateFormat: "workspace.defaultDateFormat",
+  defaultLanguage: "workspace.defaultLanguage",
+  defaultRegionCode: "workspace.defaultRegionCode",
+  defaultTimeZone: "workspace.defaultTimeZone",
   messageServiceEnabled: "platform.messageServiceEnabled",
   messageServiceProvider: "platform.messageServiceProvider",
   passwordMinLength: "auth.passwordPolicy.minLength",
@@ -159,12 +156,7 @@ export const TIME_ZONE_OPTIONS = [
   { label: "新加坡时间 (Asia/Singapore)", value: "Asia/Singapore" },
 ] as const satisfies readonly SettingOption[];
 
-export const ORGANIZATION_STATUS_OPTIONS = [
-  { label: "启用", value: "active" },
-  { label: "停用", value: "suspended" },
-] as const satisfies readonly SettingOption[];
-
-export const TENANT_DEFAULT_FIELD_DEFINITIONS = [
+export const WORKSPACE_DEFAULT_FIELD_DEFINITIONS = [
   {
     field: "currency",
     key: PLATFORM_SETTING_KEYS.defaultCurrency,
@@ -200,24 +192,18 @@ export const TENANT_DEFAULT_FIELD_DEFINITIONS = [
     options: LANGUAGE_OPTIONS,
     valueType: "enum",
   },
-] as const satisfies readonly TenantDefaultFieldDefinition[];
+] as const satisfies readonly WorkspaceDefaultFieldDefinition[];
 
-export const TENANT_CONTROL_SETTING_DEFINITIONS = [
+export const WORKSPACE_CONTROL_SETTING_DEFINITIONS = [
   {
     key: PLATFORM_SETTING_KEYS.passwordMinLength,
     label: "密码最小长度",
     options: PASSWORD_LENGTH_OPTIONS,
     valueType: "enum",
   },
-] as const satisfies readonly TenantControlSettingDefinition[];
+] as const satisfies readonly WorkspaceControlSettingDefinition[];
 
 export const PLATFORM_SETTING_DEFINITIONS = {
-  allowOrganizationCreation: {
-    defaultValue: "true",
-    key: PLATFORM_SETTING_KEYS.allowOrganizationCreation,
-    scope: "platform",
-    valueType: "boolean",
-  },
   workspaceApplicationsEnabled: {
     defaultValue: "true",
     key: PLATFORM_SETTING_KEYS.workspaceApplicationsEnabled,
@@ -227,42 +213,35 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   defaultCurrency: {
     defaultValue: "CNY",
     key: PLATFORM_SETTING_KEYS.defaultCurrency,
-    scope: "tenant",
+    scope: "workspace",
     valueOptions: CURRENCY_OPTIONS,
     valueType: "enum",
   },
   defaultDateFormat: {
     defaultValue: "YYYY-MM-DD",
     key: PLATFORM_SETTING_KEYS.defaultDateFormat,
-    scope: "tenant",
+    scope: "workspace",
     valueOptions: DATE_FORMAT_OPTIONS,
     valueType: "enum",
   },
   defaultLanguage: {
     defaultValue: "zh-Hans",
     key: PLATFORM_SETTING_KEYS.defaultLanguage,
-    scope: "tenant",
+    scope: "workspace",
     valueOptions: LANGUAGE_OPTIONS,
-    valueType: "enum",
-  },
-  defaultOrganizationStatus: {
-    defaultValue: "active",
-    key: PLATFORM_SETTING_KEYS.defaultOrganizationStatus,
-    scope: "platform",
-    valueOptions: ORGANIZATION_STATUS_OPTIONS,
     valueType: "enum",
   },
   defaultRegionCode: {
     defaultValue: "CN",
     key: PLATFORM_SETTING_KEYS.defaultRegionCode,
-    scope: "tenant",
+    scope: "workspace",
     valueOptions: REGION_OPTIONS,
     valueType: "enum",
   },
   defaultTimeZone: {
     defaultValue: "Asia/Shanghai",
     key: PLATFORM_SETTING_KEYS.defaultTimeZone,
-    scope: "tenant",
+    scope: "workspace",
     valueOptions: TIME_ZONE_OPTIONS,
     valueType: "enum",
   },
@@ -281,7 +260,7 @@ export const PLATFORM_SETTING_DEFINITIONS = {
   passwordMinLength: {
     defaultValue: "8",
     key: PLATFORM_SETTING_KEYS.passwordMinLength,
-    scope: "tenant",
+    scope: "workspace",
     valueOptions: PASSWORD_LENGTH_OPTIONS,
     valueType: "enum",
   },
@@ -328,8 +307,8 @@ export const FEATURE_SETTING_DEFINITIONS = [
     defaultValue: "true",
     key: FEATURE_SETTING_KEYS.ticketing,
     label: "工作空间工单提交",
-    description: "允许工作空间成员从所属组织提交工单",
-    scope: "tenant",
+    description: "允许工作空间成员提交工单",
+    scope: "workspace",
     valueType: "boolean",
   },
   {
@@ -337,7 +316,7 @@ export const FEATURE_SETTING_DEFINITIONS = [
     key: FEATURE_SETTING_KEYS.ticketingHandling,
     label: "工作空间工单处理",
     description: "允许有处理权限的成员接收、回复并关闭可见工单",
-    scope: "tenant",
+    scope: "workspace",
     valueType: "boolean",
   },
   {
@@ -345,29 +324,22 @@ export const FEATURE_SETTING_DEFINITIONS = [
     key: FEATURE_SETTING_KEYS.email,
     label: "邮件功能",
     description: "启用或禁用工作空间邮件发送能力",
-    scope: "tenant",
+    scope: "workspace",
     valueType: "boolean",
   },
   {
     defaultValue: "true",
     key: FEATURE_SETTING_KEYS.invite,
     label: "邀请功能",
-    description: "允许通过邮件邀请用户加入工作空间及指定组织",
-    scope: "tenant",
+    description: "允许通过邮件邀请成员加入工作空间",
+    scope: "workspace",
     valueType: "boolean",
   },
   {
     key: FEATURE_SETTING_KEYS.passwordReset,
     label: "密码重置",
     description: "允许用户通过邮件重置密码",
-    scope: "tenant",
-    valueType: "boolean",
-  },
-  {
-    key: FEATURE_SETTING_KEYS.organizationManagement,
-    label: "组织管理",
-    description: "启用工作空间组织树管理功能",
-    scope: "tenant",
+    scope: "workspace",
     valueType: "boolean",
   },
   {
@@ -386,14 +358,14 @@ export const FEATURE_SETTING_DEFINITIONS = [
   },
 ] as const satisfies readonly FeatureSettingDefinition[];
 
-export const PLATFORM_TENANT_SETTING_DEFAULTS: readonly PlatformDefaultSetting[] = [
-  ...TENANT_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
+export const PLATFORM_WORKSPACE_SETTING_DEFAULTS: readonly PlatformDefaultSetting[] = [
+  ...WORKSPACE_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
     name: definition.key,
     value: getPlatformSettingDefinition(definition.key).defaultValue ?? "",
     valueOptions: getPlatformSettingDefinition(definition.key).valueOptions,
     valueType: getPlatformSettingDefinition(definition.key).valueType,
   })),
-  ...TENANT_CONTROL_SETTING_DEFINITIONS.map((definition) => ({
+  ...WORKSPACE_CONTROL_SETTING_DEFINITIONS.map((definition) => ({
     name: definition.key,
     value: getPlatformSettingDefinition(definition.key).defaultValue ?? "",
     valueOptions: getPlatformSettingDefinition(definition.key).valueOptions,

@@ -1,50 +1,54 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BadRequestException } from "@nestjs/common";
-import { CustomSmtp, EmailLog, EmailTemplate } from "@hermes-swarm/core";
-import { getMetadataArgsStorage } from "typeorm";
+import {
+  CustomSmtp,
+  EmailLog,
+  EmailTemplate,
+  WorkspaceOwnedBaseEntity,
+} from "@hermes-swarm/core";
 import { MailService } from "./mail.service.js";
 
 describe("MailService workspace ownership", () => {
-  it("stores SMTP and templates at tenant scope without organization columns", () => {
-    const smtpColumns = getMetadataArgsStorage().columns
-      .filter((column) => column.target === CustomSmtp)
-      .map((column) => column.propertyName);
-    const templateColumns = getMetadataArgsStorage().columns
-      .filter((column) => column.target === EmailTemplate)
-      .map((column) => column.propertyName);
-    assert.equal(smtpColumns.includes("organizationId"), false);
-    assert.equal(templateColumns.includes("organizationId"), false);
+  it("stores SMTP and templates directly at workspace scope", () => {
+    assert.equal(
+      CustomSmtp.prototype instanceof WorkspaceOwnedBaseEntity,
+      true,
+    );
+    assert.equal(
+      EmailTemplate.prototype instanceof WorkspaceOwnedBaseEntity,
+      true,
+    );
   });
 
-  it("creates tenant templates with the current tenant id", async () => {
+  it("creates workspace templates with the current workspace id", async () => {
     const state = createState();
-    const created = await state.service.createTenantTemplate({
+    const created = await state.service.createWorkspaceTemplate({
       hbs: "<p>{{workspaceName}}</p>",
       languageCode: "zh-CN",
-      name: "organization-invite",
+      name: "workspace-invite",
       subject: "{{workspaceName}} 邀请",
     });
-    assert.equal(created.name, "organization-invite");
-    assert.equal(state.templates[0]?.tenantId, "tenant-a");
+    assert.equal(created.name, "workspace-invite");
+    assert.equal(state.templates[0]?.workspaceId, "workspace-a");
   });
 
   it("saves one workspace SMTP configuration", async () => {
     const state = createState();
-    const smtp = await state.service.saveTenantSmtp({
+    const smtp = await state.service.saveWorkspaceSmtp({
       fromAddress: "noreply@example.com",
       host: "smtp.example.com",
       port: 587,
       secure: false,
     });
     assert.equal(smtp.host, "smtp.example.com");
-    assert.equal(state.smtp[0]?.tenantId, "tenant-a");
+    assert.equal(state.smtp[0]?.workspaceId, "workspace-a");
   });
 
   it("renders safe template previews and rejects malformed SMTP", () => {
     const state = createState();
     assert.match(
-      state.service.previewTemplate({ hbs: "<p>{{tenantName}}</p>" }).html,
+      state.service.previewTemplate({ hbs: "<p>{{workspaceName}}</p>" }).html,
       /Hermes/,
     );
     assert.throws(
@@ -53,12 +57,12 @@ describe("MailService workspace ownership", () => {
     );
   });
 
-  it("queries only unarchived tenant email logs", async () => {
+  it("queries only unarchived workspace email logs", async () => {
     const state = createState();
     await state.service.listLogs();
     assert.deepEqual(state.logQueries[0]?.where, {
       isArchived: false,
-      tenantId: "tenant-a",
+      workspaceId: "workspace-a",
     });
   });
 });
@@ -73,7 +77,7 @@ function createState() {
     save: async (value: any) => { templates.push(value); return value; },
   };
   const smtpRepository = {
-    create: (value: any) => ({ id: "smtp-a", tenantId: "tenant-a", ...value }),
+    create: (value: any) => ({ id: "smtp-a", workspaceId: "workspace-a", ...value }),
     findOne: async () => smtp[0] ?? null,
     save: async (value: any) => { if (!smtp.includes(value)) smtp.push(value); return value; },
   };
@@ -100,7 +104,7 @@ function createState() {
     logRepository as never,
     emptyPlatformRepository as never,
     emptyPlatformRepository as never,
-    { current: () => ({ manager, tenantId: "tenant-a" }) } as never,
+    { current: () => ({ manager, workspaceId: "workspace-a" }) } as never,
   );
   return { logQueries, service, smtp, templates };
 }

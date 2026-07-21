@@ -10,7 +10,7 @@ import {
 const originalEnvironment = {
   NODE_ENV: process.env.NODE_ENV,
   POSTGRES_TEST_URL: process.env.POSTGRES_TEST_URL,
-  POSTGRES_TENANT_URL: process.env.POSTGRES_TENANT_URL,
+  POSTGRES_WORKSPACE_URL: process.env.POSTGRES_WORKSPACE_URL,
   POSTGRES_PLATFORM_URL: process.env.POSTGRES_PLATFORM_URL,
   POSTGRES_URL: process.env.POSTGRES_URL,
   DATABASE_SYNCHRONIZE: process.env.DATABASE_SYNCHRONIZE,
@@ -79,7 +79,7 @@ describe("database runtime configuration", () => {
       "postgresql://test.example/hermes-test",
     );
     assert.equal(
-      databaseRuntimeConfig().tenantUrl,
+      databaseRuntimeConfig().workspaceUrl,
       "postgresql://test.example/hermes-test",
     );
     assert.equal(
@@ -121,17 +121,17 @@ describe("database runtime configuration", () => {
     );
   });
 
-  it("requires distinct tenant and platform database credentials in production", () => {
+  it("requires distinct workspace and platform database credentials in production", () => {
     assert.throws(
       () => validateRuntimeConfig({ NODE_ENV: "production" }),
-      /POSTGRES_TENANT_URL and POSTGRES_PLATFORM_URL are required/,
+      /POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required/,
     );
     assert.throws(
       () =>
         validateRuntimeConfig({
           NODE_ENV: "production",
           POSTGRES_PLATFORM_URL: "postgresql://app.example/hermes",
-          POSTGRES_TENANT_URL: "postgresql://app.example/hermes",
+          POSTGRES_WORKSPACE_URL: "postgresql://app.example/hermes",
         }),
       /must use separate database credentials/,
     );
@@ -143,8 +143,8 @@ describe("database runtime configuration", () => {
         PASSWORD_RESET_TOKEN_SECRET:
           "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
         POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
-        POSTGRES_TENANT_URL:
-          "postgresql://hermes_tenant_app@app.example/hermes",
+        POSTGRES_WORKSPACE_URL:
+          "postgresql://hermes_workspace_app@app.example/hermes",
         SETTINGS_ENCRYPTION_KEY:
           "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
         WEB_SESSION_SECRET: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
@@ -155,16 +155,16 @@ describe("database runtime configuration", () => {
         validateRuntimeConfig({
           NODE_ENV: "production",
           POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
-          POSTGRES_TENANT_URL: "postgresql://tenant@app.example/hermes",
+          POSTGRES_WORKSPACE_URL: "postgresql://workspace@app.example/hermes",
         }),
-      /must authenticate as hermes_tenant_app/,
+      /must authenticate as hermes_workspace_app/,
     );
   });
 
   it("requires the isolated RLS credentials during development", () => {
     assert.throws(
       () => validateRuntimeConfig({ NODE_ENV: "development" }),
-      /POSTGRES_TENANT_URL and POSTGRES_PLATFORM_URL are required outside tests/,
+      /POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required outside tests/,
     );
     assert.throws(
       () =>
@@ -178,8 +178,8 @@ describe("database runtime configuration", () => {
       validateRuntimeConfig({
         NODE_ENV: "development",
         POSTGRES_PLATFORM_URL: "postgresql://hermes@app.example/hermes",
-        POSTGRES_TENANT_URL:
-          "postgresql://hermes_tenant_app@app.example/hermes",
+        POSTGRES_WORKSPACE_URL:
+          "postgresql://hermes_workspace_app@app.example/hermes",
       }),
     );
   });
@@ -192,8 +192,8 @@ describe("database runtime configuration", () => {
       PASSWORD_RESET_TOKEN_SECRET:
         "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
       POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
-      POSTGRES_TENANT_URL:
-        "postgresql://hermes_tenant_app@app.example/hermes",
+      POSTGRES_WORKSPACE_URL:
+        "postgresql://hermes_workspace_app@app.example/hermes",
       SETTINGS_ENCRYPTION_KEY:
         "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
       WEB_SESSION_SECRET: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",

@@ -8,6 +8,7 @@ import { HttpAdapterHost } from "@nestjs/core";
 import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
+import { PublicRealtimeEnvelopeSchema } from "@hermes-swarm/api-contracts/realtime";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 
 type RealtimeClient = {
@@ -15,7 +16,7 @@ type RealtimeClient = {
   id: string;
   sessionId?: string;
   socket: Socket;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
 };
 
@@ -32,7 +33,7 @@ const MAX_CLIENT_FRAME_BUFFER_BYTES = 1024 * 1024;
 export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(RealtimeService.name);
   private readonly clients = new Map<string, RealtimeClient>();
-  private readonly clientsByTenantUser = new Map<string, Set<string>>();
+  private readonly clientsByWorkspaceUser = new Map<string, Set<string>>();
   private server: { on: (event: string, listener: (...args: any[]) => void) => void } | null =
     null;
 
@@ -53,12 +54,12 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       client.socket.destroy();
     }
     this.clients.clear();
-    this.clientsByTenantUser.clear();
+    this.clientsByWorkspaceUser.clear();
   }
 
-  publishToUser(tenantId: string, userId: string, event: RealtimeEvent) {
-    const clientIds = this.clientsByTenantUser.get(
-      recipientKey(tenantId, userId),
+  publishToUser(workspaceId: string, userId: string, event: RealtimeEvent) {
+    const clientIds = this.clientsByWorkspaceUser.get(
+      recipientKey(workspaceId, userId),
     );
     if (!clientIds?.size) return;
     for (const clientId of clientIds) {
@@ -67,9 +68,9 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
     }
   }
 
-  publishToUsers(tenantId: string, userIds: string[], event: RealtimeEvent) {
+  publishToUsers(workspaceId: string, userIds: string[], event: RealtimeEvent) {
     for (const userId of new Set(userIds)) {
-      this.publishToUser(tenantId, userId, event);
+      this.publishToUser(workspaceId, userId, event);
     }
   }
 
@@ -92,8 +93,8 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
       const session = ticket
         ? await this.authSessionService.consumeRealtimeTicket(ticket)
         : await this.authSessionService.validateAccessToken(token ?? undefined);
-      const tenantId = session.tenantId?.trim();
-      if (!tenantId) throw new Error("Tenant session required");
+      const workspaceId = session.workspaceId?.trim();
+      if (!workspaceId) throw new Error("Workspace session required");
       const accept = createHash("sha1")
         .update(`${websocketKey}${WEBSOCKET_GUID}`)
         .digest("base64");
@@ -110,10 +111,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
 
       const client: RealtimeClient = {
         buffer: Buffer.alloc(0),
-        id: `${tenantId}:${randomUUID()}`,
+        id: `${workspaceId}:${randomUUID()}`,
         sessionId: session.sessionId,
         socket,
-        tenantId,
+        workspaceId,
         userId: session.userId,
       };
       this.register(client);
@@ -122,7 +123,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
         payload: {
           clientId: client.id,
           sessionId: client.sessionId,
-          tenantId: client.tenantId,
+          workspaceId: client.workspaceId,
         },
       });
     } catch {
@@ -133,10 +134,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
 
   private register(client: RealtimeClient) {
     this.clients.set(client.id, client);
-    const key = recipientKey(client.tenantId, client.userId);
-    const userClients = this.clientsByTenantUser.get(key) ?? new Set<string>();
+    const key = recipientKey(client.workspaceId, client.userId);
+    const userClients = this.clientsByWorkspaceUser.get(key) ?? new Set<string>();
     userClients.add(client.id);
-    this.clientsByTenantUser.set(key, userClients);
+    this.clientsByWorkspaceUser.set(key, userClients);
 
     client.socket.on("data", (chunk) => this.handleData(client, chunk));
     client.socket.on("close", () => this.unregister(client));
@@ -145,11 +146,11 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
 
   private unregister(client: RealtimeClient) {
     this.clients.delete(client.id);
-    const key = recipientKey(client.tenantId, client.userId);
-    const userClients = this.clientsByTenantUser.get(key);
+    const key = recipientKey(client.workspaceId, client.userId);
+    const userClients = this.clientsByWorkspaceUser.get(key);
     userClients?.delete(client.id);
     if (userClients && userClients.size === 0) {
-      this.clientsByTenantUser.delete(key);
+      this.clientsByWorkspaceUser.delete(key);
     }
   }
 
@@ -190,13 +191,23 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
 
   private send(client: RealtimeClient, event: RealtimeEvent) {
     if (client.socket.destroyed) return;
-    const payload = JSON.stringify({
+    const wireEvent = toWireValue({
       id: event.id ?? randomUUID(),
       payload: event.payload ?? null,
       sentAt: new Date().toISOString(),
-      tenantId: client.tenantId,
+      workspaceId: client.workspaceId,
       type: event.type,
     });
+    const parsed = PublicRealtimeEnvelopeSchema.safeParse(wireEvent);
+    if (!parsed.success) {
+      this.logger.warn(JSON.stringify({
+        code: "REALTIME_CONTRACT_MISMATCH",
+        issues: parsed.error.issues.map((issue) => issue.path.join(".") || "event"),
+        type: event.type,
+      }));
+      return;
+    }
+    const payload = JSON.stringify(parsed.data);
     try {
       this.writeFrame(client, encodeFrame(Buffer.from(payload, "utf8"), 0x1));
     } catch (error) {
@@ -241,8 +252,15 @@ export class RealtimeService implements OnApplicationBootstrap, OnModuleDestroy 
   }
 }
 
-function recipientKey(tenantId: string, userId: string) {
-  return `${tenantId}:${userId}`;
+function toWireValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(toWireValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toWireValue(item)]));
+}
+
+function recipientKey(workspaceId: string, userId: string) {
+  return `${workspaceId}:${userId}`;
 }
 
 function extractBearerToken(value: string | string[] | undefined) {

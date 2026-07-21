@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { FeatureAccessGuard } from "./feature-access.guard.js";
 
-describe("FeatureAccessGuard tenant context", () => {
+describe("FeatureAccessGuard workspace context", () => {
   it("does not open a transaction when no feature is required", async () => {
     let transactionStarted = false;
     const guard = new FeatureAccessGuard(
@@ -15,22 +15,22 @@ describe("FeatureAccessGuard tenant context", () => {
     assert.equal(transactionStarted, false);
   });
 
-  it("checks tenant feature gates in a tenant transaction", async () => {
+  it("checks workspace feature gates in a workspace transaction", async () => {
     const queries: unknown[] = [];
     let checked = false;
-    const tenantContext = {
+    const workspaceContext = {
       current: () => null,
       run: (_context: unknown, work: () => unknown) => work(),
     };
     const manager = { query: async (...args: unknown[]) => { queries.push(args); } };
     const guard = new FeatureAccessGuard(
-      { isFeatureEnabled: async (_key: string, input: unknown) => { checked = true; assert.deepEqual(input, { tenantId: "tenant-a" }); return true; } } as never,
+      { isFeatureEnabled: async (_key: string, input: unknown) => { checked = true; assert.deepEqual(input, { workspaceId: "workspace-a" }); return true; } } as never,
       { getAllAndOverride: () => "feature:invite:enabled" } as never,
       { transaction: async (work: (manager: unknown) => unknown) => work(manager) } as never,
-      tenantContext as never,
+      workspaceContext as never,
     );
     assert.equal(
-      await guard.canActivate(context({ accessPrincipal: { tenantId: "tenant-a" } })),
+      await guard.canActivate(context({ accessPrincipal: { workspaceId: "workspace-a" } })),
       true,
     );
     assert.equal(checked, true);

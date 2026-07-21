@@ -14,7 +14,7 @@ type RoleState = {
 export class DatabaseRoleValidatorService implements OnApplicationBootstrap {
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
-    @InjectDataSource() private readonly tenantDataSource: DataSource,
+    @InjectDataSource() private readonly workspaceDataSource: DataSource,
     @InjectDataSource(PLATFORM_DATA_SOURCE)
     private readonly platformDataSource: DataSource,
   ) {}
@@ -22,7 +22,7 @@ export class DatabaseRoleValidatorService implements OnApplicationBootstrap {
   async onApplicationBootstrap() {
     if (!this.configService.getOrThrow<boolean>("database.strictRls")) return;
 
-    const [tenant] = await this.tenantDataSource.query<RoleState[]>(
+    const [workspace] = await this.workspaceDataSource.query<RoleState[]>(
       `SELECT current_user, rolsuper, rolbypassrls
          FROM pg_roles
         WHERE rolname = current_user`,
@@ -32,20 +32,20 @@ export class DatabaseRoleValidatorService implements OnApplicationBootstrap {
          FROM pg_roles
         WHERE rolname = current_user`,
     );
-    if (!tenant || tenant.current_user !== "hermes_tenant_app") {
+    if (!workspace || workspace.current_user !== "hermes_workspace_app") {
       throw new Error(
-        "Tenant datasource must run as hermes_tenant_app when strict RLS is enabled",
+        "Workspace datasource must run as hermes_workspace_app when strict RLS is enabled",
       );
     }
-    if (tenant.rolsuper || tenant.rolbypassrls) {
-      throw new Error("Tenant datasource database role must not bypass RLS");
+    if (workspace.rolsuper || workspace.rolbypassrls) {
+      throw new Error("Workspace datasource database role must not bypass RLS");
     }
-    if (!platform || platform.current_user === tenant.current_user) {
+    if (!platform || platform.current_user === workspace.current_user) {
       throw new Error("Platform datasource must use a distinct database role");
     }
     if (!platform.rolsuper && !platform.rolbypassrls) {
       throw new Error(
-        "Platform datasource database role must be allowed to bypass tenant RLS",
+        "Platform datasource database role must be allowed to bypass workspace RLS",
       );
     }
   }

@@ -16,10 +16,6 @@ import {
 describe("setting definitions", () => {
   it("resolves known platform setting value types from definitions", () => {
     assert.equal(
-      resolveSettingValueType(PLATFORM_SETTING_KEYS.allowOrganizationCreation, "string"),
-      "boolean",
-    );
-    assert.equal(
       resolveSettingValueType(PLATFORM_SETTING_KEYS.defaultCurrency, null),
       "enum",
     );
@@ -69,7 +65,7 @@ describe("setting definitions", () => {
 
   it("keeps business feature gates at workspace scope", () => {
     const workspaceFeatureKeys = FEATURE_SETTING_DEFINITIONS.filter(
-      (definition) => definition.scope === "tenant",
+      (definition) => definition.scope === "workspace",
     ).map((definition) => definition.key);
 
     assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.ticketing));
@@ -78,11 +74,9 @@ describe("setting definitions", () => {
     );
     assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.email));
     assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.invite));
-    assert.equal(
-      FEATURE_SETTING_DEFINITIONS.some(
-        (definition) => (definition.scope as string) === "organization",
-      ),
-      false,
+    assert.deepEqual(
+      [...new Set(FEATURE_SETTING_DEFINITIONS.map((definition) => definition.scope))],
+      ["workspace", "platform"],
     );
     assert.equal(
       FEATURE_SETTING_DEFINITIONS.find(

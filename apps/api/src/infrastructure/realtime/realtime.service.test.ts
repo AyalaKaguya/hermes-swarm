@@ -23,7 +23,7 @@ describe("RealtimeService", () => {
           assert.equal(token, "token-1");
           return {
             sessionId: "session-1",
-            tenantId: "tenant-1",
+            workspaceId: "workspace-1",
             userId: "user-1",
           };
         },
@@ -47,15 +47,15 @@ describe("RealtimeService", () => {
     assert.match(String(socket.writes[0]), /101 Switching Protocols/);
     assert.equal(decodeServerFrame(socket.writes[1] as Buffer).type, "realtime.connected");
 
-    service.publishToUser("tenant-1", "user-1", {
-      payload: { value: 1 },
-      type: "custom.event",
+    service.publishToUser("workspace-1", "user-1", {
+      payload: { message: "test" },
+      type: "realtime.error",
     });
 
     const pushed = decodeServerFrame(socket.writes[2] as Buffer);
-    assert.equal(pushed.type, "custom.event");
-    assert.deepEqual(pushed.payload, { value: 1 });
-    assert.equal(pushed.tenantId, "tenant-1");
+    assert.equal(pushed.type, "realtime.error");
+    assert.deepEqual(pushed.payload, { message: "test" });
+    assert.equal(pushed.workspaceId, "workspace-1");
   });
 
   it("rejects unauthenticated websocket upgrades", async () => {
@@ -117,7 +117,7 @@ describe("RealtimeService", () => {
           consumedTicket = ticket;
           return {
             sessionId: "session-1",
-            tenantId: "tenant-1",
+            workspaceId: "workspace-1",
             userId: "user-1",
           };
         },
@@ -162,7 +162,7 @@ describe("RealtimeService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "session-1",
-          tenantId: "tenant-1",
+          workspaceId: "workspace-1",
           userId: "user-1",
         }),
       } as any,
@@ -207,7 +207,7 @@ describe("RealtimeService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "session-1",
-          tenantId: "tenant-1",
+          workspaceId: "workspace-1",
           userId: "user-1",
         }),
       } as any,
@@ -249,7 +249,7 @@ describe("RealtimeService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "session-1",
-          tenantId: "tenant-1",
+          workspaceId: "workspace-1",
           userId: "user-1",
         }),
       } as any,
@@ -291,7 +291,7 @@ describe("RealtimeService", () => {
       {
         validateAccessToken: async () => ({
           sessionId: "session-1",
-          tenantId: "tenant-1",
+          workspaceId: "workspace-1",
           userId: "user-1",
         }),
       } as any,
@@ -312,16 +312,16 @@ describe("RealtimeService", () => {
     await upgradeHandler(request, brokenSocket);
     await upgradeHandler(request, healthySocket);
 
-    service.publishToUser("tenant-1", "user-1", {
-      payload: { value: 1 },
-      type: "custom.event",
+    service.publishToUser("workspace-1", "user-1", {
+      payload: { message: "test" },
+      type: "realtime.error",
     });
 
     assert.equal(brokenSocket.destroyed, true);
-    assert.equal(decodeServerFrame(healthySocket.writes[2] as Buffer).type, "custom.event");
+    assert.equal(decodeServerFrame(healthySocket.writes[2] as Buffer).type, "realtime.error");
   });
 
-  it("isolates the same user id across tenant client namespaces", async () => {
+  it("isolates the same user id across workspace client namespaces", async () => {
     let upgradeHandler:
       | ((request: unknown, socket: FakeSocket) => Promise<void> | void)
       | null = null;
@@ -338,36 +338,37 @@ describe("RealtimeService", () => {
       {
         validateAccessToken: async (token: string) => ({
           sessionId: token,
-          tenantId: token === "tenant-1-token" ? "tenant-1" : "tenant-2",
+          workspaceId: token === "workspace-1-token" ? "workspace-1" : "workspace-2",
           userId: "shared-user-id",
         }),
       } as any,
     );
     service.onApplicationBootstrap();
     assert.ok(upgradeHandler);
-    const tenantOneSocket = new FakeSocket();
-    const tenantTwoSocket = new FakeSocket();
+    const workspaceOneSocket = new FakeSocket();
+    const workspaceTwoSocket = new FakeSocket();
     await upgradeHandler(
       {
         headers: { "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==" },
-        url: "/api/realtime?access_token=tenant-1-token",
+        url: "/api/realtime?access_token=workspace-1-token",
       },
-      tenantOneSocket,
+      workspaceOneSocket,
     );
     await upgradeHandler(
       {
         headers: { "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==" },
-        url: "/api/realtime?access_token=tenant-2-token",
+        url: "/api/realtime?access_token=workspace-2-token",
       },
-      tenantTwoSocket,
+      workspaceTwoSocket,
     );
 
-    service.publishToUser("tenant-1", "shared-user-id", {
-      type: "tenant.event",
+    service.publishToUser("workspace-1", "shared-user-id", {
+      payload: { message: "test" },
+      type: "realtime.error",
     });
 
-    assert.equal(tenantOneSocket.writes.length, 3);
-    assert.equal(tenantTwoSocket.writes.length, 2);
+    assert.equal(workspaceOneSocket.writes.length, 3);
+    assert.equal(workspaceTwoSocket.writes.length, 2);
   });
 });
 

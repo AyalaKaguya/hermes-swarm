@@ -1,14 +1,14 @@
 import { Column, Entity, Index } from "typeorm";
-import { TenantOwnedBaseEntity } from "./tenant-owned-base.entity.js";
+import { BaseEntity } from "./base.entity.js";
 
 @Entity({ name: "password_reset" })
 @Index(["token"])
-@Index(["tenantId", "email"])
+@Index(["email"])
 /**
  * Tracks password reset requests with a time-limited token so callers can
  * exchange a token for a new password.
  */
-export class PasswordReset extends TenantOwnedBaseEntity {
+export class PasswordReset extends BaseEntity {
   /**
    * Target email address for the reset request.
    */

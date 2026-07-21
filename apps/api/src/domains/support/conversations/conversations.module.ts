@@ -4,7 +4,7 @@ import {
   Conversation,
   ConversationMessage,
   ConversationParticipant,
-  User,
+  Account,
 } from "@hermes-swarm/core";
 import { NotificationsModule } from "../../../infrastructure/notifications/notifications.module.js";
 import { RealtimeModule } from "../../../infrastructure/realtime/realtime.module.js";
@@ -20,7 +20,7 @@ import { ConversationCapabilityService } from "./conversations.service.js";
       Conversation,
       ConversationMessage,
       ConversationParticipant,
-      User,
+      Account,
     ]),
   ],
   providers: [ConversationCapabilityService],

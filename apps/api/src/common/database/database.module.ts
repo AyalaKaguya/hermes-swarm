@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { TenantContextService } from "./tenant-context.service.js";
+import { WorkspaceContextService } from "./workspace-context.service.js";
 import { PLATFORM_DATA_SOURCE } from "./database.constants.js";
 import { DatabaseRoleValidatorService } from "./database-role-validator.service.js";
 import { DATABASE_ENTITIES } from "./database-entities.js";
@@ -16,7 +16,7 @@ import { DATABASE_ENTITIES } from "./database-entities.js";
         );
         return {
           type: "postgres",
-          url: configService.getOrThrow<string>("database.tenantUrl"),
+          url: configService.getOrThrow<string>("database.workspaceUrl"),
           entities: [...DATABASE_ENTITIES],
           autoLoadEntities: true,
           // Development and isolated tests synchronize directly from entities.
@@ -56,7 +56,7 @@ import { DATABASE_ENTITIES } from "./database-entities.js";
       }),
     }),
   ],
-  providers: [DatabaseRoleValidatorService, TenantContextService],
-  exports: [TenantContextService],
+  providers: [DatabaseRoleValidatorService, WorkspaceContextService],
+  exports: [WorkspaceContextService],
 })
 export class DatabaseModule {}

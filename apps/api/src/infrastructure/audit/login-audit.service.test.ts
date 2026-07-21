@@ -21,7 +21,7 @@ describe("LoginAuditService", () => {
 
     assert.equal(rows[0]?.attemptedEmail, "admin@example.com");
     assert.equal(rows[0]?.deviceLabel, "Chrome / Windows");
-    assert.equal(rows[0]?.tenantId, null);
+    assert.equal(rows[0]?.workspaceId, null);
   });
 
   it("does not propagate persistence failures into authentication", async () => {

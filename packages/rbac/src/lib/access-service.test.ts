@@ -3,196 +3,120 @@ import { describe, it } from "node:test";
 import { AccessService } from "./access-service.js";
 import type { ResolvedAccessDefinition } from "./access.types.js";
 
-describe("AccessService hierarchical authorization", () => {
-  it("allows platform permissions only through independent platform roles", async () => {
+describe("AccessService unified role authorization", () => {
+  it("allows platform permissions only through a platform membership", async () => {
     const service = createService({
-      platformRolePermissions: [
+      rolePermissions: [
         {
           enabled: true,
-          permission: { code: "tenant.application.approve:platform" },
-          platformRoleId: "platform-role-1",
+          permissionRecord: { code: "workspace.application.approve:platform" },
+          roleId: "platform-role-1",
         },
       ],
-      platformUserRoles: [
-        { platformRoleId: "platform-role-1", platformUserId: "platform-user-1" },
+      platformMemberships: [
+        {
+          accountId: "account-1",
+          role: { scope: "platform" },
+          roleId: "platform-role-1",
+          status: "active",
+        },
       ],
     });
     const permission = definition(
-      "tenant.application.approve:platform",
+      "workspace.application.approve:platform",
       "platform",
     );
 
     assert.equal(
-      await service.can("platform-user-1", permission, {
+      await service.can("account-1", permission, {
         principalType: "platform",
-        tenantId: null,
+        workspaceId: null,
       }),
       true,
     );
     assert.equal(
-      await service.can("platform-user-1", permission, {
-        principalType: "tenant",
-        tenantId: "tenant-1",
+      await service.can("account-1", permission, {
+        principalType: "workspace",
+        workspaceId: "workspace-1",
       }),
       false,
     );
   });
 
-  it("uses only the exact organization role at organization scope", async () => {
-    const permission = definition("ticket.handle:organization", "organization");
+  it("uses the member's single workspace role at workspace scope", async () => {
+    const permission = definition(
+      "ticket.conversation.handle:workspace",
+      "workspace",
+    );
     const service = createService({
-      memberships: [
-        {
-          id: "membership-1",
-          organizationId: "org-1",
-          status: "active",
-          tenantId: "tenant-1",
-          userId: "user-1",
-        },
-      ],
-      organizationRoles: [
-        {
-          membershipId: "membership-1",
-          role: { organizationId: "org-1", scope: "organization" },
-          roleId: "role-organization",
-          tenantId: "tenant-1",
-        },
-      ],
       rolePermissions: [
         {
           enabled: true,
-          permission: permission.id,
-          roleId: "role-organization",
-          tenantId: "tenant-1",
+          permissionRecord: { code: permission.id },
+          roleId: "role-workspace",
+        },
+      ],
+      workspaceRoles: [
+        {
+          role: { scope: "workspace" },
+          accountId: "user-1",
+          roleId: "role-workspace",
+          status: "active",
+          workspaceId: "workspace-1",
         },
       ],
     });
 
     assert.equal(
       await service.can("user-1", permission, {
-        organizationId: "org-1",
-        principalType: "tenant",
-        tenantId: "tenant-1",
+        principalType: "workspace",
+        workspaceId: "workspace-1",
       }),
       true,
     );
-  });
-
-  it("rejects an organization outside the tenant user's memberships", async () => {
-    const permission = definition("ticket.list:organization", "organization");
-    const service = createService({
-      memberships: [
-        {
-          id: "membership-1",
-          organizationId: "org-1",
-          status: "active",
-          tenantId: "tenant-1",
-          userId: "user-1",
-        },
-      ],
-      organizationRoles: [
-        {
-          membershipId: "membership-1",
-          role: { organizationId: "org-1", scope: "organization" },
-          roleId: "role-org",
-          tenantId: "tenant-1",
-        },
-      ],
-      rolePermissions: [
-        {
-          enabled: true,
-          permission: permission.id,
-          roleId: "role-org",
-          tenantId: "tenant-1",
-        },
-      ],
-    });
-
     assert.equal(
       await service.can("user-1", permission, {
-        organizationId: "org-2",
-        principalType: "tenant",
-        tenantId: "tenant-1",
+        principalType: "workspace",
+        workspaceId: "workspace-2",
       }),
       false,
     );
   });
 
-  it("requires a matching target and a tenant role for own scope", async () => {
+  it("requires a matching target and a workspace role for own scope", async () => {
     const permission = definition("user.profile.update:own", "own");
     const service = createService({
       rolePermissions: [
         {
           enabled: true,
-          permission: permission.id,
-          roleId: "role-tenant",
-          tenantId: "tenant-1",
+          permissionRecord: { code: permission.id },
+          roleId: "role-workspace",
         },
       ],
-      tenantRoles: [
+      workspaceRoles: [
         {
-          role: { scope: "tenant" },
-          roleId: "role-tenant",
-          tenantId: "tenant-1",
-          userId: "user-1",
+          role: { scope: "workspace" },
+          accountId: "user-1",
+          roleId: "role-workspace",
+          status: "active",
+          workspaceId: "workspace-1",
         },
       ],
     });
 
     assert.equal(
       await service.can("user-1", permission, {
-        principalType: "tenant",
+        principalType: "workspace",
         targetUserId: "user-1",
-        tenantId: "tenant-1",
+        workspaceId: "workspace-1",
       }),
       true,
     );
     assert.equal(
       await service.can("user-1", permission, {
-        principalType: "tenant",
+        principalType: "workspace",
         targetUserId: "user-2",
-        tenantId: "tenant-1",
-      }),
-      false,
-    );
-  });
-
-  it("does not use organization roles for own-scoped resources", async () => {
-    const permission = definition("ticket.conversation.list_messages:own", "own");
-    const service = createService({
-      memberships: [
-        {
-          id: "membership-1",
-          organizationId: "org-1",
-          status: "active",
-          tenantId: "tenant-1",
-          userId: "user-1",
-        },
-      ],
-      organizationRoles: [
-        {
-          membershipId: "membership-1",
-          role: { organizationId: "org-1", scope: "organization" },
-          roleId: "role-org",
-          tenantId: "tenant-1",
-        },
-      ],
-      rolePermissions: [
-        {
-          enabled: true,
-          permission: permission.id,
-          roleId: "role-org",
-          tenantId: "tenant-1",
-        },
-      ],
-    });
-
-    assert.equal(
-      await service.can("user-1", permission, {
-        organizationId: "org-1",
-        principalType: "tenant",
-        targetUserId: "user-1",
-        tenantId: "tenant-1",
+        workspaceId: "workspace-1",
       }),
       false,
     );
@@ -202,16 +126,12 @@ describe("AccessService hierarchical authorization", () => {
 function createService(options: Record<string, any[]> = {}) {
   const repositories = {
     RolePermission: repository(options.rolePermissions ?? []),
-    UserOrganization: repository(options.memberships ?? []),
-    UserOrganizationRole: repository(options.organizationRoles ?? []),
-    UserTenantRole: repository(options.tenantRoles ?? []),
+    WorkspaceMembership: repository(options.workspaceRoles ?? []),
   } as Record<string, any>;
   return new AccessService(
-    repository(options.platformUserRoles ?? []),
-    repository(options.platformRolePermissions ?? []),
-    repositories.UserTenantRole,
-    repositories.UserOrganization,
-    repositories.UserOrganizationRole,
+    repository(options.platformMemberships ?? []),
+    repositories.RolePermission,
+    repositories.WorkspaceMembership,
     repositories.RolePermission,
     {
       transaction: async (work: any) =>

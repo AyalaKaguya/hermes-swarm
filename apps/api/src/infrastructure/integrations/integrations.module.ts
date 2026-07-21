@@ -3,9 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   IntegrationToken,
   RolePermission,
-  UserOrganization,
-  UserOrganizationRole,
-  UserTenantRole,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
@@ -19,9 +17,7 @@ import { IntegrationTokensService } from "./integration-tokens.service.js";
     TypeOrmModule.forFeature([
       IntegrationToken,
       RolePermission,
-      UserOrganization,
-      UserOrganizationRole,
-      UserTenantRole,
+      WorkspaceMembership,
     ]),
   ],
   controllers: [IntegrationTokensController],
