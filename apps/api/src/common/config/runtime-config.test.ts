@@ -88,19 +88,49 @@ describe("database runtime configuration", () => {
     );
   });
 
-  it("enables strict RLS automatically in production", () => {
-    process.env.NODE_ENV = "production";
-    delete process.env.DATABASE_STRICT_RLS;
-    assert.equal(databaseRuntimeConfig().strictRls, true);
+  it("uses POSTGRES_URL for both datasources when dedicated URLs are absent", () => {
+    process.env.NODE_ENV = "development";
+    process.env.POSTGRES_URL = "postgresql://shared.example/hermes";
+    delete process.env.POSTGRES_TEST_URL;
+    delete process.env.POSTGRES_WORKSPACE_URL;
+    delete process.env.POSTGRES_PLATFORM_URL;
+
+    assert.equal(
+      databaseRuntimeConfig().workspaceUrl,
+      "postgresql://shared.example/hermes",
+    );
+    assert.equal(
+      databaseRuntimeConfig().platformUrl,
+      "postgresql://shared.example/hermes",
+    );
   });
 
-  it("enables strict RLS in development and disables role probing only for tests", () => {
+  it("prefers dedicated datasource URLs over the shared fallback", () => {
     process.env.NODE_ENV = "development";
-    delete process.env.DATABASE_STRICT_RLS;
-    assert.equal(databaseRuntimeConfig().strictRls, true);
+    process.env.POSTGRES_URL = "postgresql://shared.example/hermes";
+    process.env.POSTGRES_WORKSPACE_URL =
+      "postgresql://hermes_workspace_app@workspace.example/hermes";
+    process.env.POSTGRES_PLATFORM_URL =
+      "postgresql://platform@platform.example/hermes";
+    delete process.env.POSTGRES_TEST_URL;
 
-    process.env.NODE_ENV = "test";
+    assert.equal(
+      databaseRuntimeConfig().workspaceUrl,
+      process.env.POSTGRES_WORKSPACE_URL,
+    );
+    assert.equal(
+      databaseRuntimeConfig().platformUrl,
+      process.env.POSTGRES_PLATFORM_URL,
+    );
+  });
+
+  it("keeps strict RLS disabled by default and supports explicit opt-in", () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.DATABASE_STRICT_RLS;
     assert.equal(databaseRuntimeConfig().strictRls, false);
+
+    process.env.DATABASE_STRICT_RLS = "true";
+    assert.equal(databaseRuntimeConfig().strictRls, true);
   });
 
   it("rejects test startup without an isolated database URL", () => {
@@ -121,15 +151,31 @@ describe("database runtime configuration", () => {
     );
   });
 
-  it("requires distinct workspace and platform database credentials in production", () => {
+  it("allows one shared PostgreSQL URL when strict RLS is disabled", () => {
+    assert.doesNotThrow(() =>
+      validateRuntimeConfig({
+        DATABASE_STRICT_RLS: "false",
+        NODE_ENV: "development",
+        POSTGRES_URL: "postgresql://app.example/hermes",
+      }),
+    );
+  });
+
+  it("requires dedicated database credentials only when strict RLS is enabled", () => {
     assert.throws(
-      () => validateRuntimeConfig({ NODE_ENV: "production" }),
+      () =>
+        validateRuntimeConfig({
+          DATABASE_STRICT_RLS: "true",
+          NODE_ENV: "development",
+          POSTGRES_URL: "postgresql://app.example/hermes",
+        }),
       /POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required/,
     );
     assert.throws(
       () =>
         validateRuntimeConfig({
-          NODE_ENV: "production",
+          DATABASE_STRICT_RLS: "true",
+          NODE_ENV: "development",
           POSTGRES_PLATFORM_URL: "postgresql://app.example/hermes",
           POSTGRES_WORKSPACE_URL: "postgresql://app.example/hermes",
         }),
@@ -137,50 +183,22 @@ describe("database runtime configuration", () => {
     );
     assert.doesNotThrow(() =>
       validateRuntimeConfig({
-        AUTH_SESSION_SECRET: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        INVITE_TOKEN_SECRET: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-        NODE_ENV: "production",
-        PASSWORD_RESET_TOKEN_SECRET:
-          "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        DATABASE_STRICT_RLS: "true",
+        NODE_ENV: "development",
         POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
         POSTGRES_WORKSPACE_URL:
           "postgresql://hermes_workspace_app@app.example/hermes",
-        SETTINGS_ENCRYPTION_KEY:
-          "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
-        WEB_SESSION_SECRET: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
       }),
     );
     assert.throws(
       () =>
         validateRuntimeConfig({
-          NODE_ENV: "production",
+          DATABASE_STRICT_RLS: "true",
+          NODE_ENV: "development",
           POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
           POSTGRES_WORKSPACE_URL: "postgresql://workspace@app.example/hermes",
         }),
       /must authenticate as hermes_workspace_app/,
-    );
-  });
-
-  it("requires the isolated RLS credentials during development", () => {
-    assert.throws(
-      () => validateRuntimeConfig({ NODE_ENV: "development" }),
-      /POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required outside tests/,
-    );
-    assert.throws(
-      () =>
-        validateRuntimeConfig({
-          DATABASE_STRICT_RLS: "false",
-          NODE_ENV: "development",
-        }),
-      /DATABASE_STRICT_RLS must remain enabled/,
-    );
-    assert.doesNotThrow(() =>
-      validateRuntimeConfig({
-        NODE_ENV: "development",
-        POSTGRES_PLATFORM_URL: "postgresql://hermes@app.example/hermes",
-        POSTGRES_WORKSPACE_URL:
-          "postgresql://hermes_workspace_app@app.example/hermes",
-      }),
     );
   });
 
@@ -191,9 +209,7 @@ describe("database runtime configuration", () => {
       NODE_ENV: "production",
       PASSWORD_RESET_TOKEN_SECRET:
         "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
-      POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
-      POSTGRES_WORKSPACE_URL:
-        "postgresql://hermes_workspace_app@app.example/hermes",
+      POSTGRES_URL: "postgresql://app.example/hermes",
       SETTINGS_ENCRYPTION_KEY:
         "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
       WEB_SESSION_SECRET: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",

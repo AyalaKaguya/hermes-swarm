@@ -1,4 +1,9 @@
-import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
@@ -12,6 +17,8 @@ type RoleState = {
 
 @Injectable()
 export class DatabaseRoleValidatorService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(DatabaseRoleValidatorService.name);
+
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     @InjectDataSource() private readonly workspaceDataSource: DataSource,
@@ -20,7 +27,20 @@ export class DatabaseRoleValidatorService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
-    if (!this.configService.getOrThrow<boolean>("database.strictRls")) return;
+    if (!this.configService.getOrThrow<boolean>("database.strictRls")) {
+      const workspaceUrl = this.configService.getOrThrow<string>(
+        "database.workspaceUrl",
+      );
+      const platformUrl = this.configService.getOrThrow<string>(
+        "database.platformUrl",
+      );
+      if (workspaceUrl === platformUrl) {
+        this.logger.warn(
+          "Workspace and platform datasources share one PostgreSQL URL; strict RLS role isolation is disabled.",
+        );
+      }
+      return;
+    }
 
     const [workspace] = await this.workspaceDataSource.query<RoleState[]>(
       `SELECT current_user, rolsuper, rolbypassrls

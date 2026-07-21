@@ -31,7 +31,7 @@ export const databaseRuntimeConfig = registerAs("database", () => {
     password,
     port,
     synchronize: parseBoolean(process.env.DATABASE_SYNCHRONIZE, false),
-    strictRls: environment !== "test",
+    strictRls: parseBoolean(process.env.DATABASE_STRICT_RLS, false),
     platformUrl,
     workspaceUrl,
     // Backwards-compatible alias used by the migration datasource.
@@ -124,13 +124,6 @@ export function validateRuntimeConfig(
   validateBoolean("DATABASE_MIGRATIONS_RUN", config.DATABASE_MIGRATIONS_RUN);
   validateBoolean("DATABASE_STRICT_RLS", config.DATABASE_STRICT_RLS);
   if (
-    environment !== "test" &&
-    config.DATABASE_STRICT_RLS !== undefined &&
-    !parseBoolean(String(config.DATABASE_STRICT_RLS), true)
-  ) {
-    throw new Error("DATABASE_STRICT_RLS must remain enabled outside tests");
-  }
-  if (
     environment === "production" &&
     parseBoolean(String(config.DATABASE_SYNCHRONIZE ?? "false"), false)
   ) {
@@ -147,10 +140,10 @@ export function validateRuntimeConfig(
   if (environment === "test" && !config.POSTGRES_TEST_URL) {
     throw new Error("POSTGRES_TEST_URL is required when NODE_ENV=test");
   }
-  if (environment !== "test") {
+  if (parseBoolean(String(config.DATABASE_STRICT_RLS ?? "false"), false)) {
     if (!config.POSTGRES_WORKSPACE_URL || !config.POSTGRES_PLATFORM_URL) {
       throw new Error(
-        "POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required outside tests",
+        "POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required when DATABASE_STRICT_RLS is enabled",
       );
     }
     if (String(config.POSTGRES_WORKSPACE_URL) === String(config.POSTGRES_PLATFORM_URL)) {

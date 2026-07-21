@@ -54,10 +54,17 @@ pnpm nx show projects --json
 ## Database policy
 
 - `DATABASE_SYNCHRONIZE=false`; migration is the only schema source.
-- `POSTGRES_WORKSPACE_URL` authenticates as `hermes_workspace_app` (`NOBYPASSRLS`).
-- `POSTGRES_PLATFORM_URL` uses a distinct platform/migration role.
-- API startup validates that Workspace credentials cannot bypass RLS and Platform credentials can perform audited cross-workspace operations.
-- Never point both datasources at the same database role outside tests.
+- `POSTGRES_URL` is the default for both Workspace and Platform datasources. They
+  remain separate TypeORM connection pools even when they share one URL.
+- Shared-URL mode is an explicit compatibility fallback. Application-level
+  `workspaceId` predicates remain authoritative, while database role isolation
+  depends on the configured PostgreSQL user.
+- Optional strict RLS mode uses `POSTGRES_WORKSPACE_URL` for
+  `hermes_workspace_app` (`NOBYPASSRLS`) and `POSTGRES_PLATFORM_URL` for a
+  distinct platform/migration role.
+- Set `DATABASE_STRICT_RLS=true` only with both dedicated URLs. API startup then
+  validates that Workspace credentials cannot bypass RLS and Platform
+  credentials can perform audited cross-workspace operations.
 
 Destructive development rebuild:
 
@@ -71,7 +78,7 @@ $env:DEV_SEED_PLATFORM_ADMIN_PASSWORD='<至少 8 位>'
 pnpm nx run @hermes-swarm/api:seed:development
 ```
 
-When Docker is used locally, infrastructure is defined by `devenv/docker-compose.yml`. Removing `hermes_postgres_data` is destructive and is only allowed for the development baseline.
+When Docker is used locally, infrastructure is defined by `docker/docker-compose.yml`. Removing the local PostgreSQL data directory is destructive and is only allowed for the development baseline.
 
 Current development seed defaults:
 
