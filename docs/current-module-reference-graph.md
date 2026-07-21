@@ -30,13 +30,13 @@ flowchart LR
 
 ```mermaid
 erDiagram
-  TENANT ||--o{ USER : owns
-  TENANT ||--o{ ORGANIZATION : owns
+  WORKSPACE ||--o{ USER : owns
+  WORKSPACE ||--o{ ORGANIZATION : owns
   ORGANIZATION ||--o{ ORGANIZATION : parent_of
   USER ||--o{ USER_ORGANIZATION : joins
   ORGANIZATION ||--o{ USER_ORGANIZATION : has_members
-  USER ||--o{ USER_TENANT_ROLE : assigned
-  ROLE ||--o{ USER_TENANT_ROLE : grants
+  USER ||--o{ USER_WORKSPACE_ROLE : assigned
+  ROLE ||--o{ USER_WORKSPACE_ROLE : grants
   USER_ORGANIZATION ||--o{ USER_ORGANIZATION_ROLE : assigned
   ROLE ||--o{ USER_ORGANIZATION_ROLE : grants
   ROLE ||--o{ ROLE_PERMISSION : grants
@@ -44,24 +44,24 @@ erDiagram
   ORGANIZATION ||--o{ TICKET : source
 ```
 
-Platform identity uses separate `platform_users`、`platform_roles`、`platform_role_permissions` tables and does not join Tenant User tables.
+Platform identity uses separate `platform_users`、`platform_roles`、`platform_role_permissions` tables and does not join Workspace User tables.
 
 ## API modules
 
 | Module | Boundary |
 | --- | --- |
-| Auth | Separate Platform/Tenant login, refresh, session and `/auth/me` |
-| Tenants | Applications, approval, status, root-organization onboarding, unified role library |
+| Auth | Separate Platform/Workspace login, refresh, session and `/auth/me` |
+| Workspaces | Applications, approval, status, root-organization onboarding, unified role library |
 | Organizations | Lightweight tree CRUD and ancestry validation |
 | Memberships | User ↔ Organization membership and exact Organization role assignments |
-| Users | Tenant-local users, status, self profile and Tenant role assignments |
+| Users | Workspace-local users, status, self profile and Workspace role assignments |
 | Invite | One workspace invite with multiple Organization assignments |
-| Settings | Platform default → Tenant override |
-| Mail | Platform public mail plus Tenant SMTP/templates/logs |
+| Settings | Platform default → Workspace override |
+| Mail | Platform public mail plus Workspace SMTP/templates/logs |
 | Support domain | `domains/support` 中的 Ticket/Conversation 与 source Organization access filtering |
-| Notifications/Realtime | Tenant + recipient User, tenant-namespaced delivery |
+| Notifications/Realtime | Workspace + recipient User, workspace-namespaced delivery |
 | Integrations | User-owned personal API Token with live Token ∩ User permission checks |
-| Jobs/Audit | 通用 Tenant job runtime 位于 `common/jobs`；业务 job 与对应 domain 共置 |
+| Jobs/Audit | 通用 Workspace job runtime 位于 `common/jobs`；业务 job 与对应 domain 共置 |
 
 Removed modules: Departments, Department dispatch, Organization groups, Organization settings and notification destinations.
 
@@ -74,21 +74,21 @@ Permission IDs remain:
 page.{pageKey}.access:{scope}
 ```
 
-Valid Tenant-facing scopes are `tenant | organization | own`. Platform permissions are queried only through Platform APIs. Organization Role does not inherit across the tree; Ticket ancestor visibility is a separate data-access rule.
+Valid Workspace-facing scopes are `workspace | organization | own`. Platform permissions are queried only through Platform APIs. Organization Role does not inherit across the tree; Ticket ancestor visibility is a separate data-access rule.
 
-The web client never sends Tenant or implicit scope headers. Tenant comes from the session; Organization identifiers are explicit route/query/body values. `OrganizationContextProvider` only maintains the active Organization UI selection and abort epoch.
+The web client never sends Workspace or implicit scope headers. Workspace comes from the session; Organization identifiers are explicit route/query/body values. `OrganizationContextProvider` only maintains the active Organization UI selection and abort epoch.
 
 ## Frontend routes
 
 Platform control plane:
 
-- `/platform/tenants`
+- `/platform/workspaces`
 - `/platform/settings`
 - `/platform/email-templates`
 
 Workspace settings:
 
-- `/settings/tenant`
+- `/settings/workspace`
 - `/settings/organizations`
 - `/settings/users`
 - `/settings/invites`
@@ -130,7 +130,7 @@ packages/core/src/
 
 ## Database baseline
 
-`WorkspaceModelBaseline2026071500001` is the sole initial migration. Tenant-owned repositories require a transaction-local TenantContext and are protected by forced PostgreSQL RLS. The Platform datasource uses a distinct role for audited cross-tenant access.
+`WorkspaceModelBaseline2026071500001` is the sole initial migration. Workspace-owned repositories require a transaction-local WorkspaceContext and are protected by forced PostgreSQL RLS. The Platform datasource uses a distinct role for audited cross-workspace access.
 
 ## Verification
 

@@ -2,7 +2,7 @@
 
 ## 结论
 
-当前工作区的 Nx 项目依赖方向健康，没有循环依赖；Platform → Tenant → Organization 的身份与权限边界也已有明确文档和测试。主要风险不在项目间依赖，而在项目内部：业务域与基础设施混放、少数超大文件持续吸收职责，以及缺少真正可运行的 lint 门禁。
+当前工作区的 Nx 项目依赖方向健康，没有循环依赖；Platform → Workspace → Organization 的身份与权限边界也已有明确文档和测试。主要风险不在项目间依赖，而在项目内部：业务域与基础设施混放、少数超大文件持续吸收职责，以及缺少真正可运行的 lint 门禁。
 
 本轮已完成低风险结构修正：
 
@@ -47,7 +47,7 @@ infrastructure -X-> domains
 | P1 | `api:dev` 在 Nx target 内再次执行 `pnpm nx` | 子进程可能不退出，Nest 永远无法监听 3200 | 已修复 |
 | P1 | `apps/web/lib/admin-api.ts` 约 1632 行 | 所有 API 类型与调用集中，冲突面和回归半径持续增大 | 待拆分 |
 | P1 | Ticket 页面约 1078 行、`settings-value-input.tsx` 约 1048 行 | 数据加载、状态机和展示耦合，难以做聚焦测试 | 待拆分 |
-| P2 | `conversations.service.ts` 约 716 行、`tenants.service.ts` 约 770 行 | 领域动作、映射和编排集中在单一 Service | 待拆分 |
+| P2 | `conversations.service.ts` 约 716 行、`workspaces.service.ts` 约 770 行 | 领域动作、映射和编排集中在单一 Service | 待拆分 |
 | P2 | Nx 项目原本只有自动生成的 `npm:private` tag，API 被推断为 library | 项目图无法表达架构意图，后续无法加边界约束 | 已补元数据 |
 | P2 | `core` 同时承载基础设施实体与业务实体 | 包级隔离不足，业务增长后会再次膨胀 | 先完成目录隔离；达到第二个业务域时再拆 package |
 

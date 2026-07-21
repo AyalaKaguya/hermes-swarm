@@ -68,7 +68,7 @@ flowchart LR
 
 - `apps/api/src/infrastructure` 成为基础设施命名空间与聚合层。
 - 原 admin 聚合层的系统初始化职责迁移为 `InfrastructureModule/InfrastructureBootstrapController`。
-- `apps/api/src/domains/support` 承载 Ticket、Conversation 和归档任务；通用 Tenant Job 运行时留在 `common/jobs`。
+- `apps/api/src/domains/support` 承载 Ticket、Conversation 和归档任务；通用 Workspace Job 运行时留在 `common/jobs`。
 - `packages/core/src/support` 承载 Support 业务实体，通知实体不再混放 Ticket/Conversation。
 - `apps/web/app/(console)/(domains)` 成为前端业务页面接入槽位；`/tickets` URL 与 Console shell 保持不变。
 - 前端新增 `components/infrastructure-navigation.ts`，旧 `settings-navigation.ts` 仅作为兼容 re-export。

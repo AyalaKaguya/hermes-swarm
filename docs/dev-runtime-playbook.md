@@ -54,9 +54,9 @@ pnpm nx show projects --json
 ## Database policy
 
 - `DATABASE_SYNCHRONIZE=false`; migration is the only schema source.
-- `POSTGRES_TENANT_URL` authenticates as `hermes_tenant_app` (`NOBYPASSRLS`).
+- `POSTGRES_WORKSPACE_URL` authenticates as `hermes_workspace_app` (`NOBYPASSRLS`).
 - `POSTGRES_PLATFORM_URL` uses a distinct platform/migration role.
-- API startup validates that Tenant credentials cannot bypass RLS and Platform credentials can perform audited cross-tenant operations.
+- API startup validates that Workspace credentials cannot bypass RLS and Platform credentials can perform audited cross-workspace operations.
 - Never point both datasources at the same database role outside tests.
 
 Destructive development rebuild:
@@ -99,8 +99,8 @@ Use the already-open in-app browser. Do not switch to another browser or start P
 Primary flows:
 
 1. `http://localhost:3100/login?workspace=hermes-dev`
-2. Owner onboarding and root Organization creation
-3. Workspace navigation: Organization, User, Invite, Mail, Integration, Roles
-4. Organization switching without full-page refresh or reauthentication
-5. Ticket source Organization and ancestor-handler visibility
-6. Platform console only through `/platform/**`
+2. Workspace Owner activation and first login
+3. Workspace navigation: Members, Invites, Mail, Integration, Roles
+4. A member has exactly one workspace role
+5. Ticket submitter visibility and workspace handler capability
+6. Platform console isolation under `/platform/**`

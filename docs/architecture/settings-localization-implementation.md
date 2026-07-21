@@ -39,12 +39,12 @@
 
 | 路由 | 内容 | 状态 |
 | --- | --- | --- |
-| `/settings/tenant/general` | 工作空间名称、标识和状态 | 已完成 |
-| `/settings/tenant/localization` | 五项本地化设置、继承状态、生效值和来源 | 已完成 |
-| `/settings/tenant/governance` | 可由工作空间覆盖的治理参数 | 已完成 |
-| `/settings/tenant/parameters` | 平台定义且范围为工作空间的自定义参数 | 已完成 |
+| `/settings/workspace/general` | 工作空间名称、标识和状态 | 已完成 |
+| `/settings/workspace/localization` | 五项本地化设置、继承状态、生效值和来源 | 已完成 |
+| `/settings/workspace/governance` | 可由工作空间覆盖的治理参数 | 已完成 |
+| `/settings/workspace/parameters` | 平台定义且范围为工作空间的自定义参数 | 已完成 |
 
-`/settings/tenant` 通过 Next 服务端重定向到 `general`。各页面只提交自己负责的字段，原平台管理员、角色、SMTP 和服务功能保留原业务调用。
+`/settings/workspace` 通过 Next 服务端重定向到 `general`。各页面只提交自己负责的字段，原平台管理员、角色、SMTP 和服务功能保留原业务调用。
 
 ### 平台与工作空间设置页视觉契约
 
@@ -75,7 +75,7 @@ apps/web/app/**/settings/**/page.tsx
 
 apps/web/components/settings/
   platform-settings-page.tsx   平台设置业务页面
-  tenant-settings-page.tsx     工作空间设置业务页面
+  workspace-settings-page.tsx     工作空间设置业务页面
   settings-navigation.ts       设置主导航定义
   settings-page.tsx             标题、卡片、字段行和子导航
   settings-value-input.tsx      参数值输入与编辑对话框
@@ -90,19 +90,19 @@ apps/web/components/settings/
 ### 设置接口
 
 - `GET/PUT /api/admin/platform/settings`
-- `GET/PUT /api/admin/tenant/settings`
+- `GET/PUT /api/admin/workspace/settings`
 
-`SettingPayloadEntry` 支持 `scope?: "platform" | "tenant"`。预定义参数的范围始终由代码定义强制决定；启动初始化会修正数据库中错误的预定义类型、选项和范围。
+`SettingPayloadEntry` 支持 `scope?: "platform" | "workspace"`。预定义参数的范围始终由代码定义强制决定；启动初始化会修正数据库中错误的预定义类型、选项和范围。
 
 工作空间写入规则：
 
-1. 只能覆盖平台中存在且有效范围为 `tenant` 的参数；
+1. 只能覆盖平台中存在且有效范围为 `workspace` 的参数；
 2. 未知参数和平台专属参数返回 `400`；
 3. `value: null` 删除工作空间覆盖并恢复继承；
 4. 仅当数据库中确实存在孤立工作空间参数时，允许用 `null` 删除；
 5. 平台删除自定义定义时，同一事务中删除全部同名工作空间覆盖，并发布缓存失效事件。
 
-`GET tenant/settings` 返回有效值、平台默认、工作空间覆盖、类型、选项、来源、可编辑状态及孤立状态。Secret 值继续使用现有遮罩逻辑。
+`GET workspace/settings` 返回有效值、平台默认、工作空间覆盖、类型、选项、来源、可编辑状态及孤立状态。Secret 值继续使用现有遮罩逻辑。
 
 ### 会话契约
 
@@ -116,11 +116,11 @@ type RuntimePreferences = {
   regionCode: string;
   dateFormat: string;
   sources: {
-    language: "user" | "tenant" | "platform" | "code";
-    timeZone: "user" | "tenant" | "platform" | "code";
-    currency: "tenant" | "platform" | "code";
-    regionCode: "tenant" | "platform" | "code";
-    dateFormat: "tenant" | "platform" | "code";
+    language: "user" | "workspace" | "platform" | "code";
+    timeZone: "user" | "workspace" | "platform" | "code";
+    currency: "workspace" | "platform" | "code";
+    regionCode: "workspace" | "platform" | "code";
+    dateFormat: "workspace" | "platform" | "code";
   };
 };
 ```
@@ -159,7 +159,7 @@ type RuntimePreferences = {
 
 本地开发运行时继续启用严格 RLS：
 
-- Tenant datasource：`hermes_tenant_app`，已验证 `NOBYPASSRLS`；
+- Workspace datasource：`hermes_workspace_app`，已验证 `NOBYPASSRLS`；
 - Platform datasource：独立的跨租户角色；
 - API 启动不会通过关闭严格 RLS 或复用同一数据库角色绕过校验。
 
