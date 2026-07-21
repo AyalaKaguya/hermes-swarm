@@ -13,11 +13,11 @@ const preferences: RuntimePreferences = {
   language: "en",
   regionCode: "HK",
   sources: {
-    currency: "tenant",
-    dateFormat: "tenant",
+    currency: "workspace",
+    dateFormat: "workspace",
     language: "user",
-    regionCode: "tenant",
-    timeZone: "tenant",
+    regionCode: "workspace",
+    timeZone: "workspace",
   },
   timeZone: "Asia/Hong_Kong",
 };

@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { TenantApplicationForm } from "@/components/tenant-application-form";
+import { WorkspaceApplicationForm } from "@/components/workspace-application-form";
 
 export default function ApplyPage() {
   return (
     <Suspense>
-      <TenantApplicationForm />
+      <WorkspaceApplicationForm />
     </Suspense>
   );
 }

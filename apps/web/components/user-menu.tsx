@@ -43,13 +43,13 @@ export type UserMenuTicketAccess = {
 export function UserMenu({
   ticketAccess,
   onUserUpdated,
-  organizationName,
   user,
+  workspaceName,
 }: {
   ticketAccess?: UserMenuTicketAccess | null;
   onUserUpdated?: () => Promise<void>;
-  organizationName?: string | null;
   user?: User | null;
+  workspaceName?: string | null;
 }) {
   const router = useRouter();
   const notifications = useNotifications();
@@ -135,7 +135,7 @@ export function UserMenu({
                 {displayName}
               </span>
               <span className="truncate text-xs">
-                {user?.email ?? organizationName ?? consoleLabel}
+                {user?.email ?? workspaceName ?? consoleLabel}
               </span>
             </span>
           </SidebarMenuButton>
@@ -151,7 +151,7 @@ export function UserMenu({
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{displayName}</div>
               <div className="truncate text-xs">
-                {user?.email ?? organizationName ?? consoleLabel}
+                {user?.email ?? workspaceName ?? consoleLabel}
               </div>
             </div>
           </div>

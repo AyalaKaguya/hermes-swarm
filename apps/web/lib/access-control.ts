@@ -40,7 +40,6 @@ export function hasPermission(
 export function hasPageAccess(
   principal: AccessPrincipal | null | undefined,
   pageKey: string,
-  routeContext: { organizationId?: string | null } = {},
 ) {
   const definition = getPageAccessDefinition(pageKey);
   if (!definition) return false;
@@ -48,42 +47,9 @@ export function hasPageAccess(
 
   if (definition.scope === "platform") {
     if (principal.principalType !== "platform") return false;
-    return (
-      principal.platformUser?.roles.some(
-        (role) => roleHasPermission(role.permissions, definition.permission),
-      ) ?? false
-    );
-  }
-
-  if (definition.scope === "own" || definition.scope === "tenant") {
-    if (principal.principalType !== "tenant") return false;
     return hasPermission(principal, definition.permission);
   }
 
-  const organizationId =
-    routeContext.organizationId ?? principal.organization?.id ?? null;
-  const membership = organizationId
-    ? principal.memberships?.find(
-        (item) =>
-          item.organizationId === organizationId && item.status === "active",
-      )
-    : null;
-
-  return (
-    Boolean(
-      membership?.role &&
-        roleHasPermission(membership.role.permissions, definition.permission),
-    )
-  );
-}
-
-function roleHasPermission(
-  permissions: RolePermission[] | undefined,
-  permission: string,
-) {
-  return Boolean(
-    permissions?.some(
-      (item) => item.enabled !== false && item.permission === permission,
-    ),
-  );
+  if (principal.principalType !== "workspace") return false;
+  return hasPermission(principal, definition.permission);
 }

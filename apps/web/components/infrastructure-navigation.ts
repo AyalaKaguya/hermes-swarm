@@ -7,7 +7,7 @@ export type InfrastructureNavItem = AppShellNavSection["items"][number] & {
   permission: string;
 };
 
-const SETTINGS_SECTIONS = ["personal", "tenant", "organization"];
+const SETTINGS_SECTIONS = ["personal", "workspace"];
 
 export const INFRASTRUCTURE_NAV_ITEMS = [...PAGE_ACCESS_DEFINITIONS]
   .filter((item) => SETTINGS_SECTIONS.includes(item.section))

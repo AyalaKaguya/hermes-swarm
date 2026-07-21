@@ -30,9 +30,9 @@ import { Label } from "@/components/ui/label";
 import { usePermission } from "@/hooks/use-permission";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
-  listTenantSettings,
-  saveTenantSettings,
-  updateTenant,
+  listWorkspaceSettings,
+  saveWorkspaceSettings,
+  updateWorkspace,
   type SettingPayloadEntry,
   type SettingPayloadValue,
 } from "@/lib/admin-api";
@@ -42,45 +42,45 @@ import {
 } from "@/lib/authenticated-admin";
 import {
   KNOWN_PLATFORM_SETTING_KEYS,
-  TENANT_CONTROL_SETTING_DEFINITIONS,
-  TENANT_DEFAULT_FIELD_DEFINITIONS,
+  WORKSPACE_CONTROL_SETTING_DEFINITIONS,
+  WORKSPACE_DEFAULT_FIELD_DEFINITIONS,
 } from "@hermes-swarm/core/settings/definitions";
-import type { EffectiveTenantSetting } from "@hermes-swarm/core/settings/effective-settings";
+import type { EffectiveWorkspaceSetting } from "@hermes-swarm/core/settings/effective-settings";
 
-type TenantSection = "general" | "governance" | "localization" | "parameters";
+type WorkspaceSection = "general" | "governance" | "localization" | "parameters";
 type SettingDraft = { overridden: boolean; value: SettingPayloadValue };
 
-export function TenantSettingsPage({
+export function WorkspaceSettingsPage({
   section,
 }: {
-  section: TenantSection;
+  section: WorkspaceSection;
 }) {
-  const t = useTranslations("tenantScope");
+  const t = useTranslations("workspaceScope");
   const common = useTranslations("common");
   const tr = useTextTranslation();
   const access = usePermission();
   const { refreshSnapshot, snapshot } = useAdminShell();
-  const tenant = snapshot?.tenant ?? null;
+  const workspace = snapshot?.workspace ?? null;
   const canManageSettings = access.hasPermission(
-    "setting.tenant_config.save:tenant",
+    "setting.workspace_config.save:workspace",
   );
-  const canUpdateTenant = access.hasPermission(
-    "tenant.tenant_profile.update:tenant",
+  const canUpdateWorkspace = access.hasPermission(
+    "workspace.workspace_profile.update:workspace",
   );
-  const [name, setName] = useState(tenant?.name ?? "");
-  const [slug, setSlug] = useState(tenant?.slug ?? "");
+  const [name, setName] = useState(workspace?.name ?? "");
+  const [slug, setSlug] = useState(workspace?.slug ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [restoreAllOpen, setRestoreAllOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [settings, setSettings] = useState<EffectiveTenantSetting[]>([]);
+  const [settings, setSettings] = useState<EffectiveWorkspaceSetting[]>([]);
   const [drafts, setDrafts] = useState<Record<string, SettingDraft>>({});
 
   useEffect(() => {
-    setName(tenant?.name ?? "");
-    setSlug(tenant?.slug ?? "");
-  }, [tenant?.id, tenant?.name, tenant?.slug]);
+    setName(workspace?.name ?? "");
+    setSlug(workspace?.slug ?? "");
+  }, [workspace?.id, workspace?.name, workspace?.slug]);
 
   const loadSettings = useCallback(async () => {
     if (section === "general") return;
@@ -88,7 +88,7 @@ export function TenantSettingsPage({
     if (!session) return;
     setLoadingSettings(true);
     try {
-      const result = await listTenantSettings(session);
+      const result = await listWorkspaceSettings(session);
       setSettings(result);
       setDrafts(toSettingDrafts(result));
       setError(null);
@@ -105,7 +105,7 @@ export function TenantSettingsPage({
 
   const localizationSettings = useMemo(
     () =>
-      TENANT_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
+      WORKSPACE_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
         definition,
         setting: settings.find((item) => item.name === definition.key) ?? null,
       })),
@@ -113,7 +113,7 @@ export function TenantSettingsPage({
   );
   const governanceSettings = useMemo(
     () =>
-      TENANT_CONTROL_SETTING_DEFINITIONS.map((definition) => ({
+      WORKSPACE_CONTROL_SETTING_DEFINITIONS.map((definition) => ({
         definition,
         setting: settings.find((item) => item.name === definition.key) ?? null,
       })),
@@ -125,16 +125,16 @@ export function TenantSettingsPage({
   }, [settings]);
 
   const runtimePreferences = snapshot?.runtimePreferences;
-  if (!tenant || !runtimePreferences) return null;
+  if (!workspace || !runtimePreferences) return null;
 
   async function submitGeneral(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canUpdateTenant) return;
+    if (!canUpdateWorkspace) return;
     setSaving(true);
     setError(null);
     try {
       const session = await requireAuthenticatedAdminSessionMarker();
-      await updateTenant(session, { name: name.trim() });
+      await updateWorkspace(session, { name: name.trim() });
       await refreshSnapshot();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("saveFailed"));
@@ -160,7 +160,7 @@ export function TenantSettingsPage({
     setError(null);
     try {
       const session = await requireAuthenticatedAdminSessionMarker();
-      const result = await saveTenantSettings(session, { settings: entries });
+      const result = await saveWorkspaceSettings(session, { settings: entries });
       setSettings(result);
       setDrafts(toSettingDrafts(result));
       await refreshSnapshot();
@@ -191,7 +191,7 @@ export function TenantSettingsPage({
     );
   }
 
-  async function restoreSetting(setting: EffectiveTenantSetting) {
+  async function restoreSetting(setting: EffectiveWorkspaceSetting) {
     await persistSettings([
       {
         name: setting.name,
@@ -211,11 +211,11 @@ export function TenantSettingsPage({
     setError(null);
     try {
       const session = await requireAuthenticatedAdminSessionMarker();
-      const result = await saveTenantSettings(session, {
+      const result = await saveWorkspaceSettings(session, {
         settings: [{
           ...setting,
           name: settingName,
-          scope: "tenant",
+          scope: "workspace",
         }],
       });
       setSettings(result);
@@ -232,7 +232,7 @@ export function TenantSettingsPage({
   async function restoreAllLocalization() {
     setRestoreAllOpen(false);
     await persistSettings(
-      TENANT_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
+      WORKSPACE_DEFAULT_FIELD_DEFINITIONS.map((definition) => ({
         name: definition.key,
         value: null,
         valueOptions: definition.options.map((option) => ({ ...option })),
@@ -244,8 +244,8 @@ export function TenantSettingsPage({
   return (
     <section className="grid gap-4">
       <SettingsPageHeader
-        description={tr(tenantSectionDescription(section))}
-        title={tr(tenantSectionTitle(section))}
+        description={tr(workspaceSectionDescription(section))}
+        title={tr(workspaceSectionTitle(section))}
       />
 
       {error && <InlineNotice tone="error">{error}</InlineNotice>}
@@ -259,21 +259,21 @@ export function TenantSettingsPage({
             <CardContent>
               <form className="grid gap-4" onSubmit={submitGeneral}>
                 <div className="grid gap-2">
-                  <Label htmlFor="tenant-name">{t("tenantName")}</Label>
+                  <Label htmlFor="workspace-name">{t("workspaceName")}</Label>
                   <Input
-                    disabled={!canUpdateTenant || saving}
-                    id="tenant-name"
+                    disabled={!canUpdateWorkspace || saving}
+                    id="workspace-name"
                     onChange={(event) => setName(event.target.value)}
                     required
                     value={name}
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="tenant-slug">{t("tenantSlug")}</Label>
-                  <Input disabled id="tenant-slug" value={slug} />
+                  <Label htmlFor="workspace-slug">{t("workspaceSlug")}</Label>
+                  <Input disabled id="workspace-slug" value={slug} />
                 </div>
                 <div className="flex justify-end">
-                  <Button disabled={!canUpdateTenant || saving} type="submit">
+                  <Button disabled={!canUpdateWorkspace || saving} type="submit">
                     {saving ? common("saving") : common("save")}
                   </Button>
                 </div>
@@ -283,18 +283,18 @@ export function TenantSettingsPage({
           <div className="grid content-start gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">{t("tenantStatus")}</CardTitle>
+                <CardTitle className="text-sm">{t("workspaceStatus")}</CardTitle>
               </CardHeader>
               <CardContent>
-                <Badge variant={tenant.status === "active" ? "default" : "secondary"}>
-                  {tenant.status}
+                <Badge variant={workspace.status === "active" ? "default" : "secondary"}>
+                  {workspace.status}
                 </Badge>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="grid gap-2 pt-6">
                 <Button asChild variant="outline">
-                  <Link href="/settings/organizations">{t("organizations")}</Link>
+                  <Link href="/settings/workspace/members">{tr("管理成员")}</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -316,7 +316,7 @@ export function TenantSettingsPage({
               </Button>
               <Button
                 disabled={!canManageSettings || savingSettings}
-                onClick={() => void saveDefinitions(TENANT_DEFAULT_FIELD_DEFINITIONS)}
+                onClick={() => void saveDefinitions(WORKSPACE_DEFAULT_FIELD_DEFINITIONS)}
                 type="button"
               >
                 {savingSettings ? tr("保存中...") : tr("保存")}
@@ -333,7 +333,7 @@ export function TenantSettingsPage({
               if (!setting) return null;
               const runtimeField = runtimePreferenceField(definition.field);
               return (
-                <TenantSettingRow
+                <WorkspaceSettingRow
                   canManage={canManageSettings}
                   draft={drafts[definition.key]}
                   effectiveSource={runtimePreferences.sources[runtimeField]}
@@ -355,7 +355,7 @@ export function TenantSettingsPage({
           actions={
             <Button
               disabled={!canManageSettings || savingSettings}
-              onClick={() => void saveDefinitions(TENANT_CONTROL_SETTING_DEFINITIONS)}
+              onClick={() => void saveDefinitions(WORKSPACE_CONTROL_SETTING_DEFINITIONS)}
               type="button"
             >
               {savingSettings ? tr("保存中...") : tr("保存")}
@@ -369,7 +369,7 @@ export function TenantSettingsPage({
           <div className="grid gap-3">
             {governanceSettings.map(({ definition, setting }) =>
               setting ? (
-                <TenantSettingRow
+                <WorkspaceSettingRow
                   canManage={canManageSettings}
                   draft={drafts[definition.key]}
                   key={definition.key}
@@ -415,11 +415,11 @@ export function TenantSettingsPage({
             <CustomSettingDialog
               description={tr("创建当前工作空间专属参数；密钥类型只显示遮罩并加密保存。")}
               disabled={!canManageSettings || savingSettings}
-              idPrefix="tenant-custom-setting"
+              idPrefix="workspace-custom-setting"
               namePlaceholder="MY_ENV_NAME"
               onSubmit={saveCustomSetting}
               saving={savingSettings}
-              scopeOptions={[{ label: "工作空间", value: "tenant" }]}
+              scopeOptions={[{ label: "工作空间", value: "workspace" }]}
               title={tr("新增工作空间参数")}
               triggerLabel={tr("新增参数")}
             />
@@ -435,7 +435,7 @@ export function TenantSettingsPage({
           ) : (
             <div className="grid gap-3">
               {customSettings.map((setting) => (
-                <TenantSettingRow
+                <WorkspaceSettingRow
                   canManage={canManageSettings}
                   draft={drafts[setting.name]}
                   key={setting.name}
@@ -465,7 +465,7 @@ export function TenantSettingsPage({
   );
 }
 
-function TenantSettingRow({
+function WorkspaceSettingRow({
   canManage,
   draft,
   effectiveSource,
@@ -478,12 +478,12 @@ function TenantSettingRow({
 }: {
   canManage: boolean;
   draft?: SettingDraft;
-  effectiveSource?: "code" | "platform" | "tenant" | "user";
+  effectiveSource?: "code" | "platform" | "workspace" | "user";
   label: string;
   onDraftChange: (patch: Partial<SettingDraft>) => void;
   onEdit?: (setting: CustomSettingSubmit) => Promise<void> | void;
   onRestore: () => void;
-  setting: EffectiveTenantSetting;
+  setting: EffectiveWorkspaceSetting;
   tr: (value: string) => string;
 }) {
   const value = draft?.value ?? setting.overrideValue ?? setting.value ?? "";
@@ -498,7 +498,7 @@ function TenantSettingRow({
             {setting.isCustom && onEdit && (
               <SettingEditDialog
                 disabled={!canManage}
-                idPrefix={`tenant-custom-${setting.id}`}
+                idPrefix={`workspace-custom-${setting.id}`}
                 name={setting.name}
                 onSubmit={onEdit}
                 value={setting.overrideValue ?? setting.value ?? ""}
@@ -522,7 +522,7 @@ function TenantSettingRow({
       }
       description={
         <span className="flex flex-wrap items-center gap-2">
-          <Badge variant={source === "tenant" ? "default" : "secondary"}>
+          <Badge variant={source === "workspace" ? "default" : "secondary"}>
             {tr(
               setting.isCustom
                 ? "工作空间专属"
@@ -554,7 +554,7 @@ function TenantSettingRow({
   );
 }
 
-function toSettingDrafts(settings: readonly EffectiveTenantSetting[]) {
+function toSettingDrafts(settings: readonly EffectiveWorkspaceSetting[]) {
   return Object.fromEntries(
     settings.map((setting) => [
       setting.name,
@@ -571,18 +571,18 @@ function displaySettingValue(value: string | null) {
 }
 
 function runtimePreferenceField(
-  field: (typeof TENANT_DEFAULT_FIELD_DEFINITIONS)[number]["field"],
+  field: (typeof WORKSPACE_DEFAULT_FIELD_DEFINITIONS)[number]["field"],
 ): "currency" | "dateFormat" | "language" | "regionCode" | "timeZone" {
   return field === "preferredLanguage" ? "language" : field;
 }
 
 function runtimePreferenceSourceLabel(
-  source: "code" | "platform" | "tenant" | "user",
+  source: "code" | "platform" | "workspace" | "user",
 ) {
   switch (source) {
     case "user":
       return "个人偏好";
-    case "tenant":
+    case "workspace":
       return "工作空间覆盖";
     case "platform":
       return "平台默认";
@@ -591,7 +591,7 @@ function runtimePreferenceSourceLabel(
   }
 }
 
-function tenantSectionTitle(section: TenantSection) {
+function workspaceSectionTitle(section: WorkspaceSection) {
   switch (section) {
     case "localization":
       return "区域与语言";
@@ -604,7 +604,7 @@ function tenantSectionTitle(section: TenantSection) {
   }
 }
 
-function tenantSectionDescription(section: TenantSection) {
+function workspaceSectionDescription(section: WorkspaceSection) {
   switch (section) {
     case "localization":
       return "设置工作空间默认使用的语言、时区、货币、地区和日期格式";

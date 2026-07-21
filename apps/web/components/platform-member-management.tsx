@@ -61,7 +61,7 @@ type PlatformMemberManagementProps = {
 
 type MemberDraft = {
   roleId: string;
-  status: PlatformMember["status"];
+  status: "active" | "disabled";
 };
 
 export function PlatformMemberManagement({
@@ -110,7 +110,7 @@ export function PlatformMemberManagement({
             member.id,
             {
               roleId: member.roleId ?? "none",
-              status: member.status,
+              status: member.status === "active" ? "active" : "disabled",
             },
           ]),
         ),
@@ -187,7 +187,7 @@ export function PlatformMemberManagement({
         <div>
           <CardTitle>{tr("平台用户管理")}</CardTitle>
           <CardDescription>
-            {tr("管理独立的平台账号、状态与平台角色")}
+            {tr("管理全局账号的平台成员关系、状态与平台角色")}
           </CardDescription>
         </div>
         <Button
@@ -218,7 +218,7 @@ export function PlatformMemberManagement({
             {members.map((member) => {
               const draft = drafts[member.id] ?? {
                 roleId: member.roleId ?? "none",
-                status: member.status,
+                status: member.status === "active" ? "active" : "disabled",
               };
               const dirty =
                 draft.roleId !== (member.roleId ?? "none") ||
@@ -270,7 +270,7 @@ export function PlatformMemberManagement({
                         ...current,
                         [member.id]: {
                           ...draft,
-                          status: status as PlatformMember["status"],
+                          status: status as "active" | "disabled",
                         },
                       }))
                     }
@@ -365,12 +365,10 @@ function AddPlatformMemberDialog({
   roles: Role[];
 }) {
   const tr = useTextTranslation();
-  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [expiresIn, setExpiresIn] = useState<"3d" | "7d" | "never">("7d");
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<PlatformMember["status"]>("active");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -380,7 +378,7 @@ function AddPlatformMemberDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!displayName.trim() || !email.trim() || password.length < 8 || !roleId) {
+    if (!email.trim() || !roleId) {
       return;
     }
 
@@ -389,16 +387,12 @@ function AddPlatformMemberDialog({
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
       await createPlatformMember(token, {
-        displayName: displayName.trim(),
         email: email.trim(),
-        password,
+        expiresIn,
         roleId,
-        status,
       });
-      setDisplayName("");
       setEmail("");
-      setPassword("");
-      setStatus("active");
+      setExpiresIn("7d");
       onOpenChange(false);
       await onChanged();
     } catch (err) {
@@ -414,23 +408,12 @@ function AddPlatformMemberDialog({
         <DialogHeader>
           <DialogTitle>{tr("添加平台用户")}</DialogTitle>
           <DialogDescription>
-            {tr("创建独立的平台账号，并为其分配一个平台角色。")}
+            {tr("已有账号将直接获得平台角色；新邮箱将收到创建账号的邀请。")}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
           {error && <InlineNotice tone="error">{error}</InlineNotice>}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="platform-member-name">{tr("显示名称")}</Label>
-              <Input
-                autoComplete="name"
-                id="platform-member-name"
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder={tr("例如：平台管理员")}
-                required
-                value={displayName}
-              />
-            </div>
             <div className="grid gap-2">
               <Label htmlFor="platform-member-email">{tr("邮箱")}</Label>
               <Input
@@ -443,21 +426,6 @@ function AddPlatformMemberDialog({
                 value={email}
               />
             </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="platform-member-password">{tr("初始密码")}</Label>
-              <Input
-                autoComplete="new-password"
-                id="platform-member-password"
-                minLength={8}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder={tr("至少 8 位")}
-                required
-                type="password"
-                value={password}
-              />
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="platform-member-role">{tr("平台角色")}</Label>
               <Select onValueChange={setRoleId} value={roleId}>
@@ -473,20 +441,17 @@ function AddPlatformMemberDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="platform-member-status">{tr("状态")}</Label>
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="platform-member-expiry">{tr("邀请有效期")}</Label>
               <Select
-                onValueChange={(value) =>
-                  setStatus(value as PlatformMember["status"])
-                }
-                value={status}
+                onValueChange={(value) => setExpiresIn(value as typeof expiresIn)}
+                value={expiresIn}
               >
-                <SelectTrigger id="platform-member-status">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger id="platform-member-expiry"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">{tr("启用")}</SelectItem>
-                  <SelectItem value="disabled">{tr("禁用")}</SelectItem>
+                  <SelectItem value="3d">{tr("3 天")}</SelectItem>
+                  <SelectItem value="7d">{tr("7 天")}</SelectItem>
+                  <SelectItem value="never">{tr("长期有效")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -503,9 +468,7 @@ function AddPlatformMemberDialog({
             <Button
               disabled={
                 saving ||
-                !displayName.trim() ||
                 !email.trim() ||
-                password.length < 8 ||
                 !roleId
               }
               type="submit"

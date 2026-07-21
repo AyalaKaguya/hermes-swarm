@@ -14,7 +14,10 @@
   },
   "nx": {
     "projectType": "application",
-    "tags": ["type:app", "scope:frontend"],
+    "tags": [
+      "type:app",
+      "scope:frontend"
+    ],
     "targets": {
       "coverage": {
         "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"lib/**/*.ts\" \"lib/**/*.test.ts\"",
@@ -28,6 +31,7 @@
     }
   },
   "dependencies": {
+    "@hermes-swarm/api-contracts": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@hermes-swarm/rbac-api": "workspace:*",
     "@tailwindcss/postcss": "^4.3.1",

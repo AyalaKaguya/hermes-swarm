@@ -27,7 +27,6 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { ConversationPanel } from "@/components/conversation/conversation-panel";
 import { InlineNotice } from "@/components/inline-notice";
-import { useOrganizationContext } from "@/components/organization-context-provider";
 import { useRealtime } from "@/components/realtime-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,13 +40,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
@@ -58,7 +50,6 @@ import {
   markTicketRead,
   sendTicketMessage,
   uploadAdminFile,
-  type Organization,
   type Ticket,
   type TicketMessage,
   type TicketMessageAttachment,
@@ -83,7 +74,6 @@ const MAX_TICKET_IMAGE_SIZE = 2 * 1024 * 1024;
 type TicketDraft = {
   attachments: TicketMessageAttachment[];
   body: string;
-  sourceOrganizationId: string;
   subject: string;
 };
 
@@ -91,7 +81,6 @@ export default function TicketsPage() {
   const tr = useTextTranslation();
   const { runtimePreferences } = useI18n();
   const { snapshot } = useAdminShell();
-  const { activeOrganizationId, epoch } = useOrganizationContext();
   const { connectionEpoch, subscribe } = useRealtime();
   const currentUserId = snapshot?.user.id ?? null;
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -106,19 +95,6 @@ export default function TicketsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const memberOrganizations = useMemo(() => {
-    const byId = new Map(
-      (snapshot?.organizations ?? []).map((item) => [item.id, item]),
-    );
-    return (snapshot?.memberships ?? [])
-      .filter((item) => item.status === "active")
-      .map((item) => item.organization ?? byId.get(item.organizationId))
-      .filter(
-        (item): item is Organization =>
-          Boolean(item && item.status === "active"),
-      );
-  }, [snapshot?.memberships, snapshot?.organizations]);
 
   const selectedTicket = useMemo(
     () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
@@ -141,9 +117,7 @@ export default function TicketsPage() {
     }
     setLoading(true);
     try {
-      const next = await listTickets(session, {
-        sourceOrganizationId: activeOrganizationId,
-      });
+      const next = await listTickets(session);
       setTickets(next);
       setSelectedTicketId((current) =>
         current && next.some((item) => item.id === current) ? current : null,
@@ -154,11 +128,11 @@ export default function TicketsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeOrganizationId, tr]);
+  }, [tr]);
 
   useEffect(() => {
     void loadTickets();
-  }, [epoch, loadTickets]);
+  }, [loadTickets]);
 
   useEffect(() => {
     if (!selectedTicketId) {
@@ -229,12 +203,7 @@ export default function TicketsPage() {
   }, [connectionEpoch, loadTickets, selectedTicketId]);
 
   function openCreate() {
-    const sourceOrganizationId =
-      (activeOrganizationId &&
-      memberOrganizations.some((item) => item.id === activeOrganizationId)
-        ? activeOrganizationId
-        : memberOrganizations[0]?.id) ?? "";
-    setDraft({ ...emptyDraft(), sourceOrganizationId });
+    setDraft(emptyDraft());
     setError(null);
     setCreateOpen(true);
   }
@@ -247,7 +216,6 @@ export default function TicketsPage() {
 
   async function submitTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft.sourceOrganizationId) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -255,7 +223,6 @@ export default function TicketsPage() {
       const created = await createTicket(session, {
         attachments: draft.attachments,
         body: draft.body.trim(),
-        sourceOrganizationId: draft.sourceOrganizationId,
         subject: draft.subject.trim(),
       });
       setCreateOpen(false);
@@ -352,13 +319,10 @@ export default function TicketsPage() {
         <div>
           <h1 className="text-lg font-semibold">{tr("工单")}</h1>
           <p className="text-sm text-muted-foreground">
-            {activeOrganizationId
-              ? tr("当前组织的可见工单")
-              : tr("工作空间内你有权查看的工单")}
+            {tr("工作空间内你有权查看的工单")}
           </p>
         </div>
         <Button
-          disabled={memberOrganizations.length === 0}
           onClick={openCreate}
           type="button"
         >
@@ -397,40 +361,11 @@ export default function TicketsPage() {
           <DialogHeader>
             <DialogTitle>{tr("新建工单")}</DialogTitle>
             <DialogDescription>
-              {tr("请选择你所属的组织作为工单来源。")}
+              {tr("工单将归属于当前工作空间。")}
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitTicket}>
             {error && <InlineNotice tone="error">{error}</InlineNotice>}
-            <div className="grid gap-1.5">
-              <Label htmlFor="ticket-source-organization">
-                {tr("来源组织")}
-              </Label>
-              <Select
-                onValueChange={(value) =>
-                  setDraft((current) => ({
-                    ...current,
-                    sourceOrganizationId: value,
-                  }))
-                }
-                required
-                value={draft.sourceOrganizationId || undefined}
-              >
-                <SelectTrigger
-                  className="w-full"
-                  id="ticket-source-organization"
-                >
-                  <SelectValue placeholder={tr("请选择")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {memberOrganizations.map((organization) => (
-                    <SelectItem key={organization.id} value={organization.id}>
-                      {organization.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="grid gap-1.5">
               <Label htmlFor="ticket-subject">{tr("主题")}</Label>
               <Input
@@ -490,7 +425,6 @@ export default function TicketsPage() {
                 disabled={
                   submitting ||
                   uploading ||
-                  !draft.sourceOrganizationId ||
                   !draft.subject.trim() ||
                   !draft.body.trim()
                 }
@@ -521,7 +455,7 @@ export default function TicketsPage() {
                 </DialogTitle>
                 <DialogDescription>
                   {selectedTicket
-                    ? `${selectedTicket.sourceOrganization?.name ?? selectedTicket.sourceOrganizationId} · ${statusLabel(selectedTicket.status, tr)} · ${formatRuntimeDateTime(selectedTicket.lastMessageAt ?? selectedTicket.createdAt, runtimePreferences)}`
+                    ? `${statusLabel(selectedTicket.status, tr)} · ${formatRuntimeDateTime(selectedTicket.lastMessageAt ?? selectedTicket.createdAt, runtimePreferences)}`
                     : tr("工单会话")}
                 </DialogDescription>
               </div>
@@ -750,10 +684,6 @@ function TicketListPanel({
                   </Badge>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="truncate">
-                    {ticket.sourceOrganization?.name ??
-                      ticket.sourceOrganizationId}
-                  </span>
                   <span>
                     {formatRuntimeDateTime(
                       ticket.lastMessageAt ?? ticket.createdAt,
@@ -1061,7 +991,6 @@ function emptyDraft(): TicketDraft {
   return {
     attachments: [],
     body: "",
-    sourceOrganizationId: "",
     subject: "",
   };
 }

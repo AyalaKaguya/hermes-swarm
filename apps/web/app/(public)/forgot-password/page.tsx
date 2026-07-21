@@ -19,8 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   requestPasswordReset,
-  resolveTenantLoginContext,
-  type TenantLoginContext,
+  resolveWorkspaceLoginContext,
+  type WorkspaceLoginContext,
 } from "@/lib/admin-api";
 import {
   normalizeWorkspace,
@@ -37,8 +37,8 @@ function ForgotPasswordContent() {
   const searchParams = useSearchParams();
   const workspaceRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
-  const [workspace, setWorkspace] = useState("");
-  const [tenantContext, setTenantContext] = useState<TenantLoginContext | null>(null);
+  const [workspaceSlug, setWorkspaceSlug] = useState("");
+  const [workspaceContext, setWorkspaceContext] = useState<WorkspaceLoginContext | null>(null);
   const [email, setEmail] = useState("");
   const [initializing, setInitializing] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -52,11 +52,11 @@ function ForgotPasswordContent() {
         const candidate =
           normalizeWorkspace(searchParams.get("workspace")) ||
           readRecentWorkspace(window.localStorage);
-        if (candidate) setWorkspace(candidate);
-        const context = await resolveTenantLoginContext(candidate || undefined);
-        if (!cancelled && context.tenant) {
-          setTenantContext(context);
-          setWorkspace(context.tenant.slug);
+        if (candidate) setWorkspaceSlug(candidate);
+        const context = await resolveWorkspaceLoginContext(candidate || undefined);
+        if (!cancelled && context.workspace) {
+          setWorkspaceContext(context);
+          setWorkspaceSlug(context.workspace.slug);
         }
       } catch (loadError) {
         if (!cancelled) setError(getErrorMessage(loadError, t("workspaceNotFound")));
@@ -70,24 +70,24 @@ function ForgotPasswordContent() {
 
   useEffect(() => {
     if (initializing) return;
-    if (tenantContext?.tenant) emailRef.current?.focus();
+    if (workspaceContext?.workspace) emailRef.current?.focus();
     else workspaceRef.current?.focus();
-  }, [initializing, tenantContext]);
+  }, [initializing, workspaceContext]);
 
   async function selectWorkspace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const normalized = normalizeWorkspace(workspace);
+    const normalized = normalizeWorkspace(workspaceSlug);
     if (!normalized || loading) return;
     setLoading(true);
     setError("");
     try {
-      const context = await resolveTenantLoginContext(normalized);
-      if (!context.tenant) {
+      const context = await resolveWorkspaceLoginContext(normalized);
+      if (!context.workspace) {
         setError(t("workspaceNotFound"));
         return;
       }
-      setTenantContext(context);
-      setWorkspace(context.tenant.slug);
+      setWorkspaceContext(context);
+      setWorkspaceSlug(context.workspace.slug);
     } catch (selectError) {
       setError(getErrorMessage(selectError, t("workspaceNotFound")));
     } finally {
@@ -97,12 +97,12 @@ function ForgotPasswordContent() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!tenantContext?.tenant || loading || !email.trim()) return;
+    if (!workspaceContext?.workspace || loading || !email.trim()) return;
     setLoading(true);
     setError("");
     setMessage("");
     try {
-      await requestPasswordReset(email.trim(), tenantContext.tenant.slug);
+      await requestPasswordReset(email.trim(), workspaceContext.workspace.slug);
       setMessage(t("forgotPasswordSuccess"));
     } catch (submitError) {
       setError(getErrorMessage(submitError, t("sendFailed")));
@@ -111,7 +111,7 @@ function ForgotPasswordContent() {
     }
   }
 
-  const tenant = tenantContext?.tenant;
+  const currentWorkspace = workspaceContext?.workspace;
   return (
     <main className="relative grid min-h-svh place-items-center bg-muted/30 p-4">
       <PublicLanguageSwitcher />
@@ -123,18 +123,18 @@ function ForgotPasswordContent() {
           <div className="grid gap-1">
             <CardTitle>{t("forgotPassword")}</CardTitle>
             <CardDescription>
-              {tenant ? t("forgotPasswordFor", { workspace: tenant.name }) : t("workspaceFirst")}
+              {currentWorkspace ? t("forgotPasswordFor", { workspace: currentWorkspace.name }) : t("workspaceFirst")}
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
           {initializing ? (
             <div className="h-9 animate-pulse rounded-md bg-muted" aria-busy="true" />
-          ) : tenant ? (
+          ) : currentWorkspace ? (
             <form className="grid gap-3" onSubmit={submit}>
               <div className="rounded-md border bg-muted/35 px-3 py-2">
-                <p className="text-sm font-medium">{tenant.name}</p>
-                <p className="text-xs text-muted-foreground">{tenant.slug}</p>
+                <p className="text-sm font-medium">{currentWorkspace.name}</p>
+                <p className="text-xs text-muted-foreground">{currentWorkspace.slug}</p>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="forgot-email">{t("email")}</Label>
@@ -154,7 +154,7 @@ function ForgotPasswordContent() {
                 {loading ? t("sending") : t("sendResetLink")}
               </Button>
               <Button asChild variant="ghost">
-                <Link href={withWorkspace("/login", tenant.slug)}>{t("backToSignIn")}</Link>
+                <Link href={withWorkspace("/login", currentWorkspace.slug)}>{t("backToSignIn")}</Link>
               </Button>
             </form>
           ) : (
@@ -163,15 +163,15 @@ function ForgotPasswordContent() {
                 <Label htmlFor="forgot-workspace">{t("workspace")}</Label>
                 <Input
                   id="forgot-workspace"
-                  onChange={(event) => setWorkspace(event.target.value.toLowerCase())}
+                  onChange={(event) => setWorkspaceSlug(event.target.value.toLowerCase())}
                   pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                   ref={workspaceRef}
                   required
-                  value={workspace}
+                  value={workspaceSlug}
                 />
               </div>
               {error && <ErrorMessage>{error}</ErrorMessage>}
-              <Button disabled={loading || !normalizeWorkspace(workspace)} type="submit">
+              <Button disabled={loading || !normalizeWorkspace(workspaceSlug)} type="submit">
                 {loading ? t("findingWorkspace") : t("continue")}
               </Button>
               <Button asChild variant="ghost"><Link href="/login">{t("backToSignIn")}</Link></Button>

@@ -21,33 +21,183 @@ afterEach(() => {
 });
 
 describe("admin BFF refresh single-flight", () => {
-  it("forwards the browser host for public tenant discovery and overwrites spoofed values", async () => {
+  it("returns context choices without requiring an authenticated web session", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    globalThis.fetch = async (input) => {
+      assert.equal(String(input), "http://localhost:3200/api/admin/auth/login");
+      return Response.json({
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+        selectionToken: "selection-token",
+        contexts: [workspaceContextOption()],
+        status: "context_selection_required",
+      });
+    };
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/auth/login",
+      { method: "POST" },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ path: ["auth", "login"] }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).status, "context_selection_required");
+  });
+
+  it("returns a sanitized 502 when the upstream authentication response violates its contract", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const originalError = console.error;
+    console.error = () => undefined;
+    globalThis.fetch = async () => Response.json({ accessToken: "must-not-leak" });
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/auth/login",
+      { method: "POST" },
+    );
+
+    let response: Response;
+    try {
+      response = await POST(request, {
+        params: Promise.resolve({ path: ["auth", "login"] }),
+      });
+    } finally {
+      console.error = originalError;
+    }
+
+    assert.equal(response.status, 502);
+    const body = await response.json();
+    assert.deepEqual(body, { message: "认证服务响应格式无效" });
+    assert.equal(JSON.stringify(body).includes("must-not-leak"), false);
+  });
+
+  it("establishes the web session after selecting a context", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    globalThis.fetch = async (input) => {
+      assert.equal(
+        String(input),
+        "http://localhost:3200/api/admin/auth/select-context",
+      );
+      return new Response(
+        JSON.stringify({
+          accessToken: "workspace-access-token",
+          expiresAt: new Date(Date.now() + 300_000).toISOString(),
+          sessionId: "workspace-session",
+          snapshot: workspacePrincipal(),
+          status: "authenticated",
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "hermes_refresh=workspace-refresh-token; Path=/api/admin/auth; HttpOnly",
+          },
+        },
+      );
+    };
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/auth/select-context",
+      { method: "POST" },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ path: ["auth", "select-context"] }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.accessToken, undefined);
+    assert.equal(body.snapshot.workspace.slug, "hermes-dev");
+    assert.equal(
+      response.headers.get("set-cookie")?.includes(WEB_SESSION_COOKIE_NAME),
+      true,
+    );
+  });
+
+  it("rotates the sealed web session when switching contexts", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession();
+    globalThis.fetch = async (input, init) => {
+      assert.equal(
+        String(input),
+        "http://localhost:3200/api/admin/auth/switch-context",
+      );
+      assert.equal(
+        new Headers(init?.headers).get("authorization"),
+        "Bearer access-token",
+      );
+      return new Response(
+        JSON.stringify({
+          accessToken: "switched-access-token",
+          expiresAt: new Date(Date.now() + 300_000).toISOString(),
+          sessionId: "switched-session",
+          snapshot: workspacePrincipal({
+            id: "workspace-2",
+            name: "Hermes dev lab",
+            slug: "hermes-dev-lab",
+            status: "active",
+          }),
+          status: "authenticated",
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "hermes_refresh=switched-refresh-token; Path=/api/admin/auth; HttpOnly",
+          },
+        },
+      );
+    };
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/auth/switch-context",
+      {
+        headers: {
+          cookie: `${WEB_SESSION_COOKIE_NAME}=${sealWebSession(session)}`,
+          origin: "http://localhost:3100",
+          "x-csrf-token": session.csrfToken!,
+        },
+        method: "POST",
+      },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ path: ["auth", "switch-context"] }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.accessToken, undefined);
+    assert.equal(body.snapshot.workspace.slug, "hermes-dev-lab");
+    assert.equal(
+      response.headers.get("set-cookie")?.includes(WEB_SESSION_COOKIE_NAME),
+      true,
+    );
+  });
+
+  it("forwards the browser host for public workspace discovery and overwrites spoofed values", async () => {
     globalThis.fetch = async (_input, init) => {
       const headers = new Headers(init?.headers);
       assert.equal(headers.get("x-forwarded-host"), "acme.example.com");
       assert.equal(headers.has("authorization"), false);
-      return Response.json({ source: "host", tenant: { name: "Acme", slug: "acme" } });
+      return Response.json({ source: "host", workspace: { name: "Acme", slug: "acme" } });
     };
     const request = new NextRequest(
-      "http://acme.example.com/api/admin/auth/tenant-context",
+      "http://acme.example.com/api/admin/auth/workspace-context",
       {
         headers: { "x-forwarded-host": "spoofed.example.com" },
         method: "POST",
       },
     );
     const response = await POST(request, {
-      params: Promise.resolve({ path: ["auth", "tenant-context"] }),
+      params: Promise.resolve({ path: ["auth", "workspace-context"] }),
     });
     assert.equal(response.status, 200);
   });
 
-  it("uses the isolated platform refresh endpoint for platform sessions", async () => {
+  it("uses the unified refresh endpoint for platform sessions", async () => {
     process.env.WEB_SESSION_SECRET = "test-secret";
     const session = createSession({ principalType: "platform" });
     globalThis.fetch = async (input) => {
       assert.equal(
         String(input),
-        "http://localhost:3200/api/admin/platform/auth/refresh",
+        "http://localhost:3200/api/admin/auth/refresh",
       );
       return refreshResponse(session);
     };
@@ -222,7 +372,7 @@ describe("admin BFF refresh single-flight", () => {
     console.warn = (message?: unknown) => warnings.push(String(message));
     const session = createSession();
     const request = new NextRequest(
-      "http://localhost:3100/api/admin/users/user-1",
+      "http://localhost:3100/api/admin/workspace/members/user-1",
       {
         headers: {
           cookie: `${WEB_SESSION_COOKIE_NAME}=${sealWebSession(session)}`,
@@ -251,7 +401,7 @@ describe("admin BFF refresh single-flight", () => {
       code: "CSRF_TOKEN_INVALID",
       event: "csrf.denied",
       method: "DELETE",
-      path: "/api/admin/users/user-1",
+      path: "/api/admin/workspace/members/user-1",
     });
   });
 });
@@ -304,5 +454,89 @@ function createSession(overrides: Partial<WebSession> = {}): WebSession {
     refreshToken: "refresh-token",
     sessionId: "session-1",
     ...overrides,
+  };
+}
+
+const TEST_DATE = "2026-07-21T00:00:00.000Z";
+
+function role(workspaceId = "workspace-1") {
+  return {
+    color: null,
+    description: null,
+    displayName: "Workspace owner",
+    id: "role-1",
+    isSystem: true,
+    label: "Workspace owner",
+    name: "workspace-owner",
+    permissions: [],
+    scope: "workspace",
+    workspaceId,
+  };
+}
+
+function account() {
+  return {
+    avatarUrl: null,
+    createdAt: TEST_DATE,
+    displayName: "Owner",
+    email: "owner@example.com",
+    emailVerified: true,
+    firstName: null,
+    id: "account-1",
+    imageUrl: null,
+    lastName: null,
+    mobile: null,
+    nickname: null,
+    preferredLanguage: null,
+    status: "active",
+    timeZone: null,
+    type: "user",
+    updatedAt: TEST_DATE,
+    username: null,
+    workspaceRole: role(),
+  };
+}
+
+function workspaceContextOption() {
+  return {
+    membershipId: "membership-1",
+    role: { displayName: "Workspace owner", id: "role-1", name: "workspace-owner" },
+    type: "workspace",
+    workspace: {
+      id: "workspace-1",
+      name: "Hermes dev",
+      slug: "hermes-dev",
+      subdomain: null,
+    },
+  };
+}
+
+function workspacePrincipal(
+  workspace = {
+    id: "workspace-1",
+    name: "Hermes dev",
+    slug: "hermes-dev",
+    status: "active",
+  },
+) {
+  const workspaceRole = role(workspace.id);
+  return {
+    account: { ...account(), workspaceRole },
+    context: { membershipId: "membership-1", type: "workspace", workspace },
+    membership: { id: "membership-1", role: workspaceRole, status: "active" },
+    permissions: [],
+    principalType: "workspace",
+    role: workspaceRole,
+    runtimePreferences: {
+      currency: "CNY",
+      dateFormat: "yyyy-MM-dd",
+      language: "zh-Hans",
+      regionCode: "CN",
+      sources: { currency: "code", dateFormat: "code", language: "code", regionCode: "code", timeZone: "code" },
+      timeZone: "Asia/Hong_Kong",
+    },
+    workspace,
+    workspaceId: workspace.id,
+    workspaceRole,
   };
 }

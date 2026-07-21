@@ -14,4 +14,4 @@ apps/web/app/(console)/(domains)/projects/page.tsx -> /projects
 - 业务页面继续继承 `(console)` 的 `AdminShell`；不要在业务域内重复创建应用外壳。
 - 页面和组件显隐统一使用 `usePermission()` 或 `AccessGate`。
 - 不要基于固定角色名判断业务能力；除 `platform-admin` 种子角色外，角色是动态配置。
-- `/settings/**` 只用于个人、组织、平台基础设施配置。
+- `/settings/**` 只用于个人、工作空间、平台基础设施配置。

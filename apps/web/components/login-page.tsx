@@ -21,13 +21,15 @@ import { Label } from "@/components/ui/label";
 import {
   authLogin,
   getPublicBootstrap,
-  resolveTenantLoginContext,
-  type TenantLoginContext,
+  resolveWorkspaceLoginContext,
+  selectLoginContext,
+  type AuthenticatedLoginResponse,
+  type WorkspaceLoginContext,
+  type ContextSelectionOption,
+  type ContextSelectionRequiredResponse,
 } from "@/lib/admin-api";
 import {
-  forgetRecentWorkspace,
   normalizeWorkspace,
-  readRecentWorkspace,
   rememberWorkspace,
   safeReturnUrl,
   withWorkspace,
@@ -43,15 +45,14 @@ export function LoginPage() {
   const searchParams = useSearchParams();
   const t = useTranslations();
   const { setRuntimePreferences } = useI18n();
-  const workspaceInputRef = useRef<HTMLInputElement>(null);
-  const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
-  const [workspace, setWorkspace] = useState("");
-  const [tenantContext, setTenantContext] = useState<TenantLoginContext | null>(null);
+  const [workspaceContext, setWorkspaceContext] =
+    useState<WorkspaceLoginContext | null>(null);
+  const [selection, setSelection] =
+    useState<ContextSelectionRequiredResponse | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [initializing, setInitializing] = useState(true);
-  const [resolving, setResolving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [platformName, setPlatformName] = useState<string | null>(null);
@@ -61,8 +62,7 @@ export function LoginPage() {
   useEffect(() => {
     clearStoredSession();
     let cancelled = false;
-
-    async function initialize() {
+    void (async () => {
       try {
         const bootstrap = await getPublicBootstrap();
         if (cancelled) return;
@@ -74,85 +74,50 @@ export function LoginPage() {
           router.replace("/onboarding");
           return;
         }
-
-        const queryWorkspace = normalizeWorkspace(searchParams.get("workspace"));
-        const remembered = readRecentWorkspace(window.localStorage);
-        const candidate = queryWorkspace || remembered;
-        if (candidate) setWorkspace(candidate);
-        const context = await resolveTenantLoginContext(candidate || undefined);
-        if (cancelled) return;
-        if (context.tenant) {
-          setTenantContext(context);
-          setWorkspace(context.tenant.slug);
-        } else if (candidate) {
-          forgetRecentWorkspace(window.localStorage);
-          setError(t("auth.workspaceNotFound"));
+        const workspace = normalizeWorkspace(searchParams.get("workspace"));
+        if (workspace) {
+          const context = await resolveWorkspaceLoginContext(workspace);
+          if (!context.workspace) {
+            setError(t("auth.workspaceNotFound"));
+          } else {
+            setWorkspaceContext(context);
+          }
         }
       } catch (loadError) {
-        if (!cancelled) setError(getErrorMessage(loadError, t("auth.requestFailed")));
+        if (!cancelled) {
+          setError(getErrorMessage(loadError, t("auth.requestFailed")));
+        }
       } finally {
         if (!cancelled) setInitializing(false);
       }
-    }
-
-    void initialize();
+    })();
     return () => {
       cancelled = true;
     };
   }, [router, searchParams, t]);
 
-  useEffect(() => {
-    if (initializing) return;
-    if (tenantContext?.tenant) emailInputRef.current?.focus();
-    else workspaceInputRef.current?.focus();
-  }, [initializing, tenantContext]);
-
-  async function resolveWorkspace(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const normalized = normalizeWorkspace(workspace);
-    if (!normalized || resolving) return;
-    setResolving(true);
-    setError("");
-    try {
-      const context = await resolveTenantLoginContext(normalized);
-      if (!context.tenant) {
-        setError(t("auth.workspaceNotFound"));
-        return;
-      }
-      setWorkspace(context.tenant.slug);
-      setTenantContext(context);
-      const url = new URL(window.location.href);
-      url.searchParams.set("workspace", context.tenant.slug);
-      window.history.replaceState(null, "", url);
-    } catch (resolveError) {
-      setError(getErrorMessage(resolveError, t("auth.workspaceNotFound")));
-    } finally {
-      setResolving(false);
-    }
-  }
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!tenantContext?.tenant || submitting) return;
-    setError("");
+    if (submitting) return;
     setSubmitting(true);
+    setError("");
     try {
       const response = await authLogin({
+        contextType: searchParams.get("context") === "platform"
+          ? "platform"
+          : workspaceContext?.workspace
+            ? "workspace"
+            : undefined,
         email: email.trim(),
         password,
-        tenantSlug: tenantContext.tenant.slug,
+        workspaceSlug: workspaceContext?.workspace?.slug,
       });
-      if (response.snapshot.permissions.length === 0) {
-        setError(t("auth.noAdminAccess"));
+      if (response.status === "context_selection_required") {
+        setSelection(response);
+        setPassword("");
         return;
       }
-      rememberWorkspace(window.localStorage, tenantContext.tenant.slug);
-      setRuntimePreferences(response.snapshot.runtimePreferences);
-      router.replace(
-        safeReturnUrl(
-          searchParams.get("next") ?? searchParams.get("returnUrl"),
-        ),
-      );
+      completeLogin(response);
     } catch (loginError) {
       setPassword("");
       setError(getErrorMessage(loginError, t("auth.invalidCredentials")));
@@ -162,18 +127,47 @@ export function LoginPage() {
     }
   }
 
-  function switchWorkspace() {
-    forgetRecentWorkspace(window.localStorage);
-    setTenantContext(null);
-    setPassword("");
+  async function chooseContext(option: ContextSelectionOption) {
+    if (!selection || submitting) return;
+    setSubmitting(true);
     setError("");
-    const url = new URL(window.location.href);
-    url.searchParams.delete("workspace");
-    window.history.replaceState(null, "", url);
+    try {
+      completeLogin(
+        await selectLoginContext({
+          contextType: option.type,
+          membershipId: option.membershipId,
+          selectionToken: selection.selectionToken,
+        }),
+      );
+    } catch (selectionError) {
+      setSelection(null);
+      setError(getErrorMessage(selectionError, t("auth.invalidCredentials")));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  const title = platformName || "Hermes Swarm";
-  const tenant = tenantContext?.tenant;
+  function completeLogin(response: AuthenticatedLoginResponse) {
+    if (response.snapshot.permissions.length === 0) {
+      setError(t("auth.noAdminAccess"));
+      return;
+    }
+    if (response.snapshot.principalType === "workspace" && response.snapshot.workspace?.slug) {
+      rememberWorkspace(window.localStorage, response.snapshot.workspace.slug);
+    }
+    setRuntimePreferences(response.snapshot.runtimePreferences);
+    const requested = searchParams.get("next") ?? searchParams.get("returnUrl");
+    router.replace(
+      requested
+        ? safeReturnUrl(requested)
+        : response.snapshot.principalType === "platform"
+          ? "/platform/workspaces"
+          : "/home",
+    );
+  }
+
+  const currentWorkspace = workspaceContext?.workspace;
+  const title = currentWorkspace?.name || platformName || "Hermes Swarm";
 
   return (
     <main className="relative grid min-h-svh place-items-center bg-muted/30 p-4">
@@ -182,54 +176,76 @@ export function LoginPage() {
         <CardHeader className="gap-4">
           <div className="flex items-center gap-2">
             <div className="grid size-9 place-items-center rounded-lg border bg-muted text-muted-foreground">
-              <AppIcon className="size-4" name={tenant ? "building" : "sparkles"} />
+              <AppIcon className="size-4" name={currentWorkspace ? "building" : "sparkles"} />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{tenant?.name || title}</p>
+              <p className="truncate text-sm font-medium">{title}</p>
               <p className="text-xs text-muted-foreground">
-                {tenant ? tenant.slug : t("auth.console")}
+                {currentWorkspace?.slug || t("auth.console")}
               </p>
             </div>
           </div>
           <div className="grid gap-1">
             <CardTitle>
-              {tenant ? t("auth.signIn") : t("auth.workspaceTitle")}
+              {selection ? t("auth.workspaceTitle") : t("auth.signIn")}
             </CardTitle>
             <CardDescription>
-              {tenant ? t("auth.subtitle") : t("auth.workspaceDescription")}
+              {selection
+                ? t("auth.workspaceDescription")
+                : currentWorkspace
+                  ? t("auth.subtitle")
+                  : t("auth.sharedLoginDescription")}
             </CardDescription>
           </div>
         </CardHeader>
-
         <CardContent>
           {initializing ? (
             <div className="grid gap-3" aria-busy="true">
               <div className="h-9 animate-pulse rounded-md bg-muted" />
               <div className="h-9 animate-pulse rounded-md bg-muted" />
-              <p className="text-center text-xs text-muted-foreground">
-                {t("auth.preparingSignIn")}
-              </p>
             </div>
-          ) : tenant ? (
+          ) : selection ? (
+            <div className="grid gap-2">
+              {selection.contexts.map((option) => (
+                <Button
+                  className="h-auto justify-start gap-3 px-3 py-2.5"
+                  disabled={submitting}
+                  key={`${option.type}:${option.membershipId}`}
+                  onClick={() => void chooseContext(option)}
+                  type="button"
+                  variant="outline"
+                >
+                  <AppIcon className="size-4" name={option.type === "platform" ? "shield" : "building"} />
+                  <span className="grid min-w-0 flex-1 text-left">
+                    <span className="truncate text-sm font-medium">
+                      {option.type === "platform" ? t("auth.console") : option.workspace.name}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {option.role.displayName}
+                    </span>
+                  </span>
+                </Button>
+              ))}
+              <Button
+                onClick={() => {
+                  setSelection(null);
+                  setError("");
+                }}
+                type="button"
+                variant="ghost"
+              >
+                {t("auth.backToSignIn")}
+              </Button>
+              {error && <InlineNotice tone="error">{error}</InlineNotice>}
+            </div>
+          ) : (
             <form className="grid gap-3" onSubmit={submit}>
-              <div className="flex items-center justify-between rounded-md border bg-muted/35 px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{tenant.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{tenant.slug}</p>
-                </div>
-                {tenantContext.source !== "host" && (
-                  <Button onClick={switchWorkspace} size="sm" type="button" variant="ghost">
-                    {t("auth.switchWorkspace")}
-                  </Button>
-                )}
-              </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="login-email">{t("auth.email")}</Label>
                 <Input
                   autoComplete="email"
                   id="login-email"
                   onChange={(event) => setEmail(event.target.value)}
-                  ref={emailInputRef}
                   required
                   type="email"
                   value={email}
@@ -240,7 +256,11 @@ export function LoginPage() {
                   <Label htmlFor="login-password">{t("auth.password")}</Label>
                   <Link
                     className="text-xs text-muted-foreground hover:text-foreground"
-                    href={withWorkspace("/forgot-password", tenant.slug)}
+                    href={
+                      currentWorkspace
+                        ? withWorkspace("/forgot-password", currentWorkspace.slug)
+                        : "/forgot-password"
+                    }
                   >
                     {t("auth.forgotPassword")}
                   </Link>
@@ -255,7 +275,7 @@ export function LoginPage() {
                   value={password}
                 />
               </div>
-              {error && <ErrorMessage>{error}</ErrorMessage>}
+              {error && <InlineNotice tone="error">{error}</InlineNotice>}
               <Button disabled={submitting || !email.trim() || !password} type="submit">
                 {submitting ? t("auth.signingIn") : t("auth.signIn")}
               </Button>
@@ -265,42 +285,11 @@ export function LoginPage() {
                 </Button>
               )}
             </form>
-          ) : (
-            <form className="grid gap-3" onSubmit={resolveWorkspace}>
-              <div className="grid gap-1.5">
-                <Label htmlFor="login-workspace">{t("auth.workspace")}</Label>
-                <Input
-                  autoCapitalize="none"
-                  autoComplete="organization"
-                  id="login-workspace"
-                  onChange={(event) => setWorkspace(event.target.value.toLowerCase())}
-                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                  placeholder={t("auth.workspacePlaceholder")}
-                  ref={workspaceInputRef}
-                  required
-                  value={workspace}
-                />
-              </div>
-              {error && <ErrorMessage>{error}</ErrorMessage>}
-              <Button disabled={resolving || !normalizeWorkspace(workspace)} type="submit">
-                {resolving ? t("auth.findingWorkspace") : t("auth.continue")}
-              </Button>
-              {workspaceApplicationsEnabled && (
-                <Button asChild variant="ghost">
-                  <Link href="/apply">{t("auth.applyForWorkspace")}</Link>
-                </Button>
-              )}
-            </form>
           )}
-
         </CardContent>
       </Card>
     </main>
   );
-}
-
-function ErrorMessage({ children }: { children: React.ReactNode }) {
-  return <InlineNotice tone="error">{children}</InlineNotice>;
 }
 
 function getErrorMessage(error: unknown, fallback: string) {

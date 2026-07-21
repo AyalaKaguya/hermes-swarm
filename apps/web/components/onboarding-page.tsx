@@ -25,8 +25,6 @@ export function OnboardingPage() {
   const router = useRouter();
   const t = useTranslations();
   const { setRuntimePreferences } = useI18n();
-  const [organizationName, setOrganizationName] = useState("Hermes");
-  const [organizationSlug, setOrganizationSlug] = useState("hermes");
   const [adminName, setAdminName] = useState("Admin");
   const [adminEmail, setAdminEmail] = useState("admin@hermes.local");
   const [adminPassword, setAdminPassword] = useState("admin123456");
@@ -65,12 +63,10 @@ export function OnboardingPage() {
         adminEmail,
         adminName,
         adminPassword,
-        organizationName,
-        organizationSlug,
       });
 
       setRuntimePreferences(response.snapshot.runtimePreferences);
-      router.replace("/home");
+      router.replace("/platform");
     } catch (saveError) {
       setError(getErrorMessage(saveError, t("common.operationFailed")));
     } finally {
@@ -101,26 +97,6 @@ export function OnboardingPage() {
         <form onSubmit={submit}>
           <CardContent className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5 sm:col-span-2">
-                <Label htmlFor="onboarding-organization-name">
-                  {t("onboarding.organizationName")}
-                </Label>
-                <Input
-                  id="onboarding-organization-name"
-                  onChange={(event) => setOrganizationName(event.target.value)}
-                  value={organizationName}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="onboarding-organization-slug">
-                  {t("onboarding.organizationSlug")}
-                </Label>
-                <Input
-                  id="onboarding-organization-slug"
-                  onChange={(event) => setOrganizationSlug(event.target.value)}
-                  value={organizationSlug}
-                />
-              </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="onboarding-admin-name">
                   {t("onboarding.adminName")}

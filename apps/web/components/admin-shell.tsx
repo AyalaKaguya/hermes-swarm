@@ -16,28 +16,20 @@ import { useI18n } from "@/components/i18n-provider";
 import { AppShell } from "@/components/app-shell";
 import { RealtimeProvider } from "@/components/realtime-provider";
 import { Button } from "@/components/ui/button";
-import {
-  OrganizationContextProvider,
-  useOrganizationContext,
-} from "@/components/organization-context-provider";
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import {
   fetchMe,
   isUnauthorizedApiError,
-  type Role,
+  listAccountContexts,
+  switchAccountContext,
+  type ContextSelectionOption,
   type Snapshot,
 } from "@/lib/admin-api";
 import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/session";
-import { hasPageAccess, mergePermissionCodes } from "@/lib/access-control";
-import { resolveHostOrganizationIdFromPrincipal } from "@/lib/host-organization";
+import { hasPageAccess } from "@/lib/access-control";
 import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 import { resolveLoginRoute, resolvePrincipalRoute } from "@/lib/principal-route";
-import {
-  commitOrganizationSelection,
-  initializeOrganizationSelection,
-  resolveInitialOrganizationSelection,
-} from "@/lib/organization-context";
 
 type AdminShellContextValue = {
   loading: boolean;
@@ -62,6 +54,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     useState<ResolvedSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [contextOptions, setContextOptions] = useState<ContextSelectionOption[]>([]);
+  const [switchingContext, setSwitchingContext] = useState(false);
   const [redirectingToLogin, setRedirectingToLogin] = useState(false);
 
   useEffect(() => {
@@ -78,16 +72,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
       }
       try {
         const principal = await fetchMe();
+        setContextOptions(await listAccountContexts());
         setRuntimePreferences(principal.runtimePreferences);
-        const initialSelection =
-          principal.principalType === "tenant"
-            ? resolveInitialOrganizationSelection(principal)
-            : null;
-        initializeOrganizationSelection(initialSelection);
-        const data = createShellSnapshot(
-          principal,
-          initialSelection?.activeOrganizationId ?? undefined,
-        );
+        const data = createShellSnapshot(principal);
         setSnapshot(data);
         setResolvedSession(resolveSession(data));
         setLoadError(null);
@@ -130,22 +117,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
     setRedirectingToLogin(Boolean(redirectPath));
     if (redirectPath) router.replace(redirectPath);
   }, [pathname, router, snapshot]);
-
-  async function switchOrganization(organizationId: string | null) {
-    const currentSnapshot = snapshot;
-    if (!currentSnapshot || currentSnapshot.principalType !== "tenant") {
-      return;
-    }
-    commitOrganizationSelection(currentSnapshot, organizationId);
-    const result = selectSnapshotOrganization(currentSnapshot, organizationId);
-    setSnapshot(result);
-    setResolvedSession(resolveSession(result));
-    if (pathname.startsWith("/settings")) {
-      router.replace(
-        organizationId ? "/settings/organization" : "/settings/tenant",
-      );
-    }
-  }
 
   const contextValue = useMemo<AdminShellContextValue>(
     () => ({
@@ -195,32 +166,45 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const navSections = buildMainNavSections(resolvedSession);
   const ticketAccess = buildTicketAccess(resolvedSession, snapshot);
 
+  async function switchContext(option: ContextSelectionOption) {
+    if (
+      switchingContext ||
+      option.membershipId === principalMembershipId(snapshot)
+    ) {
+      return;
+    }
+    setSwitchingContext(true);
+    try {
+      await switchAccountContext({
+        contextType: option.type,
+        membershipId: option.membershipId,
+      });
+      window.location.assign(option.type === "platform" ? "/platform/workspaces" : "/home");
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : t("shell.loadSessionFailed"));
+      setSwitchingContext(false);
+    }
+  }
+
   return (
-    <OrganizationContextProvider principal={snapshot}>
-      <RealtimeProvider
-        connectionKey={`${snapshot.tenant?.id ?? "platform"}:${resolvedSession.user.id}`}
-        enabled={snapshot.principalType === "tenant"}
-      >
-        <AppShell
+    <RealtimeProvider
+      connectionKey={`${snapshot.workspace?.id ?? "platform"}:${resolvedSession.user.id}`}
+      enabled={snapshot.principalType === "workspace"}
+    >
+      <AppShell
       contentClassName={
         pathname.startsWith("/settings") ||
         pathname.startsWith("/platform/settings")
           ? "p-0"
           : undefined
       }
-      currentOrganizationId={snapshot.organization?.id}
       homeHref={
         snapshot.principalType === "platform" ? "/platform" : "/home"
       }
       homeLabel={
         snapshot.principalType === "platform" ? t("shell.home") : undefined
       }
-      onOrganizationSwitch={switchOrganization}
       onUserUpdated={() => loadSnapshot({ showLoading: false })}
-      organizationName={
-        snapshot.organization?.name ?? resolvedSession.organization?.name
-      }
-      organizations={snapshot.organizations}
       platformName={platformName}
       navSections={navSections}
       settingsHref={
@@ -229,22 +213,17 @@ export function AdminShell({ children }: { children: ReactNode }) {
           : "/settings/account"
       }
       ticketAccess={ticketAccess}
-      tenant={snapshot.permissions.includes("workspace.console.access:tenant") ? snapshot.tenant : null}
+      workspace={snapshot.permissions.includes("workspace.console.access:workspace") ? snapshot.workspace : null}
+      contextOptions={contextOptions}
+      switchingContext={switchingContext}
+      onSwitchContext={(option) => void switchContext(option)}
       user={resolvedSession.user}
         >
-          <AdminShellContext.Provider value={contextValue}>
-            <OrganizationEpochBoundary>{children}</OrganizationEpochBoundary>
-          </AdminShellContext.Provider>
-        </AppShell>
-      </RealtimeProvider>
-    </OrganizationContextProvider>
-  );
-}
-
-function OrganizationEpochBoundary({ children }: { children: ReactNode }) {
-  useOrganizationContext();
-  return (
-    <div className="contents">{children}</div>
+        <AdminShellContext.Provider value={contextValue}>
+          {children}
+        </AdminShellContext.Provider>
+      </AppShell>
+    </RealtimeProvider>
   );
 }
 
@@ -268,12 +247,11 @@ function resolvePlatformName(
 
 export function createShellSnapshot(
   principal: Awaited<ReturnType<typeof fetchMe>>,
-  preferredOrganizationId?: string,
 ): Snapshot {
   if (principal.principalType === "platform") {
-    const roles = principal.platformUser.roles ?? [];
-    const permissions = resolvePlatformPermissions(roles);
-    const user = platformUserToDisplayUser(principal.platformUser);
+    const roles = principal.role ? [principal.role] : [];
+    const permissions = principal.permissions;
+    const user = principal.account;
     const isPlatformAdmin =
       roles.some((role) => role.name === "platform-admin") ||
       hasPlatformManagementPermission(permissions);
@@ -282,185 +260,52 @@ export function createShellSnapshot(
       ...principal,
       currentUser: {
         isPlatformAdmin,
-        memberships: [],
-        organization: null,
         permissions,
-        platformUser: principal.platformUser,
         principalType: "platform",
         role: roles[0] ?? null,
         user,
       },
       isPlatformAdmin,
-      memberships: [],
-      organization: null,
-      organizations: [],
       permissions,
-      platformUser: principal.platformUser,
       principalType: "platform",
       role: roles[0] ?? null,
       rolePermissions: roles.flatMap((role) => role.permissions ?? []),
       roles,
       systemSettings: principal.systemSettings ?? [],
-      tenant: null,
-      tenantId: null,
+      workspace: null,
+      workspaceId: null,
       user,
       users: [],
     };
   }
 
-  const memberships = principal.memberships ?? [];
-  const organizations = memberships
-    .map((membership) => membership.organization)
-    .filter((organization): organization is NonNullable<typeof organization> =>
-      Boolean(organization),
-    );
-  const hostOrganizationId =
-    preferredOrganizationId ?? resolveHostOrganizationId(principal);
-  const activeMembership =
-    memberships.find(
-      (membership) => membership.organizationId === hostOrganizationId,
-    ) ??
-    memberships[0] ??
-    null;
-  const organization = activeMembership?.organization ?? organizations[0] ?? null;
-  const role = activeMembership?.role ?? principal.tenantRole ?? null;
-  const activePermissions = resolveTenantPermissions(
-    principal.permissions,
-    activeMembership?.role ?? null,
-    principal.tenantRole,
-  );
+  const role = principal.workspaceRole ?? null;
+  const activePermissions = principal.permissions;
   const isPlatformAdmin = false;
 
   return {
     ...principal,
-    currentUser: {
+      currentUser: {
       isPlatformAdmin,
-      memberships,
-      organization,
       permissions: activePermissions,
-      platformUser: null,
-      principalType: "tenant",
+      principalType: "workspace",
       role,
-      user: principal.user,
+      user: principal.account,
     },
     isPlatformAdmin,
-    organization,
-    organizations,
     permissions: activePermissions,
     rolePermissions: role?.permissions ?? [],
     roles: role ? [role] : [],
     systemSettings: principal.systemSettings ?? [],
+    user: principal.account,
     users: [],
   };
 }
 
-function resolveHostOrganizationId(principal: Awaited<ReturnType<typeof fetchMe>>) {
-  if (principal.principalType !== "tenant") return null;
-  if (typeof window === "undefined") return null;
-  return resolveHostOrganizationIdFromPrincipal(
-    principal,
-    window.location.hostname,
-  );
-}
-
-function selectSnapshotOrganization(
-  snapshot: Snapshot,
-  organizationId: string | null,
-): Snapshot {
-  if (!organizationId) {
-    const role = snapshot.tenantRole ?? null;
-    const permissions = resolveTenantPermissions(
-      snapshot.currentUser.permissions,
-      null,
-      role,
-    );
-    return {
-      ...snapshot,
-      currentUser: { ...snapshot.currentUser, organization: null, permissions, role },
-      organization: null,
-      permissions,
-      role,
-      rolePermissions: role?.permissions ?? [],
-      roles: role ? [role] : [],
-    };
-  }
-  const activeMembership =
-    snapshot.memberships.find(
-      (membership) =>
-        membership.organizationId === organizationId &&
-        membership.status === "active",
-    ) ?? null;
-  if (!activeMembership?.organization) return snapshot;
-  const role = activeMembership.role ?? null;
-  const permissions = resolveTenantPermissions(
-    snapshot.currentUser.permissions,
-    role,
-    snapshot.tenantRole,
-  );
-
-  return {
-    ...snapshot,
-    currentUser: {
-      ...snapshot.currentUser,
-      organization: activeMembership.organization,
-      permissions,
-      role,
-    },
-    organization: activeMembership.organization,
-    permissions,
-    role,
-    rolePermissions: role?.permissions ?? [],
-    roles: role ? [role] : [],
-  };
-}
-
-function resolveTenantPermissions(
-  base: string[],
-  organizationRole: Role | null,
-  tenantRole: Role | null | undefined,
-) {
-  return mergePermissionCodes(
-    base.filter((permission) => !permission.endsWith(":organization")),
-    tenantRole,
-    organizationRole,
-  );
-}
-
-function resolvePlatformPermissions(roles: Snapshot["roles"]) {
-  return [
-    ...new Set(
-      roles
-        .flatMap((role) => role.permissions ?? [])
-        .flat()
-        .filter((permission) => permission.enabled)
-        .map((permission) => permission.permission),
-    ),
-  ];
-}
-
-function platformUserToDisplayUser(
-  platformUser: NonNullable<Snapshot["platformUser"]>,
-): Snapshot["user"] {
-  return {
-    avatarUrl: null,
-    createdAt: "",
-    displayName: platformUser.displayName,
-    email: platformUser.email,
-    emailVerified: true,
-    firstName: null,
-    id: platformUser.id,
-    imageUrl: null,
-    lastName: null,
-    mobile: null,
-    nickname: null,
-    preferredLanguage: platformUser.preferredLanguage ?? "zh-CN",
-    status: platformUser.status,
-    tenantId: null,
-    timeZone: null,
-    type: "user",
-    updatedAt: "",
-    username: null,
-  };
+function principalMembershipId(snapshot: Snapshot | null) {
+  return snapshot && "context" in snapshot
+    ? snapshot.context?.membershipId
+    : undefined;
 }
 
 function hasPlatformManagementPermission(permissions: string[] | undefined) {
@@ -548,14 +393,9 @@ function buildTicketAccess(
 
   const canOpenTickets =
     hasPageAccess(resolvedSession, "tickets") ||
-    hasPageAccess(resolvedSession, "tickets.tenant") ||
+    hasPageAccess(resolvedSession, "tickets.workspace") ||
     resolvedSession.permissions.includes(
-      "ticket.tenant_conversation.list_tenant:own",
-    ) ||
-    Boolean(
-      snapshot.memberships?.some(
-        (membership) => membership.role?.name === "owner",
-      ),
+      "ticket.workspace_conversation.list_workspace:own",
     );
 
   return { visible: canOpenTickets };

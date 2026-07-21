@@ -3,6 +3,11 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright";
+import {
+  PrincipalSessionSchema,
+  adminContracts,
+  responseSchemaFor,
+} from "@hermes-swarm/api-contracts";
 
 const baseUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 const webSessionCookieName = "hermes_web_session";
@@ -10,7 +15,7 @@ const webSessionCookieName = "hermes_web_session";
 const user = {
   avatarUrl: null,
   createdAt: "2026-07-15T00:00:00.000Z",
-  displayName: "Tenant Owner",
+  displayName: "Workspace Owner",
   email: "owner@hermes.local",
   emailVerified: true,
   firstName: null,
@@ -18,7 +23,7 @@ const user = {
   imageUrl: null,
   lastName: null,
   mobile: null,
-  nickname: "Tenant Owner",
+  nickname: "Workspace Owner",
   preferredLanguage: "zh-Hans",
   status: "active",
   timeZone: "Asia/Hong_Kong",
@@ -27,111 +32,57 @@ const user = {
   username: "owner",
 };
 
-const rootOrganization = {
-  id: "org-root",
-  name: "Hermes Development",
-  parentOrganizationId: null,
-  slug: "hermes-development",
-  status: "active",
-};
-
-const childOrganization = {
-  id: "org-support",
-  name: "Support",
-  parentOrganizationId: rootOrganization.id,
-  slug: "support",
-  status: "active",
-};
-
-const tenantRole = {
+const role = {
+  color: null,
+  description: "工作空间所有者",
+  displayName: "Workspace Owner",
   id: "role-owner",
   isSystem: true,
-  label: "Tenant Owner",
-  displayName: "Tenant Owner",
-  name: "tenant-owner",
-  permissions: [
-    rolePermission("page.settings.tenant.access:tenant", "role-owner"),
-    rolePermission("setting.tenant_config.list:tenant", "role-owner"),
-    rolePermission("setting.tenant_config.save:tenant", "role-owner"),
-  ],
-  scope: "tenant",
-};
-
-const organizationRole = {
-  id: "role-org-admin",
-  isSystem: true,
-  label: "Organization Admin",
-  displayName: "Organization Admin",
-  name: "admin",
-  organizationId: rootOrganization.id,
-  permissions: [
-    rolePermission("page.settings.organization.access:organization"),
-    rolePermission("page.settings.organization.members.access:organization"),
-    rolePermission("page.settings.organization.roles.access:organization"),
-    rolePermission("user.organization_member.create:organization"),
-  ],
-  scope: "organization",
+  label: "Workspace Owner",
+  name: "workspace-owner",
+  permissions: [],
+  scope: "workspace",
+  workspaceId: "workspace-hermes",
 };
 
 const permissions = [
   "page.settings.account.access:own",
   "page.settings.sessions.access:own",
-  "page.settings.tenant.access:tenant",
-  "page.settings.organizations.access:tenant",
-  "page.settings.users.access:tenant",
-  "page.settings.invites.access:tenant",
-  "page.settings.email-templates.access:tenant",
   "page.settings.api-tokens.access:own",
-  "page.settings.workspace-access.access:tenant",
-  "page.settings.audit-logs.access:tenant",
-  "setting.tenant_config.save:tenant",
-  "tenant.tenant_profile.update:tenant",
-  "workspace.console.access:tenant",
-  "organization.tenant_organization.list:tenant",
-  "user.tenant_user.list:tenant",
-  "user.tenant_user.create:tenant",
-  "user.tenant_user.update_basic:tenant",
-  "user.tenant_user.replace_roles:tenant",
-  "user.tenant_user.delete:tenant",
-  "invite.workspace_invite.list:tenant",
-  "invite.workspace_invite.create:tenant",
-  "invite.workspace_invite.resend:tenant",
-  "invite.workspace_invite.delete:tenant",
-  "role.workspace_role.list:tenant",
+  "page.settings.workspace.access:workspace",
+  "page.settings.workspace.members.access:workspace",
+  "page.settings.invites.access:workspace",
+  "page.settings.email-templates.access:workspace",
+  "page.settings.workspace-access.access:workspace",
+  "page.settings.audit-logs.access:workspace",
+  "workspace.workspace_profile.update:workspace",
+  "member.workspace_user.list:workspace",
+  "member.workspace_user.create:workspace",
+  "member.workspace_user.update_basic:workspace",
+  "member.workspace_user.replace_roles:workspace",
+  "member.workspace_user.delete:workspace",
+  "role.workspace_role.list:workspace",
 ];
 
-const membership = {
-  displayName: user.displayName,
-  id: "membership-owner",
-  isDefault: true,
-  joinedAt: "2026-07-15T00:00:00.000Z",
-  organization: rootOrganization,
-  organizationId: rootOrganization.id,
-  role: organizationRole,
-  status: "active",
-  user,
-  userId: user.id,
-};
-
-const supportMembership = {
-  ...membership,
-  id: "membership-support-owner",
-  isDefault: false,
-  organization: childOrganization,
-  organizationId: childOrganization.id,
-  role: {
-    ...organizationRole,
-    id: "role-org-admin-support",
-    organizationId: childOrganization.id,
-  },
-};
-
 const snapshot = {
-  defaultOrganizationId: rootOrganization.id,
-  memberships: [membership, supportMembership],
-  onboarding: { rootOrganizationRequired: false },
+  account: user,
+  context: {
+    membershipId: "membership-owner",
+    type: "workspace",
+    workspace: {
+      id: "workspace-hermes",
+      name: "Hermes Development",
+      slug: "hermes-dev",
+      status: "active",
+    },
+  },
+  membership: {
+    id: "membership-owner",
+    role,
+    status: "active",
+  },
   permissions,
-  principalType: "tenant",
+  principalType: "workspace",
   runtimePreferences: {
     currency: "CNY",
     dateFormat: "YYYY-MM-DD",
@@ -140,844 +91,189 @@ const snapshot = {
     sources: {
       currency: "platform",
       dateFormat: "platform",
-      language: "platform",
+      language: "user",
       regionCode: "platform",
-      timeZone: "platform",
+      timeZone: "user",
     },
-    timeZone: "Asia/Shanghai",
+    timeZone: "Asia/Hong_Kong",
   },
-  tenant: {
-    id: "tenant-hermes",
+  workspace: {
+    id: "workspace-hermes",
     name: "Hermes Development",
     slug: "hermes-dev",
     status: "active",
   },
-  tenantId: "tenant-hermes",
-  tenantRole,
-  user,
+  workspaceId: "workspace-hermes",
+  workspaceRole: role,
 };
 
-const platformPagePermissions = [
-  "page.platform.audit.access:platform",
-  "page.platform.tenants.access:platform",
-  "page.settings.platform.access:platform",
-];
+const member = {
+  account: user,
+  membershipId: "membership-owner",
+  removedAt: null,
+  role,
+  status: "active",
+};
 
-const platformSettings = [
-  platformSetting("platform.title", "Hermes Swarm"),
-  platformSetting("platform.publicBaseUrl", "http://localhost:3100"),
-  platformSetting("platform.rootDomain", "localhost"),
-  platformSetting("platform.subdomainRoutingEnabled", "false", "boolean"),
-  platformSetting("tenant.defaultCurrency", "CNY", "enum", "tenant"),
-  platformSetting("tenant.defaultDateFormat", "YYYY-MM-DD", "enum", "tenant"),
-  platformSetting("tenant.defaultLanguage", "zh-Hans", "enum", "tenant"),
-  platformSetting("tenant.defaultRegionCode", "CN", "enum", "tenant"),
-  platformSetting("tenant.defaultTimeZone", "Asia/Shanghai", "enum", "tenant"),
-];
-
-const tests = [
+const contexts = [
   {
-    name: "platform audit homepage keeps tenant applications in navigation",
-    run: async ({ page, state }) => {
-      state.principalType = "platform";
-      await installApiMocks(page, state);
-      await seedSession(page);
-      await page.goto(`${baseUrl}/platform`);
-      await page.getByRole("heading", { name: "日志审计" }).waitFor();
-      await page.getByRole("link", { name: "租户申请", exact: true }).waitFor();
-      await expectVisibleText(page, "Platform Administrator");
-      await page.getByRole("tab", { name: "操作日志" }).click();
-      const row = page.getByRole("row").filter({ hasText: "批准租户申请" });
-      await row.click();
-      await page.getByRole("dialog").getByText("操作日志详情").waitFor();
-      await expectHiddenText(page, "Tenant Owner");
+    membershipId: "platform-membership-owner",
+    role: {
+      displayName: "Platform Admin",
+      id: "role-platform-admin",
+      name: "platform-admin",
     },
+    type: "platform",
   },
   {
-    name: "unauthenticated platform settings use the platform login surface",
-    run: async ({ page }) => {
-      await page.goto(`${baseUrl}/platform/settings/localization`);
-      await page.waitForURL(/\/platform\/login(?:\?|$)/);
+    membershipId: "membership-owner",
+    role: {
+      displayName: role.displayName,
+      id: role.id,
+      name: role.name,
     },
-  },
-  {
-    name: "platform settings direct URL denies a principal without page access",
-    run: async ({ page, state }) => {
-      state.principalType = "platform";
-      state.platformPermissions = state.platformPermissions.filter(
-        (permission) =>
-          permission !== "page.settings.platform.access:platform",
-      );
-      await installApiMocks(page, state);
-      await seedSession(page);
-      await page.goto(`${baseUrl}/platform/settings/general`);
-      await page.getByText("无权访问此页面", { exact: true }).waitFor();
-      assert.equal(
-        await page.getByRole("heading", { level: 1, name: "平台信息" }).count(),
-        0,
-      );
-    },
-  },
-  {
-    name: "platform settings use the tenant-style two-pane workspace",
-    run: async ({ page, state }) => {
-      state.principalType = "platform";
-      await installApiMocks(page, state);
-      await seedSession(page);
-      await page.goto(`${baseUrl}/platform/settings/general`);
-      await page.getByRole("heading", { level: 1, name: "平台信息" }).waitFor();
-
-      const sidebar = page.getByRole("complementary", { name: "平台设置导航" });
-      assert.equal(await sidebar.isVisible(), true);
-      assert.equal(
-        await sidebar
-          .getByRole("link", { name: "平台信息", exact: true })
-          .getAttribute("aria-current"),
-        "page",
-      );
-      const mobileNavigation = page.getByRole("navigation", {
-        name: "平台设置导航",
-      });
-      assert.equal(await mobileNavigation.isVisible(), false);
-
-      await sidebar
-        .getByRole("link", { name: "参数设置", exact: true })
-        .click();
-      await page.waitForURL("**/platform/settings/parameters");
-      await page.getByRole("heading", { level: 1, name: "参数设置" }).waitFor();
-    },
-  },
-  {
-    name: "platform settings use the shared mobile navigation without overflow",
-    run: async ({ page, state }) => {
-      state.principalType = "platform";
-      await page.setViewportSize({ height: 844, width: 390 });
-      await installApiMocks(page, state);
-      await seedSession(page);
-      await page.goto(`${baseUrl}/platform/settings/general`);
-      await page.getByRole("heading", { level: 1, name: "平台信息" }).waitFor();
-
-      const sidebar = page.getByRole("complementary", { name: "平台设置导航" });
-      assert.equal(await sidebar.isVisible(), false);
-      const mobileNavigation = page.getByRole("navigation", {
-        name: "平台设置导航",
-      });
-      assert.equal(await mobileNavigation.isVisible(), true);
-      await mobileNavigation
-        .getByRole("link", { name: "参数设置", exact: true })
-        .click();
-      await page.waitForURL("**/platform/settings/parameters");
-      assert.equal(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= window.innerWidth,
-        ),
-        true,
-      );
-    },
-  },
-  {
-    name: "workspace navigation contains only the reduced tenant model",
-    run: async ({ page }) => {
-      await installApiMocks(page);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/tenant`);
-      await expectVisibleText(page, "工作空间");
-      await expectVisibleText(page, "组织");
-      await expectVisibleText(page, "用户");
-      await expectVisibleText(page, "邀请");
-      await expectVisibleText(page, "日志审计");
-      await expectHiddenText(page, "部门");
-      await expectHiddenText(page, "用户组");
-      await expectHiddenText(page, "平台基础设施");
-    },
-  },
-  {
-    name: "tenant audit settings show login and organization operation details",
-    run: async ({ page }) => {
-      await installApiMocks(page);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/audit-logs`);
-      await page.getByRole("heading", { name: "日志审计" }).waitFor();
-      await expectVisibleText(page, "owner@hermes.local");
-      await page.getByRole("tab", { name: "操作日志" }).click();
-      const row = page.getByRole("row").filter({ hasText: "更新组织资料" });
-      await row.click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByText("操作日志详情").waitFor();
-      await dialog.getByText("Support", { exact: true }).waitFor();
-    },
-  },
-  {
-    name: "organization-to-user navigation stays client-side and user roles render",
-    run: async ({ page }) => {
-      await installApiMocks(page);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/organizations`);
-      await expectVisibleText(page, "Hermes Development");
-      let documentRequests = 0;
-      page.on("request", (request) => {
-        if (request.resourceType() === "document") documentRequests += 1;
-      });
-      await page.getByRole("link", { name: "用户", exact: true }).click();
-      await page.waitForURL("**/settings/users");
-      await expectVisibleText(page, "owner@hermes.local");
-      await expectVisibleText(page, "Tenant Owner");
-      assert.equal(documentRequests, 0);
-    },
-  },
-  {
-    name: "workspace invite form supports tenant and multiple organization assignments",
-    run: async ({ page, state }) => {
-      await installApiMocks(page, state);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/invites`);
-      await expectVisibleText(page, "member@example.com");
-      await page.getByRole("button", { name: "创建邀请" }).click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByLabel("邮箱").fill("new@example.com");
-      await dialog.getByRole("combobox").nth(1).click();
-      await page.getByRole("option", { name: "Tenant Owner" }).click();
-      await dialog.getByText("Hermes Development", { exact: true }).click();
-      await dialog.getByRole("combobox").last().click();
-      await page.getByRole("option", { name: "Organization Admin" }).click();
-      await dialog.getByText("Support", { exact: true }).click();
-      await dialog.getByRole("combobox").last().click();
-      await page.getByRole("option", { name: "Organization Admin" }).click();
-      await dialog.getByRole("button", { name: "创建邀请" }).click();
-      await page.waitForFunction(() => !document.body.innerText.includes("受邀用户接受后"));
-      assert.equal(state.createdInvite?.email, "new@example.com");
-      assert.equal(state.createdInvite?.organizations.length, 2);
-    },
-  },
-  {
-    name: "workspace localization overrides and restores platform defaults",
-    run: async ({ page, state }) => {
-      state.permissions = state.permissions.filter(
-        (permission) => permission !== "setting.tenant_config.save:tenant",
-      );
-      state.user.preferredLanguage = null;
-      state.user.timeZone = null;
-      refreshRuntimePreferences(state);
-      await installApiMocks(page, state);
-      await seedSession(page, { allOrganizations: true });
-
-      await page.goto(`${baseUrl}/settings/tenant`);
-      await page.waitForURL("**/settings/tenant/general");
-      await page.goto(`${baseUrl}/settings/tenant/localization`);
-      await expectVisibleText(page, "平台默认");
-
-      const timeZoneRow = settingRow(page, "时区");
-      await timeZoneRow.getByRole("combobox").click();
-      await page.getByRole("option", { name: "东京时间 (Asia/Tokyo)" }).click();
-      await page.getByRole("button", { name: "保存", exact: true }).click();
-      await page.waitForFunction(() =>
-        document.cookie.includes("hermes-swarm.time-zone=Asia/Tokyo"),
-      );
-      assert.equal(
-        state.tenantSettings.find((setting) => setting.name === "tenant.defaultTimeZone")?.overrideValue,
-        "Asia/Tokyo",
-      );
-      await expectVisibleText(page, "工作空间覆盖");
-
-      await settingRow(page, "时区")
-        .getByRole("button", { name: "恢复平台默认", exact: true })
-        .click();
-      await page.waitForFunction(() =>
-        document.cookie.includes("hermes-swarm.time-zone=Asia/Shanghai"),
-      );
-      assert.equal(
-        state.tenantSettings.find((setting) => setting.name === "tenant.defaultTimeZone")?.isOverridden,
-        false,
-      );
-    },
-  },
-  {
-    name: "explicit user time zone stays above a workspace override",
-    run: async ({ page, state }) => {
-      state.user.preferredLanguage = null;
-      state.user.timeZone = "Asia/Hong_Kong";
-      const timeZoneSetting = state.tenantSettings.find(
-        (setting) => setting.name === "tenant.defaultTimeZone",
-      );
-      Object.assign(timeZoneSetting, {
-        isOverridden: true,
-        overrideValue: "Asia/Tokyo",
-        scope: "tenant",
-        value: "Asia/Tokyo",
-      });
-      refreshRuntimePreferences(state);
-      await installApiMocks(page, state);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/tenant/localization`);
-
-      const row = settingRow(page, "时区");
-      await row.getByText("个人偏好", { exact: true }).waitFor();
-      await page.waitForFunction(() =>
-        document.cookie.includes("hermes-swarm.time-zone=Asia/Hong_Kong"),
-      );
-    },
-  },
-  {
-    name: "editing an inherited workspace parameter creates a workspace value",
-    run: async ({ page, state }) => {
-      state.tenantSettings.push({
-        defaultValue: "true",
-        id: "platform-feature-email",
-        isCustom: false,
-        isEditable: true,
-        isOrphaned: false,
-        isOverridden: false,
-        name: "feature:email:enabled",
-        overrideValue: null,
-        scope: "platform",
-        tenantId: snapshot.tenantId,
-        value: "true",
-        valueOptions: null,
-        valueType: "boolean",
-      });
-      await installApiMocks(page, state);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/tenant/parameters`);
-
-      const valueSwitch = page.locator("#value-platform-feature-email:visible");
-      await valueSwitch.waitFor();
-      assert.equal(await valueSwitch.count(), 1);
-      const row = valueSwitch.locator(
-        "xpath=ancestor::div[contains(@class,'rounded-md')][1]",
-      );
-      const [rowBox, switchBox] = await Promise.all([
-        row.boundingBox(),
-        valueSwitch.boundingBox(),
-      ]);
-      assert.ok(rowBox && switchBox);
-      assert.ok(switchBox.x >= rowBox.x + rowBox.width * 0.8);
-      await valueSwitch.click();
-      assert.equal(await row.getByText("跟随平台默认").count(), 0);
-      await page.getByRole("button", { name: "保存", exact: true }).click();
-
-      const setting = state.tenantSettings.find(
-        (item) => item.name === "feature:email:enabled",
-      );
-      assert.equal(setting?.isOverridden, true);
-      assert.equal(setting?.overrideValue, "false");
-      await row
-        .getByRole("button", { name: "恢复平台默认", exact: true })
-        .click();
-      assert.equal(setting?.isOverridden, false);
-    },
-  },
-  {
-    name: "workspace parameters can add and delete a secret",
-    run: async ({ page, state }) => {
-      await installApiMocks(page, state);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/tenant/parameters`);
-
-      await page.getByRole("button", { name: "新增参数" }).click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByLabel("名称").fill("DATABASE_PASSWORD");
-      await dialog.getByLabel("类型").click();
-      await page.getByRole("option", { name: "密钥" }).click();
-      await dialog.getByLabel("值").pressSequentially("database-password");
-      await dialog.getByRole("button", { name: "添加", exact: true }).click();
-
-      const setting = state.tenantSettings.find(
-        (item) => item.name === "DATABASE_PASSWORD",
-      );
-      assert.equal(
-        state.lastTenantSettingsPayload?.settings?.[0]?.scope,
-        "tenant",
-      );
-      assert.equal(
-        state.lastTenantSettingsPayload?.settings?.[0]?.value,
-        "database-password",
-      );
-      assert.equal(setting?.isCustom, true);
-      assert.equal(setting?.value, "********");
-
-      const row = settingRow(page, "DATABASE_PASSWORD");
-      await row.waitFor();
-      assert.equal(
-        await row.locator("input").getAttribute("placeholder"),
-        "********",
-      );
-      await row.getByRole("button", { name: "删除", exact: true }).click();
-      assert.equal(
-        state.tenantSettings.some((item) => item.name === "DATABASE_PASSWORD"),
-        false,
-      );
-    },
-  },
-  {
-    name: "workspace settings subroutes remain usable on mobile",
-    run: async ({ page, state }) => {
-      await page.setViewportSize({ height: 844, width: 390 });
-      await installApiMocks(page, state);
-      await seedSession(page, { allOrganizations: true });
-      await page.goto(`${baseUrl}/settings/tenant/localization`);
-      await page.getByRole("link", { name: "参数设置" }).click();
-      await page.waitForURL("**/settings/tenant/parameters");
-      await expectVisibleText(page, "暂无可配置参数");
+    type: "workspace",
+    workspace: {
+      id: snapshot.workspace.id,
+      name: snapshot.workspace.name,
+      slug: snapshot.workspace.slug,
+      subdomain: null,
     },
   },
 ];
+
+const permissionCatalog = {
+  scopes: [
+    {
+      entities: [
+        {
+          entity: "member",
+          label: "成员",
+          purposes: [
+            {
+              label: "工作空间成员",
+              operations: [
+                {
+                  description: "查看工作空间成员",
+                  isDangerous: false,
+                  label: "查看成员",
+                  operation: "list",
+                  permission: "member.workspace_user.list:workspace",
+                },
+              ],
+              purpose: "workspace_user",
+            },
+          ],
+        },
+      ],
+      label: "工作空间",
+      scope: "workspace",
+    },
+  ],
+};
+
+const snapshotResult = PrincipalSessionSchema.safeParse(snapshot);
+assert.equal(
+  snapshotResult.success,
+  true,
+  snapshotResult.success ? undefined : snapshotResult.error.message,
+);
+assertFixture(adminContracts.authContexts, contexts);
+assertFixture(adminContracts.workspaceMembers, [member]);
+assertFixture(adminContracts.workspaceRoles, [role]);
+assertFixture(adminContracts.workspacePermissionCatalog, permissionCatalog);
+assertFixture(adminContracts.workspaceSettings, []);
 
 async function main() {
   const server = await ensureServer();
   const browser = await launchBrowser();
-  const failures = [];
   try {
-    for (const test of tests) {
-      const context = await browser.newContext({ baseURL: baseUrl, viewport: { height: 900, width: 1440 } });
-      const page = await context.newPage();
-      const state = createE2EState();
-      try {
-        await test.run({ page, state });
-        console.log(`✓ ${test.name}`);
-      } catch (error) {
-        failures.push({ error, name: test.name });
-        console.error(`✗ ${test.name}`);
-        console.error(error);
-      } finally {
-        await context.close();
+    const page = await browser.newPage();
+    await seedSession(page);
+    await page.route("**/api/admin/**", async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname.replace(/^\/api\/admin/, "");
+      if (path === "/auth/me") return json(route, snapshot);
+      if (path === "/auth/contexts") return json(route, contexts);
+      if (path === "/auth/csrf") {
+        return json(route, { csrfToken: "e2e-csrf-token" });
       }
-    }
+      if (path === "/workspace/members") return json(route, [member]);
+      if (path === "/workspace/roles") return json(route, [role]);
+      if (path === "/workspace/permissions/catalog") {
+        return json(route, permissionCatalog);
+      }
+      if (path === "/workspace/settings") return json(route, []);
+      return json(route, { message: `Unhandled e2e route: ${path}` }, 404);
+    });
+
+    await verifyPage(page, "/settings/workspace", ["工作空间", "管理成员"]);
+    assert.equal(
+      await page.getByLabel("工作空间名称").inputValue(),
+      "Hermes Development",
+    );
+    await verifyPage(page, "/settings/workspace/members", [
+      "成员",
+      "owner@hermes.local",
+    ]);
+    await verifyPage(page, "/settings/workspace/access", [
+      "角色和权限",
+      "Workspace Owner",
+    ]);
+
+    console.log("web workspace convergence e2e passed");
   } finally {
     await browser.close();
-    if (server.started) server.process.kill();
+    if (server.started) server.process?.kill();
   }
-  if (failures.length) throw new Error(`${failures.length} e2e scenario(s) failed`);
 }
 
-async function installApiMocks(page, state = createE2EState()) {
-  await page.route("**/api/admin/**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const path = url.pathname.replace(/^\/api\/admin/, "");
-    const method = request.method();
-    if (method === "OPTIONS") return json(route, null, 204);
-    if (method === "GET" && path === "/auth/csrf") {
-      return json(route, { csrfToken: "e2e-csrf-token" });
-    }
-    if (method === "GET" && path === "/auth/me") {
-      if (state.principalType === "platform") {
-        return json(route, createPlatformPrincipal(state));
-      }
-      return json(route, {
-        ...snapshot,
-        permissions: state.permissions,
-        runtimePreferences: state.runtimePreferences,
-        tenantRole: state.tenantRole,
-        user: state.user,
-      });
-    }
-    if (method === "GET" && path === "/platform/settings") {
-      return json(route, state.platformSettings);
-    }
-    if (method === "GET" && path === "/platform/audit/login-logs") {
-      return json(route, auditPage([platformLoginAuditLog()]));
-    }
-    if (method === "GET" && path === "/platform/audit/operation-logs") {
-      return json(route, auditPage([platformOperationAuditLog()]));
-    }
-    if (method === "GET" && path === "/tenant/audit/login-logs") {
-      return json(route, auditPage([tenantLoginAuditLog()]));
-    }
-    if (method === "GET" && path === "/tenant/audit/operation-logs") {
-      return json(route, auditPage([tenantOperationAuditLog()]));
-    }
-    if (method === "GET" && path === "/platform/mail/smtp") {
-      return json(route, {
-        fromAddress: "noreply@hermes.local",
-        host: "smtp.hermes.local",
-        port: 587,
-        secure: false,
-        username: "hermes",
-      });
-    }
-    if (method === "GET" && path === "/platform/members") {
-      return json(route, []);
-    }
-    if (method === "GET" && path === "/platform/roles") {
-      return json(route, createPlatformPrincipal(state).platformUser.roles);
-    }
-    if (method === "GET" && path === "/platform/permissions/catalog") {
-      return json(route, { scopes: [] });
-    }
-    if (method === "GET" && path === "/organizations") return json(route, [rootOrganization, childOrganization]);
-    if (method === "GET" && path === "/users") return json(route, [{ ...user, tenantRole }]);
-    if (method === "GET" && path === "/roles") {
-      return json(route, [tenantRole]);
-    }
-    if (method === "GET" && /^\/organizations\/[^/]+\/roles$/.test(path)) {
-      const organizationId = path.split("/")[2];
-      return json(route, [{ ...organizationRole, id: `role-admin-${organizationId}`, organizationId }]);
-    }
-    if (method === "GET" && path === "/invites") {
-      return json(route, [{
-        acceptedCount: 0,
-        acceptedUserId: null,
-        actionDate: null,
-        closedAt: null,
-        createdAt: "2026-07-15T00:00:00.000Z",
-        email: "member@example.com",
-        existingUser: false,
-        expireDate: "2026-07-18T00:00:00.000Z",
-        id: "invite-1",
-        invitedById: user.id,
-        organizationAssignments: [{ isDefault: true, organizationId: rootOrganization.id, roleId: organizationRole.id }],
-        status: "invited",
-        workspaceRoleId: tenantRole.id,
-      }]);
-    }
-    if (method === "POST" && path === "/invites") {
-      state.createdInvite = request.postDataJSON();
-      return json(route, { id: "invite-created", ...state.createdInvite }, 201);
-    }
-    if (method === "GET" && path === "/tenant/settings") {
-      return json(route, state.tenantSettings);
-    }
-    if (method === "PUT" && path === "/tenant/settings") {
-      state.lastTenantSettingsPayload = request.postDataJSON();
-      applyTenantSettings(
-        state,
-        state.lastTenantSettingsPayload?.settings ?? [],
+async function verifyPage(page, path, expectedTexts) {
+  await page.goto(`${baseUrl}${path}`);
+  for (const text of expectedTexts) {
+    try {
+      await page.waitForFunction(
+        (expected) => document.body.innerText.includes(expected),
+        text,
+        { timeout: 10_000 },
       );
-      return json(route, state.tenantSettings);
-    }
-    if (method === "PATCH" && path === "/users/me/preferences") {
-      const payload = request.postDataJSON() ?? {};
-      if ("preferredLanguage" in payload) {
-        state.user.preferredLanguage = payload.preferredLanguage;
-      }
-      if ("timeZone" in payload) state.user.timeZone = payload.timeZone;
-      refreshRuntimePreferences(state);
-      return json(route, state.user);
-    }
-    if (method === "GET" && path === "/tenant") return json(route, snapshot.tenant);
-    return json(route, { message: `Unhandled e2e mock: ${method} ${path}` }, 404);
-  });
-}
-
-function createE2EState() {
-  const state = {
-    createdInvite: null,
-    lastTenantSettingsPayload: null,
-    platformPermissions: structuredClone(platformPagePermissions),
-    platformSettings: structuredClone(platformSettings),
-    permissions: structuredClone(snapshot.permissions),
-    principalType: "tenant",
-    runtimePreferences: structuredClone(snapshot.runtimePreferences),
-    tenantRole: structuredClone(snapshot.tenantRole),
-    tenantSettings: createTenantSettings(),
-    user: structuredClone(user),
-  };
-  refreshRuntimePreferences(state);
-  return state;
-}
-
-function createPlatformPrincipal(state) {
-  const role = {
-    displayName: "Platform Administrator",
-    id: "role-platform-admin",
-    isSystem: true,
-    label: "Platform Administrator",
-    name: "platform-admin",
-    permissions: state.platformPermissions.map((permission) => ({
-        enabled: true,
-        id: `role-platform-admin-${permission}`,
-        permission,
-        roleId: "role-platform-admin",
-      })),
-    scope: "platform",
-  };
-  return {
-    platformUser: {
-      displayName: "Platform Administrator",
-      email: "platform@hermes.local",
-      id: "platform-user-admin",
-      preferredLanguage: "zh-Hans",
-      roles: [role],
-      status: "active",
-    },
-    principalType: "platform",
-    runtimePreferences: structuredClone(snapshot.runtimePreferences),
-    systemSettings: state.platformSettings,
-  };
-}
-
-function auditPage(items) {
-  return { items, page: 1, pageSize: 20, total: items.length };
-}
-
-function tenantLoginAuditLog() {
-  return {
-    actor: {
-      displayName: "Tenant Owner",
-      email: "owner@hermes.local",
-      id: user.id,
-    },
-    actorId: user.id,
-    attemptedEmail: "owner@hermes.local",
-    createdAt: "2026-07-17T12:00:00.000Z",
-    deviceLabel: "Chrome / Windows",
-    failureCode: null,
-    id: "login-tenant-1",
-    ipAddress: "203.0.113.11",
-    result: "success",
-    scopeType: "tenant",
-    sessionId: "session-tenant-1",
-    tenantId: snapshot.tenantId,
-    userAgent: "Chrome Windows",
-  };
-}
-
-function platformLoginAuditLog() {
-  return {
-    actor: {
-      displayName: "Platform Administrator",
-      email: "platform@hermes.local",
-      id: "platform-user-admin",
-    },
-    actorId: "platform-user-admin",
-    attemptedEmail: "platform@hermes.local",
-    createdAt: "2026-07-17T12:00:00.000Z",
-    deviceLabel: "Edge / Windows",
-    failureCode: null,
-    id: "login-platform-1",
-    ipAddress: "203.0.113.12",
-    result: "success",
-    scopeType: "platform",
-    sessionId: "session-platform-1",
-    tenantId: null,
-    userAgent: "Edge Windows",
-  };
-}
-
-function tenantOperationAuditLog() {
-  return {
-    actor: {
-      displayName: "Tenant Owner",
-      email: "owner@hermes.local",
-      id: user.id,
-    },
-    actorId: user.id,
-    createdAt: "2026-07-17T12:05:00.000Z",
-    errorCode: null,
-    httpMethod: "PATCH",
-    httpPath: "/api/admin/organizations/org-support",
-    id: "operation-tenant-1",
-    ipAddress: "203.0.113.11",
-    operationLabel: "更新组织资料",
-    organization: { id: childOrganization.id, name: childOrganization.name },
-    organizationId: childOrganization.id,
-    permission: "organization.profile.update_basic:organization",
-    principalType: "tenant",
-    result: "allowed",
-    scopeType: "organization",
-    sessionId: "session-tenant-1",
-    statusCode: 200,
-    targetTenant: null,
-    targetTenantId: null,
-    tenantId: snapshot.tenantId,
-    userAgent: "Chrome Windows",
-  };
-}
-
-function platformOperationAuditLog() {
-  return {
-    actor: {
-      displayName: "Platform Administrator",
-      email: "platform@hermes.local",
-      id: "platform-user-admin",
-    },
-    actorId: "platform-user-admin",
-    createdAt: "2026-07-17T12:05:00.000Z",
-    errorCode: null,
-    httpMethod: "POST",
-    httpPath: "/api/admin/platform/tenant-applications/application-1/approve",
-    id: "operation-platform-1",
-    ipAddress: "203.0.113.12",
-    operationLabel: "批准租户申请",
-    organization: null,
-    organizationId: null,
-    permission: "tenant.application.approve:platform",
-    principalType: "platform",
-    result: "allowed",
-    scopeType: "platform",
-    sessionId: "session-platform-1",
-    statusCode: 201,
-    targetTenant: { id: "tenant-hermes", name: "Hermes Development" },
-    targetTenantId: "tenant-hermes",
-    tenantId: null,
-    userAgent: "Edge Windows",
-  };
-}
-
-function platformSetting(name, value, valueType = "string", scope = "platform") {
-  return {
-    id: `platform-setting-${name}`,
-    name,
-    scope,
-    value,
-    valueOptions: null,
-    valueType,
-  };
-}
-
-function createTenantSettings() {
-  return [
-    effectiveSetting("tenant.defaultCurrency", "CNY", ["CNY", "USD", "EUR", "HKD"]),
-    effectiveSetting("tenant.defaultTimeZone", "Asia/Shanghai", [
-      "Asia/Shanghai",
-      "UTC",
-      "America/New_York",
-      "Europe/London",
-      "Asia/Tokyo",
-      "Asia/Singapore",
-    ]),
-    effectiveSetting("tenant.defaultRegionCode", "CN", ["CN", "HK", "TW", "US", "GB", "JP", "SG"]),
-    effectiveSetting("tenant.defaultDateFormat", "YYYY-MM-DD", [
-      "YYYY-MM-DD",
-      "YYYY/MM/DD",
-      "MM/DD/YYYY",
-      "DD/MM/YYYY",
-    ]),
-    effectiveSetting("tenant.defaultLanguage", "zh-Hans", ["zh-Hans", "zh-Hant", "en"]),
-  ];
-}
-
-function effectiveSetting(name, defaultValue, options) {
-  return {
-    defaultValue,
-    id: `platform-${name}`,
-    isCustom: false,
-    isEditable: true,
-    isOrphaned: false,
-    isOverridden: false,
-    name,
-    overrideValue: null,
-    scope: "platform",
-    tenantId: snapshot.tenantId,
-    value: defaultValue,
-    valueOptions: options.map((value) => ({ label: settingOptionLabel(value), value })),
-    valueType: "enum",
-  };
-}
-
-function settingOptionLabel(value) {
-  const labels = {
-    "Asia/Tokyo": "东京时间 (Asia/Tokyo)",
-    "Asia/Shanghai": "中国标准时间 (Asia/Shanghai)",
-  };
-  return labels[value] ?? value;
-}
-
-function applyTenantSettings(state, entries) {
-  for (const entry of entries) {
-    let setting = state.tenantSettings.find((item) => item.name === entry.name);
-    if (!setting && entry.scope === "tenant" && entry.value != null) {
-      setting = {
-        defaultValue: null,
-        id: `tenant-custom-${entry.name}`,
-        isCustom: true,
-        isEditable: true,
-        isOrphaned: false,
-        isOverridden: true,
-        name: entry.name,
-        overrideValue: null,
-        scope: "tenant",
-        tenantId: snapshot.tenantId,
-        value: null,
-        valueOptions: entry.valueOptions ?? null,
-        valueType: entry.valueType ?? "string",
-      };
-      state.tenantSettings.push(setting);
-    }
-    if (!setting) continue;
-    if (entry.value === null || entry.value === undefined) {
-      if (setting.isCustom) {
-        state.tenantSettings.splice(state.tenantSettings.indexOf(setting), 1);
-        continue;
-      }
-      Object.assign(setting, {
-        isOverridden: false,
-        overrideValue: null,
-        scope: "platform",
-        value: setting.defaultValue,
-      });
-    } else {
-      const value =
-        entry.valueType === "secret" || setting.valueType === "secret"
-          ? "********"
-          : String(entry.value);
-      Object.assign(setting, {
-        isOverridden: true,
-        overrideValue: value,
-        scope: "tenant",
-        value,
-        valueOptions: entry.valueOptions ?? setting.valueOptions,
-        valueType: entry.valueType ?? setting.valueType,
-      });
+    } catch (error) {
+      const currentBody = await page.locator("body").innerText();
+      throw new Error(
+        `${path} did not render ${JSON.stringify(text)}. Body: ${currentBody}`,
+        { cause: error },
+      );
     }
   }
-  refreshRuntimePreferences(state);
+  const body = await page.locator("body").innerText();
+  assert.equal(body.includes("\u7ec4\u7ec7"), false, `${path} exposes a removed layer`);
+  assert.equal(body.includes("\u79df\u6237"), false, `${path} exposes legacy terminology`);
 }
 
-function refreshRuntimePreferences(state) {
-  const values = Object.fromEntries(
-    state.tenantSettings.map((setting) => [setting.name, setting]),
+function assertFixture(contract, value) {
+  const schema = responseSchemaFor(contract, 200, true);
+  assert.ok(schema, `${contract.id} does not declare a browser response schema`);
+  const result = schema.safeParse(value);
+  assert.equal(
+    result.success,
+    true,
+    result.success ? undefined : `${contract.id}: ${result.error.message}`,
   );
-  const resolve = (name) => values[name]?.value;
-  const source = (name) => values[name]?.scope ?? "code";
-  state.runtimePreferences = {
-    currency: resolve("tenant.defaultCurrency") ?? "CNY",
-    dateFormat: resolve("tenant.defaultDateFormat") ?? "YYYY-MM-DD",
-    language: state.user.preferredLanguage ?? resolve("tenant.defaultLanguage") ?? "zh-Hans",
-    regionCode: resolve("tenant.defaultRegionCode") ?? "CN",
-    sources: {
-      currency: source("tenant.defaultCurrency"),
-      dateFormat: source("tenant.defaultDateFormat"),
-      language: state.user.preferredLanguage ? "user" : source("tenant.defaultLanguage"),
-      regionCode: source("tenant.defaultRegionCode"),
-      timeZone: state.user.timeZone ? "user" : source("tenant.defaultTimeZone"),
+}
+
+async function seedSession(page) {
+  await page.context().addCookies([
+    {
+      domain: new URL(baseUrl).hostname,
+      expires: Math.floor(Date.now() / 1000) + 3600,
+      httpOnly: true,
+      name: webSessionCookieName,
+      path: "/",
+      sameSite: "Lax",
+      secure: baseUrl.startsWith("https://"),
+      value: "e2e-web-session",
     },
-    timeZone: state.user.timeZone ?? resolve("tenant.defaultTimeZone") ?? "Asia/Shanghai",
-  };
-}
-
-function settingRow(page, label) {
-  return page
-    .getByText(label, { exact: true })
-    .first()
-    .locator("xpath=ancestor::div[contains(@class,'rounded-md')][1]");
-}
-
-async function seedSession(page, { allOrganizations = false } = {}) {
-  await page.context().addCookies([{
-    domain: new URL(baseUrl).hostname,
-    expires: Math.floor(Date.now() / 1000) + 3600,
-    httpOnly: true,
-    name: webSessionCookieName,
-    path: "/",
-    sameSite: "Lax",
-    secure: baseUrl.startsWith("https://"),
-    value: "e2e-web-session",
-  }]);
-  if (allOrganizations) {
-    await page.addInitScript(({ key }) => {
-      window.localStorage.setItem(key, "__all__");
-    }, { key: `${snapshot.tenantId}:${user.id}:organization` });
-  }
-}
-
-function rolePermission(permission) {
-  return {
-    enabled: true,
-    id: `role-permission-${permission}`,
-    permission,
-    roleId: "role-org-admin",
-  };
+  ]);
 }
 
 async function json(route, body, status = 200) {
@@ -986,14 +282,6 @@ async function json(route, body, status = 200) {
     headers: { "content-type": "application/json" },
     status,
   });
-}
-
-async function expectVisibleText(page, text) {
-  await page.waitForFunction((value) => document.body.innerText.includes(value), text, { timeout: 10_000 });
-}
-
-async function expectHiddenText(page, text) {
-  await page.waitForFunction((value) => !document.body.innerText.includes(value), text, { timeout: 10_000 });
 }
 
 async function launchBrowser() {
@@ -1012,7 +300,9 @@ async function launchBrowser() {
 
 async function ensureServer() {
   if (await isServerReady()) return { started: false };
-  const nextBin = fileURLToPath(new URL("../node_modules/next/dist/bin/next", import.meta.url));
+  const nextBin = fileURLToPath(
+    new URL("../node_modules/next/dist/bin/next", import.meta.url),
+  );
   const child = spawn(process.execPath, [nextBin, "start", "--port", "3100"], {
     cwd: new URL("..", import.meta.url),
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
@@ -1023,7 +313,9 @@ async function ensureServer() {
   child.stderr.on("data", (chunk) => process.stderr.write(chunk));
   for (let attempt = 0; attempt < 60; attempt += 1) {
     if (await isServerReady()) return { process: child, started: true };
-    if (child.exitCode !== null) throw new Error(`Next server exited with code ${child.exitCode}`);
+    if (child.exitCode !== null) {
+      throw new Error(`Next server exited with code ${child.exitCode}`);
+    }
     await delay(500);
   }
   child.kill();

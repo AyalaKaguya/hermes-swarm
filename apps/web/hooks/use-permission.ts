@@ -16,14 +16,8 @@ export function usePermission() {
   );
 
   return {
-    hasPageAccess: (
-      pageKey: string,
-      routeContext: { organizationId?: string | null } = {},
-    ) =>
-      checkPageAccess(resolvedSession, pageKey, {
-        organizationId:
-          routeContext.organizationId ?? snapshot?.organization?.id ?? null,
-      }),
+    hasPageAccess: (pageKey: string) =>
+      checkPageAccess(resolvedSession, pageKey),
     hasPermission: (
       permissions: string | string[],
       options: { mode?: AccessMode } = {},

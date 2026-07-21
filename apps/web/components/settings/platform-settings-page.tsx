@@ -55,7 +55,6 @@ import {
   DATE_FORMAT_OPTIONS,
   KNOWN_PLATFORM_SETTING_KEYS,
   LANGUAGE_OPTIONS,
-  ORGANIZATION_STATUS_OPTIONS,
   PASSWORD_LENGTH_OPTIONS,
   PLATFORM_SETTING_DEFINITIONS,
   PLATFORM_TITLE_SETTING_KEY,
@@ -67,12 +66,10 @@ import {
 import { normalizeCanonicalLanguage } from "@hermes-swarm/core/settings/runtime-preferences";
 
 type PlatformForm = {
-  allowOrganizationCreation: boolean;
   workspaceApplicationsEnabled: boolean;
   defaultCurrency: string;
   defaultDateFormat: string;
   defaultLanguage: string;
-  defaultOrganizationStatus: "active" | "suspended";
   defaultRegionCode: string;
   defaultTimeZone: string;
   messageServiceEnabled: boolean;
@@ -369,7 +366,7 @@ export function PlatformSettingsPage({
               checked={form.subdomainRoutingEnabled}
               disabled={!canManagePlatform}
               id="platform-subdomain-routing"
-              label={tr("启用组织子域名路由")}
+              label={tr("启用工作空间子域名路由")}
               onCheckedChange={(checked) =>
                 updateField("subdomainRoutingEnabled", checked)
               }
@@ -517,41 +514,6 @@ export function PlatformSettingsPage({
                 updateField("workspaceApplicationsEnabled", checked)
               }
             />
-            <PlatformToggleRow
-              checked={form.allowOrganizationCreation}
-              disabled={!canManagePlatform}
-              id="platform-org-creation"
-              label={tr("允许创建组织")}
-              onCheckedChange={(checked) =>
-                updateField("allowOrganizationCreation", checked)
-              }
-            />
-            <SettingsFieldRow
-              htmlFor="platform-org-status"
-              label={tr("新组织默认状态")}
-            >
-              <Select
-                disabled={!canManagePlatform}
-                onValueChange={(value) =>
-                  updateField(
-                    "defaultOrganizationStatus",
-                    value as PlatformForm["defaultOrganizationStatus"],
-                  )
-                }
-                value={form.defaultOrganizationStatus}
-              >
-                <SelectTrigger id="platform-org-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ORGANIZATION_STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {tr(option.label)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </SettingsFieldRow>
             <SettingsFieldRow
               htmlFor="platform-password-min-length"
               label={tr("密码最小长度")}
@@ -768,7 +730,7 @@ export function PlatformSettingsPage({
               onSubmit={saveCustomSystemSetting}
               scopeOptions={[
                 { label: "平台", value: "platform" },
-                { label: "工作空间", value: "tenant" },
+                { label: "工作空间", value: "workspace" },
               ]}
               showScope
               saving={savingCustomSetting}
@@ -807,7 +769,7 @@ export function PlatformSettingsPage({
                         {setting.name}
                       </span>
                       <Badge variant="outline">
-                        {tr(setting.scope === "tenant" ? "工作空间" : "平台")}
+                        {tr(setting.scope === "workspace" ? "工作空间" : "平台")}
                       </Badge>
                     </div>
                     <div className="min-w-0 sm:justify-self-end">
@@ -1026,14 +988,11 @@ function platformSectionDescription(section: PlatformSection) {
 
 function emptyPlatformForm(): PlatformForm {
   return {
-    allowOrganizationCreation: true,
     workspaceApplicationsEnabled: true,
     defaultCurrency: PLATFORM_SETTING_DEFINITIONS.defaultCurrency.defaultValue,
     defaultDateFormat:
       PLATFORM_SETTING_DEFINITIONS.defaultDateFormat.defaultValue,
     defaultLanguage: PLATFORM_SETTING_DEFINITIONS.defaultLanguage.defaultValue,
-    defaultOrganizationStatus:
-      PLATFORM_SETTING_DEFINITIONS.defaultOrganizationStatus.defaultValue,
     defaultRegionCode:
       PLATFORM_SETTING_DEFINITIONS.defaultRegionCode.defaultValue,
     defaultTimeZone: PLATFORM_SETTING_DEFINITIONS.defaultTimeZone.defaultValue,
@@ -1066,10 +1025,6 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
     return get(definition.key) ?? definition.defaultValue ?? "";
   };
   return {
-    allowOrganizationCreation: parseBoolean(
-      getDefined("allowOrganizationCreation"),
-      true,
-    ),
     workspaceApplicationsEnabled: parseBoolean(
       getDefined("workspaceApplicationsEnabled"),
       true,
@@ -1078,10 +1033,6 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
     defaultDateFormat: getDefined("defaultDateFormat"),
     defaultLanguage:
       normalizeCanonicalLanguage(getDefined("defaultLanguage")) ?? "zh-Hans",
-    defaultOrganizationStatus:
-      getDefined("defaultOrganizationStatus") === "suspended"
-        ? "suspended"
-        : "active",
     defaultRegionCode: getDefined("defaultRegionCode"),
     defaultTimeZone: getDefined("defaultTimeZone"),
     messageServiceEnabled: parseBoolean(
@@ -1172,14 +1123,6 @@ function platformSettingsForSection(
         platformSettingEntry(
           "workspaceApplicationsEnabled",
           form.workspaceApplicationsEnabled,
-        ),
-        platformSettingEntry(
-          "allowOrganizationCreation",
-          form.allowOrganizationCreation,
-        ),
-        platformSettingEntry(
-          "defaultOrganizationStatus",
-          form.defaultOrganizationStatus,
         ),
         platformSettingEntry("passwordMinLength", form.passwordMinLength),
       ];

@@ -1,8 +1,8 @@
 export function resolvePrincipalRoute(
-  principalType: "platform" | "tenant",
+  principalType: "platform" | "workspace",
   pathname: string,
 ) {
-  if (principalType === "tenant" && pathname.startsWith("/platform")) {
+  if (principalType === "workspace" && pathname.startsWith("/platform")) {
     return "/home";
   }
   if (principalType !== "platform" || pathname.startsWith("/platform")) {
@@ -18,5 +18,7 @@ export function resolvePrincipalRoute(
 }
 
 export function resolveLoginRoute(pathname: string) {
-  return pathname.startsWith("/platform") ? "/platform/login" : "/login";
+  return pathname.startsWith("/platform")
+    ? `/login?context=platform&next=${encodeURIComponent(pathname)}`
+    : "/login";
 }

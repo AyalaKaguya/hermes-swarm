@@ -29,7 +29,7 @@ export type IntegrationTokenDraft = {
   expiresAt: string;
   note: string;
   permissions: string[];
-  scopeKey: "tenant" | "";
+  scopeKey: "workspace" | "";
 };
 
 export function CreateTokenDialog({
@@ -232,7 +232,7 @@ export function emptyIntegrationTokenDraft(
     expiresAt: expiresAt.toISOString().slice(0, 10),
     note: "",
     permissions: [],
-    scopeKey: capability?.scope ?? "tenant",
+    scopeKey: capability?.scope ?? "workspace",
   };
 }
 
@@ -246,12 +246,11 @@ function capabilityToCatalog(
 ): PermissionCatalog | null {
   if (!capability) return null;
   const scopeLabels = {
-    organization: tr("组织"),
     own: tr("个人"),
-    tenant: tr("工作空间"),
+    workspace: tr("工作空间"),
   } as const;
   return {
-    scopes: (["tenant", "organization", "own"] as const).flatMap((scope) => {
+    scopes: (["workspace", "own"] as const).flatMap((scope) => {
       const scopedPermissions = capability.permissions.filter(
         (item) => item.scope === scope,
       );

@@ -5,7 +5,7 @@ export type WebSession = {
   accessToken: string;
   csrfToken?: string;
   expiresAt: string;
-  principalType?: "platform" | "tenant";
+  principalType?: "platform" | "workspace";
   refreshToken: string;
   sessionId: string;
 };
@@ -98,7 +98,7 @@ export function unsealWebSession(value: string): WebSession | null {
       csrfToken: session.csrfToken,
       expiresAt: session.expiresAt,
       ...(session.principalType === "platform" ||
-      session.principalType === "tenant"
+      session.principalType === "workspace"
         ? { principalType: session.principalType }
         : {}),
       refreshToken: session.refreshToken,

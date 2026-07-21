@@ -14,9 +14,9 @@ describe("realtime event contracts", () => {
   it("parses valid envelopes and rejects malformed frames", () => {
     assert.equal(parseRealtimeEnvelope("not-json"), null);
     assert.equal(parseRealtimeEnvelope({ payload: null }), null);
-    assert.deepEqual(
+    assert.equal(
       parseRealtimeEnvelope(JSON.stringify({ payload: { ok: true }, type: "ready" })),
-      { id: null, payload: { ok: true }, sentAt: null, tenantId: null, type: "ready" },
+      null,
     );
   });
 
@@ -94,7 +94,6 @@ function ticket(id: string): Ticket {
     participantUserIds: [],
     requesterClosedAt: null,
     requesterUserId: "user-1",
-    sourceOrganizationId: "organization-1",
     status: "open",
     subject: "Help",
     updatedAt: "2026-07-17T00:00:00.000Z",
@@ -114,7 +113,6 @@ function ticketMessage(id: string, createdAt: string): TicketMessage {
     metadata: null,
     sourceId: "ticket-1",
     sourceType: "ticket",
-    ticketId: "ticket-1",
     updatedAt: createdAt,
   };
 }

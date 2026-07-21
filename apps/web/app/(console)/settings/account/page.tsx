@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  fetchMe,
+  fetchAccount,
   updateUser,
   updateUserPassword,
   updateUserRuntimePreferences,
@@ -108,13 +108,10 @@ export default function AccountPage() {
     }
 
     try {
-      const me = await fetchMe(token);
-      if (me.principalType !== "tenant") {
-        throw new Error(tr("当前页面仅适用于租户账号"));
-      }
-      setUser(me.user);
-      setProfile(toProfileForm(me.user));
-      setPreferences(toPreferencesForm(me.user));
+      const account = await fetchAccount();
+      setUser(account);
+      setProfile(toProfileForm(account));
+      setPreferences(toPreferencesForm(account));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
@@ -174,7 +171,6 @@ export default function AccountPage() {
       const token = await requireAuthenticatedAdminSessionMarker();
       const updated = await updateUser(token, {
         displayName: profile.displayName,
-        email: profile.email,
         firstName: profile.firstName || null,
         lastName: profile.lastName || null,
       });
@@ -359,7 +355,7 @@ export default function AccountPage() {
             <CardHeader>
               <CardTitle>{tr("个人资料")}</CardTitle>
               <CardDescription>
-                {tr("维护你的名称和邮箱，头像只能通过图片上传更新")}
+                {tr("维护适用于所有工作空间的账号资料，头像只能通过图片上传更新")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -378,13 +374,8 @@ export default function AccountPage() {
                 </Field>
                 <Field label={tr("邮箱")} htmlFor="account-email">
                   <Input
+                    disabled
                     id="account-email"
-                    onChange={(event) =>
-                      setProfile((current) => ({
-                        ...current,
-                        email: event.target.value,
-                      }))
-                    }
                     type="email"
                     value={profile.email}
                   />
@@ -443,7 +434,7 @@ export default function AccountPage() {
             <CardHeader>
               <CardTitle>{tr("首选项")}</CardTitle>
               <CardDescription>
-                {tr("设置界面语言和个人时区")}
+                {tr("这些设置适用于你加入的所有工作空间")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -527,7 +518,7 @@ export default function AccountPage() {
           <Card>
             <CardHeader>
               <CardTitle>{tr("修改密码")}</CardTitle>
-              <CardDescription>{tr("更新当前账号的登录密码")}</CardDescription>
+              <CardDescription>{tr("更新全局账号密码后，将撤销所有工作空间中的登录会话")}</CardDescription>
             </CardHeader>
             <CardContent className="grid max-w-md gap-4">
               <Field label={tr("当前密码")} htmlFor="account-current-password">

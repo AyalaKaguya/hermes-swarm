@@ -131,7 +131,6 @@ describe("i18n", () => {
       "invite.joined",
       "invite.joinedDescription",
       "invite.missingParams",
-      "invite.organizationDescription",
       "invite.title",
       "metadata.description",
       "metadata.title",
@@ -141,8 +140,6 @@ describe("i18n", () => {
       "onboarding.createAndEnter",
       "onboarding.description",
       "onboarding.firstSetup",
-      "onboarding.organizationName",
-      "onboarding.organizationSlug",
       "onboarding.title",
     ];
 

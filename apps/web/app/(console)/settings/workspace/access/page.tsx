@@ -19,12 +19,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  createTenantRole,
-  deleteTenantRole,
+  createWorkspaceRole,
+  deleteWorkspaceRole,
   listPermissionCatalog,
-  listTenantRoles,
-  replaceTenantRolePermissions,
-  updateTenantRole,
+  listWorkspaceRoles,
+  replaceWorkspaceRolePermissions,
+  updateWorkspaceRole,
   type PermissionCatalog,
   type Role,
   type RolePayload,
@@ -35,7 +35,7 @@ import {
 } from "@/lib/authenticated-admin";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import { usePermission } from "@/hooks/use-permission";
-import { isProtectedTenantRole } from "@/lib/tenant-role-protection";
+import { isProtectedWorkspaceRole } from "@/lib/workspace-role-protection";
 
 type RoleForm = {
   color: string;
@@ -68,13 +68,13 @@ export default function WorkspaceAccessPage() {
     }
     try {
       const [nextRoles, nextCatalog] = await Promise.all([
-        listTenantRoles(session),
+        listWorkspaceRoles(session),
         listPermissionCatalog(session),
       ]);
-      const tenantRoles = nextRoles;
-      setRoles(tenantRoles);
+      const workspaceRoles = nextRoles;
+      setRoles(workspaceRoles);
       setCatalog(nextCatalog);
-      setSelectedRoleId((current) => tenantRoles.some((item) => item.id === current) ? current : tenantRoles[0]?.id ?? null);
+      setSelectedRoleId((current) => workspaceRoles.some((item) => item.id === current) ? current : workspaceRoles[0]?.id ?? null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("加载失败"));
@@ -93,10 +93,10 @@ export default function WorkspaceAccessPage() {
     [catalog],
   );
   const permissionKeys = useMemo(() => flattenCatalog(selectedCatalog), [selectedCatalog]);
-  const canCreate = access.hasPermission("role.workspace_role.create:tenant");
-  const canUpdate = access.hasPermission("role.workspace_role.update:tenant");
-  const canConfigure = access.hasPermission("role.workspace_role.replace_permissions:tenant");
-  const canDelete = access.hasPermission("role.workspace_role.delete:tenant");
+  const canCreate = access.hasPermission("role.workspace_role.create:workspace");
+  const canUpdate = access.hasPermission("role.workspace_role.update:workspace");
+  const canConfigure = access.hasPermission("role.workspace_role.replace_permissions:workspace");
+  const canDelete = access.hasPermission("role.workspace_role.delete:workspace");
 
   function isPermissionEnabled(permission: string) {
     if (permission in permissionDrafts) return permissionDrafts[permission];
@@ -108,7 +108,7 @@ export default function WorkspaceAccessPage() {
   }
 
   function togglePermission(permission: string, enabled?: boolean) {
-    if (!selectedRole || isProtectedTenantRole(selectedRole) || !canConfigure) return;
+    if (!selectedRole || isProtectedWorkspaceRole(selectedRole) || !canConfigure) return;
     const persisted = Boolean(selectedRole.permissions?.some((item) => item.permission === permission && item.enabled));
     const next = enabled ?? !isPermissionEnabled(permission);
     setPermissionDrafts((current) => {
@@ -120,12 +120,12 @@ export default function WorkspaceAccessPage() {
   }
 
   async function savePermissions() {
-    if (!selectedRole || isProtectedTenantRole(selectedRole) || !canConfigure) return;
+    if (!selectedRole || isProtectedWorkspaceRole(selectedRole) || !canConfigure) return;
     setSaving(true);
     setError(null);
     try {
       const session = await requireAuthenticatedAdminSessionMarker();
-      await replaceTenantRolePermissions(
+      await replaceWorkspaceRolePermissions(
         session,
         selectedRole.id,
         permissionKeys.map((permission) => ({ permission, enabled: isPermissionEnabled(permission) })),
@@ -163,8 +163,8 @@ export default function WorkspaceAccessPage() {
         name: dialog.mode === "edit" && dialog.role.isSystem ? undefined : form.name.trim() || undefined,
       };
       const saved = dialog.mode === "create"
-        ? await createTenantRole(session, payload)
-        : await updateTenantRole(session, dialog.role.id, payload);
+        ? await createWorkspaceRole(session, payload)
+        : await updateWorkspaceRole(session, dialog.role.id, payload);
       setDialog(null);
       setSelectedRoleId(saved.id);
       await load();
@@ -180,7 +180,7 @@ export default function WorkspaceAccessPage() {
     setSaving(true);
     try {
       const session = await requireAuthenticatedAdminSessionMarker();
-      await deleteTenantRole(session, roleToDelete.id);
+      await deleteWorkspaceRole(session, roleToDelete.id);
       setRoleToDelete(null);
       setSelectedRoleId(null);
       await load();
@@ -198,7 +198,7 @@ export default function WorkspaceAccessPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">{tr("角色和权限")}</h1>
-          <p className="text-sm text-muted-foreground">{tr("配置工作空间控制台、用户治理和个人能力的访问权限。")}</p>
+          <p className="text-sm text-muted-foreground">{tr("配置工作空间控制台、成员治理和个人能力的访问权限。")}</p>
         </div>
         <Button disabled={!canCreate || saving} onClick={() => openDialog({ mode: "create" })} size="sm">
           <AppIcon className="size-3.5" name="plus" />{tr("新建角色")}
@@ -232,7 +232,7 @@ export default function WorkspaceAccessPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button disabled={!canConfigure || isProtectedTenantRole(selectedRole) || saving || !hasPermissionChanges()} onClick={() => void savePermissions()} size="sm" variant="outline">{tr("保存权限")}</Button>
+                  <Button disabled={!canConfigure || isProtectedWorkspaceRole(selectedRole) || saving || !hasPermissionChanges()} onClick={() => void savePermissions()} size="sm" variant="outline">{tr("保存权限")}</Button>
                   <Button disabled={!canUpdate || saving} onClick={() => openDialog({ mode: "edit", role: selectedRole })} size="sm" variant="outline">{tr("编辑")}</Button>
                   <Button disabled={!canDelete || selectedRole.isSystem || saving} onClick={() => setRoleToDelete(selectedRole)} size="sm" variant="ghost">{tr("删除")}</Button>
                 </div>
@@ -241,7 +241,7 @@ export default function WorkspaceAccessPage() {
             <CardContent className="p-0">
               <PermissionTree
                 catalog={selectedCatalog}
-                disabled={!canConfigure || isProtectedTenantRole(selectedRole) || saving}
+                disabled={!canConfigure || isProtectedWorkspaceRole(selectedRole) || saving}
                 isChecked={isPermissionEnabled}
                 onToggle={togglePermission}
               />
@@ -263,7 +263,7 @@ export default function WorkspaceAccessPage() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmActionDialog confirmLabel={tr("删除")} description={tr("删除后，所有用户和组织成员将失去该角色。") } onConfirm={() => void removeRole()} onOpenChange={(open) => { if (!open && !saving) setRoleToDelete(null); }} open={Boolean(roleToDelete)} pending={saving} title={tr("删除角色？")} />
+      <ConfirmActionDialog confirmLabel={tr("删除")} description={tr("删除后，已分配该角色的成员将失去对应权限。") } onConfirm={() => void removeRole()} onOpenChange={(open) => { if (!open && !saving) setRoleToDelete(null); }} open={Boolean(roleToDelete)} pending={saving} title={tr("删除角色？")} />
     </div>
   );
 }
@@ -282,7 +282,7 @@ function roleToForm(role: Role): RoleForm {
 
 function filterCatalog(catalog: PermissionCatalog | null): PermissionCatalog | null {
   if (!catalog) return null;
-  return { scopes: catalog.scopes.filter((scope) => scope.scope === "tenant" || scope.scope === "own") };
+  return { scopes: catalog.scopes.filter((scope) => scope.scope === "workspace" || scope.scope === "own") };
 }
 
 function flattenCatalog(catalog: PermissionCatalog | null) {

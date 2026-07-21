@@ -35,53 +35,52 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  approveTenantApplication,
-  listTenantApplications,
-  listPlatformTenants,
-  rejectTenantApplication,
-  updatePlatformTenantStatus,
-  type Tenant,
-  type TenantApplication,
-  type TenantApplicationStatus,
+  approveWorkspaceApplication,
+  listWorkspaceApplications,
+  listPlatformWorkspaces,
+  rejectWorkspaceApplication,
+  updatePlatformWorkspaceStatus,
+  type Workspace,
+  type WorkspaceApplication,
+  type WorkspaceApplicationStatus,
 } from "@/lib/admin-api";
 import { withAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 import { formatRuntimeDateTime } from "@/lib/runtime-format";
 
 type ReviewAction = "approve" | "reject";
-type ManagedTenantStatus = "active" | "archived" | "suspended";
+type ManagedWorkspaceStatus = "active" | "archived" | "suspended";
 
-export function TenantApplicationsPage() {
+export function WorkspaceApplicationsPage() {
   const t = useTranslations("platform");
   const { runtimePreferences } = useI18n();
   const { snapshot } = useAdminShell();
-  const [applications, setApplications] = useState<TenantApplication[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [applications, setApplications] = useState<WorkspaceApplication[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [reviewing, setReviewing] = useState<TenantApplication | null>(null);
+  const [reviewing, setReviewing] = useState<WorkspaceApplication | null>(null);
   const [reviewAction, setReviewAction] = useState<ReviewAction>("approve");
-  const [organizationName, setOrganizationName] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [statusChange, setStatusChange] = useState<{
-    status: ManagedTenantStatus;
-    tenant: Tenant;
+    status: ManagedWorkspaceStatus;
+    workspace: Workspace;
   } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [applicationResult, tenantResult] =
+      const [applicationResult, workspaceResult] =
         await withAuthenticatedAdminSessionMarker((session) =>
           Promise.all([
-            listTenantApplications(session),
-            listPlatformTenants(session),
+            listWorkspaceApplications(session),
+            listPlatformWorkspaces(session),
           ]),
         );
       setApplications(applicationResult);
-      setTenants(tenantResult);
+      setWorkspaces(workspaceResult);
     } catch (loadError) {
       setError(getErrorMessage(loadError, t("loadFailed")));
     } finally {
@@ -93,10 +92,9 @@ export function TenantApplicationsPage() {
     if (snapshot?.principalType === "platform") void load();
   }, [load, snapshot?.principalType]);
 
-  function openReview(application: TenantApplication, action: ReviewAction) {
+  function openReview(application: WorkspaceApplication, action: ReviewAction) {
     setReviewing(application);
     setReviewAction(action);
-    setOrganizationName(application.requestedName);
     setNote("");
     setError("");
     setSuccess("");
@@ -109,9 +107,8 @@ export function TenantApplicationsPage() {
     try {
       if (reviewAction === "approve") {
         const result = await withAuthenticatedAdminSessionMarker((session) =>
-          approveTenantApplication(session, reviewing.id, {
+          approveWorkspaceApplication(session, reviewing.id, {
             note: note.trim() || null,
-            organizationName: organizationName.trim() || reviewing.requestedName,
           }),
         );
         setSuccess(
@@ -121,7 +118,7 @@ export function TenantApplicationsPage() {
         );
       } else {
         await withAuthenticatedAdminSessionMarker((session) =>
-          rejectTenantApplication(session, reviewing.id, {
+          rejectWorkspaceApplication(session, reviewing.id, {
             note: note.trim() || null,
           }),
         );
@@ -142,17 +139,17 @@ export function TenantApplicationsPage() {
     setError("");
     try {
       await withAuthenticatedAdminSessionMarker((session) =>
-        updatePlatformTenantStatus(
+        updatePlatformWorkspaceStatus(
           session,
-          statusChange.tenant.id,
+          statusChange.workspace.id,
           statusChange.status,
         ),
       );
-      setSuccess(t("tenantStatusUpdated"));
+      setSuccess(t("workspaceStatusUpdated"));
       setStatusChange(null);
       await load();
     } catch (statusError) {
-      setError(getErrorMessage(statusError, t("tenantStatusFailed")));
+      setError(getErrorMessage(statusError, t("workspaceStatusFailed")));
     } finally {
       setSaving(false);
     }
@@ -163,10 +160,10 @@ export function TenantApplicationsPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <h1 className="text-xl font-semibold tracking-tight">
-            {t("tenantGovernance")}
+            {t("workspaceGovernance")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {t("tenantGovernanceDescription")}
+            {t("workspaceGovernanceDescription")}
           </p>
         </div>
         <Button disabled={loading} onClick={() => void load()} variant="outline">
@@ -180,42 +177,42 @@ export function TenantApplicationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("tenantDirectory")}</CardTitle>
-          <CardDescription>{t("tenantCount", { count: tenants.length })}</CardDescription>
+          <CardTitle>{t("workspaceDirectory")}</CardTitle>
+          <CardDescription>{t("workspaceCount", { count: workspaces.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="py-10 text-center text-sm text-muted-foreground">{t("loading")}</div>
-          ) : tenants.length === 0 ? (
-            <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">{t("emptyTenants")}</div>
+          ) : workspaces.length === 0 ? (
+            <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">{t("emptyWorkspaces")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("tenant")}</TableHead>
+                  <TableHead>{t("workspace")}</TableHead>
                   <TableHead>{t("status")}</TableHead>
                   <TableHead className="text-right">{t("actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tenants.map((tenant) => (
-                  <TableRow key={tenant.id}>
+                {workspaces.map((workspace) => (
+                  <TableRow key={workspace.id}>
                     <TableCell>
                       <div className="grid gap-0.5">
-                        <span className="font-medium">{tenant.name}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{tenant.slug}</span>
+                        <span className="font-medium">{workspace.name}</span>
+                        <span className="font-mono text-xs text-muted-foreground">{workspace.slug}</span>
                       </div>
                     </TableCell>
-                    <TableCell><TenantStatusBadge status={tenant.status} /></TableCell>
+                    <TableCell><WorkspaceStatusBadge status={workspace.status} /></TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
-                        {tenant.status === "active" ? (
-                          <Button onClick={() => setStatusChange({ status: "suspended", tenant })} size="sm" variant="outline">{t("suspend")}</Button>
-                        ) : tenant.status !== "archived" ? (
-                          <Button onClick={() => setStatusChange({ status: "active", tenant })} size="sm">{t("activate")}</Button>
+                        {workspace.status === "active" ? (
+                          <Button onClick={() => setStatusChange({ status: "suspended", workspace })} size="sm" variant="outline">{t("suspend")}</Button>
+                        ) : workspace.status !== "archived" ? (
+                          <Button onClick={() => setStatusChange({ status: "active", workspace })} size="sm">{t("activate")}</Button>
                         ) : null}
-                        {tenant.status !== "archived" && (
-                          <Button onClick={() => setStatusChange({ status: "archived", tenant })} size="sm" variant="destructive">{t("archive")}</Button>
+                        {workspace.status !== "archived" && (
+                          <Button onClick={() => setStatusChange({ status: "archived", workspace })} size="sm" variant="destructive">{t("archive")}</Button>
                         )}
                       </div>
                     </TableCell>
@@ -247,7 +244,7 @@ export function TenantApplicationsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("tenant")}</TableHead>
+                  <TableHead>{t("workspace")}</TableHead>
                   <TableHead>{t("applicant")}</TableHead>
                   <TableHead>{t("status")}</TableHead>
                   <TableHead>{t("submittedAt")}</TableHead>
@@ -322,18 +319,6 @@ export function TenantApplicationsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
-            {reviewAction === "approve" && (
-              <div className="grid gap-1.5">
-                <Label htmlFor="application-organization-name">
-                  {t("defaultOrganization")}
-                </Label>
-                <Input
-                  id="application-organization-name"
-                  onChange={(event) => setOrganizationName(event.target.value)}
-                  value={organizationName}
-                />
-              </div>
-            )}
             <div className="grid gap-1.5">
               <Label htmlFor="application-review-note">{t("reviewNote")}</Label>
               <Textarea
@@ -346,7 +331,7 @@ export function TenantApplicationsPage() {
           </div>
           <DialogFooter showCloseButton>
             <Button
-              disabled={saving || (reviewAction === "approve" && !organizationName.trim())}
+              disabled={saving}
               onClick={() => void submitReview()}
               variant={reviewAction === "reject" ? "destructive" : "default"}
             >
@@ -362,12 +347,12 @@ export function TenantApplicationsPage() {
       <Dialog open={Boolean(statusChange)} onOpenChange={(open) => !open && setStatusChange(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("changeTenantStatus")}</DialogTitle>
+            <DialogTitle>{t("changeWorkspaceStatus")}</DialogTitle>
             <DialogDescription>
               {statusChange
-                ? t("changeTenantStatusDescription", {
-                    name: statusChange.tenant.name,
-                    status: t(`tenantStatuses.${statusChange.status}`),
+                ? t("changeWorkspaceStatusDescription", {
+                    name: statusChange.workspace.name,
+                    status: t(`workspaceStatuses.${statusChange.status}`),
                   })
                 : null}
             </DialogDescription>
@@ -387,7 +372,7 @@ export function TenantApplicationsPage() {
   );
 }
 
-function StatusBadge({ status }: { status: TenantApplicationStatus }) {
+function StatusBadge({ status }: { status: WorkspaceApplicationStatus }) {
   const t = useTranslations("platform.statuses");
   const variant =
     status === "approved"
@@ -398,8 +383,8 @@ function StatusBadge({ status }: { status: TenantApplicationStatus }) {
   return <Badge variant={variant}>{t(status)}</Badge>;
 }
 
-function TenantStatusBadge({ status }: { status: Tenant["status"] }) {
-  const t = useTranslations("platform.tenantStatuses");
+function WorkspaceStatusBadge({ status }: { status: Workspace["status"] }) {
+  const t = useTranslations("platform.workspaceStatuses");
   return (
     <Badge variant={status === "active" ? "default" : status === "archived" ? "destructive" : "secondary"}>
       {t(status)}

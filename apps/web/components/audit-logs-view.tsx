@@ -75,7 +75,7 @@ const PAGE_SIZE = 20;
 export function AuditLogsView({
   scope,
 }: {
-  scope: "platform" | "tenant";
+  scope: "platform" | "workspace";
 }) {
   const tr = useTextTranslation();
   const { runtimePreferences } = useI18n();
@@ -171,7 +171,7 @@ export function AuditLogsView({
         <p className="text-sm text-muted-foreground">
           {scope === "platform"
             ? tr("查看平台管理员的登录和操作记录")
-            : tr("查看当前工作空间及其组织的登录和操作记录")}
+            : tr("查看当前工作空间的登录和操作记录")}
         </p>
       </header>
 
@@ -609,8 +609,7 @@ function OperationLogTable({
                 </div>
               </TableCell>
               <TableCell>
-                {item.organization?.name ??
-                  item.targetTenant?.name ??
+                {item.targetWorkspace?.name ??
                   scopeLabel(item.scopeType, tr)}
               </TableCell>
               <TableCell>
@@ -774,12 +773,8 @@ function AuditDetailSheet({
                   mono
                 />
                 <DetailRow
-                  label={tr("组织")}
-                  value={operation.organization?.name ?? "—"}
-                />
-                <DetailRow
-                  label={tr("目标租户")}
-                  value={operation.targetTenant?.name ?? "—"}
+                  label={tr("目标工作空间")}
+                  value={operation.targetWorkspace?.name ?? "—"}
                 />
                 <DetailRow
                   label={tr("请求")}
@@ -842,10 +837,9 @@ function scopeLabel(
   tr: (value: string) => string,
 ) {
   const labels: Record<AuditRow["scopeType"], string> = {
-    organization: tr("组织"),
     own: tr("个人"),
     platform: tr("平台"),
-    tenant: tr("工作空间"),
+    workspace: tr("工作空间"),
   };
   return labels[scope];
 }
@@ -858,7 +852,7 @@ function failureLabel(
   const labels: Record<string, string> = {
     internal_error: tr("系统错误"),
     invalid_credentials: tr("账号或密码不正确"),
-    tenant_unresolved: tr("工作空间无法识别"),
+    workspace_unresolved: tr("工作空间无法识别"),
   };
   return labels[code] ?? code;
 }

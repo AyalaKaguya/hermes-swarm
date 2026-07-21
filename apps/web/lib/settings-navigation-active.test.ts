@@ -3,42 +3,31 @@ import { describe, it } from "node:test";
 import { resolveActiveSettingsNavigationKey } from "./settings-navigation-active";
 
 const items = [
-  { href: "/settings/organization", key: "organization.general" },
-  { href: "/settings/organization?tab=members", key: "organization.members" },
-  { href: "/settings/organizations", key: "organizations.directory" },
+  { href: "/settings/workspace", key: "workspace.general" },
+  { href: "/settings/workspace/members", key: "workspace.members" },
+  { href: "/settings/workspace/access", key: "workspace.access" },
 ];
 
 describe("settings navigation active item", () => {
-  it("selects the organization general item on its exact path", () => {
+  it("selects the workspace item on its exact path", () => {
     assert.equal(
       resolveActiveSettingsNavigationKey(
         items,
-        "/settings/organization",
+        "/settings/workspace",
         new URLSearchParams(),
       ),
-      "organization.general",
+      "workspace.general",
     );
   });
 
-  it("selects a query-specific organization item before the general item", () => {
+  it("selects the longest matching nested workspace route", () => {
     assert.equal(
       resolveActiveSettingsNavigationKey(
         items,
-        "/settings/organization",
-        new URLSearchParams("tab=members"),
-      ),
-      "organization.members",
-    );
-  });
-
-  it("keeps the organization directory active on an organization detail route", () => {
-    assert.equal(
-      resolveActiveSettingsNavigationKey(
-        items,
-        "/settings/organizations/org-1",
+        "/settings/workspace/members",
         new URLSearchParams(),
       ),
-      "organizations.directory",
+      "workspace.members",
     );
   });
 });

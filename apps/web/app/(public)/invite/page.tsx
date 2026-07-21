@@ -30,6 +30,7 @@ export default function InvitePage() {
   const notifications = useNotifications();
   const email = searchParams.get("email") ?? "";
   const token = searchParams.get("token") ?? "";
+  const workspaceSlug = searchParams.get("workspace") ?? "";
   const [acceptEmail, setAcceptEmail] = useState(email);
   const [displayName, setDisplayName] = useState("");
   const [invite, setInvite] = useState<Invite | null>(null);
@@ -44,6 +45,12 @@ export default function InvitePage() {
   const [error, setError] = useState<string | null>(null);
 
   const isDirectedInvite = Boolean(invite?.email);
+  const isPlatformInvite = invite?.contextType === "platform";
+  const signInHref = isPlatformInvite
+    ? "/login?context=platform"
+    : workspaceSlug
+      ? `/login?workspace=${encodeURIComponent(workspaceSlug)}`
+      : "/login";
   const targetEmail = isDirectedInvite ? (invite?.email ?? "") : acceptEmail;
   const requiresRegistration = invite
     ? isDirectedInvite
@@ -94,7 +101,9 @@ export default function InvitePage() {
         token,
       });
       notifications.success(
-        action === "accept" ? t("invite.joined") : t("invite.declined"),
+        action === "accept"
+          ? t(isPlatformInvite ? "invite.platformJoined" : "invite.joined")
+          : t("invite.declined"),
       );
       setCompletedAction(action);
     } catch (err) {
@@ -112,9 +121,15 @@ export default function InvitePage() {
           <div className="mb-2 flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
             <AppIcon className="size-5" name="invite" />
           </div>
-          <CardTitle>{t("invite.title")}</CardTitle>
+          <CardTitle>
+            {t(isPlatformInvite ? "invite.platformTitle" : "invite.title")}
+          </CardTitle>
           <CardDescription>
-            {t("invite.description")}
+            {t(
+              isPlatformInvite
+                ? "invite.platformDescription"
+                : "invite.description",
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -126,12 +141,16 @@ export default function InvitePage() {
             <div className="grid gap-4">
               <InlineNotice tone="success">
                 {completedAction === "accept"
-                  ? t("invite.joinedDescription")
+                  ? t(
+                      isPlatformInvite
+                        ? "invite.platformJoinedDescription"
+                        : "invite.joinedDescription",
+                    )
                   : t("invite.declinedDescription")}
               </InlineNotice>
               {completedAction === "accept" && (
                 <Button asChild>
-                  <Link href="/login">{t("auth.goToSignIn")}</Link>
+                  <Link href={signInHref}>{t("auth.goToSignIn")}</Link>
                 </Button>
               )}
             </div>
@@ -139,14 +158,6 @@ export default function InvitePage() {
             <InlineNotice tone="error">{error}</InlineNotice>
           ) : invite ? (
             <>
-              {invite.organizationAssignments.length > 0 && (
-                <div className="rounded-md border bg-background px-3 py-3">
-                  <div className="font-medium">{t("tenantScope.organizations")}</div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {invite.organizationAssignments.length} {t("tenantScope.organizations")}
-                  </p>
-                </div>
-              )}
               <div className="grid gap-1.5">
                 <Label>
                   {isDirectedInvite
@@ -203,7 +214,7 @@ export default function InvitePage() {
                 >
                   {submitting === "accept"
                     ? t("common.processing")
-                    : t("invite.join")}
+                    : t(isPlatformInvite ? "invite.joinPlatform" : "invite.join")}
                 </Button>
               </div>
             </>

@@ -18,16 +18,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  cancelTenantApplication,
+  cancelWorkspaceApplication,
   getPublicBootstrap,
-  submitTenantApplication,
-  verifyTenantApplication,
-  type TenantApplicationSubmission,
+  submitWorkspaceApplication,
+  verifyWorkspaceApplication,
+  type WorkspaceApplicationSubmission,
 } from "@/lib/admin-api";
 import { resolveWorkspaceApplicationsEnabled } from "@/lib/platform-settings";
 
-export function TenantApplicationForm() {
-  const t = useTranslations("tenantApplication");
+export function WorkspaceApplicationForm() {
+  const t = useTranslations("workspaceApplication");
   const searchParams = useSearchParams();
   const verificationStarted = useRef(false);
   const [requestedName, setRequestedName] = useState("");
@@ -35,7 +35,7 @@ export function TenantApplicationForm() {
   const [requestedSubdomain, setRequestedSubdomain] = useState("");
   const [ownerDisplayName, setOwnerDisplayName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
-  const [submission, setSubmission] = useState<TenantApplicationSubmission | null>(null);
+  const [submission, setSubmission] = useState<WorkspaceApplicationSubmission | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [verificationState, setVerificationState] = useState<"idle" | "verifying" | "verified" | "failed">("idle");
   const [cancellationState, setCancellationState] = useState<"idle" | "cancelling" | "cancelled" | "failed">("idle");
@@ -78,7 +78,7 @@ export function TenantApplicationForm() {
     verificationStarted.current = true;
     setVerificationState("verifying");
     setError("");
-    void verifyTenantApplication(applicationId, verificationToken)
+    void verifyWorkspaceApplication(applicationId, verificationToken)
       .then(() => setVerificationState("verified"))
       .catch((verifyError) => {
         setError(getErrorMessage(verifyError, t("verificationFailed")));
@@ -92,7 +92,7 @@ export function TenantApplicationForm() {
     setSubmitting(true);
     setError("");
     try {
-      const result = await submitTenantApplication({
+      const result = await submitWorkspaceApplication({
         ownerDisplayName: ownerDisplayName.trim(),
         ownerEmail: ownerEmail.trim(),
         requestedName: requestedName.trim(),
@@ -112,7 +112,7 @@ export function TenantApplicationForm() {
     setCancellationState("cancelling");
     setError("");
     try {
-      await cancelTenantApplication(applicationId, cancellationToken);
+      await cancelWorkspaceApplication(applicationId, cancellationToken);
       setCancellationState("cancelled");
     } catch (cancelError) {
       setError(getErrorMessage(cancelError, t("cancellationFailed")));
@@ -239,21 +239,21 @@ export function TenantApplicationForm() {
         <CardContent>
           <form className="grid gap-4" onSubmit={submit}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t("tenantName")} name="tenant-application-name">
-                <Input id="tenant-application-name" onChange={(event) => setRequestedName(event.target.value)} required value={requestedName} />
+              <Field label={t("workspaceName")} name="workspace-application-name">
+                <Input id="workspace-application-name" onChange={(event) => setRequestedName(event.target.value)} required value={requestedName} />
               </Field>
-              <Field label={t("tenantSlug")} name="tenant-application-slug">
-                <Input id="tenant-application-slug" onChange={(event) => setRequestedSlug(event.target.value.toLowerCase())} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required value={requestedSlug} />
+              <Field label={t("workspaceSlug")} name="workspace-application-slug">
+                <Input id="workspace-application-slug" onChange={(event) => setRequestedSlug(event.target.value.toLowerCase())} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required value={requestedSlug} />
               </Field>
-              <Field label={t("subdomain")} name="tenant-application-subdomain">
-                <Input id="tenant-application-subdomain" onChange={(event) => setRequestedSubdomain(event.target.value.toLowerCase())} value={requestedSubdomain} />
+              <Field label={t("subdomain")} name="workspace-application-subdomain">
+                <Input id="workspace-application-subdomain" onChange={(event) => setRequestedSubdomain(event.target.value.toLowerCase())} value={requestedSubdomain} />
               </Field>
-              <Field label={t("ownerName")} name="tenant-application-owner-name">
-                <Input id="tenant-application-owner-name" onChange={(event) => setOwnerDisplayName(event.target.value)} required value={ownerDisplayName} />
+              <Field label={t("ownerName")} name="workspace-application-owner-name">
+                <Input id="workspace-application-owner-name" onChange={(event) => setOwnerDisplayName(event.target.value)} required value={ownerDisplayName} />
               </Field>
             </div>
-            <Field label={t("ownerEmail")} name="tenant-application-owner-email">
-              <Input autoComplete="email" id="tenant-application-owner-email" onChange={(event) => setOwnerEmail(event.target.value)} required type="email" value={ownerEmail} />
+            <Field label={t("ownerEmail")} name="workspace-application-owner-email">
+              <Input autoComplete="email" id="workspace-application-owner-email" onChange={(event) => setOwnerEmail(event.target.value)} required type="email" value={ownerEmail} />
             </Field>
             {error && <ErrorMessage>{error}</ErrorMessage>}
             <Button disabled={submitting} type="submit">

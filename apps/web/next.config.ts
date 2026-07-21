@@ -20,7 +20,6 @@ const nextConfig: NextConfig = {
       ["custom", "parameters"],
       ["defaults", "localization"],
       ["messaging", "services"],
-      ["organization", "governance"],
       ["profile", "general"],
       ["roles", "roles"],
       ["smtp", "email"],
@@ -39,9 +38,9 @@ const nextConfig: NextConfig = {
         source: "/platform/settings",
       },
       {
-        destination: "/settings/tenant/general",
+        destination: "/settings/workspace/general",
         permanent: false,
-        source: "/settings/tenant",
+        source: "/settings/workspace",
       },
     ];
   },

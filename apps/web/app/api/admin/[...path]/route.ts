@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import {
+  AuthLoginInternalResponseSchema,
+  AuthLoginResponseSchema,
+  RefreshSessionInternalSchema,
+  RefreshSessionResponseSchema,
+} from "@hermes-swarm/api-contracts/auth";
+import {
   clearWebSessionCookie,
   readWebSession,
   setWebSessionCookie,
@@ -20,13 +26,13 @@ const REFRESH_COOKIE_NAME =
 const PUBLIC_ADMIN_PATHS = new Set([
   "/bootstrap",
   "/auth/login",
-  "/auth/tenant-context",
+  "/auth/workspace-context",
   "/auth/request-password",
   "/auth/reset-password",
   "/invites/accept",
   "/invites/validate",
   "/onboarding",
-  "/tenant-applications",
+  "/workspace-applications",
 ]);
 
 const refreshJobs = new Map<string, Promise<WebSession>>();
@@ -63,8 +69,8 @@ async function handleAdminRequest(
 
   if (
     path === "/auth/login" ||
-    path === "/onboarding" ||
-    path === "/platform/auth/login"
+    path === "/auth/select-context" ||
+    path === "/onboarding"
   ) {
     return handleSessionStart(request, path);
   }
@@ -105,6 +111,16 @@ async function handleAdminRequest(
     if (csrfError) return csrfError;
   }
 
+  if (path === "/auth/switch-context") {
+    const upstream = await forwardToNest(
+      request,
+      path,
+      request.nextUrl.search,
+      session.accessToken,
+    );
+    return handleSessionResponse(upstream);
+  }
+
   let upstream = await forwardToNest(
     request.clone(),
     path,
@@ -132,9 +148,31 @@ async function handleAdminRequest(
 
 async function handleSessionStart(request: NextRequest, path: string) {
   const upstream = await forwardToNest(request, path, request.nextUrl.search);
-  const detail = await readJson(upstream);
+  return handleSessionResponse(upstream);
+}
+
+async function handleSessionResponse(upstream: Response) {
+  const rawDetail = await readJson(upstream);
 
   if (!upstream.ok) {
+    const response = jsonResponse(rawDetail, upstream.status);
+    clearWebSessionCookie(response);
+    return response;
+  }
+
+  const parsed = AuthLoginInternalResponseSchema.safeParse(rawDetail);
+  if (!parsed.success) {
+    console.error(JSON.stringify({
+      code: "UPSTREAM_AUTH_CONTRACT_MISMATCH",
+      issues: parsed.error.issues.map((issue) => issue.path.join(".") || "response"),
+    }));
+    const response = jsonResponse({ message: "认证服务响应格式无效" }, 502);
+    clearWebSessionCookie(response);
+    return response;
+  }
+  const detail = parsed.data;
+
+  if (detail.status === "context_selection_required") {
     const response = jsonResponse(detail, upstream.status);
     clearWebSessionCookie(response);
     return response;
@@ -154,7 +192,20 @@ async function handleSessionStart(request: NextRequest, path: string) {
     );
   }
 
-  const response = jsonResponse(stripSessionSecrets(detail), upstream.status);
+  const browserDetail = AuthLoginResponseSchema.safeParse({
+    expiresAt: detail.expiresAt,
+    sessionId: detail.sessionId,
+    snapshot: detail.snapshot,
+    status: detail.status,
+  });
+  if (!browserDetail.success) {
+    console.error(JSON.stringify({
+      code: "BROWSER_AUTH_CONTRACT_MISMATCH",
+      issues: browserDetail.error.issues.map((issue) => issue.path.join(".") || "response"),
+    }));
+    return jsonResponse({ message: "认证服务响应格式无效" }, 502);
+  }
+  const response = jsonResponse(browserDetail.data, upstream.status);
   setWebSessionCookie(response, {
     accessToken,
     expiresAt,
@@ -164,7 +215,7 @@ async function handleSessionStart(request: NextRequest, path: string) {
       "principalType" in detail.snapshot &&
       detail.snapshot.principalType === "platform"
         ? "platform"
-        : "tenant",
+        : "workspace",
     refreshToken,
     sessionId,
   });
@@ -196,7 +247,11 @@ async function handleRefresh(request: NextRequest, session: WebSession) {
   } catch (error) {
     return refreshFailureResponse(normalizeRefreshError(error));
   }
-  const response = jsonResponse(stripSessionSecrets(refreshed), 200);
+  const safePayload = RefreshSessionResponseSchema.parse({
+    expiresAt: refreshed.expiresAt,
+    sessionId: refreshed.sessionId,
+  });
+  const response = jsonResponse(safePayload, 200);
   setWebSessionCookie(response, refreshed);
   return response;
 }
@@ -239,10 +294,7 @@ async function refreshWebSessionUpstream(
   session: WebSession,
   request: NextRequest,
 ): Promise<WebSession> {
-  const refreshPath =
-    session.principalType === "platform"
-      ? "/platform/auth/refresh"
-      : "/auth/refresh";
+  const refreshPath = "/auth/refresh";
   let upstream: Response;
   try {
     upstream = await fetch(`${getInternalBaseUrl()}${refreshPath}`, {
@@ -257,15 +309,25 @@ async function refreshWebSessionUpstream(
   } catch {
     throw new RefreshSessionError("unavailable");
   }
-  const detail = await readJson(upstream);
+  const rawDetail = await readJson(upstream);
   if (!upstream.ok) {
     throw new RefreshSessionError(
       upstream.status === 401 || upstream.status === 403
         ? "invalid"
         : "unavailable",
-      getString(detail?.message) ?? undefined,
+      getString(rawDetail?.message) ?? undefined,
     );
   }
+
+  const parsed = RefreshSessionInternalSchema.safeParse(rawDetail);
+  if (!parsed.success) {
+    console.error(JSON.stringify({
+      code: "UPSTREAM_REFRESH_CONTRACT_MISMATCH",
+      issues: parsed.error.issues.map((issue) => issue.path.join(".") || "response"),
+    }));
+    throw new RefreshSessionError("unavailable", "Refresh response contract mismatch");
+  }
+  const detail = parsed.data;
 
   const accessToken = getString(detail?.accessToken);
   const expiresAt = getString(detail?.expiresAt);
@@ -283,7 +345,7 @@ async function refreshWebSessionUpstream(
     accessToken,
     csrfToken: session.csrfToken,
     expiresAt,
-    principalType: session.principalType ?? "tenant",
+    principalType: session.principalType ?? "workspace",
     refreshToken,
     sessionId,
   };
@@ -292,7 +354,7 @@ async function refreshWebSessionUpstream(
 function isPublicAdminPath(path: string) {
   return (
     PUBLIC_ADMIN_PATHS.has(path) ||
-    /^\/tenant-applications\/[^/]+\/(?:verify|cancel)$/.test(path)
+    /^\/workspace-applications\/[^/]+\/(?:verify|cancel)$/.test(path)
   );
 }
 
@@ -337,9 +399,8 @@ function buildForwardHeaders(
       normalized === "x-csrf-token" ||
       normalized === "x-forwarded-host" ||
       normalized === "x-forwarded-proto" ||
-      normalized === "x-organization-id" ||
       normalized === "x-scope-level" ||
-      normalized === "x-tenant-id" ||
+      normalized === "x-workspace-id" ||
       normalized === "set-cookie" ||
       normalized === "transfer-encoding"
     ) {

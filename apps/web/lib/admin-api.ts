@@ -1,627 +1,162 @@
-import {
-  SECRET_SETTING_MASK,
-  type SettingValueOption,
-  type SettingValueType,
-} from "@hermes-swarm/core/settings/definitions";
-import type {
-  EffectiveTenantSetting,
-  RuntimePreferences,
-} from "@hermes-swarm/core/settings";
+import { SECRET_SETTING_MASK } from "@hermes-swarm/core/settings/definitions";
 import type { AuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
-import { getOrganizationRequestSignal } from "@/lib/organization-context";
-
-
-export type OrganizationStatus = "active" | "suspended";
-export type UserStatus = "active" | "disabled";
-
-export type Tenant = {
-  id: string;
-  name: string;
-  slug: string;
-  status: "provisioning" | "active" | "suspended" | "archived";
-};
-
-export type AuditActor = {
-  displayName: string;
-  email: string;
-  id: string;
-};
-
-export type AuditNamedReference = {
-  id: string;
-  name: string;
-};
-
-export type AuditLogPage<T> = {
-  items: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-};
-
-export type AuditLogQuery = Partial<{
-  actorId: string;
-  from: string;
-  httpMethod: string;
-  keyword: string;
-  page: number;
-  pageSize: number;
-  permission: string;
-  result: string;
-  to: string;
-}>;
-
-export type LoginAuditLogItem = {
-  actor: AuditActor | null;
-  actorId: string | null;
-  attemptedEmail: string;
-  createdAt: string;
-  deviceLabel: string | null;
-  failureCode: string | null;
-  id: string;
-  ipAddress: string | null;
-  result: "failed" | "success";
-  scopeType: "platform" | "tenant";
-  sessionId: string | null;
-  tenantId: string | null;
-  userAgent: string | null;
-};
-
-export type OperationAuditLogItem = {
-  actor: AuditActor | null;
-  actorId: string | null;
-  createdAt: string;
-  errorCode: string | null;
-  httpMethod: string | null;
-  httpPath: string | null;
-  id: string;
-  ipAddress: string | null;
-  operationLabel: string;
-  organization: AuditNamedReference | null;
-  organizationId: string | null;
-  permission: string;
-  principalType: "anonymous" | "integration" | "platform" | "tenant";
-  result: "allowed" | "denied" | "error";
-  scopeType: "organization" | "own" | "platform" | "tenant";
-  sessionId: string | null;
-  statusCode: number | null;
-  targetTenant: AuditNamedReference | null;
-  targetTenantId: string | null;
-  tenantId: string | null;
-  userAgent: string | null;
-};
-
-export type TenantApplicationStatus =
-  | "pending_email_verification"
-  | "pending_review"
-  | "approved"
-  | "rejected"
-  | "cancelled";
-
-export type TenantApplication = {
-  createdAt: string;
-  emailVerifiedAt: string | null;
-  id: string;
-  ownerDisplayName: string;
-  ownerEmail: string;
-  requestedName: string;
-  requestedSlug: string;
-  requestedSubdomain: string | null;
-  reviewedAt: string | null;
-  reviewedByPlatformUserId: string | null;
-  reviewNote: string | null;
-  status: TenantApplicationStatus;
-  tenantId: string | null;
-  updatedAt: string;
-};
-
-export type TenantApplicationPayload = {
-  ownerDisplayName: string;
-  ownerEmail: string;
-  requestedName: string;
-  requestedSlug: string;
-  requestedSubdomain?: string | null;
-};
-
-export type TenantApplicationSubmission = {
-  applicationId: string;
-  cancellationToken?: string;
-  verificationToken?: string;
-};
-
-export type TenantApplicationApproval = {
-  application: TenantApplication;
-  ownerActivationToken?: string;
-  ownerUser: User;
-  tenant: Tenant;
-};
-
-export type Organization = {
-  createdAt?: string;
-  createdByUserId?: string | null;
-  id: string;
-  name: string;
-  parentOrganizationId: string | null;
-  slug: string;
-  status: OrganizationStatus;
-  updatedAt?: string;
-};
-
-export type OrganizationPayload = Partial<{
-  name: string;
-  parentOrganizationId: string | null;
-  slug: string;
-  status: OrganizationStatus;
-}>;
-
-export type UserNotificationStatus = "read" | "unread";
-export type UserNotificationKind = "error" | "info" | "success" | "warning";
-
-export type UserNotification = {
-  actorUserId: string | null;
-  body: string | null;
-  createdAt: string;
-  dismissedAt: string | null;
-  id: string;
-  kind: UserNotificationKind;
-  payload: Record<string, unknown> | null;
-  readAt: string | null;
-  sourceId: string | null;
-  sourceType: string | null;
-  status: UserNotificationStatus;
-  title: string;
-  updatedAt: string;
-};
-
-export type TicketStatus = "archived" | "closed" | "open";
-export type Ticket = {
-  archivedAt: string | null;
-  assigneeUserId: string | null;
-  conversationId: string | null;
-  createdAt: string;
-  handlerClosedAt: string | null;
-  id: string;
-  lastMessageAt: string | null;
-  participantUserIds: string[];
-  requesterClosedAt: string | null;
-  requesterUserId: string;
-  sourceOrganization?: Pick<Organization, "id" | "name" | "slug">;
-  sourceOrganizationId: string;
-  status: TicketStatus;
-  subject: string;
-  updatedAt: string;
-};
-
-export type TicketMessageAttachment = {
-  mimeType?: string;
-  name: string;
-  size?: number;
-  type: "image";
-  url: string;
-};
-
-export type TicketMessage = {
-  attachments: TicketMessageAttachment[];
-  author: {
-    avatarUrl?: string | null;
-    displayName: string;
-    email: string;
-    id: string;
-    imageUrl?: string | null;
-    username?: string | null;
-  } | null;
-  authorUserId: string | null;
-  body: string;
-  conversationId: string;
-  createdAt: string;
-  id: string;
-  kind: "message" | "system";
-  metadata: Record<string, unknown> | null;
-  sourceId: string;
-  sourceType: string;
-  ticketId: string;
-  updatedAt: string;
-};
-
-export type User = {
-  id: string;
-  tenantId?: string | null;
-  displayName: string;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-  username: string | null;
-  mobile: string | null;
-  imageUrl: string | null;
-  nickname?: string | null;
-  avatarUrl?: string | null;
-  preferredLanguage: string | null;
-  emailVerified: boolean;
-  timeZone: string | null;
-  tenantRole?: Role | null;
-  status: UserStatus;
-  type: "service" | "user";
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type Role = {
-  color?: string | null;
-  description?: string | null;
-  displayName?: string | null;
-  id: string;
-  isSystem: boolean;
-  label: string;
-  name: string;
-  organizationId?: string | null;
-  permissions?: RolePermission[];
-  scope?: "platform" | "tenant" | "organization";
-};
-
-export type RolePermission = {
-  id: string;
-  enabled: boolean;
-  permission: string;
-  roleId: string;
-};
-
-export type PermissionScope =
-  | "platform"
-  | "tenant"
-  | "organization"
-  | "own";
-
-export type PermissionCatalogOperation = {
-  description?: string | null;
-  isDangerous?: boolean;
-  label: string;
-  operation: string;
-  order?: number | null;
-  permission: string;
-};
-
-export type PermissionCatalogPurpose = {
-  label: string;
-  operations: PermissionCatalogOperation[];
-  order?: number | null;
-  purpose: string;
-};
-
-export type PermissionCatalogEntity = {
-  entity: string;
-  label: string;
-  order?: number | null;
-  purposes: PermissionCatalogPurpose[];
-};
-
-export type PermissionCatalogScope = {
-  entities: PermissionCatalogEntity[];
-  label: string;
-  scope: PermissionScope;
-};
-
-export type PermissionCatalog = {
-  scopes: PermissionCatalogScope[];
-};
-
-export type MembershipStatus = "active" | "disabled" | "invited";
-
-export type OrganizationMembership = {
-  displayName: string | null;
-  id: string;
-  joinedAt: string | null;
-  organization?: Organization;
-  organizationId: string;
-  role: Role | null;
-  status: MembershipStatus;
-  user: User;
-  userId: string;
-};
-
-export type OrganizationMemberCandidate = {
-  avatarUrl: string | null;
-  displayName: string;
-  email: string;
-  id: string;
-  imageUrl: string | null;
-};
-
-export type CreateOrganizationMembershipPayload = {
-  roleId: string;
-  userId: string;
-};
-
-export type UpdateOrganizationMembershipPayload = {
-  displayName?: string | null;
-  roleId?: string;
-  status?: MembershipStatus;
-};
-
-export type PlatformMember = {
-  displayName: string;
-  email: string;
-  id: string;
-  role: Role | null;
-  roleId: string | null;
-  roles: Role[];
-  status: "active" | "disabled";
-  userId: string;
-};
-
-export type PlatformMemberPayload = {
-  displayName?: string | null;
-  email?: string;
-  password?: string;
-  roleId?: string | null;
-  status?: "active" | "disabled";
-  userId?: string;
-};
-
-export type PlatformUser = {
-  displayName: string;
-  email: string;
-  id: string;
-  preferredLanguage?: string;
-  roles: Role[];
-  status: "active" | "disabled";
-};
-
-export type RolePayload = {
-  color?: string | null;
-  description?: string | null;
-  displayName?: string;
-  name?: string;
-};
-
-export type InviteStatus =
-  | "accepted"
-  | "declined"
-  | "expired"
-  | "invited"
-  | "revoked";
-
-export type Invite = {
-  acceptedCount: number;
-  acceptedUserId: string | null;
-  actionDate: string | null;
-  closedAt: string | null;
-  email: string | null;
-  existingUser?: boolean;
-  createdAt: string;
-  expireDate: string | null;
-  id: string;
-  invitedById: string | null;
-  invitedBy?: Pick<
-    User,
-    "avatarUrl" | "displayName" | "email" | "id" | "imageUrl" | "username"
-  > | null;
-  link?: string;
-  organizationAssignments: Array<{
-    isDefault?: boolean;
-    organizationId: string;
-    roleId: string;
-  }>;
-  status: InviteStatus;
-  workspaceRoleId: string;
-};
-
-export type SystemSettingDto = {
-  id: string;
-  name: string;
-  scope: "platform" | "tenant";
-  value: string | null;
-  valueOptions?: SettingValueOption[] | null;
-  valueType: SettingValueType;
-};
-
-export type SettingPayloadValue =
-  | string
-  | number
-  | boolean
-  | Record<string, unknown>
-  | unknown[]
-  | null;
-
-export type SettingPayloadEntry = {
-  name: string;
-  scope?: "platform" | "tenant";
-  value: SettingPayloadValue;
-  valueOptions?: SettingValueOption[] | null;
-  valueType?: SettingValueType;
-};
-
-export type SaveSettingsPayload =
-  | Record<string, SettingPayloadValue>
-  | { settings: SettingPayloadEntry[] };
-
-export type CurrentUser = {
-  isPlatformAdmin?: boolean;
-  memberships?: OrganizationMembership[];
-  organization: Organization | null;
-  permissions: string[];
-  platformUser?: PlatformUser | null;
-  principalType: "platform" | "tenant";
-  role: Role | null;
-  user: User;
-};
-
-export type TenantPrincipalSession = {
-  defaultOrganizationId: string | null;
-  isPlatformAdmin?: boolean;
-  memberships: OrganizationMembership[];
-  onboarding: { rootOrganizationRequired: boolean };
-  organization?: Organization | null;
-  permissions: string[];
-  role?: Role | null;
-  principalType: "tenant";
-  runtimePreferences: RuntimePreferences;
-  systemSettings?: SystemSettingDto[];
-  tenant?: Tenant | null;
-  tenantId: string;
-  tenantRole: Role | null;
-  user: User;
-};
-
-export type PlatformPrincipalSession = {
-  platformUser: PlatformUser;
-  principalType: "platform";
-  runtimePreferences: RuntimePreferences;
-  systemSettings?: SystemSettingDto[];
-};
-
-export type PrincipalSession = TenantPrincipalSession | PlatformPrincipalSession;
-
-export type Snapshot = {
-  currentUser: CurrentUser;
-  defaultOrganizationId?: string | null;
-  isPlatformAdmin: boolean;
-  memberships: OrganizationMembership[];
-  organization: Organization | null;
-  organizations: Organization[];
-  permissions: string[];
-  platformUser?: PlatformUser | null;
-  principalType: "platform" | "tenant";
-  role?: Role | null;
-  rolePermissions: RolePermission[];
-  roles: Role[];
-  runtimePreferences: RuntimePreferences;
-  systemSettings: SystemSettingDto[];
-  tenant?: Tenant | null;
-  tenantId?: string | null;
-  tenantRole?: Role | null;
-  user: User;
-  users: User[];
-};
-
-export type PublicBootstrap = {
-  onboardingRequired: boolean;
-  organizations: Organization[];
-  systemSettings?: SystemSettingDto[];
-};
-
-export type AuthLoginResponse = {
-  expiresAt: string;
-  sessionId: string;
-  snapshot: TenantPrincipalSession;
-};
-
-export type PlatformAuthLoginResponse = {
-  expiresAt: string;
-  sessionId: string;
-  snapshot: PlatformPrincipalSession;
-};
-
-export type AuthRefreshResponse = {
-  expiresAt: string;
-  sessionId: string;
-};
-
-export type RealtimeTicketResponse = {
-  expiresAt: string;
-  ticket: string;
-};
-
-export type AuthSessionDevice = {
-  browser: string;
-  createdAt: string;
-  deviceLabel: string;
-  expiresAt: string;
-  ipAddress: string | null;
-  isCurrent: boolean;
-  isExpired: boolean;
-  lastSeenAt: string;
-  os: string;
-  revokedAt: string | null;
-  sessionId: string;
-};
-
-export type IntegrationTokenScope = "tenant";
-
-export type IntegrationTokenPermissionOption = {
-  description: string | null;
-  entity: string;
-  entityLabel: string;
-  entityOrder: number | null;
-  isDangerous: boolean;
-  label: string;
-  operation: string;
-  operationOrder: number | null;
-  permission: string;
-  purpose: string;
-  purposeLabel: string;
-  purposeOrder: number | null;
-  scope: "tenant" | "organization" | "own";
-};
-
-export type IntegrationTokenScopeCapability = {
-  permissions: IntegrationTokenPermissionOption[];
-  scope: IntegrationTokenScope;
-};
-
-export type IntegrationTokenCapabilities = {
-  scopes: IntegrationTokenScopeCapability[];
-};
-
-export type IntegrationToken = {
-  createdAt: string;
-  expiresAt: string;
-  id: string;
-  isExpired: boolean;
-  lastUsedAt: string | null;
-  note: string | null;
-  owner?: Pick<
-    User,
-    "avatarUrl" | "displayName" | "email" | "id" | "imageUrl" | "username"
-  > | null;
-  ownerUserId?: string;
-  permissions: string[];
-  revokedAt: string | null;
-  scope: IntegrationTokenScope;
-  tenantId: string;
-  tokenPrefix: string;
-  updatedAt: string;
-};
-
-export type CreatedIntegrationToken = IntegrationToken & {
-  token: string;
-};
-
-export type OnboardingPayload = {
-  adminEmail: string;
-  adminName: string;
-  adminPassword: string;
-  organizationName: string;
-  organizationSlug?: string;
-};
-
-export type LoginPayload = {
-  email: string;
-  password: string;
-  tenantSlug?: string;
-};
-
-export type TenantLoginContext = {
-  source: "host" | "workspace" | null;
-  tenant: { name: string; slug: string } | null;
-};
-
-export type FileUploadResponse = {
-  destinations: Array<{
-    kind: string;
-    status: "failed" | "success";
-    url?: string;
-  }>;
-  mimeType?: string;
-  name?: string;
-  originalName?: string;
-  size?: number;
-  status: "failed" | "partial_success" | "success";
-  url?: string;
+import {
+  ApiErrorSchema,
+  FileUploadResponseSchema,
+  adminContracts,
+  findAdminContract,
+  responseSchemaFor,
+  type ApiContract,
+  type ContractRequest,
+  type ContractResponse,
+} from "@hermes-swarm/api-contracts";
+import type {
+  LoginRequest as LoginPayload,
+  AccountStatus,
+  AuditActor,
+  AuditLogPage,
+  AuditLogQuery,
+  AuditNamedReference,
+  AuthenticatedLoginResponse,
+  AuthLoginResponse,
+  AuthRefreshResponse,
+  AuthSessionDevice,
+  ContextSelectionOption,
+  ContextSelectionRequiredResponse,
+  CreatedIntegrationToken,
+  CurrentUser,
+  EffectiveWorkspaceSetting,
+  EmailTemplateDto,
+  FileUploadResponse,
+  IntegrationToken,
+  IntegrationTokenCapabilities,
+  IntegrationTokenPermissionOption,
+  IntegrationTokenScope,
+  IntegrationTokenScopeCapability,
+  Invite,
+  InviteStatus,
+  LoginAuditLogItem,
+  OnboardingPayload,
+  OperationAuditLogItem,
+  PermissionCatalog,
+  PermissionCatalogEntity,
+  PermissionCatalogOperation,
+  PermissionCatalogPurpose,
+  PermissionCatalogScope,
+  PermissionScope,
+  PlatformMember,
+  PlatformMemberPayload,
+  PlatformPrincipalSession,
+  PrincipalSession,
+  PublicBootstrap,
+  RealtimeTicketResponse,
+  Role,
+  RolePayload,
+  RolePermission,
+  RuntimePreferences,
+  SaveSettingsPayload,
+  SettingPayloadEntry,
+  SettingPayloadValue,
+  Snapshot,
+  SmtpConfig,
+  SystemSettingDto,
+  Ticket,
+  TicketMessage,
+  TicketMessageAttachment,
+  TicketStatus,
+  User,
+  UserNotification,
+  UserNotificationKind,
+  UserNotificationStatus,
+  Workspace,
+  WorkspaceApplication,
+  WorkspaceApplicationApproval,
+  WorkspaceApplicationPayload,
+  WorkspaceApplicationStatus,
+  WorkspaceApplicationSubmission,
+  WorkspaceLoginContext,
+  WorkspaceMember,
+  WorkspacePrincipalSession,
+} from "@hermes-swarm/api-contracts";
+
+export type {
+  LoginPayload,
+  AccountStatus,
+  AuditActor,
+  AuditLogPage,
+  AuditLogQuery,
+  AuditNamedReference,
+  AuthenticatedLoginResponse,
+  AuthLoginResponse,
+  AuthRefreshResponse,
+  AuthSessionDevice,
+  ContextSelectionOption,
+  ContextSelectionRequiredResponse,
+  CreatedIntegrationToken,
+  CurrentUser,
+  EffectiveWorkspaceSetting,
+  EmailTemplateDto,
+  FileUploadResponse,
+  IntegrationToken,
+  IntegrationTokenCapabilities,
+  IntegrationTokenPermissionOption,
+  IntegrationTokenScope,
+  IntegrationTokenScopeCapability,
+  Invite,
+  InviteStatus,
+  LoginAuditLogItem,
+  OnboardingPayload,
+  OperationAuditLogItem,
+  PermissionCatalog,
+  PermissionCatalogEntity,
+  PermissionCatalogOperation,
+  PermissionCatalogPurpose,
+  PermissionCatalogScope,
+  PermissionScope,
+  PlatformMember,
+  PlatformMemberPayload,
+  PlatformPrincipalSession,
+  PrincipalSession,
+  PublicBootstrap,
+  RealtimeTicketResponse,
+  Role,
+  RolePayload,
+  RolePermission,
+  RuntimePreferences,
+  SaveSettingsPayload,
+  SettingPayloadEntry,
+  SettingPayloadValue,
+  Snapshot,
+  SmtpConfig,
+  SystemSettingDto,
+  Ticket,
+  TicketMessage,
+  TicketMessageAttachment,
+  TicketStatus,
+  User,
+  UserNotification,
+  UserNotificationKind,
+  UserNotificationStatus,
+  Workspace,
+  WorkspaceApplication,
+  WorkspaceApplicationApproval,
+  WorkspaceApplicationPayload,
+  WorkspaceApplicationStatus,
+  WorkspaceApplicationSubmission,
+  WorkspaceLoginContext,
+  WorkspaceMember,
+  WorkspacePrincipalSession,
 };
 
 const API_BASE_URL = "/api";
 const ADMIN_API_BASE_URL = "/api/admin";
-const REQUEST_TIMEOUT_MS = 12_000;
+const configuredRequestTimeoutMs = Number(
+  process.env.NEXT_PUBLIC_ADMIN_API_TIMEOUT_MS,
+);
+const REQUEST_TIMEOUT_MS =
+  Number.isFinite(configuredRequestTimeoutMs) && configuredRequestTimeoutMs >= 1_000
+    ? configuredRequestTimeoutMs
+    : 30_000;
 
 export class AdminApiError extends Error {
   constructor(
@@ -631,6 +166,17 @@ export class AdminApiError extends Error {
   ) {
     super(message);
     this.name = "AdminApiError";
+  }
+}
+
+export class AdminContractError extends Error {
+  constructor(
+    public readonly contractId: string,
+    public readonly phase: "request" | "response",
+    public readonly issues: string[],
+  ) {
+    super("API 数据格式与应用契约不一致");
+    this.name = "AdminContractError";
   }
 }
 
@@ -646,15 +192,37 @@ export function getRealtimeUrl(ticket: string) {
   return url.toString();
 }
 
-export async function fetchAdmin<T>(
+type AdminFetchOptions = {
+  body?: unknown;
+  method?: string;
+  params?: Record<string, string>;
+  query?: Record<string, boolean | number | string | null | undefined>;
+};
+
+export function fetchAdmin<C extends ApiContract>(
+  contract: C,
+  options?: ContractRequest<C>,
+): Promise<ContractResponse<C>>;
+export function fetchAdmin<T>(
   path: string,
-  options?: {
-    body?: unknown;
-    method?: string;
-  },
-): Promise<T> {
-  const response = await sendAdminRequest(path, options);
-  return parseAdminResponse<T>(response);
+  options?: AdminFetchOptions,
+): Promise<T>;
+export async function fetchAdmin(
+  contractOrPath: ApiContract | string,
+  options?: AdminFetchOptions,
+): Promise<unknown> {
+  const path = typeof contractOrPath === "string"
+    ? contractOrPath
+    : buildContractPath(contractOrPath.path, options?.params, options?.query);
+  const method = typeof contractOrPath === "string"
+    ? options?.method ?? "GET"
+    : contractOrPath.method;
+  const match = typeof contractOrPath === "string"
+    ? findAdminContract(method, path)
+    : { contract: contractOrPath, params: options?.params ?? {} };
+  if (match) validateContractRequest(match.contract, path, match.params, options?.body);
+  const response = await sendAdminRequest(path, { ...options, method });
+  return parseAdminResponse(response, match?.contract);
 }
 
 async function sendAdminRequest(
@@ -665,7 +233,6 @@ async function sendAdminRequest(
   },
 ) {
   const headers = new Headers();
-  const scopedRequest = shouldAttachRequestScope(path);
   if (options?.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
@@ -678,14 +245,6 @@ async function sendAdminRequest(
   }
 
   const controller = new AbortController();
-  const scopeSignal = getOrganizationRequestSignal();
-  const abortForScopeChange = () => controller.abort();
-  if (scopedRequest) {
-    if (scopeSignal.aborted) abortForScopeChange();
-    else {
-      scopeSignal.addEventListener("abort", abortForScopeChange, { once: true });
-    }
-  }
   const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
 
@@ -698,16 +257,12 @@ async function sendAdminRequest(
       signal: controller.signal,
     });
   } catch (error) {
-    if (scopedRequest && scopeSignal.aborted) {
-      throw new DOMException("Organization changed", "AbortError");
-    }
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("请求超时，请确认 API 服务已启动");
     }
     throw error;
   } finally {
     window.clearTimeout(timeoutId);
-    scopeSignal.removeEventListener("abort", abortForScopeChange);
   }
 
   return response;
@@ -717,14 +272,15 @@ let csrfTokenPromise: Promise<string> | null = null;
 const CSRF_EXEMPT_ADMIN_PATHS = new Set([
   "/bootstrap",
   "/auth/login",
-  "/auth/tenant-context",
+  "/auth/select-context",
+  "/auth/workspace-context",
   "/auth/request-password",
   "/auth/reset-password",
   "/invites/accept",
   "/invites/validate",
   "/onboarding",
-  "/platform/auth/login",
-  "/tenant-applications",
+  "/workspace-applications",
+  "/workspace-applications/activate-owner",
 ]);
 
 async function getCsrfToken() {
@@ -749,42 +305,22 @@ async function getCsrfToken() {
 function shouldAttachCsrfToken(path: string) {
   const pathname = path.split("?", 1)[0] ?? path;
   if (CSRF_EXEMPT_ADMIN_PATHS.has(pathname)) return false;
-  return !/^\/tenant-applications\/[^/]+\/(?:verify|cancel)$/.test(pathname);
+  return !/^\/workspace-applications\/[^/]+\/(?:verify|cancel)$/.test(pathname);
 }
 
-function shouldAttachRequestScope(path: string) {
-  // The principal snapshot establishes the initial request scope. Binding this
-  // request to the previous scope lets the first successful hydration abort a
-  // concurrent /auth/me call (for example React Strict Mode's second effect).
-  if (path === "/auth/me") return false;
-  if (path === "/platform" || path.startsWith("/platform/")) return false;
-  const publicPath = [
-    "/auth/login",
-    "/auth/tenant-context",
-    "/auth/refresh",
-    "/auth/request-password",
-    "/auth/reset-password",
-    "/bootstrap",
-    "/invites/accept",
-    "/invites/validate",
-    "/onboarding",
-    "/platform/auth/login",
-    "/tenant-applications",
-  ].some((candidate) => path === candidate || path.startsWith(`${candidate}?`));
-  if (publicPath) return false;
-  return !/^\/tenant-applications\/[^/]+\/(?:verify|cancel)(?:\?|$)/.test(path);
-}
-
-async function parseAdminResponse<T>(response: Response): Promise<T> {
+async function parseAdminResponse<T>(response: Response, contract?: ApiContract): Promise<T> {
   if (!response.ok) {
     const detail = await response.json().catch(() => undefined);
-    const message = Array.isArray(detail?.message)
-      ? detail.message.join(", ")
-      : detail?.message;
+    const parsedError = ApiErrorSchema.safeParse(detail);
+    const message = parsedError.success
+      ? Array.isArray(parsedError.data.message)
+        ? parsedError.data.message.join(", ")
+        : parsedError.data.message
+      : undefined;
     throw new AdminApiError(
       message || `请求失败：${response.status}`,
       response.status,
-      typeof detail?.code === "string" ? detail.code : undefined,
+      parsedError.success ? parsedError.data.code : undefined,
     );
   }
 
@@ -797,7 +333,60 @@ async function parseAdminResponse<T>(response: Response): Promise<T> {
     return null as T;
   }
 
-  return maskSecretSettingPayload(JSON.parse(text)) as T;
+  const value = maskSecretSettingPayload(JSON.parse(text));
+  if (!contract) return value as T;
+  const schema = responseSchemaFor(contract, response.status, true);
+  if (!schema) return value as T;
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new AdminContractError(
+      contract.id,
+      "response",
+      result.error.issues.map((issue) => issue.path.join(".") || "response"),
+    );
+  }
+  return result.data as T;
+}
+
+function validateContractRequest(
+  contract: ApiContract,
+  path: string,
+  params: Record<string, unknown>,
+  body: unknown,
+) {
+  const query = Object.fromEntries(new URLSearchParams(path.split("?", 2)[1] ?? ""));
+  for (const [source, schema, value] of [
+    ["params", contract.params, params],
+    ["query", contract.query, query],
+    ["body", contract.body, body],
+  ] as const) {
+    if (!schema || contract.multipart) continue;
+    const result = schema.safeParse(value);
+    if (!result.success) {
+      throw new AdminContractError(
+        contract.id,
+        "request",
+        result.error.issues.map((issue) => `${source}.${issue.path.join(".")}`),
+      );
+    }
+  }
+}
+
+function buildContractPath(
+  template: string,
+  params: Record<string, string> = {},
+  query: Record<string, boolean | number | string | null | undefined> = {},
+) {
+  const path = template.replace(/:([^/]+)/g, (_match, name: string) => {
+    const value = params[name];
+    if (!value) throw new AdminContractError("path", "request", [`params.${name}`]);
+    return encodeURIComponent(value);
+  });
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null) search.set(key, String(value));
+  }
+  return search.size ? `${path}?${search}` : path;
 }
 
 function maskSecretSettingPayload(value: unknown): unknown {
@@ -847,7 +436,16 @@ export async function uploadAdminFile(session: AuthenticatedAdminSessionMarker, 
     throw new Error(message || `请求失败：${response.status}`);
   }
 
-  return response.json() as Promise<FileUploadResponse>;
+  const payload = await response.json();
+  const result = FileUploadResponseSchema.safeParse(payload);
+  if (!result.success) {
+    throw new AdminContractError(
+      "files.upload",
+      "response",
+      result.error.issues.map((issue) => issue.path.join(".") || "response"),
+    );
+  }
+  return result.data;
 }
 
 export function getPublicBootstrap() {
@@ -855,65 +453,88 @@ export function getPublicBootstrap() {
 }
 
 export function authLogin(payload: LoginPayload) {
-  return fetchAdmin<AuthLoginResponse>("/auth/login", {
+  return fetchAdmin(adminContracts.authLogin, {
     body: payload,
-    method: "POST",
   });
 }
 
-export function resolveTenantLoginContext(workspace?: string) {
-  return fetchAdmin<TenantLoginContext>("/auth/tenant-context", {
+export function selectLoginContext(payload: {
+  contextType: "platform" | "workspace";
+  membershipId: string;
+  selectionToken: string;
+}) {
+  return fetchAdmin(adminContracts.authSelectContext, {
+    body: payload,
+  });
+}
+
+export function listAccountContexts() {
+  return fetchAdmin(adminContracts.authContexts);
+}
+
+export function switchAccountContext(payload: {
+  contextType: "platform" | "workspace";
+  membershipId: string;
+}) {
+  return fetchAdmin(adminContracts.authSwitchContext, {
+    body: payload,
+  });
+}
+
+export function resolveWorkspaceLoginContext(workspace?: string) {
+  return fetchAdmin(adminContracts.authWorkspaceContext, {
     body: workspace ? { workspace } : {},
-    method: "POST",
   });
 }
 
-export function platformAuthLogin(payload: LoginPayload) {
-  return fetchAdmin<PlatformAuthLoginResponse>("/platform/auth/login", {
+export function submitWorkspaceApplication(payload: WorkspaceApplicationPayload) {
+  return fetchAdmin<WorkspaceApplicationSubmission>("/workspace-applications", {
     body: payload,
     method: "POST",
   });
 }
 
-export function submitTenantApplication(payload: TenantApplicationPayload) {
-  return fetchAdmin<TenantApplicationSubmission>("/tenant-applications", {
+export function verifyWorkspaceApplication(applicationId: string, token: string) {
+  return fetchAdmin<WorkspaceApplication>(
+    `/workspace-applications/${applicationId}/verify`,
+    { body: { token }, method: "POST" },
+  );
+}
+
+export function cancelWorkspaceApplication(applicationId: string, token: string) {
+  return fetchAdmin<WorkspaceApplication>(
+    `/workspace-applications/${applicationId}/cancel`,
+    { body: { token }, method: "POST" },
+  );
+}
+
+export function activateWorkspaceOwner(payload: {
+  displayName?: string;
+  password?: string;
+  token: string;
+}) {
+  return fetchAdmin<{
+    account: Pick<User, "displayName" | "email" | "id">;
+    existingAccount: boolean;
+    membershipId: string;
+    workspace: Workspace;
+  }>("/workspace-applications/activate-owner", {
     body: payload,
     method: "POST",
   });
 }
 
-export function verifyTenantApplication(
-  applicationId: string,
-  token: string,
-) {
-  return fetchAdmin<TenantApplication>(
-    `/tenant-applications/${applicationId}/verify`,
-    { body: { token }, method: "POST" },
-  );
+export function listWorkspaceApplications(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<WorkspaceApplication[]>("/platform/workspace-applications", {});
 }
 
-export function cancelTenantApplication(applicationId: string, token: string) {
-  return fetchAdmin<TenantApplication>(
-    `/tenant-applications/${applicationId}/cancel`,
-    { body: { token }, method: "POST" },
-  );
-}
-
-export function listTenantApplications(
-  session: AuthenticatedAdminSessionMarker,
-) {
-  return fetchAdmin<TenantApplication[]>("/platform/tenant-applications", {});
-}
-
-export function listPlatformTenants(
-  session: AuthenticatedAdminSessionMarker,
-) {
-  return fetchAdmin<Tenant[]>("/platform/tenants", {});
+export function listPlatformWorkspaces(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<Workspace[]>("/platform/workspaces", {});
 }
 
 export function listLoginAuditLogs(
   session: AuthenticatedAdminSessionMarker,
-  scope: "platform" | "tenant",
+  scope: "platform" | "workspace",
   query: AuditLogQuery,
 ) {
   return fetchAdmin<AuditLogPage<LoginAuditLogItem>>(
@@ -923,7 +544,7 @@ export function listLoginAuditLogs(
 
 export function listOperationAuditLogs(
   session: AuthenticatedAdminSessionMarker,
-  scope: "platform" | "tenant",
+  scope: "platform" | "workspace",
   query: AuditLogQuery,
 ) {
   return fetchAdmin<AuditLogPage<OperationAuditLogItem>>(
@@ -931,8 +552,8 @@ export function listOperationAuditLogs(
   );
 }
 
-function auditApiBase(scope: "platform" | "tenant") {
-  return scope === "platform" ? "/platform/audit" : "/tenant/audit";
+function auditApiBase(scope: "platform" | "workspace") {
+  return scope === "platform" ? "/platform/audit" : "/workspace/audit";
 }
 
 function buildQueryString(query: AuditLogQuery) {
@@ -945,41 +566,41 @@ function buildQueryString(query: AuditLogQuery) {
   return queryString ? `?${queryString}` : "";
 }
 
-export function updatePlatformTenantStatus(
+export function updatePlatformWorkspaceStatus(
   session: AuthenticatedAdminSessionMarker,
-  tenantId: string,
+  workspaceId: string,
   status: "active" | "archived" | "suspended",
 ) {
-  return fetchAdmin<Tenant>(`/platform/tenants/${tenantId}/status`, {
+  return fetchAdmin<Workspace>(`/platform/workspaces/${workspaceId}/status`, {
     body: { status },
     method: "PATCH",
   });
 }
 
-export function approveTenantApplication(
-  session: AuthenticatedAdminSessionMarker,
-  applicationId: string,
-  payload: { note?: string | null; organizationName?: string },
-) {
-  return fetchAdmin<TenantApplicationApproval>(
-    `/platform/tenant-applications/${applicationId}/approve`,
-    { body: payload, method: "POST" },
-  );
-}
-
-export function rejectTenantApplication(
+export function approveWorkspaceApplication(
   session: AuthenticatedAdminSessionMarker,
   applicationId: string,
   payload: { note?: string | null },
 ) {
-  return fetchAdmin<TenantApplication>(
-    `/platform/tenant-applications/${applicationId}/reject`,
+  return fetchAdmin<WorkspaceApplicationApproval>(
+    `/platform/workspace-applications/${applicationId}/approve`,
+    { body: payload, method: "POST" },
+  );
+}
+
+export function rejectWorkspaceApplication(
+  session: AuthenticatedAdminSessionMarker,
+  applicationId: string,
+  payload: { note?: string | null },
+) {
+  return fetchAdmin<WorkspaceApplication>(
+    `/platform/workspace-applications/${applicationId}/reject`,
     { body: payload, method: "POST" },
   );
 }
 
 export function onboard(payload: OnboardingPayload) {
-  return fetchAdmin<AuthLoginResponse>("/onboarding", {
+  return fetchAdmin<AuthenticatedLoginResponse>("/onboarding", {
     body: payload,
     method: "POST",
   });
@@ -1003,9 +624,9 @@ export function createRealtimeTicket() {
   });
 }
 
-export function requestPasswordReset(email: string, tenantSlug?: string) {
+export function requestPasswordReset(email: string, workspaceSlug?: string) {
   return fetchAdmin<{ success: boolean }>("/auth/request-password", {
-    body: { email, tenantSlug },
+    body: { email, workspaceSlug },
     method: "POST",
   });
 }
@@ -1103,14 +724,18 @@ export function acceptInvite(payload: {
 }
 
 export function fetchMe(session?: AuthenticatedAdminSessionMarker) {
-  return fetchAdmin<PrincipalSession>("/auth/me", {});
+  return fetchAdmin(adminContracts.authMe);
 }
 
 export function searchUsers(session: AuthenticatedAdminSessionMarker, search: string) {
   const suffix = search.trim()
     ? `?search=${encodeURIComponent(search.trim())}`
     : "";
-  return fetchAdmin<User[]>(`/users/search${suffix}`, {});
+  return fetchAdmin<WorkspaceMember[]>(`/workspace/members/search${suffix}`, {});
+}
+
+export function fetchAccount() {
+  return fetchAdmin<User>("/account");
 }
 
 export function updateUser(session: AuthenticatedAdminSessionMarker, payload: {
@@ -1122,21 +747,21 @@ export function updateUser(session: AuthenticatedAdminSessionMarker, payload: {
   mobile?: string | null;
   username?: string | null;
 }) {
-  return fetchAdmin<User>("/users/me", { body: payload, method: "PATCH" });
+  return fetchAdmin<User>("/account", { body: payload, method: "PATCH" });
 }
 
 export function updateUserPassword(session: AuthenticatedAdminSessionMarker, payload: {
   currentPassword: string;
   password: string;
 }) {
-  return fetchAdmin<void>("/users/me/password", { body: payload, method: "POST" });
+  return fetchAdmin<void>("/account/password", { body: payload, method: "PATCH" });
 }
 
 export function updateUserPreferredLanguage(
   session: AuthenticatedAdminSessionMarker,
   preferredLanguage: string | null,
 ) {
-  return fetchAdmin<User>("/users/me/preferred-language", {
+  return fetchAdmin<User>("/account/preferences", {
     body: { preferredLanguage },
     method: "PATCH",
   });
@@ -1146,37 +771,14 @@ export function updateUserRuntimePreferences(
   session: AuthenticatedAdminSessionMarker,
   payload: { preferredLanguage?: string | null; timeZone?: string | null },
 ) {
-  return fetchAdmin<User>("/users/me/preferences", {
+  return fetchAdmin<User>("/account/preferences", {
     body: payload,
     method: "PATCH",
   });
 }
 
-export type SmtpConfig = {
-  fromAddress: string | null;
-  host: string;
-  id: string;
-  isValidated: boolean;
-  port: number;
-  secure: boolean;
-  username: string | null;
-};
-
-export type EmailTemplateDto = {
-  description: string | null;
-  hbs: string;
-  hasPlatformDefault: boolean;
-  id: string;
-  inherited: boolean;
-  isSystem: boolean;
-  languageCode: string;
-  mjml: string | null;
-  name: string;
-  subject: string | null;
-};
-
 export function getSmtpConfig(session: AuthenticatedAdminSessionMarker) {
-  return fetchAdmin<SmtpConfig | null>("/tenant/mail/smtp", {});
+  return fetchAdmin<SmtpConfig | null>("/workspace/mail/smtp", {});
 }
 
 export function saveSmtpConfig(session: AuthenticatedAdminSessionMarker, payload: {
@@ -1188,7 +790,7 @@ export function saveSmtpConfig(session: AuthenticatedAdminSessionMarker, payload
   secure?: boolean;
   username?: string | null;
 }) {
-  return fetchAdmin<SmtpConfig>("/tenant/mail/smtp", { body: payload, method: "PUT" });
+  return fetchAdmin<SmtpConfig>("/workspace/mail/smtp", { body: payload, method: "PUT" });
 }
 
 export function validateSmtpConfig(session: AuthenticatedAdminSessionMarker, payload: {
@@ -1199,7 +801,7 @@ export function validateSmtpConfig(session: AuthenticatedAdminSessionMarker, pay
   secure?: boolean;
   username?: string | null;
 }) {
-  return fetchAdmin<{ ok: boolean }>("/tenant/mail/smtp/validate", { body: payload, method: "POST" });
+  return fetchAdmin<{ ok: boolean }>("/workspace/mail/smtp/validate", { body: payload, method: "POST" });
 }
 
 export function getPlatformSmtpConfig(session: AuthenticatedAdminSessionMarker) {
@@ -1235,41 +837,37 @@ export function validatePlatformSmtpConfig(session: AuthenticatedAdminSessionMar
   });
 }
 
-export function createUser(session: AuthenticatedAdminSessionMarker, payload: {
-  displayName?: string;
-  email?: string;
-  password?: string;
-  roleId?: string | null;
-  status?: UserStatus;
-}) {
-  return fetchAdmin<User>("/users", { body: payload, method: "POST" });
+export function listWorkspaceMembers(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<WorkspaceMember[]>("/workspace/members", {});
 }
 
-export function listUsers(session: AuthenticatedAdminSessionMarker) {
-  return fetchAdmin<User[]>("/users", {});
+export function updateWorkspaceMemberStatus(
+  session: AuthenticatedAdminSessionMarker,
+  membershipId: string,
+  status: WorkspaceMember["status"],
+  roleId?: string,
+) {
+  return fetchAdmin<WorkspaceMember>(
+    `/workspace/members/${membershipId}/status`,
+    { body: { roleId, status }, method: "PATCH" },
+  );
 }
 
-export function updateManagedUser(session: AuthenticatedAdminSessionMarker, userId: string, payload: {
-  displayName?: string;
-  email?: string;
-  roleId?: string | null;
-  status?: UserStatus;
-}) {
-  return fetchAdmin<User>(`/users/${userId}`, { body: payload, method: "PATCH" });
-}
-
-export function deleteManagedUser(session: AuthenticatedAdminSessionMarker, userId: string) {
-  return fetchAdmin<void>(`/users/${userId}`, {
+export function removeWorkspaceMember(
+  session: AuthenticatedAdminSessionMarker,
+  membershipId: string,
+) {
+  return fetchAdmin<void>(`/workspace/members/${membershipId}`, {
     method: "DELETE",
   });
 }
 
-export function replaceUserTenantRoles(
+export function replaceWorkspaceMemberRole(
   session: AuthenticatedAdminSessionMarker,
-  userId: string,
+  membershipId: string,
   roleId: string,
 ) {
-  return fetchAdmin<User>(`/users/${userId}/role`, {
+  return fetchAdmin<WorkspaceMember>(`/workspace/members/${membershipId}/role`, {
     body: { roleId },
     method: "PUT",
   });
@@ -1285,11 +883,6 @@ export function createInvite(
     email: string;
     expiresIn?: "3d" | "7d" | "never";
     workspaceRoleId: string;
-    organizations: Array<{
-      isDefault?: boolean;
-      organizationId: string;
-      roleId: string;
-    }>;
   },
 ) {
   return fetchAdmin<Invite>("/invites", {
@@ -1315,7 +908,7 @@ export function revokeInvite(
 }
 
 export function listEmailTemplates(session: AuthenticatedAdminSessionMarker) {
-  return fetchAdmin<EmailTemplateDto[]>("/tenant/mail/templates", {});
+  return fetchAdmin<EmailTemplateDto[]>("/workspace/mail/templates", {});
 }
 
 export function createEmailTemplate(session: AuthenticatedAdminSessionMarker, payload: {
@@ -1326,7 +919,7 @@ export function createEmailTemplate(session: AuthenticatedAdminSessionMarker, pa
   name: string;
   subject?: string | null;
 }) {
-  return fetchAdmin<EmailTemplateDto>("/tenant/mail/templates", { body: payload, method: "POST" });
+  return fetchAdmin<EmailTemplateDto>("/workspace/mail/templates", { body: payload, method: "POST" });
 }
 
 export function updateEmailTemplate(session: AuthenticatedAdminSessionMarker, templateId: string, payload: Partial<{
@@ -1337,21 +930,21 @@ export function updateEmailTemplate(session: AuthenticatedAdminSessionMarker, te
   name: string;
   subject: string | null;
 }>) {
-  return fetchAdmin<EmailTemplateDto>(`/tenant/mail/templates/${templateId}`, { body: payload, method: "PATCH" });
+  return fetchAdmin<EmailTemplateDto>(`/workspace/mail/templates/${templateId}`, { body: payload, method: "PATCH" });
 }
 
 export function deleteEmailTemplate(session: AuthenticatedAdminSessionMarker, templateId: string) {
-  return fetchAdmin<void>(`/tenant/mail/templates/${templateId}`, { method: "DELETE" });
+  return fetchAdmin<void>(`/workspace/mail/templates/${templateId}`, { method: "DELETE" });
 }
 
 export function previewEmailTemplate(
   session: AuthenticatedAdminSessionMarker,
   payload: { hbs: string; subject?: string | null },
-  scope: "platform" | "tenant" = "tenant",
+  scope: "platform" | "workspace" = "workspace",
 ) {
   const path = scope === "platform"
     ? "/platform/mail/templates/preview"
-    : "/tenant/mail/templates/preview";
+    : "/workspace/mail/templates/preview";
   return fetchAdmin<{ html: string; subject: string }>(path, {
     body: payload,
     method: "POST",
@@ -1407,234 +1000,82 @@ export function saveSystemSettings(
   return fetchAdmin<SystemSettingDto[]>("/platform/settings", { body: settings, method: "PUT" });
 }
 
-export function listTenantSettings(
+export function listWorkspaceSettings(
   session: AuthenticatedAdminSessionMarker,
 ) {
-  return fetchAdmin<EffectiveTenantSetting[]>("/tenant/settings", {});
+  return fetchAdmin<EffectiveWorkspaceSetting[]>("/workspace/settings", {});
 }
 
-export function saveTenantSettings(
+export function saveWorkspaceSettings(
   session: AuthenticatedAdminSessionMarker,
   settings: SaveSettingsPayload,
 ) {
-  return fetchAdmin<EffectiveTenantSetting[]>("/tenant/settings", {
+  return fetchAdmin<EffectiveWorkspaceSetting[]>("/workspace/settings", {
     body: settings,
     method: "PUT",
   });
 }
 
-export function listOrganizations(session: AuthenticatedAdminSessionMarker) {
-  return fetchAdmin<Organization[]>("/organizations", {});
-}
-
-export function updateTenant(
+export function updateWorkspace(
   session: AuthenticatedAdminSessionMarker,
-  payload: Partial<Pick<Tenant, "name">>,
+  payload: Partial<Pick<Workspace, "name">>,
 ) {
-  return fetchAdmin<Tenant>("/tenant", {
+  return fetchAdmin<Workspace>("/workspace", {
     body: payload,
     method: "PATCH",
   });
 }
 
-export function listTenantRoles(session: AuthenticatedAdminSessionMarker) {
-  return fetchAdmin<Role[]>("/roles", {});
+export function listWorkspaceRoles(session: AuthenticatedAdminSessionMarker) {
+  return fetchAdmin<Role[]>("/workspace/roles", {});
 }
 
-export function createTenantRole(
+export function createWorkspaceRole(
   session: AuthenticatedAdminSessionMarker,
   payload: RolePayload,
 ) {
-  return fetchAdmin<Role>("/roles", {
+  return fetchAdmin<Role>("/workspace/roles", {
     body: payload,
     method: "POST",
   });
 }
 
-export function updateTenantRole(
+export function updateWorkspaceRole(
   session: AuthenticatedAdminSessionMarker,
   roleId: string,
   payload: RolePayload,
 ) {
-  return fetchAdmin<Role>(`/roles/${roleId}`, {
+  return fetchAdmin<Role>(`/workspace/roles/${roleId}`, {
     body: payload,
     method: "PATCH",
   });
 }
 
-export function replaceTenantRolePermissions(
+export function replaceWorkspaceRolePermissions(
   session: AuthenticatedAdminSessionMarker,
   roleId: string,
   permissions: Array<{ enabled?: boolean; permission?: string }>,
 ) {
-  return fetchAdmin<Role>(`/roles/${roleId}/permissions`, {
+  return fetchAdmin<Role>(`/workspace/roles/${roleId}/permissions`, {
     body: { permissions },
     method: "PUT",
   });
 }
 
-export function deleteTenantRole(
+export function deleteWorkspaceRole(
   session: AuthenticatedAdminSessionMarker,
   roleId: string,
 ) {
-  return fetchAdmin<{ success: boolean }>(`/roles/${roleId}`, {
+  return fetchAdmin<{ success: boolean }>(`/workspace/roles/${roleId}`, {
     method: "DELETE",
   });
-}
-
-export function listOrganizationRoles(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-) {
-  return fetchAdmin<Role[]>(`/organizations/${organizationId}/roles`, {});
-}
-
-export function createOrganizationRole(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  payload: RolePayload,
-) {
-  return fetchAdmin<Role>(`/organizations/${organizationId}/roles`, {
-    body: payload,
-    method: "POST",
-  });
-}
-
-export function updateOrganizationRole(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  roleId: string,
-  payload: RolePayload,
-) {
-  return fetchAdmin<Role>(`/organizations/${organizationId}/roles/${roleId}`, {
-    body: payload,
-    method: "PATCH",
-  });
-}
-
-export function replaceOrganizationRolePermissions(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  roleId: string,
-  permissions: Array<{ enabled?: boolean; permission?: string }>,
-) {
-  return fetchAdmin<Role>(
-    `/organizations/${organizationId}/roles/${roleId}/permissions`,
-    { body: { permissions }, method: "PUT" },
-  );
-}
-
-export function deleteOrganizationRole(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  roleId: string,
-) {
-  return fetchAdmin<{ success: boolean }>(
-    `/organizations/${organizationId}/roles/${roleId}`,
-    { method: "DELETE" },
-  );
-}
-
-export function getOrganization(session: AuthenticatedAdminSessionMarker, organizationId: string) {
-  return fetchAdmin<Organization>(`/organizations/${organizationId}`, {});
-}
-
-export function updateOrganization(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  payload: OrganizationPayload,
-) {
-  return fetchAdmin<Organization>(`/organizations/${organizationId}`, {
-    body: payload,
-    method: "PATCH",
-  });
-}
-
-export function deleteOrganization(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-) {
-  return fetchAdmin<{ deleted: boolean; id: string }>(
-    `/organizations/${organizationId}`,
-    { method: "DELETE" },
-  );
-}
-
-export function createOrganization(session: AuthenticatedAdminSessionMarker, payload: OrganizationPayload) {
-  return fetchAdmin<Organization>("/organizations", {
-    body: payload,
-    method: "POST",
-  });
-}
-
-export function listOrganizationMembers(session: AuthenticatedAdminSessionMarker, organizationId: string) {
-  return fetchAdmin<OrganizationMembership[]>(
-    `/organizations/${organizationId}/members`,
-    {},
-  );
-}
-
-export function listOrganizationMemberCandidates(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-) {
-  return fetchAdmin<OrganizationMemberCandidate[]>(
-    `/organizations/${organizationId}/members/candidates`,
-    {},
-  );
-}
-
-export function createOrganizationMember(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  payload: CreateOrganizationMembershipPayload,
-) {
-  return fetchAdmin<OrganizationMembership>(
-    `/organizations/${organizationId}/members`,
-    { body: payload, method: "POST" },
-  );
-}
-
-export function updateOrganizationMember(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  membershipId: string,
-  payload: UpdateOrganizationMembershipPayload,
-) {
-  return fetchAdmin<OrganizationMembership>(
-    `/organizations/${organizationId}/members/${membershipId}`,
-    { body: payload, method: "PATCH" },
-  );
-}
-
-export function replaceOrganizationMemberRole(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  membershipId: string,
-  roleId: string,
-) {
-  return fetchAdmin<OrganizationMembership>(
-    `/organizations/${organizationId}/members/${membershipId}/role`,
-    { body: { roleId }, method: "PUT" },
-  );
-}
-
-export function deleteOrganizationMember(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-  membershipId: string,
-) {
-  return fetchAdmin<void>(
-    `/organizations/${organizationId}/members/${membershipId}`,
-    { method: "DELETE" },
-  );
 }
 
 export function listPermissionCatalog(
   session: AuthenticatedAdminSessionMarker,
 ) {
   void session;
-  return fetchAdmin<PermissionCatalog>("/permissions/catalog", {
+  return fetchAdmin<PermissionCatalog>("/workspace/permissions/catalog", {
   });
 }
 
@@ -1643,16 +1084,6 @@ export function listPlatformPermissionCatalog(
 ) {
   void session;
   return fetchAdmin<PermissionCatalog>("/platform/permissions/catalog", {});
-}
-
-export function listOrganizationPermissionCatalog(
-  session: AuthenticatedAdminSessionMarker,
-  organizationId: string,
-) {
-  return fetchAdmin<PermissionCatalog>(
-    `/organizations/${organizationId}/permissions/catalog`,
-    {},
-  );
 }
 
 export function listPlatformMembers(session: AuthenticatedAdminSessionMarker) {
@@ -1767,7 +1198,6 @@ export function sendUserNotification(
   payload: {
     body?: string | null;
     kind?: UserNotificationKind;
-    organizationId?: string | null;
     payload?: Record<string, unknown> | null;
     recipientUserIds: string[];
     title: string;
@@ -1781,12 +1211,9 @@ export function sendUserNotification(
 
 export function listTickets(
   session: AuthenticatedAdminSessionMarker,
-  options: { sourceOrganizationId?: string | null; status?: TicketStatus } = {},
+  options: { status?: TicketStatus } = {},
 ) {
   const params = new URLSearchParams();
-  if (options.sourceOrganizationId) {
-    params.set("sourceOrganizationId", options.sourceOrganizationId);
-  }
   if (options.status) params.set("status", options.status);
   const query = params.toString();
   return fetchAdmin<Ticket[]>(`/tickets${query ? `?${query}` : ""}`, {});
@@ -1797,7 +1224,6 @@ export function createTicket(
   payload: {
     attachments?: TicketMessageAttachment[] | null;
     body: string;
-    sourceOrganizationId: string;
     subject: string;
   },
 ) {

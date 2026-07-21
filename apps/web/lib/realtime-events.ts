@@ -1,10 +1,18 @@
 import type { Ticket, TicketMessage, TicketStatus } from "@/lib/admin-api";
+import {
+  parseRealtimeEnvelope as parseSharedRealtimeEnvelope,
+} from "@hermes-swarm/api-contracts/realtime";
 
+export function parseRealtimeEnvelope(input: unknown) {
+  const event = parseSharedRealtimeEnvelope(input);
+  if (!event) console.warn("Ignored invalid realtime event");
+  return event;
+}
 export type RealtimeEnvelope = {
   id: string | null;
   payload: unknown;
   sentAt: string | null;
-  tenantId: string | null;
+  workspaceId: string | null;
   type: string;
 };
 
@@ -17,22 +25,6 @@ export type TicketSourceRealtimeUpdate = {
   status: TicketStatus;
   ticketId: string;
 };
-
-export function parseRealtimeEnvelope(input: unknown): RealtimeEnvelope | null {
-  try {
-    const parsed = typeof input === "string" ? JSON.parse(input) : input;
-    if (!isRecord(parsed) || typeof parsed.type !== "string") return null;
-    return {
-      id: typeof parsed.id === "string" ? parsed.id : null,
-      payload: parsed.payload,
-      sentAt: typeof parsed.sentAt === "string" ? parsed.sentAt : null,
-      tenantId: typeof parsed.tenantId === "string" ? parsed.tenantId : null,
-      type: parsed.type,
-    };
-  } catch {
-    return null;
-  }
-}
 
 export function toTicketMessageRealtimeUpdate(
   event: RealtimeEnvelope,

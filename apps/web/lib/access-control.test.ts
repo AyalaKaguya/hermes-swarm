@@ -9,7 +9,7 @@ import type { RolePermission } from "./admin-api";
 import type { ResolvedSession } from "./session";
 
 const principal = (permissions: string[]): ResolvedSession =>
-  ({ permissions, principalType: "tenant" }) as ResolvedSession;
+  ({ permissions, principalType: "workspace" }) as ResolvedSession;
 
 const rolePermission = (
   permission: string,
@@ -21,39 +21,12 @@ const rolePermission = (
   roleId,
 });
 
-const organizationPrincipal = (
-  permissions: string[],
-  organizationId = "org-1",
-): ResolvedSession =>
-  ({
-    memberships: [
-      {
-        organizationId,
-        role: {
-          permissions: permissions.map((permission) =>
-            rolePermission(permission, "role-org"),
-          ),
-        },
-        status: "active",
-      },
-    ],
-    organization: { id: organizationId },
-    permissions: [],
-    principalType: "tenant",
-  }) as unknown as ResolvedSession;
-
 const platformPrincipal = (permissions: string[]): ResolvedSession =>
   ({
     permissions,
-    platformUser: {
-      roles: [{
-        name: "platform-admin",
-        permissions: permissions.map((permission) =>
-          rolePermission(permission, "role-platform"),
-        ),
-      }],
-    },
     principalType: "platform",
+    role: null,
+    user: { id: "account-platform" },
   }) as ResolvedSession;
 
 describe("web access control", () => {
@@ -73,25 +46,25 @@ describe("web access control", () => {
     assert.equal(hasPermission(principal([]), []), true);
   });
 
-  it("merges enabled tenant role permissions into the effective session", () => {
+  it("merges enabled workspace role permissions into the effective session", () => {
     assert.deepEqual(
       mergePermissionCodes(
-        ["page.settings.tenant.access:tenant"],
+        ["page.settings.workspace.access:workspace"],
         {
           permissions: [
-            rolePermission("setting.tenant_config.list:tenant"),
-            rolePermission("setting.tenant_config.save:tenant"),
+            rolePermission("setting.workspace_config.list:workspace"),
+            rolePermission("setting.workspace_config.save:workspace"),
             {
-              ...rolePermission("setting.tenant_config.delete:tenant"),
+              ...rolePermission("setting.workspace_config.delete:workspace"),
               enabled: false,
             },
           ],
         },
       ),
       [
-        "page.settings.tenant.access:tenant",
-        "setting.tenant_config.list:tenant",
-        "setting.tenant_config.save:tenant",
+        "page.settings.workspace.access:workspace",
+        "setting.workspace_config.list:workspace",
+        "setting.workspace_config.save:workspace",
       ],
     );
   });
@@ -99,7 +72,7 @@ describe("web access control", () => {
   it("checks page access through page definition permissions", () => {
     assert.equal(
       hasPageAccess(
-        principal(["page.settings.workspace-access.access:tenant"]),
+        principal(["page.settings.workspace-access.access:workspace"]),
         "settings.workspace-access",
       ),
       true,
@@ -108,27 +81,7 @@ describe("web access control", () => {
     assert.equal(hasPageAccess(principal([]), "missing.page"), false);
   });
 
-  it("uses route organization context for organization-scoped pages", () => {
-    const user = organizationPrincipal(
-      ["page.settings.organization.access:organization"],
-      "org-1",
-    );
-
-    assert.equal(
-      hasPageAccess(user, "settings.organization", {
-        organizationId: "org-1",
-      }),
-      true,
-    );
-    assert.equal(
-      hasPageAccess(user, "settings.organization", {
-        organizationId: "org-2",
-      }),
-      false,
-    );
-  });
-
-  it("checks platform pages against PlatformUser role permissions", () => {
+  it("checks platform pages against resolved platform permissions", () => {
     assert.equal(
       hasPageAccess(
         platformPrincipal(["page.settings.platform.access:platform"]),
@@ -138,7 +91,7 @@ describe("web access control", () => {
     );
     assert.equal(
       hasPageAccess(
-        organizationPrincipal(["page.settings.platform.access:platform"]),
+        principal(["page.settings.platform.access:platform"]),
         "settings.platform",
       ),
       false,

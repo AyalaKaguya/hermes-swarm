@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAdminShell } from "@/components/admin-shell";
-import { useOrganizationContext } from "@/components/organization-context-provider";
 import { SETTINGS_NAV_SECTIONS } from "@/components/settings/settings-navigation";
 import { SettingsWorkspaceShell } from "@/components/settings/settings-workspace-shell";
 import { usePermission } from "@/hooks/use-permission";
@@ -21,26 +19,17 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const t = useTranslations();
   const tr = useTextTranslation();
   const { resolvedSession, snapshot } = useAdminShell();
-  const { activeOrganizationId } = useOrganizationContext();
   const access = usePermission();
-  const routeOrganizationId = getRouteOrganizationId(pathname);
   const currentPages = findPageAccessDefinitionsByPath(pathname);
   const canAccessCurrentPage =
     currentPages.length > 0 &&
-    currentPages.some((page) =>
-      access.hasPageAccess(page.key, {
-        organizationId: routeOrganizationId ?? activeOrganizationId,
-      }),
-    );
+    currentPages.some((page) => access.hasPageAccess(page.key));
 
-  const visibleSectionKeys = activeOrganizationId
-    ? new Set(["personal", "organization"])
-    : new Set(["personal", "tenant"]);
+  const visibleSectionKeys = new Set(["personal", "workspace"]);
   const navSections = SETTINGS_NAV_SECTIONS.filter((section) =>
     visibleSectionKeys.has(section.key),
   )
@@ -50,9 +39,7 @@ export default function SettingsLayout({
       items: section.items
         .filter((item) => {
           if (!snapshot || !resolvedSession) return false;
-          return access.hasPageAccess(item.pageKey, {
-            organizationId: activeOrganizationId,
-          });
+          return access.hasPageAccess(item.pageKey);
         })
         .map((item) => ({ ...item, label: tr(item.label) })),
     }))
@@ -63,16 +50,6 @@ export default function SettingsLayout({
     pathname,
     searchParams,
   );
-
-  useEffect(() => {
-    const page = currentPages[0];
-    if (!page) return;
-    if (page.section === "organization" && !activeOrganizationId) {
-      router.replace("/settings/tenant");
-    } else if (page.section === "tenant" && activeOrganizationId) {
-      router.replace("/settings/organization");
-    }
-  }, [activeOrganizationId, currentPages, router]);
 
   return (
     <SettingsWorkspaceShell
@@ -89,11 +66,6 @@ export default function SettingsLayout({
       )}
     </SettingsWorkspaceShell>
   );
-}
-
-function getRouteOrganizationId(pathname: string) {
-  const match = pathname.match(/^\/settings\/organizations\/([^/]+)$/);
-  return match?.[1] ?? null;
 }
 
 function SettingsAccessDenied({

@@ -33,8 +33,11 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useTextTranslation } from "@/hooks/use-text-translation";
-import { useOrganizationContext } from "@/components/organization-context-provider";
-import type { Organization, Tenant, User } from "@/lib/admin-api";
+import type {
+  Workspace,
+  User,
+  ContextSelectionOption,
+} from "@/lib/admin-api";
 import { cn } from "@/lib/utils";
 
 const MAIN_SIDEBAR_STATE_KEY = "sidebar_state";
@@ -60,40 +63,38 @@ export function AppShell({
   activeItem,
   children,
   contentClassName,
-  currentOrganizationId,
   footerNavItems,
   homeHref,
   homeLabel,
   navSections,
   onNavigate,
-  onOrganizationSwitch,
+  onSwitchContext,
   onUserUpdated,
-  organizationName,
-  organizations,
   platformName,
   settingsHref,
   ticketAccess,
-  tenant,
+  workspace,
+  contextOptions,
+  switchingContext,
   user,
 }: {
   actions?: ReactNode;
   activeItem?: string;
   children: ReactNode;
   contentClassName?: string;
-  currentOrganizationId?: string | null;
   footerNavItems?: AppShellNavItem[];
   homeHref?: string;
   homeLabel?: string;
   navSections?: AppShellNavSection[];
   onNavigate?: (item: AppShellNavItem) => void;
-  onOrganizationSwitch?: (organizationId: string | null) => void | Promise<void>;
+  onSwitchContext?: (option: ContextSelectionOption) => void;
   onUserUpdated?: () => Promise<void>;
-  organizationName?: string | null;
-  organizations?: Organization[];
   platformName?: string | null;
   settingsHref?: string | null;
   ticketAccess?: UserMenuTicketAccess | null;
-  tenant?: Tenant | null;
+  workspace?: Workspace | null;
+  contextOptions?: ContextSelectionOption[];
+  switchingContext?: boolean;
   user?: User | null;
 }) {
   const pathname = usePathname();
@@ -156,12 +157,11 @@ export function AppShell({
             <SidebarTrigger className="size-8 shrink-0" />
           </div>
 
-          <ScopeSwitcher
-            currentOrganizationId={currentOrganizationId}
-            onOrganizationSwitch={onOrganizationSwitch}
-            organizationName={organizationName}
-            organizations={organizations ?? []}
-            tenant={tenant}
+          <WorkspaceIdentity
+            onSwitchContext={onSwitchContext}
+            options={contextOptions}
+            switching={switchingContext}
+            workspace={workspace}
           />
         </SidebarHeader>
 
@@ -237,9 +237,9 @@ export function AppShell({
             )}
             <UserMenu
               onUserUpdated={onUserUpdated}
-              organizationName={organizationName}
               ticketAccess={ticketAccess}
               user={user}
+              workspaceName={workspace?.name}
             />
           </SidebarMenu>
 
@@ -255,7 +255,7 @@ export function AppShell({
         <div className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:hidden">
           <SidebarTrigger />
           <span className="truncate text-sm font-medium">
-            {organizationName ?? t("shell.console")}
+            {workspace?.name ?? t("shell.console")}
           </span>
         </div>
         <main
@@ -297,113 +297,77 @@ function writeStoredSidebarState(open: boolean) {
   document.cookie = `${MAIN_SIDEBAR_STATE_KEY}=${value}; path=/; max-age=${MAIN_SIDEBAR_COOKIE_MAX_AGE}`;
 }
 
-function ScopeSwitcher({
-  currentOrganizationId,
-  onOrganizationSwitch,
-  organizationName,
-  organizations,
-  tenant,
+function WorkspaceIdentity({
+  onSwitchContext,
+  options = [],
+  switching,
+  workspace,
 }: {
-  currentOrganizationId?: string | null;
-  onOrganizationSwitch?: (organizationId: string | null) => void | Promise<void>;
-  organizationName?: string | null;
-  organizations: Organization[];
-  tenant?: Tenant | null;
+  onSwitchContext?: (option: ContextSelectionOption) => void;
+  options?: ContextSelectionOption[];
+  switching?: boolean;
+  workspace?: Workspace | null;
 }) {
   const t = useTranslations();
-  const { activeOrganizationId } = useOrganizationContext();
-  const currentLabel =
-    activeOrganizationId === null
-      ? t("tenantScope.allOrganizations")
-      : organizationName ?? t("shell.console");
-  const canSwitch = Boolean(tenant || organizations.length > 0);
+  const currentType = workspace ? "workspace" : "platform";
+  const currentName = workspace?.name ?? t("auth.console");
 
-  return (
+  const button = (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild disabled={!canSwitch}>
-            <SidebarMenuButton
-              className="h-14 rounded-lg border bg-background/70 px-2 shadow-xs group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none"
-              size="lg"
-              tooltip={t("shell.currentOrganizationTooltip", {
-                name: currentLabel,
-              })}
-              type="button"
-            >
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted group-data-[collapsible=icon]:bg-sidebar-accent">
-                <AppIcon className="size-4" name="building" />
-              </span>
-              <span className="grid min-w-0 flex-1 leading-tight">
-                <span className="truncate text-[0.65rem] uppercase">
-                  {t("shell.currentOrganization")}
-                </span>
-                <span className="truncate text-sm font-medium">
-                  {currentLabel}
-                </span>
-              </span>
-              <AppIcon
-                className="size-4 group-data-[collapsible=icon]:hidden"
-                name="chevron-down"
-              />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-72">
-            {tenant && (
-              <>
-                <DropdownMenuLabel>{t("tenantScope.tenantConsole")}</DropdownMenuLabel>
-                <DropdownMenuItem
-                  disabled={activeOrganizationId === null}
-                  onClick={() => void onOrganizationSwitch?.(null)}
-                >
-                  <AppIcon className="size-4" name="layers" />
-                  <span className="truncate">{t("tenantScope.allOrganizations")}</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            <DropdownMenuLabel>{t("tenantScope.organizations")}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {organizations.length === 0 ? (
-              <DropdownMenuItem disabled>
-                {t("shell.noSwitchableOrganizations")}
-              </DropdownMenuItem>
-            ) : (
-              organizations.map((organization) => {
-                const active = organization.id === activeOrganizationId;
-                return (
-                  <DropdownMenuItem
-                    className="items-start gap-2 py-2"
-                    disabled={active || !onOrganizationSwitch}
-                    key={organization.id}
-                    onClick={() => {
-                      if (!active) void onOrganizationSwitch?.(organization.id);
-                    }}
-                  >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
-                      <AppIcon className="size-4" name="building" />
-                    </span>
-                    <span className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="truncate text-sm font-medium">
-                        {organization.name}
-                      </span>
-                      <span className="truncate text-xs">
-                        {organization.slug}
-                      </span>
-                    </span>
-                    {active && (
-                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.68rem]">
-                        {t("shell.current")}
-                      </span>
-                    )}
-                  </DropdownMenuItem>
-                );
-              })
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <SidebarMenuButton
+          className="h-14 rounded-lg border bg-background/70 px-2 shadow-xs group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none"
+          size="lg"
+          tooltip={currentName}
+          type="button"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted group-data-[collapsible=icon]:bg-sidebar-accent">
+            <AppIcon className="size-4" name={workspace ? "building" : "shield"} />
+          </span>
+          <span className="grid min-w-0 flex-1 leading-tight">
+            <span className="truncate text-[0.65rem] uppercase">
+              {workspace ? t("workspaceScope.workspaceConsole") : t("auth.console")}
+            </span>
+            <span className="truncate text-sm font-medium">{currentName}</span>
+          </span>
+          {options.length > 1 && (
+            <AppIcon className="size-3.5 text-muted-foreground group-data-[collapsible=icon]:hidden" name="chevron-down" />
+          )}
+        </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
+  );
+  if (options.length <= 1 || !onSwitchContext) return button;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={switching}>
+        {button}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuLabel>{t("auth.switchWorkspace")}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {options.map((option) => (
+          <DropdownMenuItem
+            disabled={
+              option.type === currentType &&
+              (option.type === "platform" || option.workspace.id === workspace?.id)
+            }
+            key={`${option.type}:${option.membershipId}`}
+            onSelect={() => onSwitchContext(option)}
+          >
+            <AppIcon className="size-4" name={option.type === "platform" ? "shield" : "building"} />
+            <span className="grid min-w-0 flex-1">
+              <span className="truncate">
+                {option.type === "platform" ? t("auth.console") : option.workspace.name}
+              </span>
+              <span className="truncate text-xs text-muted-foreground">
+                {option.role.displayName}
+              </span>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

@@ -10,11 +10,11 @@ import { getAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 
 export function EmailTemplatePreview({
   hbs,
-  scope = "tenant",
+  scope = "workspace",
   subject,
 }: {
   hbs: string;
-  scope?: "platform" | "tenant";
+  scope?: "platform" | "workspace";
   subject: string;
 }) {
   const tr = useTextTranslation();
@@ -100,7 +100,7 @@ export function EmailTemplatePreview({
         )}
       </div>
       <footer className="border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        {tr("预览使用示例收件人、组织名称和链接变量。")}
+        {tr("预览使用示例收件人、工作空间名称和链接变量。")}
       </footer>
     </section>
   );

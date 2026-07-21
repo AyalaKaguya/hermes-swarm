@@ -389,7 +389,7 @@ function CreateTemplateForm({ onDone }: { onDone: () => void }) {
           <Label>{tr("邮件主题")}</Label>
           <Input
             onChange={(e) => setSubject(e.target.value)}
-            placeholder={tr("欢迎加入 {{organizationName}}")}
+            placeholder={tr("欢迎加入 {{workspaceName}}")}
             value={subject}
           />
         </div>

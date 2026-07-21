@@ -42,7 +42,7 @@ import type {
   SettingPayloadValue,
 } from "@/lib/admin-api";
 
-export type CustomSettingScope = "platform" | "tenant";
+export type CustomSettingScope = "platform" | "workspace";
 
 export type CustomSettingSubmit = SettingPayloadEntry & {
   scope?: CustomSettingScope;
@@ -307,7 +307,7 @@ export function CustomSettingForm({
   onSubmitted,
   saving,
   scopeOptions = [
-    { label: "工作空间", value: "tenant" },
+    { label: "工作空间", value: "workspace" },
     { label: "平台", value: "platform" },
   ],
   showScope = false,
@@ -328,7 +328,7 @@ export function CustomSettingForm({
   const [localSaving, setLocalSaving] = useState(false);
   const [name, setName] = useState("");
   const [scope, setScope] = useState<CustomSettingScope>(
-    scopeOptions[0]?.value ?? "tenant",
+    scopeOptions[0]?.value ?? "workspace",
   );
   const [value, setValue] = useState<SettingPayloadValue>("");
   const formSecretValueRef = useRef("");
@@ -383,7 +383,7 @@ export function CustomSettingForm({
         valueType,
       });
       setName("");
-      setScope(scopeOptions[0]?.value ?? "tenant");
+      setScope(scopeOptions[0]?.value ?? "workspace");
       setValue("");
       formSecretValueRef.current = "";
       setValueOptions(makeDefaultEnumOptions(tr));
