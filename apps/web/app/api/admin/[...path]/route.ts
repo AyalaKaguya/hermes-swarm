@@ -111,14 +111,16 @@ async function handleAdminRequest(
     if (csrfError) return csrfError;
   }
 
-  if (path === "/auth/switch-context") {
+  if (path === "/auth/switch-context" || path === "/onboarding/resume") {
     const upstream = await forwardToNest(
       request,
       path,
       request.nextUrl.search,
       session.accessToken,
     );
-    return handleSessionResponse(upstream);
+    return handleSessionResponse(upstream, {
+      clearSessionOnError: path !== "/onboarding/resume",
+    });
   }
 
   let upstream = await forwardToNest(
@@ -151,12 +153,15 @@ async function handleSessionStart(request: NextRequest, path: string) {
   return handleSessionResponse(upstream);
 }
 
-async function handleSessionResponse(upstream: Response) {
+async function handleSessionResponse(
+  upstream: Response,
+  options: { clearSessionOnError?: boolean } = {},
+) {
   const rawDetail = await readJson(upstream);
 
   if (!upstream.ok) {
     const response = jsonResponse(rawDetail, upstream.status);
-    clearWebSessionCookie(response);
+    if (options.clearSessionOnError !== false) clearWebSessionCookie(response);
     return response;
   }
 
@@ -370,14 +375,14 @@ async function forwardToNest(
     accessToken,
     originalHost,
   );
-  const init: RequestInit & { duplex?: "half" } = {
+  const init: RequestInit = {
     headers,
     method: request.method,
     redirect: "manual",
   };
-  if (!["GET", "HEAD"].includes(request.method)) {
-    init.body = request.body;
-    init.duplex = "half";
+  if (!["GET", "HEAD"].includes(request.method) && request.body) {
+    const body = await request.arrayBuffer();
+    if (body.byteLength > 0) init.body = body;
   }
   return fetch(`${getInternalBaseUrl()}${path}${search}`, init);
 }

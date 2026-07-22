@@ -30,6 +30,18 @@ describe("SettingsService platform-to-workspace fallback", () => {
     assert.equal("getWorkspaceValue" in state.service, true);
   });
 
+  it("rejects a caller-selected workspace that differs from the trusted context", async () => {
+    const state = createState();
+    await assert.rejects(
+      () =>
+        state.service.getWorkspaceValue(
+          "workspace-b",
+          "feature:ticketing:enabled",
+        ),
+      BadRequestException,
+    );
+  });
+
   it("marks platform runtime defaults as platform sources", async () => {
     const state = createState({
       platformSettings: [
@@ -140,9 +152,8 @@ describe("SettingsService platform-to-workspace fallback", () => {
     );
   });
 
-  it("lists workspace-only parameters through the current RLS manager", async () => {
-    let baseRepositoryReads = 0;
-    let workspaceContextReads = 0;
+  it("lists workspace-only parameters with an explicit workspaceId repository filter", async () => {
+    const workspaceQueries: unknown[] = [];
     const workspaceSettings = [{
       id: "workspace-secret",
       name: "DATABASE_PASSWORD",
@@ -155,33 +166,24 @@ describe("SettingsService platform-to-workspace fallback", () => {
       find: async () => [],
     };
     const workspaceRepository = {
-      find: async () => {
-        baseRepositoryReads += 1;
-        return [];
-      },
-    };
-    const manager = {
-      getRepository: (target: unknown) => {
-        assert.equal(target, WorkspaceSetting);
-        return {
-          find: async () => {
-            workspaceContextReads += 1;
-            return workspaceSettings;
-          },
-        };
+      find: async (options: unknown) => {
+        workspaceQueries.push(options);
+        return workspaceSettings;
       },
     };
     const service = new SettingsService(
       platformRepository as never,
       { getClient: async () => { throw new Error("redis offline"); } } as never,
       workspaceRepository as never,
-      { current: () => ({ manager, workspaceId: "workspace-a" }) } as never,
+      { current: () => ({ workspaceId: "workspace-a" }) } as never,
     );
 
     const result = await service.listWorkspaceSettings("workspace-a");
 
-    assert.equal(baseRepositoryReads, 0);
-    assert.equal(workspaceContextReads, 1);
+    assert.deepEqual(workspaceQueries, [{
+      order: { name: "ASC" },
+      where: { workspaceId: "workspace-a" },
+    }]);
     assert.equal(result[0]?.name, "DATABASE_PASSWORD");
     assert.equal(result[0]?.isCustom, true);
     assert.equal(result[0]?.value, "********");

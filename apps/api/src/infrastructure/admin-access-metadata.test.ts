@@ -14,6 +14,7 @@ import {
   resolveAccessDefinition,
 } from "@hermes-swarm/rbac";
 import { PermissionsController } from "@hermes-swarm/rbac";
+import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
 
 describe("admin route access metadata", () => {
   it("requires every admin handler to explicitly declare access or public behavior", async () => {
@@ -78,6 +79,15 @@ describe("admin route access metadata", () => {
     );
 
     assert.deepEqual(operation?.defaultRoles, ["workspace-owner", "workspace-admin"]);
+  });
+
+  it("restricts onboarding resume to the platform administrator role", () => {
+    const operation = Reflect.getMetadata(
+      ACCESS_OPERATION_METADATA,
+      InfrastructureBootstrapController.prototype.resume,
+    );
+    assert.deepEqual(operation?.defaultRoles, ["platform-admin"]);
+    assert.equal(operation?.scope, undefined);
   });
 });
 

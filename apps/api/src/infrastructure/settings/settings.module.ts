@@ -5,14 +5,12 @@ import { DatabaseModule } from "../../common/database/database.module.js";
 import { RedisModule } from "../../common/redis/redis.module.js";
 import { SettingsController } from "./settings.controller.js";
 import { SettingsService } from "./settings.service.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 
 @Module({
   imports: [
     RedisModule,
     DatabaseModule,
-    TypeOrmModule.forFeature([WorkspaceSetting]),
-    TypeOrmModule.forFeature([PlatformSetting], PLATFORM_DATA_SOURCE),
+    TypeOrmModule.forFeature([WorkspaceSetting, PlatformSetting]),
   ],
   controllers: [SettingsController],
   providers: [SettingsService],

@@ -134,13 +134,9 @@ describe("i18n", () => {
       "invite.title",
       "metadata.description",
       "metadata.title",
-      "onboarding.adminEmail",
-      "onboarding.adminName",
-      "onboarding.adminPassword",
-      "onboarding.createAndEnter",
-      "onboarding.description",
-      "onboarding.firstSetup",
-      "onboarding.title",
+      ...flattenMessageKeys({
+        onboarding: messages.onboarding as Record<string, unknown>,
+      }),
     ];
 
     for (const key of publicMessageKeys) {

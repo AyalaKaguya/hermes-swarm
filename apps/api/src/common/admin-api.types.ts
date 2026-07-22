@@ -26,6 +26,7 @@ export type {
   CreateIntegrationTokenPayload,
   CreateInvitePayload,
   OnboardingPayload,
+  ResumeOnboardingPayload,
   ReplaceRolePermissionsPayload,
   RequestPasswordResetPayload,
   ResetPasswordPayload,

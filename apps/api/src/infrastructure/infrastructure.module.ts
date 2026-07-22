@@ -1,12 +1,4 @@
 import { Module } from "@nestjs/common";
-import { TypeOrmModule } from "@nestjs/typeorm";
-import {
-  Account,
-  Permission,
-  PlatformMembership,
-  Role,
-  RolePermission,
-} from "@hermes-swarm/core";
 import { AuthModule } from "./auth/auth.module.js";
 import { AuditModule } from "./audit/audit.module.js";
 import { FeatureAccessModule } from "./feature-access/feature-access.module.js";
@@ -23,20 +15,10 @@ import { SettingsModule } from "./settings/settings.module.js";
 import { WorkspacesModule } from "./workspaces/workspaces.module.js";
 import { UsersModule } from "./users/users.module.js";
 import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
-import { PLATFORM_DATA_SOURCE } from "../common/database/database.constants.js";
+import { OnboardingService } from "./onboarding/onboarding.service.js";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature(
-      [
-        Permission,
-        Account,
-        PlatformMembership,
-        Role,
-        RolePermission,
-      ],
-      PLATFORM_DATA_SOURCE,
-    ),
     AuthModule,
     AuditModule,
     FeatureAccessModule,
@@ -54,5 +36,6 @@ import { PLATFORM_DATA_SOURCE } from "../common/database/database.constants.js";
     PasswordResetModule,
   ],
   controllers: [InfrastructureBootstrapController],
+  providers: [OnboardingService],
 })
 export class InfrastructureModule {}

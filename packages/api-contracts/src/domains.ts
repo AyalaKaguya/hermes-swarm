@@ -88,9 +88,17 @@ export const WorkspaceLoginContextSchema = z.strictObject({
 export type WorkspaceLoginContext = z.infer<typeof WorkspaceLoginContextSchema>;
 
 export const PublicBootstrapSchema = z.strictObject({
-  onboardingRequired: z.boolean(), systemSettings: z.array(SystemSettingSchema).optional(),
+  onboardingRequired: z.boolean(),
+  onboardingState: z.enum([
+    "admin_required",
+    "workspace_required",
+    "complete",
+    "recovery_required",
+  ]),
+  systemSettings: z.array(SystemSettingSchema).optional(),
 });
 export type PublicBootstrap = z.infer<typeof PublicBootstrapSchema>;
+export type OnboardingState = PublicBootstrap["onboardingState"];
 
 export const RealtimeTicketResponseSchema = z.strictObject({ expiresAt: IsoDateTimeSchema, ticket: z.string().min(1) });
 export type RealtimeTicketResponse = z.infer<typeof RealtimeTicketResponseSchema>;
@@ -151,11 +159,22 @@ export const SendTicketMessageRequestSchema = z.strictObject({
   attachments: z.array(TicketAttachmentRequestSchema).nullable().optional(), body: z.string().min(1),
 });
 
-export const OnboardingRequestSchema = z.strictObject({
-  adminEmail: z.email(), adminName: z.string().min(1), adminPassword: z.string().min(1),
-  workspaceName: z.string().optional(), workspaceSlug: z.string().optional(),
+const WorkspaceOnboardingRequestSchema = z.strictObject({
+  defaultLanguage: z.enum(["en", "zh-Hans", "zh-Hant"]),
+  defaultTimeZone: z.string().trim().min(1).max(80),
+  platformTitle: z.string().trim().min(1).max(120),
+  workspaceApplicationsEnabled: z.boolean(),
+  workspaceName: z.string().trim().min(1).max(120),
+  workspaceSlug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+});
+export const OnboardingRequestSchema = WorkspaceOnboardingRequestSchema.extend({
+  adminEmail: z.email(),
+  adminName: z.string().trim().min(1).max(120),
+  adminPassword: z.string().min(8).max(240),
 });
 export type OnboardingPayload = z.input<typeof OnboardingRequestSchema>;
+export const ResumeOnboardingRequestSchema = WorkspaceOnboardingRequestSchema;
+export type ResumeOnboardingPayload = z.input<typeof ResumeOnboardingRequestSchema>;
 
 export const InviteRequestSchema = z.strictObject({
   email: z.email(), expiresIn: z.enum(["3d", "7d", "never"]).optional(), workspaceRoleId: IdentifierSchema,

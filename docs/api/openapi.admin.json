@@ -1405,6 +1405,54 @@
         }
       }
     },
+    "/api/admin/onboarding/resume": {
+      "post": {
+        "operationId": "onboarding_resume",
+        "summary": "onboarding.resume",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/onboarding_resume_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/onboarding_resume_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/account": {
       "get": {
         "operationId": "account_get",
@@ -5261,6 +5309,15 @@
           "onboardingRequired": {
             "type": "boolean"
           },
+          "onboardingState": {
+            "type": "string",
+            "enum": [
+              "admin_required",
+              "workspace_required",
+              "complete",
+              "recovery_required"
+            ]
+          },
           "systemSettings": {
             "type": "array",
             "items": {
@@ -5328,33 +5385,68 @@
           }
         },
         "required": [
-          "onboardingRequired"
+          "onboardingRequired",
+          "onboardingState"
         ],
         "additionalProperties": false
       },
       "onboarding_create_Request": {
         "type": "object",
         "properties": {
+          "defaultLanguage": {
+            "type": "string",
+            "enum": [
+              "en",
+              "zh-Hans",
+              "zh-Hant"
+            ]
+          },
+          "defaultTimeZone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "platformTitle": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "workspaceApplicationsEnabled": {
+            "type": "boolean"
+          },
+          "workspaceName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "workspaceSlug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
           "adminEmail": {
             "type": "string",
             "format": "email"
           },
           "adminName": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 120
           },
           "adminPassword": {
             "type": "string",
-            "minLength": 1
-          },
-          "workspaceName": {
-            "type": "string"
-          },
-          "workspaceSlug": {
-            "type": "string"
+            "minLength": 8,
+            "maxLength": 240
           }
         },
         "required": [
+          "defaultLanguage",
+          "defaultTimeZone",
+          "platformTitle",
+          "workspaceApplicationsEnabled",
+          "workspaceName",
+          "workspaceSlug",
           "adminEmail",
           "adminName",
           "adminPassword"
@@ -5362,647 +5454,77 @@
         "additionalProperties": false
       },
       "onboarding_create_Response201": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "accessToken": {
-                "type": "string",
-                "minLength": 1
-              },
-              "expiresAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "sessionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "snapshot": {
-                "oneOf": [
-                  {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "account": {
                     "type": "object",
                     "properties": {
-                      "account": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "displayName": {
-                            "type": "string"
-                          },
-                          "email": {
-                            "type": "string",
-                            "format": "email"
-                          },
-                          "firstName": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "lastName": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "username": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "mobile": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "imageUrl": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "nickname": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "avatarUrl": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "preferredLanguage": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "emailVerified": {
-                            "type": "boolean"
-                          },
-                          "timeZone": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "workspaceRole": {
-                            "type": "object",
-                            "nullable": true,
-                            "properties": {
-                              "color": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "description": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "displayName": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "id": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "isSystem": {
-                                "type": "boolean"
-                              },
-                              "label": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "permissions": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "id": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "enabled": {
-                                      "type": "boolean"
-                                    },
-                                    "permission": {
-                                      "type": "string"
-                                    },
-                                    "permissionId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "roleId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    }
-                                  },
-                                  "required": [
-                                    "id",
-                                    "enabled",
-                                    "permission",
-                                    "roleId"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              },
-                              "scope": {
-                                "type": "string",
-                                "enum": [
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "workspaceId": {
-                                "type": "string",
-                                "nullable": true,
-                                "minLength": 1
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "isSystem",
-                              "label",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "active",
-                              "disabled"
-                            ]
-                          },
-                          "type": {
-                            "type": "string",
-                            "enum": [
-                              "service",
-                              "user"
-                            ]
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "updatedAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "displayName",
-                          "email",
-                          "firstName",
-                          "lastName",
-                          "username",
-                          "mobile",
-                          "imageUrl",
-                          "preferredLanguage",
-                          "emailVerified",
-                          "timeZone",
-                          "status",
-                          "type",
-                          "createdAt",
-                          "updatedAt"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "context": {
-                        "type": "object",
-                        "properties": {
-                          "membershipId": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "type": {
-                            "type": "string",
-                            "enum": [
-                              "workspace"
-                            ]
-                          },
-                          "workspace": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "slug": {
-                                "type": "string"
-                              },
-                              "status": {
-                                "type": "string",
-                                "enum": [
-                                  "provisioning",
-                                  "active",
-                                  "suspended",
-                                  "archived"
-                                ]
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "name",
-                              "slug",
-                              "status"
-                            ],
-                            "additionalProperties": false
-                          }
-                        },
-                        "required": [
-                          "membershipId",
-                          "type",
-                          "workspace"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "membership": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "role": {
-                            "type": "object",
-                            "properties": {
-                              "color": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "description": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "displayName": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "id": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "isSystem": {
-                                "type": "boolean"
-                              },
-                              "label": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "permissions": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "id": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "enabled": {
-                                      "type": "boolean"
-                                    },
-                                    "permission": {
-                                      "type": "string"
-                                    },
-                                    "permissionId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "roleId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    }
-                                  },
-                                  "required": [
-                                    "id",
-                                    "enabled",
-                                    "permission",
-                                    "roleId"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              },
-                              "scope": {
-                                "type": "string",
-                                "enum": [
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "workspaceId": {
-                                "type": "string",
-                                "nullable": true,
-                                "minLength": 1
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "isSystem",
-                              "label",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "active"
-                            ]
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "role",
-                          "status"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "isPlatformAdmin": {
-                        "type": "boolean"
-                      },
-                      "permissions": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "role": {
-                        "type": "object",
-                        "nullable": true,
-                        "properties": {
-                          "color": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "description": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "displayName": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "id": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "isSystem": {
-                            "type": "boolean"
-                          },
-                          "label": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "permissions": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string",
-                                  "minLength": 1
-                                },
-                                "enabled": {
-                                  "type": "boolean"
-                                },
-                                "permission": {
-                                  "type": "string"
-                                },
-                                "permissionId": {
-                                  "type": "string",
-                                  "minLength": 1
-                                },
-                                "roleId": {
-                                  "type": "string",
-                                  "minLength": 1
-                                }
-                              },
-                              "required": [
-                                "id",
-                                "enabled",
-                                "permission",
-                                "roleId"
-                              ],
-                              "additionalProperties": false
-                            }
-                          },
-                          "scope": {
-                            "type": "string",
-                            "enum": [
-                              "platform",
-                              "workspace"
-                            ]
-                          },
-                          "workspaceId": {
-                            "type": "string",
-                            "nullable": true,
-                            "minLength": 1
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "isSystem",
-                          "label",
-                          "name"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "principalType": {
-                        "type": "string",
-                        "enum": [
-                          "workspace"
-                        ]
-                      },
-                      "runtimePreferences": {
-                        "type": "object",
-                        "properties": {
-                          "currency": {
-                            "type": "string"
-                          },
-                          "dateFormat": {
-                            "type": "string"
-                          },
-                          "language": {
-                            "type": "string",
-                            "enum": [
-                              "en",
-                              "zh-Hans",
-                              "zh-Hant"
-                            ]
-                          },
-                          "regionCode": {
-                            "type": "string"
-                          },
-                          "sources": {
-                            "type": "object",
-                            "properties": {
-                              "currency": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "dateFormat": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "language": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace",
-                                  "user"
-                                ]
-                              },
-                              "regionCode": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "timeZone": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace",
-                                  "user"
-                                ]
-                              }
-                            },
-                            "required": [
-                              "currency",
-                              "dateFormat",
-                              "language",
-                              "regionCode",
-                              "timeZone"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "timeZone": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "currency",
-                          "dateFormat",
-                          "language",
-                          "regionCode",
-                          "sources",
-                          "timeZone"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "systemSettings": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "minLength": 1
-                            },
-                            "name": {
-                              "type": "string"
-                            },
-                            "scope": {
-                              "type": "string",
-                              "enum": [
-                                "platform",
-                                "workspace"
-                              ]
-                            },
-                            "value": {
-                              "type": "string",
-                              "nullable": true
-                            },
-                            "valueOptions": {
-                              "type": "array",
-                              "nullable": true,
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "label": {
-                                    "type": "string"
-                                  },
-                                  "value": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "label",
-                                  "value"
-                                ],
-                                "additionalProperties": false
-                              }
-                            },
-                            "valueType": {
-                              "type": "string",
-                              "enum": [
-                                "string",
-                                "boolean",
-                                "number",
-                                "json",
-                                "enum",
-                                "secret"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "name",
-                            "scope",
-                            "value",
-                            "valueType"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "workspace": {
-                        "type": "object",
-                        "nullable": true,
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "slug": {
-                            "type": "string"
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "provisioning",
-                              "active",
-                              "suspended",
-                              "archived"
-                            ]
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name",
-                          "slug",
-                          "status"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "workspaceId": {
+                      "id": {
                         "type": "string",
                         "minLength": 1
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "firstName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "lastName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "username": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "mobile": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "imageUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "nickname": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "avatarUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "preferredLanguage": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "emailVerified": {
+                        "type": "boolean"
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "nullable": true
                       },
                       "workspaceRole": {
                         "type": "object",
@@ -6086,335 +5608,107 @@
                           "name"
                         ],
                         "additionalProperties": false
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "disabled"
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "service",
+                          "user"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
                       }
                     },
                     "required": [
-                      "account",
-                      "context",
-                      "membership",
-                      "permissions",
-                      "principalType",
-                      "runtimePreferences",
-                      "workspaceId",
-                      "workspaceRole"
+                      "id",
+                      "displayName",
+                      "email",
+                      "firstName",
+                      "lastName",
+                      "username",
+                      "mobile",
+                      "imageUrl",
+                      "preferredLanguage",
+                      "emailVerified",
+                      "timeZone",
+                      "status",
+                      "type",
+                      "createdAt",
+                      "updatedAt"
                     ],
                     "additionalProperties": false
                   },
-                  {
+                  "context": {
                     "type": "object",
                     "properties": {
-                      "account": {
+                      "membershipId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "workspace"
+                        ]
+                      },
+                      "workspace": {
                         "type": "object",
                         "properties": {
                           "id": {
                             "type": "string",
                             "minLength": 1
                           },
-                          "displayName": {
+                          "name": {
                             "type": "string"
                           },
-                          "email": {
-                            "type": "string",
-                            "format": "email"
-                          },
-                          "firstName": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "lastName": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "username": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "mobile": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "imageUrl": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "nickname": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "avatarUrl": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "preferredLanguage": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "emailVerified": {
-                            "type": "boolean"
-                          },
-                          "timeZone": {
-                            "type": "string",
-                            "nullable": true
-                          },
-                          "workspaceRole": {
-                            "type": "object",
-                            "nullable": true,
-                            "properties": {
-                              "color": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "description": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "displayName": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "id": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "isSystem": {
-                                "type": "boolean"
-                              },
-                              "label": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "permissions": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "id": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "enabled": {
-                                      "type": "boolean"
-                                    },
-                                    "permission": {
-                                      "type": "string"
-                                    },
-                                    "permissionId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "roleId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    }
-                                  },
-                                  "required": [
-                                    "id",
-                                    "enabled",
-                                    "permission",
-                                    "roleId"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              },
-                              "scope": {
-                                "type": "string",
-                                "enum": [
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "workspaceId": {
-                                "type": "string",
-                                "nullable": true,
-                                "minLength": 1
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "isSystem",
-                              "label",
-                              "name"
-                            ],
-                            "additionalProperties": false
+                          "slug": {
+                            "type": "string"
                           },
                           "status": {
                             "type": "string",
                             "enum": [
+                              "provisioning",
                               "active",
-                              "disabled"
-                            ]
-                          },
-                          "type": {
-                            "type": "string",
-                            "enum": [
-                              "service",
-                              "user"
-                            ]
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "updatedAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "displayName",
-                          "email",
-                          "firstName",
-                          "lastName",
-                          "username",
-                          "mobile",
-                          "imageUrl",
-                          "preferredLanguage",
-                          "emailVerified",
-                          "timeZone",
-                          "status",
-                          "type",
-                          "createdAt",
-                          "updatedAt"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "context": {
-                        "type": "object",
-                        "properties": {
-                          "membershipId": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "type": {
-                            "type": "string",
-                            "enum": [
-                              "platform"
-                            ]
-                          }
-                        },
-                        "required": [
-                          "membershipId",
-                          "type"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "membership": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "role": {
-                            "type": "object",
-                            "properties": {
-                              "color": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "description": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "displayName": {
-                                "type": "string",
-                                "nullable": true
-                              },
-                              "id": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "isSystem": {
-                                "type": "boolean"
-                              },
-                              "label": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "permissions": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "id": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "enabled": {
-                                      "type": "boolean"
-                                    },
-                                    "permission": {
-                                      "type": "string"
-                                    },
-                                    "permissionId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "roleId": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    }
-                                  },
-                                  "required": [
-                                    "id",
-                                    "enabled",
-                                    "permission",
-                                    "roleId"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              },
-                              "scope": {
-                                "type": "string",
-                                "enum": [
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "workspaceId": {
-                                "type": "string",
-                                "nullable": true,
-                                "minLength": 1
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "isSystem",
-                              "label",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "active"
+                              "suspended",
+                              "archived"
                             ]
                           }
                         },
                         "required": [
                           "id",
-                          "role",
+                          "name",
+                          "slug",
                           "status"
                         ],
                         "additionalProperties": false
-                      },
-                      "permissions": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "principalType": {
+                      }
+                    },
+                    "required": [
+                      "membershipId",
+                      "type",
+                      "workspace"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "membership": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
                         "type": "string",
-                        "enum": [
-                          "platform"
-                        ]
+                        "minLength": 1
                       },
                       "role": {
                         "type": "object",
@@ -6498,96 +5792,59 @@
                         ],
                         "additionalProperties": false
                       },
-                      "runtimePreferences": {
-                        "type": "object",
-                        "properties": {
-                          "currency": {
-                            "type": "string"
-                          },
-                          "dateFormat": {
-                            "type": "string"
-                          },
-                          "language": {
-                            "type": "string",
-                            "enum": [
-                              "en",
-                              "zh-Hans",
-                              "zh-Hant"
-                            ]
-                          },
-                          "regionCode": {
-                            "type": "string"
-                          },
-                          "sources": {
-                            "type": "object",
-                            "properties": {
-                              "currency": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "dateFormat": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "language": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace",
-                                  "user"
-                                ]
-                              },
-                              "regionCode": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace"
-                                ]
-                              },
-                              "timeZone": {
-                                "type": "string",
-                                "enum": [
-                                  "code",
-                                  "platform",
-                                  "workspace",
-                                  "user"
-                                ]
-                              }
-                            },
-                            "required": [
-                              "currency",
-                              "dateFormat",
-                              "language",
-                              "regionCode",
-                              "timeZone"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "timeZone": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "currency",
-                          "dateFormat",
-                          "language",
-                          "regionCode",
-                          "sources",
-                          "timeZone"
-                        ],
-                        "additionalProperties": false
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "role",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "isPlatformAdmin": {
+                    "type": "boolean"
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "role": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "color": {
+                        "type": "string",
+                        "nullable": true
                       },
-                      "systemSettings": {
+                      "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "isSystem": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "permissions": {
                         "type": "array",
                         "items": {
                           "type": "object",
@@ -6596,236 +5853,2289 @@
                               "type": "string",
                               "minLength": 1
                             },
-                            "name": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "permission": {
                               "type": "string"
                             },
-                            "scope": {
+                            "permissionId": {
                               "type": "string",
-                              "enum": [
-                                "platform",
-                                "workspace"
-                              ]
+                              "minLength": 1
                             },
-                            "value": {
+                            "roleId": {
                               "type": "string",
-                              "nullable": true
-                            },
-                            "valueOptions": {
-                              "type": "array",
-                              "nullable": true,
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "label": {
-                                    "type": "string"
-                                  },
-                                  "value": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "label",
-                                  "value"
-                                ],
-                                "additionalProperties": false
-                              }
-                            },
-                            "valueType": {
-                              "type": "string",
-                              "enum": [
-                                "string",
-                                "boolean",
-                                "number",
-                                "json",
-                                "enum",
-                                "secret"
-                              ]
+                              "minLength": 1
                             }
                           },
                           "required": [
                             "id",
-                            "name",
-                            "scope",
-                            "value",
-                            "valueType"
+                            "enabled",
+                            "permission",
+                            "roleId"
                           ],
                           "additionalProperties": false
                         }
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "workspace"
+                        ]
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "nullable": true,
+                        "minLength": 1
                       }
                     },
                     "required": [
-                      "account",
-                      "context",
-                      "membership",
-                      "permissions",
-                      "principalType",
-                      "role",
-                      "runtimePreferences"
+                      "id",
+                      "isSystem",
+                      "label",
+                      "name"
                     ],
                     "additionalProperties": false
-                  }
-                ]
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "authenticated"
-                ]
-              }
-            },
-            "required": [
-              "accessToken",
-              "expiresAt",
-              "sessionId",
-              "snapshot",
-              "status"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "contexts": {
-                "type": "array",
-                "items": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "membershipId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "role": {
-                          "type": "object",
-                          "properties": {
-                            "displayName": {
-                              "type": "string",
-                              "nullable": true
-                            },
-                            "id": {
-                              "type": "string",
-                              "minLength": 1
-                            },
-                            "name": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "name"
-                          ],
-                          "additionalProperties": false
-                        },
-                        "type": {
-                          "type": "string",
-                          "enum": [
-                            "platform"
-                          ]
-                        }
+                  },
+                  "principalType": {
+                    "type": "string",
+                    "enum": [
+                      "workspace"
+                    ]
+                  },
+                  "runtimePreferences": {
+                    "type": "object",
+                    "properties": {
+                      "currency": {
+                        "type": "string"
                       },
-                      "required": [
-                        "membershipId",
-                        "role",
-                        "type"
-                      ],
-                      "additionalProperties": false
+                      "dateFormat": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string",
+                        "enum": [
+                          "en",
+                          "zh-Hans",
+                          "zh-Hant"
+                        ]
+                      },
+                      "regionCode": {
+                        "type": "string"
+                      },
+                      "sources": {
+                        "type": "object",
+                        "properties": {
+                          "currency": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "dateFormat": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "language": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "regionCode": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "timeZone": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "currency",
+                          "dateFormat",
+                          "language",
+                          "regionCode",
+                          "timeZone"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
                     },
-                    {
+                    "required": [
+                      "currency",
+                      "dateFormat",
+                      "language",
+                      "regionCode",
+                      "sources",
+                      "timeZone"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "systemSettings": {
+                    "type": "array",
+                    "items": {
                       "type": "object",
                       "properties": {
-                        "membershipId": {
+                        "id": {
                           "type": "string",
                           "minLength": 1
                         },
-                        "role": {
-                          "type": "object",
-                          "properties": {
-                            "displayName": {
-                              "type": "string",
-                              "nullable": true
-                            },
-                            "id": {
-                              "type": "string",
-                              "minLength": 1
-                            },
-                            "name": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "name"
-                          ],
-                          "additionalProperties": false
+                        "name": {
+                          "type": "string"
                         },
-                        "type": {
+                        "scope": {
                           "type": "string",
                           "enum": [
+                            "platform",
                             "workspace"
                           ]
                         },
-                        "workspace": {
+                        "value": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "valueOptions": {
+                          "type": "array",
+                          "nullable": true,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "valueType": {
+                          "type": "string",
+                          "enum": [
+                            "string",
+                            "boolean",
+                            "number",
+                            "json",
+                            "enum",
+                            "secret"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "scope",
+                        "value",
+                        "valueType"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "provisioning",
+                          "active",
+                          "suspended",
+                          "archived"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "slug",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "workspaceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspaceRole": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "color": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "isSystem": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "permissions": {
+                        "type": "array",
+                        "items": {
                           "type": "object",
                           "properties": {
                             "id": {
                               "type": "string",
                               "minLength": 1
                             },
-                            "name": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "permission": {
                               "type": "string"
                             },
-                            "slug": {
-                              "type": "string"
-                            },
-                            "subdomain": {
+                            "permissionId": {
                               "type": "string",
-                              "nullable": true
+                              "minLength": 1
+                            },
+                            "roleId": {
+                              "type": "string",
+                              "minLength": 1
                             }
                           },
                           "required": [
                             "id",
-                            "name",
-                            "slug",
-                            "subdomain"
+                            "enabled",
+                            "permission",
+                            "roleId"
                           ],
                           "additionalProperties": false
                         }
                       },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "workspace"
+                        ]
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "nullable": true,
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "isSystem",
+                      "label",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "account",
+                  "context",
+                  "membership",
+                  "permissions",
+                  "principalType",
+                  "runtimePreferences",
+                  "workspaceId",
+                  "workspaceRole"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "firstName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "lastName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "username": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "mobile": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "imageUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "nickname": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "avatarUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "preferredLanguage": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "emailVerified": {
+                        "type": "boolean"
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "workspaceRole": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "color": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "isSystem": {
+                            "type": "boolean"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "permissions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "permission": {
+                                  "type": "string"
+                                },
+                                "permissionId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "roleId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "enabled",
+                                "permission",
+                                "roleId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "isSystem",
+                          "label",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "disabled"
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "service",
+                          "user"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "displayName",
+                      "email",
+                      "firstName",
+                      "lastName",
+                      "username",
+                      "mobile",
+                      "imageUrl",
+                      "preferredLanguage",
+                      "emailVerified",
+                      "timeZone",
+                      "status",
+                      "type",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "context": {
+                    "type": "object",
+                    "properties": {
+                      "membershipId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "platform"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "membershipId",
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "membership": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "role": {
+                        "type": "object",
+                        "properties": {
+                          "color": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "isSystem": {
+                            "type": "boolean"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "permissions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "permission": {
+                                  "type": "string"
+                                },
+                                "permissionId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "roleId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "enabled",
+                                "permission",
+                                "roleId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "isSystem",
+                          "label",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "role",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "principalType": {
+                    "type": "string",
+                    "enum": [
+                      "platform"
+                    ]
+                  },
+                  "role": {
+                    "type": "object",
+                    "properties": {
+                      "color": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "isSystem": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "permissions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "permission": {
+                              "type": "string"
+                            },
+                            "permissionId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "roleId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "enabled",
+                            "permission",
+                            "roleId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "workspace"
+                        ]
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "nullable": true,
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "isSystem",
+                      "label",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "runtimePreferences": {
+                    "type": "object",
+                    "properties": {
+                      "currency": {
+                        "type": "string"
+                      },
+                      "dateFormat": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string",
+                        "enum": [
+                          "en",
+                          "zh-Hans",
+                          "zh-Hant"
+                        ]
+                      },
+                      "regionCode": {
+                        "type": "string"
+                      },
+                      "sources": {
+                        "type": "object",
+                        "properties": {
+                          "currency": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "dateFormat": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "language": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "regionCode": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "timeZone": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "currency",
+                          "dateFormat",
+                          "language",
+                          "regionCode",
+                          "timeZone"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "currency",
+                      "dateFormat",
+                      "language",
+                      "regionCode",
+                      "sources",
+                      "timeZone"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "systemSettings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "platform",
+                            "workspace"
+                          ]
+                        },
+                        "value": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "valueOptions": {
+                          "type": "array",
+                          "nullable": true,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "valueType": {
+                          "type": "string",
+                          "enum": [
+                            "string",
+                            "boolean",
+                            "number",
+                            "json",
+                            "enum",
+                            "secret"
+                          ]
+                        }
+                      },
                       "required": [
-                        "membershipId",
-                        "role",
-                        "type",
-                        "workspace"
+                        "id",
+                        "name",
+                        "scope",
+                        "value",
+                        "valueType"
                       ],
                       "additionalProperties": false
                     }
-                  ]
-                }
-              },
-              "expiresAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "selectionToken": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "context_selection_required"
-                ]
+                  }
+                },
+                "required": [
+                  "account",
+                  "context",
+                  "membership",
+                  "permissions",
+                  "principalType",
+                  "role",
+                  "runtimePreferences"
+                ],
+                "additionalProperties": false
               }
-            },
-            "required": [
-              "contexts",
-              "expiresAt",
-              "selectionToken",
-              "status"
-            ],
-            "additionalProperties": false
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "authenticated"
+            ]
           }
-        ]
+        },
+        "required": [
+          "accessToken",
+          "expiresAt",
+          "sessionId",
+          "snapshot",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "onboarding_resume_Request": {
+        "type": "object",
+        "properties": {
+          "defaultLanguage": {
+            "type": "string",
+            "enum": [
+              "en",
+              "zh-Hans",
+              "zh-Hant"
+            ]
+          },
+          "defaultTimeZone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "platformTitle": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "workspaceApplicationsEnabled": {
+            "type": "boolean"
+          },
+          "workspaceName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "workspaceSlug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "required": [
+          "defaultLanguage",
+          "defaultTimeZone",
+          "platformTitle",
+          "workspaceApplicationsEnabled",
+          "workspaceName",
+          "workspaceSlug"
+        ],
+        "additionalProperties": false
+      },
+      "onboarding_resume_Response201": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "firstName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "lastName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "username": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "mobile": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "imageUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "nickname": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "avatarUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "preferredLanguage": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "emailVerified": {
+                        "type": "boolean"
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "workspaceRole": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "color": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "isSystem": {
+                            "type": "boolean"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "permissions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "permission": {
+                                  "type": "string"
+                                },
+                                "permissionId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "roleId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "enabled",
+                                "permission",
+                                "roleId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "isSystem",
+                          "label",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "disabled"
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "service",
+                          "user"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "displayName",
+                      "email",
+                      "firstName",
+                      "lastName",
+                      "username",
+                      "mobile",
+                      "imageUrl",
+                      "preferredLanguage",
+                      "emailVerified",
+                      "timeZone",
+                      "status",
+                      "type",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "context": {
+                    "type": "object",
+                    "properties": {
+                      "membershipId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "workspace"
+                        ]
+                      },
+                      "workspace": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "provisioning",
+                              "active",
+                              "suspended",
+                              "archived"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "slug",
+                          "status"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "membershipId",
+                      "type",
+                      "workspace"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "membership": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "role": {
+                        "type": "object",
+                        "properties": {
+                          "color": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "isSystem": {
+                            "type": "boolean"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "permissions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "permission": {
+                                  "type": "string"
+                                },
+                                "permissionId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "roleId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "enabled",
+                                "permission",
+                                "roleId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "isSystem",
+                          "label",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "role",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "isPlatformAdmin": {
+                    "type": "boolean"
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "role": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "color": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "isSystem": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "permissions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "permission": {
+                              "type": "string"
+                            },
+                            "permissionId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "roleId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "enabled",
+                            "permission",
+                            "roleId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "workspace"
+                        ]
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "nullable": true,
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "isSystem",
+                      "label",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "principalType": {
+                    "type": "string",
+                    "enum": [
+                      "workspace"
+                    ]
+                  },
+                  "runtimePreferences": {
+                    "type": "object",
+                    "properties": {
+                      "currency": {
+                        "type": "string"
+                      },
+                      "dateFormat": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string",
+                        "enum": [
+                          "en",
+                          "zh-Hans",
+                          "zh-Hant"
+                        ]
+                      },
+                      "regionCode": {
+                        "type": "string"
+                      },
+                      "sources": {
+                        "type": "object",
+                        "properties": {
+                          "currency": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "dateFormat": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "language": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "regionCode": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "timeZone": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "currency",
+                          "dateFormat",
+                          "language",
+                          "regionCode",
+                          "timeZone"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "currency",
+                      "dateFormat",
+                      "language",
+                      "regionCode",
+                      "sources",
+                      "timeZone"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "systemSettings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "platform",
+                            "workspace"
+                          ]
+                        },
+                        "value": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "valueOptions": {
+                          "type": "array",
+                          "nullable": true,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "valueType": {
+                          "type": "string",
+                          "enum": [
+                            "string",
+                            "boolean",
+                            "number",
+                            "json",
+                            "enum",
+                            "secret"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "scope",
+                        "value",
+                        "valueType"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "provisioning",
+                          "active",
+                          "suspended",
+                          "archived"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "slug",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "workspaceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspaceRole": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "color": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "isSystem": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "permissions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "permission": {
+                              "type": "string"
+                            },
+                            "permissionId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "roleId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "enabled",
+                            "permission",
+                            "roleId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "workspace"
+                        ]
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "nullable": true,
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "isSystem",
+                      "label",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "account",
+                  "context",
+                  "membership",
+                  "permissions",
+                  "principalType",
+                  "runtimePreferences",
+                  "workspaceId",
+                  "workspaceRole"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "firstName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "lastName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "username": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "mobile": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "imageUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "nickname": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "avatarUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "preferredLanguage": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "emailVerified": {
+                        "type": "boolean"
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "workspaceRole": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "color": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "isSystem": {
+                            "type": "boolean"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "permissions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "permission": {
+                                  "type": "string"
+                                },
+                                "permissionId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "roleId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "enabled",
+                                "permission",
+                                "roleId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "isSystem",
+                          "label",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "disabled"
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "service",
+                          "user"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "displayName",
+                      "email",
+                      "firstName",
+                      "lastName",
+                      "username",
+                      "mobile",
+                      "imageUrl",
+                      "preferredLanguage",
+                      "emailVerified",
+                      "timeZone",
+                      "status",
+                      "type",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "context": {
+                    "type": "object",
+                    "properties": {
+                      "membershipId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "platform"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "membershipId",
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "membership": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "role": {
+                        "type": "object",
+                        "properties": {
+                          "color": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "isSystem": {
+                            "type": "boolean"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "permissions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "permission": {
+                                  "type": "string"
+                                },
+                                "permissionId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "roleId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "enabled",
+                                "permission",
+                                "roleId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "isSystem",
+                          "label",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "role",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "principalType": {
+                    "type": "string",
+                    "enum": [
+                      "platform"
+                    ]
+                  },
+                  "role": {
+                    "type": "object",
+                    "properties": {
+                      "color": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "isSystem": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "permissions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "permission": {
+                              "type": "string"
+                            },
+                            "permissionId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "roleId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "enabled",
+                            "permission",
+                            "roleId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "workspace"
+                        ]
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "nullable": true,
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "isSystem",
+                      "label",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "runtimePreferences": {
+                    "type": "object",
+                    "properties": {
+                      "currency": {
+                        "type": "string"
+                      },
+                      "dateFormat": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string",
+                        "enum": [
+                          "en",
+                          "zh-Hans",
+                          "zh-Hant"
+                        ]
+                      },
+                      "regionCode": {
+                        "type": "string"
+                      },
+                      "sources": {
+                        "type": "object",
+                        "properties": {
+                          "currency": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "dateFormat": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "language": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "regionCode": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace"
+                            ]
+                          },
+                          "timeZone": {
+                            "type": "string",
+                            "enum": [
+                              "code",
+                              "platform",
+                              "workspace",
+                              "user"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "currency",
+                          "dateFormat",
+                          "language",
+                          "regionCode",
+                          "timeZone"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "currency",
+                      "dateFormat",
+                      "language",
+                      "regionCode",
+                      "sources",
+                      "timeZone"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "systemSettings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "platform",
+                            "workspace"
+                          ]
+                        },
+                        "value": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "valueOptions": {
+                          "type": "array",
+                          "nullable": true,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "valueType": {
+                          "type": "string",
+                          "enum": [
+                            "string",
+                            "boolean",
+                            "number",
+                            "json",
+                            "enum",
+                            "secret"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "scope",
+                        "value",
+                        "valueType"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "account",
+                  "context",
+                  "membership",
+                  "permissions",
+                  "principalType",
+                  "role",
+                  "runtimePreferences"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "authenticated"
+            ]
+          }
+        },
+        "required": [
+          "accessToken",
+          "expiresAt",
+          "sessionId",
+          "snapshot",
+          "status"
+        ],
+        "additionalProperties": false
       },
       "auth_workspaceContext_Request": {
         "type": "object",

@@ -5,28 +5,40 @@ import { buildSeedPermissionCatalog } from "./seed-permission-catalog.js";
 import { DEVELOPMENT_FIXTURE_SCENARIOS } from "./development-seed-fixtures.js";
 
 describe("development seed contract", () => {
-  it("requires explicit passwords for both identity planes", () => {
+  it("requires one explicit administrator password", () => {
     assert.throws(
       () => readDevelopmentSeedConfig({}),
-      /DEV_SEED_OWNER_PASSWORD is required/,
-    );
-    assert.throws(
-      () => readDevelopmentSeedConfig({ DEV_SEED_OWNER_PASSWORD: "owner-pass" }),
-      /DEV_SEED_PLATFORM_ADMIN_PASSWORD is required/,
+      /DEV_SEED_ADMIN_PASSWORD is required/,
     );
   });
 
-  it("normalizes the repeatable development identities", () => {
+  it("normalizes the single repeatable development identity", () => {
     const config = readDevelopmentSeedConfig({
-      DEV_SEED_OWNER_EMAIL: "OWNER@EXAMPLE.COM",
-      DEV_SEED_OWNER_PASSWORD: "owner-pass",
-      DEV_SEED_PLATFORM_ADMIN_EMAIL: "ADMIN@EXAMPLE.COM",
-      DEV_SEED_PLATFORM_ADMIN_PASSWORD: "platform-pass",
+      DEV_SEED_ADMIN_EMAIL: "ADMIN@EXAMPLE.COM",
+      DEV_SEED_ADMIN_PASSWORD: "platform-pass",
       DEV_SEED_WORKSPACE_SLUG: "Demo Workspace",
     });
-    assert.equal(config.ownerEmail, "owner@example.com");
-    assert.equal(config.platformAdminEmail, "admin@example.com");
+    assert.equal(config.adminEmail, "admin@example.com");
     assert.equal(config.workspaceSlug, "demo-workspace");
+  });
+
+  it("does not accept the removed dual-account password variables", () => {
+    assert.throws(
+      () => readDevelopmentSeedConfig({
+        DEV_SEED_OWNER_PASSWORD: "owner-pass",
+        DEV_SEED_PLATFORM_ADMIN_PASSWORD: "platform-pass",
+      }),
+      /DEV_SEED_ADMIN_PASSWORD is required/,
+    );
+  });
+
+  it("assigns the same administrator account to both seeded workspaces", async () => {
+    const source = await import("node:fs/promises").then((fs) =>
+      fs.readFile(new URL("./development-seed.service.ts", import.meta.url), "utf8"),
+    );
+    assert.equal(source.match(/platform\.admin,/g)?.length, 2);
+    assert.doesNotMatch(source, /config\.owner|platformAdminPassword/);
+    assert.match(source, /administratorAccountId: platform\.admin\.id/);
   });
 
   it("rebuilds only platform, workspace, own and navigation permissions", () => {

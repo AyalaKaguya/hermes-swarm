@@ -37,6 +37,7 @@ import type {
   InviteStatus,
   LoginAuditLogItem,
   OnboardingPayload,
+  ResumeOnboardingPayload,
   OperationAuditLogItem,
   PermissionCatalog,
   PermissionCatalogEntity,
@@ -106,6 +107,7 @@ export type {
   InviteStatus,
   LoginAuditLogItem,
   OnboardingPayload,
+  ResumeOnboardingPayload,
   OperationAuditLogItem,
   PermissionCatalog,
   PermissionCatalogEntity,
@@ -194,6 +196,7 @@ export function getRealtimeUrl(ticket: string) {
 
 type AdminFetchOptions = {
   body?: unknown;
+  cache?: RequestCache;
   method?: string;
   params?: Record<string, string>;
   query?: Record<string, boolean | number | string | null | undefined>;
@@ -229,6 +232,7 @@ async function sendAdminRequest(
   path: string,
   options?: {
     body?: unknown;
+    cache?: RequestCache;
     method?: string;
   },
 ) {
@@ -250,6 +254,7 @@ async function sendAdminRequest(
 
   try {
     response = await fetch(`${ADMIN_API_BASE_URL}${path}`, {
+      cache: options?.cache,
       method,
       headers,
       body: options?.body === undefined ? undefined : JSON.stringify(options.body),
@@ -448,8 +453,39 @@ export async function uploadAdminFile(session: AuthenticatedAdminSessionMarker, 
   return result.data;
 }
 
-export function getPublicBootstrap() {
-  return fetchAdmin<PublicBootstrap>("/bootstrap");
+const PUBLIC_BOOTSTRAP_RETRY_DELAYS_MS = [250, 750] as const;
+
+export async function getPublicBootstrap(): Promise<PublicBootstrap> {
+  for (let attempt = 0; attempt <= PUBLIC_BOOTSTRAP_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await fetchAdmin<PublicBootstrap>("/bootstrap", {
+        cache: "no-store",
+      });
+    } catch (error) {
+      const retryDelay = PUBLIC_BOOTSTRAP_RETRY_DELAYS_MS[attempt];
+      if (retryDelay === undefined || !isRetriablePublicBootstrapError(error)) {
+        throw error;
+      }
+      await waitForPublicBootstrapRetry(retryDelay);
+    }
+  }
+
+  throw new Error("无法加载平台初始化状态");
+}
+
+function isRetriablePublicBootstrapError(error: unknown) {
+  if (error instanceof AdminApiError) {
+    return error.status >= 500 && error.status < 600;
+  }
+  return error instanceof TypeError || (
+    error instanceof Error && error.message.startsWith("请求超时")
+  );
+}
+
+function waitForPublicBootstrapRetry(delayMs: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
 }
 
 export function authLogin(payload: LoginPayload) {
@@ -601,6 +637,13 @@ export function rejectWorkspaceApplication(
 
 export function onboard(payload: OnboardingPayload) {
   return fetchAdmin<AuthenticatedLoginResponse>("/onboarding", {
+    body: payload,
+    method: "POST",
+  });
+}
+
+export function resumeOnboarding(payload: ResumeOnboardingPayload) {
+  return fetchAdmin<AuthenticatedLoginResponse>("/onboarding/resume", {
     body: payload,
     method: "POST",
   });

@@ -12,7 +12,13 @@ import {
   findAdminContract,
   responseSchemaFor,
 } from "./contracts.js";
-import { AuditLogQuerySchema, SaveSettingsRequestSchema } from "./domains.js";
+import {
+  AuditLogQuerySchema,
+  OnboardingRequestSchema,
+  PublicBootstrapSchema,
+  ResumeOnboardingRequestSchema,
+  SaveSettingsRequestSchema,
+} from "./domains.js";
 import { IsoDateTimeSchema } from "./models.js";
 
 describe("admin API contracts", () => {
@@ -47,6 +53,51 @@ describe("admin API contracts", () => {
   it("accepts JSON setting maps and rejects undefined values", () => {
     assert.deepEqual(SaveSettingsRequestSchema.parse({ feature: true }), { feature: true });
     assert.throws(() => SaveSettingsRequestSchema.parse({ feature: undefined }));
+  });
+
+  it("models fresh and resumed onboarding without dual account fields", () => {
+    const workspace = {
+      defaultLanguage: "zh-Hans",
+      defaultTimeZone: "Asia/Shanghai",
+      platformTitle: "Hermes",
+      workspaceApplicationsEnabled: true,
+      workspaceName: "Acme",
+      workspaceSlug: "acme",
+    } as const;
+    assert.equal(
+      OnboardingRequestSchema.safeParse({
+        ...workspace,
+        adminEmail: "admin@example.com",
+        adminName: "Admin",
+        adminPassword: "strong-password",
+      }).success,
+      true,
+    );
+    assert.equal(ResumeOnboardingRequestSchema.safeParse(workspace).success, true);
+    assert.equal(
+      ResumeOnboardingRequestSchema.safeParse({
+        ...workspace,
+        adminEmail: "admin@example.com",
+      }).success,
+      false,
+    );
+  });
+
+  it("publishes the four onboarding states with the compatibility flag", () => {
+    for (const onboardingState of [
+      "admin_required",
+      "workspace_required",
+      "complete",
+      "recovery_required",
+    ] as const) {
+      assert.equal(
+        PublicBootstrapSchema.safeParse({
+          onboardingRequired: onboardingState === "admin_required",
+          onboardingState,
+        }).success,
+        true,
+      );
+    }
   });
 
   it("requires timezone-aware ISO timestamps", () => {

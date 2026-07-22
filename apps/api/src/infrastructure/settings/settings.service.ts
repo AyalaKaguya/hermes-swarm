@@ -26,7 +26,6 @@ import {
 } from "@hermes-swarm/core";
 import type { EntityManager, Repository } from "typeorm";
 import type { SaveSettingsPayload } from "../../common/admin-api.types.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
@@ -46,7 +45,7 @@ export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
 
   constructor(
-    @InjectRepository(PlatformSetting, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformSetting)
     private readonly platformSettingRepository: Repository<PlatformSetting>,
     private readonly redisService: RedisService,
     @Optional()
@@ -65,6 +64,7 @@ export class SettingsService implements OnModuleInit {
   }
 
   async listWorkspaceSettings(workspaceId: string) {
+    workspaceId = this.requireWorkspaceId(workspaceId);
     const [workspaceSettings, platformSettings] = await Promise.all([
       this.findWorkspaceSettings(workspaceId),
       this.platformSettingRepository.find({ order: { name: "ASC" } }),
@@ -77,6 +77,7 @@ export class SettingsService implements OnModuleInit {
   }
 
   async saveWorkspaceSettings(workspaceId: string, payload: SaveSettingsPayload) {
+    workspaceId = this.requireWorkspaceId(workspaceId);
     const entries = parseSettingsPayload(payload);
     const platformSettings = await this.platformSettingRepository.find();
     const invalidations = await this.runWorkspaceTransaction((manager) =>
@@ -93,12 +94,29 @@ export class SettingsService implements OnModuleInit {
   }
 
   async savePlatformSettings(payload: SaveSettingsPayload) {
-    const entries = parseSettingsPayload(payload);
     const invalidations = await this.platformSettingRepository.manager.transaction(
-      (manager) => this.savePlatformSettingsInTransaction(manager, entries),
+      (manager) => this.savePlatformSettingsInTransaction(manager, payload),
     );
-    for (const invalidation of invalidations) await this.applySettingsInvalidation(invalidation);
+    await this.applySettingsInvalidations(invalidations);
     return this.listPlatformSettings();
+  }
+
+  async savePlatformSettingsInTransaction(
+    manager: EntityManager,
+    payload: SaveSettingsPayload,
+  ) {
+    return this.saveParsedPlatformSettingsInTransaction(
+      manager,
+      parseSettingsPayload(payload),
+    );
+  }
+
+  async applySettingsInvalidations(
+    invalidations: AppliedSettingsInvalidation[],
+  ) {
+    for (const invalidation of invalidations) {
+      await this.applySettingsInvalidation(invalidation);
+    }
   }
 
   async getPlatformValue(name: string, fallback: string | null = null) {
@@ -123,6 +141,7 @@ export class SettingsService implements OnModuleInit {
   }
 
   async getWorkspaceValue(workspaceId: string, name: string, fallback: string | null = null) {
+    workspaceId = this.requireWorkspaceId(workspaceId);
     const cacheKey = this.workspaceCacheKey(workspaceId, name);
     const cached = await this.getCache(cacheKey);
     if (cached !== null) return this.decodeCachedSettingValue(cached);
@@ -206,7 +225,7 @@ export class SettingsService implements OnModuleInit {
     }
   }
 
-  private async savePlatformSettingsInTransaction(
+  private async saveParsedPlatformSettingsInTransaction(
     manager: EntityManager,
     entries: ReturnType<typeof parseSettingsPayload>,
   ) {
@@ -340,13 +359,8 @@ export class SettingsService implements OnModuleInit {
   }
 
   private findWorkspaceSettings(workspaceId: string) {
-    const repository =
-      this.workspaceContext
-        ?.current(false)
-        ?.manager.getRepository(WorkspaceSetting) ??
-      this.workspaceSettingRepository;
     return (
-      repository?.find({
+      this.workspaceSettingRepository?.find({
         order: { name: "ASC" },
         where: { workspaceId },
       }) ?? Promise.resolve([])
@@ -354,16 +368,20 @@ export class SettingsService implements OnModuleInit {
   }
 
   private runWorkspaceTransaction<T>(work: (manager: EntityManager) => Promise<T>) {
-    const manager = this.workspaceContext?.current(false)?.manager;
-    if (manager) return work(manager);
     if (!this.workspaceSettingRepository) throw new Error("WorkspaceSetting repository is not configured");
     return this.workspaceSettingRepository.manager.transaction(work);
   }
 
   private requireWorkspaceId(explicitWorkspaceId?: string) {
-    const workspaceId = explicitWorkspaceId?.trim() ?? this.workspaceContext?.current(false)?.workspaceId;
-    if (!workspaceId) throw new Error("Workspace context is required for settings");
-    return workspaceId;
+    const currentWorkspaceId = this.workspaceContext?.current(false)?.workspaceId;
+    if (!currentWorkspaceId) {
+      throw new BadRequestException("工作空间设置需要可信上下文");
+    }
+    const workspaceId = explicitWorkspaceId?.trim() ?? currentWorkspaceId;
+    if (currentWorkspaceId !== workspaceId) {
+      throw new BadRequestException("工作空间设置不能跨工作空间访问");
+    }
+    return currentWorkspaceId;
   }
 
   private encodePersistedSettingValue(

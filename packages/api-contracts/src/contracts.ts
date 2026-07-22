@@ -10,6 +10,7 @@ import {
   CreateTicketRequestSchema, EmailTemplateRequestSchema, IntegrationTokenCapabilitiesSchema,
   IntegrationTokenSchema, InviteRequestSchema, LoginAuditLogItemSchema, OnboardingRequestSchema,
   OperationAuditLogItemSchema, PlatformMemberRequestSchema, RealtimeTicketResponseSchema,
+  PublicBootstrapSchema, ResumeOnboardingRequestSchema,
   ReplaceRolePermissionsRequestSchema, RoleRequestSchema, SaveSettingsRequestSchema,
   SendTicketMessageRequestSchema, SmtpRequestSchema, UpdateRuntimePreferencesRequestSchema,
   UpdateUserRequestSchema, UserNotificationRequestSchema, ValidateInviteRequestSchema,
@@ -66,8 +67,9 @@ const previewResponse = z.strictObject({ html: z.string(), subject: z.string() }
 const noContent = { 204: null } as const;
 
 export const adminContracts = {
-  bootstrap: defineContract({ id: "bootstrap.get", method: "GET", path: "/bootstrap", responses: { 200: z.strictObject({ onboardingRequired: z.boolean(), systemSettings: z.array(SystemSettingSchema).optional() }) } }),
-  onboarding: defineContract({ id: "onboarding.create", method: "POST", path: "/onboarding", body: OnboardingRequestSchema, responses: { 201: AuthLoginInternalResponseSchema }, browserResponses: { 201: AuthLoginResponseSchema } }),
+  bootstrap: defineContract({ id: "bootstrap.get", method: "GET", path: "/bootstrap", responses: { 200: PublicBootstrapSchema } }),
+  onboarding: defineContract({ id: "onboarding.create", method: "POST", path: "/onboarding", body: OnboardingRequestSchema, responses: { 201: AuthenticatedLoginInternalSchema }, browserResponses: { 201: AuthenticatedLoginResponseSchema } }),
+  onboardingResume: defineContract({ id: "onboarding.resume", method: "POST", path: "/onboarding/resume", body: ResumeOnboardingRequestSchema, responses: { 201: AuthenticatedLoginInternalSchema }, browserResponses: { 201: AuthenticatedLoginResponseSchema } }),
   authWorkspaceContext: defineContract({ id: "auth.workspaceContext", method: "POST", path: "/auth/workspace-context", body: z.strictObject({ workspace: z.string().optional() }).nullable(), responses: { 201: WorkspaceLoginContextSchema } }),
   authLogin: defineContract({ id: "auth.login", method: "POST", path: "/auth/login", body: LoginRequestSchema, responses: { 201: AuthLoginInternalResponseSchema }, browserResponses: { 201: AuthLoginResponseSchema } }),
   authSelectContext: defineContract({ id: "auth.selectContext", method: "POST", path: "/auth/select-context", body: SelectContextRequestSchema, responses: { 201: AuthenticatedLoginInternalSchema }, browserResponses: { 201: AuthenticatedLoginResponseSchema } }),

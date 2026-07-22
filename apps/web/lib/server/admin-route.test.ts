@@ -45,6 +45,37 @@ describe("admin BFF refresh single-flight", () => {
     assert.equal((await response.json()).status, "context_selection_required");
   });
 
+  it("buffers login request bodies before forwarding them", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    globalThis.fetch = async (input, init) => {
+      assert.equal(String(input), "http://localhost:3200/api/admin/auth/login");
+      assert.equal(init?.body instanceof ArrayBuffer, true);
+      assert.deepEqual(
+        JSON.parse(new TextDecoder().decode(init?.body as ArrayBuffer)),
+        { email: "invalid@example.com", password: "not-a-real-password" },
+      );
+      return Response.json({ message: "用户名或密码不正确" }, { status: 401 });
+    };
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/auth/login",
+      {
+        body: JSON.stringify({
+          email: "invalid@example.com",
+          password: "not-a-real-password",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ path: ["auth", "login"] }),
+    });
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { message: "用户名或密码不正确" });
+  });
+
   it("returns a sanitized 502 when the upstream authentication response violates its contract", async () => {
     process.env.WEB_SESSION_SECRET = "test-secret";
     const originalError = console.error;
@@ -169,6 +200,84 @@ describe("admin BFF refresh single-flight", () => {
       response.headers.get("set-cookie")?.includes(WEB_SESSION_COOKIE_NAME),
       true,
     );
+  });
+
+  it("rotates the platform session after authenticated onboarding resume", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({ principalType: "platform" });
+    globalThis.fetch = async (input, init) => {
+      assert.equal(
+        String(input),
+        "http://localhost:3200/api/admin/onboarding/resume",
+      );
+      assert.equal(
+        new Headers(init?.headers).get("authorization"),
+        "Bearer access-token",
+      );
+      return new Response(
+        JSON.stringify({
+          accessToken: "workspace-access-token",
+          expiresAt: new Date(Date.now() + 300_000).toISOString(),
+          sessionId: "workspace-session",
+          snapshot: workspacePrincipal(),
+          status: "authenticated",
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "hermes_refresh=workspace-refresh-token; Path=/api/admin/auth; HttpOnly",
+          },
+          status: 201,
+        },
+      );
+    };
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/onboarding/resume",
+      {
+        headers: {
+          cookie: `${WEB_SESSION_COOKIE_NAME}=${sealWebSession(session)}`,
+          origin: "http://localhost:3100",
+          "x-csrf-token": session.csrfToken!,
+        },
+        method: "POST",
+      },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ path: ["onboarding", "resume"] }),
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).snapshot.workspace.slug, "hermes-dev");
+    assert.equal(
+      response.headers.get("set-cookie")?.includes(WEB_SESSION_COOKIE_NAME),
+      true,
+    );
+  });
+
+  it("keeps the platform session when onboarding resume validation fails", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({ principalType: "platform" });
+    globalThis.fetch = async () =>
+      Response.json({ message: "workspace slug already exists" }, { status: 400 });
+    const request = new NextRequest(
+      "http://localhost:3100/api/admin/onboarding/resume",
+      {
+        headers: {
+          cookie: `${WEB_SESSION_COOKIE_NAME}=${sealWebSession(session)}`,
+          origin: "http://localhost:3100",
+          "x-csrf-token": session.csrfToken!,
+        },
+        method: "POST",
+      },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ path: ["onboarding", "resume"] }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get("set-cookie"), null);
   });
 
   it("forwards the browser host for public workspace discovery and overwrites spoofed values", async () => {

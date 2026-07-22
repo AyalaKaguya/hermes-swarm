@@ -51,7 +51,10 @@ export class AdminContractInterceptor implements NestInterceptor {
     const { contract, params } = match;
     if (!contract.multipart) {
       request.params = parseRequestPart(contract, "params", params);
-      request.query = parseRequestPart(contract, "query", request.query ?? {});
+      defineValidatedQuery(
+        request,
+        parseRequestPart(contract, "query", request.query ?? {}),
+      );
       if (contract.body) request.body = parseSchema(contract.body, request.body, contract, "body");
     } else if (contract.params) {
       request.params = parseSchema(contract.params, params, contract, "params");
@@ -94,6 +97,15 @@ export class AdminContractInterceptor implements NestInterceptor {
       message: "API response did not match its public contract",
     });
   }
+}
+
+function defineValidatedQuery(request: ContractRequest, query: unknown) {
+  Object.defineProperty(request, "query", {
+    configurable: true,
+    enumerable: true,
+    value: query,
+    writable: true,
+  });
 }
 
 function createContractParameter(part: "body" | "query" | "params") {

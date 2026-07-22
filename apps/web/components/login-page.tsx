@@ -39,6 +39,7 @@ import {
   resolveWorkspaceApplicationsEnabled,
 } from "@/lib/platform-settings";
 import { clearStoredSession } from "@/lib/session";
+import { resolveOnboardingLoginRedirect } from "@/lib/onboarding";
 
 export function LoginPage() {
   const router = useRouter();
@@ -53,6 +54,8 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [initializing, setInitializing] = useState(true);
+  const [initializationError, setInitializationError] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [platformName, setPlatformName] = useState<string | null>(null);
@@ -61,6 +64,9 @@ export function LoginPage() {
 
   useEffect(() => {
     clearStoredSession();
+    setInitializing(true);
+    setInitializationError(false);
+    setError("");
     let cancelled = false;
     void (async () => {
       try {
@@ -70,8 +76,15 @@ export function LoginPage() {
         setWorkspaceApplicationsEnabled(
           resolveWorkspaceApplicationsEnabled(bootstrap.systemSettings),
         );
-        if (bootstrap.onboardingRequired) {
-          router.replace("/onboarding");
+        const onboardingRedirect = resolveOnboardingLoginRedirect(
+          bootstrap.onboardingState,
+          {
+            context: searchParams.get("context"),
+            next: searchParams.get("next"),
+          },
+        );
+        if (onboardingRedirect) {
+          router.replace(onboardingRedirect);
           return;
         }
         const workspace = normalizeWorkspace(searchParams.get("workspace"));
@@ -85,6 +98,7 @@ export function LoginPage() {
         }
       } catch (loadError) {
         if (!cancelled) {
+          setInitializationError(true);
           setError(getErrorMessage(loadError, t("auth.requestFailed")));
         }
       } finally {
@@ -94,12 +108,17 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, searchParams, t]);
+  }, [loadVersion, router, searchParams, t]);
+
+  function retryInitialization() {
+    setLoadVersion((current) => current + 1);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
     setSubmitting(true);
+    setInitializationError(false);
     setError("");
     try {
       const response = await authLogin({
@@ -130,6 +149,7 @@ export function LoginPage() {
   async function chooseContext(option: ContextSelectionOption) {
     if (!selection || submitting) return;
     setSubmitting(true);
+    setInitializationError(false);
     setError("");
     try {
       completeLogin(
@@ -275,7 +295,22 @@ export function LoginPage() {
                   value={password}
                 />
               </div>
-              {error && <InlineNotice tone="error">{error}</InlineNotice>}
+              {error && (
+                <div className="grid gap-1.5">
+                  <InlineNotice tone="error">{error}</InlineNotice>
+                  {initializationError && (
+                    <Button
+                      className="justify-self-start"
+                      onClick={retryInitialization}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      {t("common.retry")}
+                    </Button>
+                  )}
+                </div>
+              )}
               <Button disabled={submitting || !email.trim() || !password} type="submit">
                 {submitting ? t("auth.signingIn") : t("auth.signIn")}
               </Button>

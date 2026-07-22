@@ -10,8 +10,6 @@ import {
 import type { ResolvedAccessDefinition } from "@hermes-swarm/rbac";
 import { DataSource, In, IsNull, type EntityManager } from "typeorm";
 import { hashPassword } from "../../security/password-hash.js";
-import { WorkspaceContextService } from "../workspace-context.service.js";
-import { WORKSPACE_DATABASE_GUCS } from "../workspace-database.constants.js";
 import { buildSeedPermissionCatalog } from "./seed-permission-catalog.js";
 import {
   seedDevelopmentFixtures,
@@ -19,71 +17,52 @@ import {
 } from "./development-seed-fixtures.js";
 
 export type DevelopmentSeedConfig = {
-  ownerDisplayName: string;
-  ownerEmail: string;
-  ownerPassword: string;
-  platformAdminDisplayName: string;
-  platformAdminEmail: string;
-  platformAdminPassword: string;
+  adminDisplayName: string;
+  adminEmail: string;
+  adminPassword: string;
   workspaceName: string;
   workspaceSlug: string;
 };
 
 export type DevelopmentSeedResult = {
+  administratorAccountId: string;
   fixtures: DevelopmentFixtureCounts;
-  ownerUserId: string;
   permissionCount: number;
-  platformAdminId: string;
   workspaceId: string;
 };
 
 export class DevelopmentSeedService {
-  constructor(
-    private readonly platformDataSource: DataSource,
-    private readonly workspaceDataSource: DataSource,
-    private readonly workspaceContext: WorkspaceContextService,
-  ) {}
+  constructor(private readonly dataSource: DataSource) {}
 
   async run(config: DevelopmentSeedConfig): Promise<DevelopmentSeedResult> {
     const definitions = buildSeedPermissionCatalog();
-    const platform = await this.platformDataSource.transaction((manager) =>
+    const platform = await this.dataSource.transaction((manager) =>
       seedPlatform(manager, config, definitions),
     );
-    const workspace = await this.platformDataSource.transaction(async (manager) => {
-      await configureSeedWorkspaceContext(manager, platform.workspace.id);
-      return this.workspaceContext.run(
-        {
-          manager,
-          scopeLevel: "workspace",
-          workspaceId: platform.workspace.id,
-        },
-        () => seedWorkspaceData(manager, platform.workspace, config, definitions, "workspaceOwner", platform.admin),
-      );
-    });
-    await this.platformDataSource.transaction(async (manager) => {
-      await configureSeedWorkspaceContext(manager, platform.secondaryWorkspace.id);
-      await this.workspaceContext.run(
-        {
-          manager,
-          scopeLevel: "workspace",
-          workspaceId: platform.secondaryWorkspace.id,
-        },
-        () =>
-          seedWorkspaceData(
-            manager,
-            platform.secondaryWorkspace,
-            config,
-            definitions,
-            "workspaceAdmin",
-            platform.admin,
-          ),
-      );
-    });
+    const workspace = await this.dataSource.transaction((manager) =>
+      seedWorkspaceData(
+        manager,
+        platform.workspace,
+        definitions,
+        "workspaceOwner",
+        platform.admin,
+        config.adminPassword,
+      ),
+    );
+    await this.dataSource.transaction((manager) =>
+      seedWorkspaceData(
+        manager,
+        platform.secondaryWorkspace,
+        definitions,
+        "workspaceAdmin",
+        platform.admin,
+        config.adminPassword,
+      ),
+    );
     return {
+      administratorAccountId: platform.admin.id,
       fixtures: workspace.fixtures,
-      ownerUserId: workspace.owner.id,
       permissionCount: definitions.length,
-      platformAdminId: platform.admin.id,
       workspaceId: platform.workspace.id,
     };
   }
@@ -114,16 +93,16 @@ async function seedPlatform(
   role = await manager.save(Role, role);
 
   let admin = await manager.findOne(Account, {
-    where: { email: config.platformAdminEmail },
+    where: { email: config.adminEmail },
     withDeleted: true,
   });
-  admin ??= manager.create(Account, { email: config.platformAdminEmail });
+  admin ??= manager.create(Account, { email: config.adminEmail });
   Object.assign(admin, {
     deletedAt: null,
-    displayName: config.platformAdminDisplayName,
-    passwordHash: await hashPassword(config.platformAdminPassword),
+    displayName: config.adminDisplayName,
+    passwordHash: await hashPassword(config.adminPassword),
     emailVerified: true,
-    nickname: config.platformAdminDisplayName,
+    nickname: config.adminDisplayName,
     preferredLanguage: "zh-Hans",
     status: "active",
     type: "user",
@@ -205,10 +184,10 @@ async function seedPermissions(
 async function seedWorkspaceData(
   manager: EntityManager,
   workspace: Workspace,
-  config: DevelopmentSeedConfig,
   definitions: ResolvedAccessDefinition[],
-  ownerRole: "workspaceAdmin" | "workspaceOwner" = "workspaceOwner",
-  sharedAccount?: Account,
+  ownerRole: "workspaceAdmin" | "workspaceOwner",
+  owner: Account,
+  fixturePassword: string,
 ) {
   const visibleWorkspace = await manager.findOne(Workspace, {
     where: { id: workspace.id },
@@ -216,24 +195,6 @@ async function seedWorkspaceData(
   if (!visibleWorkspace) {
     throw new Error("Seed workspace is not visible in workspace context");
   }
-
-  let owner = sharedAccount ?? await manager.findOne(Account, {
-    where: { email: config.ownerEmail }, withDeleted: true,
-  });
-  owner ??= manager.create(Account, {
-    email: config.ownerEmail,
-  });
-  Object.assign(owner, {
-    deletedAt: null,
-    displayName: config.ownerDisplayName,
-    emailVerified: true,
-    nickname: config.ownerDisplayName,
-    passwordHash: sharedAccount?.passwordHash ?? await hashPassword(config.ownerPassword),
-    preferredLanguage: "zh-Hans",
-    status: "active",
-    type: "user",
-  });
-  owner = await manager.save(Account, owner);
 
   const roles = {
     workspaceAdmin: await ensureRole(manager, workspace.id, {
@@ -267,7 +228,7 @@ async function seedWorkspaceData(
   const fixtures = await seedDevelopmentFixtures({
     manager,
     owner,
-    ownerPassword: sharedAccount ? config.platformAdminPassword : config.ownerPassword,
+    ownerPassword: fixturePassword,
     roles,
     workspaceId: workspace.id,
   });
@@ -388,17 +349,5 @@ async function ensureWorkspaceRoleAssignment(
       workspaceId,
     },
     ["workspaceId", "accountId"],
-  );
-}
-
-async function configureSeedWorkspaceContext(
-  manager: EntityManager,
-  workspaceId: string,
-) {
-  await manager.query(
-    `SELECT
-      set_config('${WORKSPACE_DATABASE_GUCS.workspaceId}', $1, true),
-      set_config('${WORKSPACE_DATABASE_GUCS.scopeLevel}', 'workspace', true)`,
-    [workspaceId],
   );
 }

@@ -65,6 +65,31 @@ describe("AdminContractInterceptor", () => {
     });
   });
 
+  it("shadows Express 5's getter-only query with the validated value", async () => {
+    const interceptor = new AdminContractInterceptor(new Reflector());
+    const request: Record<string, unknown> = {
+      method: "GET",
+      originalUrl: "/api/admin/notifications?take=20",
+      params: {},
+      url: "/api/admin/notifications?take=20",
+    };
+    Object.defineProperty(request, "query", {
+      configurable: true,
+      enumerable: true,
+      get: () => ({ take: "20" }),
+    });
+    const context = httpContext(request, 200);
+
+    const value = await firstValueFrom(interceptor.intercept(context, {
+      handle: () => {
+        assert.deepEqual(request.query, { take: 20 });
+        return of([]);
+      },
+    }));
+
+    assert.deepEqual(value, []);
+  });
+
   it("returns a sanitized error when a handler violates its response contract", async () => {
     const interceptor = new AdminContractInterceptor(new Reflector());
     const context = httpContext({

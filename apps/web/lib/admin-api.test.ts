@@ -6,6 +6,7 @@ import {
   createIntegrationToken,
   createWorkspaceRole,
   fetchMe,
+  getPublicBootstrap,
   listInvites,
   listLoginAuditLogs,
   listOperationAuditLogs,
@@ -215,6 +216,28 @@ describe("admin API browser client", () => {
       "/api/admin/workspace/audit/login-logs?keyword=owner%40example.com&page=2&pageSize=20&result=failed",
       "/api/admin/platform/audit/operation-logs?httpMethod=PATCH&permission=workspace.application.approve%3Aplatform",
     ]);
+  });
+
+  it("retries a transient public bootstrap failure without using a cached response", async () => {
+    const requests: RequestInit[] = [];
+    globalThis.fetch = async (_input, init) => {
+      requests.push(init ?? {});
+      if (requests.length === 1) {
+        return Response.json({ message: "temporary failure" }, { status: 500 });
+      }
+      return Response.json({
+        onboardingRequired: false,
+        onboardingState: "complete",
+        systemSettings: [],
+      });
+    };
+
+    const bootstrap = await getPublicBootstrap();
+
+    assert.equal(bootstrap.onboardingState, "complete");
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0]?.cache, "no-store");
+    assert.equal(requests[1]?.cache, "no-store");
   });
 });
 
