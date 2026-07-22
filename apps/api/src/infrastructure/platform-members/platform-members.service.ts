@@ -17,6 +17,7 @@ import type { PlatformMemberPayload } from "./platform-members.controller.js";
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 import { InviteService } from "../invite/invite.service.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
+import { toAccountDto, toRoleDto } from "../users/user-dto.js";
 
 @Injectable()
 export class PlatformMembersService {
@@ -265,12 +266,12 @@ function isActivePlatformAdmin(membership: PlatformMembership) {
 function toPlatformMemberDto(membership: PlatformMembership) {
   const account = membership.account;
   return {
-    account,
+    account: toAccountDto(account),
     displayName: account?.displayName ?? "",
     email: account?.email ?? "",
     id: membership.id,
     membershipId: membership.id,
-    role: membership.role,
+    role: membership.role ? toRoleDto(membership.role) : null,
     roleId: membership.roleId,
     status: membership.status,
     userId: membership.accountId,

@@ -46,6 +46,7 @@ import type {
   PermissionCatalogScope,
   PermissionScope,
   PlatformMember,
+  PlatformMemberInvitation,
   PlatformMemberPayload,
   PlatformPrincipalSession,
   PrincipalSession,
@@ -116,6 +117,7 @@ export type {
   PermissionCatalogScope,
   PermissionScope,
   PlatformMember,
+  PlatformMemberInvitation,
   PlatformMemberPayload,
   PlatformPrincipalSession,
   PrincipalSession,
@@ -1134,7 +1136,7 @@ export function listPlatformMembers(session: AuthenticatedAdminSessionMarker) {
 }
 
 export function createPlatformMember(session: AuthenticatedAdminSessionMarker, payload: PlatformMemberPayload) {
-  return fetchAdmin<PlatformMember>("/platform/members", {
+  return fetchAdmin<PlatformMember | PlatformMemberInvitation>("/platform/members", {
     body: payload,
     method: "POST",
   });

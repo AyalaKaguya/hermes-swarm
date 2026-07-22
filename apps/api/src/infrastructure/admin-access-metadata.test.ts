@@ -15,6 +15,7 @@ import {
 } from "@hermes-swarm/rbac";
 import { PermissionsController } from "@hermes-swarm/rbac";
 import { InfrastructureBootstrapController } from "./infrastructure-bootstrap.controller.js";
+import { AccountController } from "./users/users.controller.js";
 
 describe("admin route access metadata", () => {
   it("requires every admin handler to explicitly declare access or public behavior", async () => {
@@ -79,6 +80,29 @@ describe("admin route access metadata", () => {
     );
 
     assert.deepEqual(operation?.defaultRoles, ["workspace-owner", "workspace-admin"]);
+  });
+
+  it("guards account reads through the authenticated own-resource scope", () => {
+    const operation = Reflect.getMetadata(
+      ACCESS_OPERATION_METADATA,
+      AccountController.prototype.get,
+    );
+    const resource = Reflect.getMetadata(
+      ACCESS_RESOURCE_METADATA,
+      AccountController,
+    );
+    const definition = resolveAccessDefinition(resource, operation);
+
+    assert.equal(definition?.id, "account.self_profile.get:own");
+    assert.deepEqual(definition?.defaultRoles, [
+      "workspace-owner",
+      "workspace-admin",
+      "workspace-member",
+    ]);
+    assert.equal(
+      Reflect.getMetadata(PUBLIC_ACCESS_METADATA, AccountController.prototype.get),
+      undefined,
+    );
   });
 
   it("restricts onboarding resume to the platform administrator role", () => {

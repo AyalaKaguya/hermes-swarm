@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  IdentifierSchema, IsoDateTimeSchema, JsonValueSchema, RoleSchema, UserReferenceSchema,
+  IdentifierSchema, InviteSchema, IsoDateTimeSchema, JsonValueSchema, RoleSchema, UserReferenceSchema,
   SystemSettingSchema, UserSchema, WorkspaceApplicationSchema, WorkspaceSchema,
 } from "./models.js";
 
@@ -108,6 +108,11 @@ export const PlatformMemberRequestSchema = z.strictObject({
   roleId: IdentifierSchema.nullable().optional(), status: z.enum(["active", "disabled"]).optional(),
 });
 export type PlatformMemberPayload = z.input<typeof PlatformMemberRequestSchema>;
+export const PlatformMemberInvitationSchema = z.strictObject({
+  invite: InviteSchema,
+  status: z.literal("invited"),
+});
+export type PlatformMemberInvitation = z.infer<typeof PlatformMemberInvitationSchema>;
 export const RoleRequestSchema = z.strictObject({
   color: z.string().nullable().optional(), description: z.string().nullable().optional(),
   displayName: z.string().optional(), name: z.string().optional(),

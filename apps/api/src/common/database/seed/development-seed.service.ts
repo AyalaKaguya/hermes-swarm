@@ -8,9 +8,12 @@ import {
   Workspace,
 } from "@hermes-swarm/core";
 import type { ResolvedAccessDefinition } from "@hermes-swarm/rbac";
-import { DataSource, In, IsNull, type EntityManager } from "typeorm";
+import { DataSource, IsNull, type EntityManager } from "typeorm";
 import { hashPassword } from "../../security/password-hash.js";
-import { buildSeedPermissionCatalog } from "./seed-permission-catalog.js";
+import {
+  buildSeedPermissionCatalog,
+  syncPermissionCatalogInTransaction,
+} from "./seed-permission-catalog.js";
 import {
   seedDevelopmentFixtures,
   type DevelopmentFixtureCounts,
@@ -73,7 +76,7 @@ async function seedPlatform(
   config: DevelopmentSeedConfig,
   definitions: ResolvedAccessDefinition[],
 ) {
-  const permissions = await seedPermissions(manager, definitions);
+  const permissions = await seedPermissions(manager);
   let role = await manager.findOne(Role, {
     where: { name: "platform-admin", scope: "platform", workspaceId: IsNull() },
   });
@@ -150,35 +153,8 @@ async function seedPlatform(
 
 async function seedPermissions(
   manager: EntityManager,
-  definitions: ResolvedAccessDefinition[],
 ) {
-  await manager.upsert(
-    Permission,
-    definitions.map((definition) =>
-      manager.create(Permission, {
-      action: definition.source === "navigation" ? "access" : definition.operation,
-      code: definition.id,
-      defaultRoles: definition.defaultRoles,
-      description: definition.description,
-      entity: definition.entity,
-      entityLabel: definition.entityLabel,
-      entityOrder: definition.entityOrder ?? null,
-      isDangerous: definition.isDangerous,
-      operation: definition.operation,
-      operationLabel: definition.operationLabel,
-      operationOrder: definition.operationOrder,
-      purpose: definition.purpose,
-      purposeLabel: definition.purposeLabel,
-      purposeOrder: definition.purposeOrder ?? null,
-      scope: definition.scope,
-      source: definition.source ?? "controller",
-      }),
-    ),
-    ["code"],
-  );
-  return manager.find(Permission, {
-    where: { code: In(definitions.map((definition) => definition.id)) },
-  });
+  return syncPermissionCatalogInTransaction(manager);
 }
 
 async function seedWorkspaceData(

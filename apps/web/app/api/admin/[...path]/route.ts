@@ -104,7 +104,9 @@ async function handleAdminRequest(
   if (!session) return unauthorizedResponse(true);
 
   if (path === "/auth/csrf" && request.method === "GET") {
-    return jsonResponse({ csrfToken: session.csrfToken }, 200);
+    const response = jsonResponse({ csrfToken: session.csrfToken }, 200);
+    if (session.changed) setWebSessionCookie(response, session);
+    return response;
   }
   if (isMutation(request.method)) {
     const csrfError = validateCsrfRequest(request, session);

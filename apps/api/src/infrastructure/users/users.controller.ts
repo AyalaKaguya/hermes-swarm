@@ -21,7 +21,6 @@ import type {
 import {
   AccessOperation,
   AccessResource,
-  PublicAccess,
 } from "@hermes-swarm/rbac";
 import { UsersService } from "./users.service.js";
 
@@ -138,7 +137,12 @@ export class AccountController {
   ) {}
 
   @Get()
-  @PublicAccess({ reason: "Current account session validation is handled by UsersService." })
+  @AccessOperation({
+    description: "读取当前工作空间会话所属的全局账号资料。",
+    label: "查看全局账号资料",
+    operation: "get",
+    sortOrder: 5,
+  })
   get(@Headers("authorization") authorization?: string) {
     return this.usersService.getAccount(authorization);
   }

@@ -56,6 +56,17 @@ function parseInteger(
   maximum: number,
 ) {
   if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new BadRequestException(`${label} 必须是整数`);
+    }
+    if (value < minimum || value > maximum) {
+      throw new BadRequestException(
+        `${label} 必须介于 ${minimum} 和 ${maximum} 之间`,
+      );
+    }
+    return value;
+  }
   const text = readSingleValue(value, label);
   if (!/^\d+$/.test(text)) {
     throw new BadRequestException(`${label} 必须是整数`);

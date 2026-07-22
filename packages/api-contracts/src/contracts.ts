@@ -9,7 +9,7 @@ import {
   AcceptInviteRequestSchema, AuditLogPageSchema, AuditLogQuerySchema, CreatedIntegrationTokenSchema,
   CreateTicketRequestSchema, EmailTemplateRequestSchema, IntegrationTokenCapabilitiesSchema,
   IntegrationTokenSchema, InviteRequestSchema, LoginAuditLogItemSchema, OnboardingRequestSchema,
-  OperationAuditLogItemSchema, PlatformMemberRequestSchema, RealtimeTicketResponseSchema,
+  OperationAuditLogItemSchema, PlatformMemberInvitationSchema, PlatformMemberRequestSchema, RealtimeTicketResponseSchema,
   PublicBootstrapSchema, ResumeOnboardingRequestSchema,
   ReplaceRolePermissionsRequestSchema, RoleRequestSchema, SaveSettingsRequestSchema,
   SendTicketMessageRequestSchema, SmtpRequestSchema, UpdateRuntimePreferencesRequestSchema,
@@ -119,7 +119,7 @@ export const adminContracts = {
   platformPermissionCatalog: defineContract({ id: "platform.permissions.catalog", method: "GET", path: "/platform/permissions/catalog", responses: { 200: PermissionCatalogSchema } }),
 
   platformMembers: defineContract({ id: "platform.members.list", method: "GET", path: "/platform/members", responses: { 200: z.array(PlatformMemberSchema) } }),
-  platformMemberCreate: defineContract({ id: "platform.members.create", method: "POST", path: "/platform/members", body: PlatformMemberRequestSchema, responses: { 201: PlatformMemberSchema } }),
+  platformMemberCreate: defineContract({ id: "platform.members.create", method: "POST", path: "/platform/members", body: PlatformMemberRequestSchema, responses: { 201: z.union([PlatformMemberSchema, PlatformMemberInvitationSchema]) } }),
   platformMemberUpdate: defineContract({ id: "platform.members.update", method: "PATCH", path: "/platform/members/:memberId", params: idParams("memberId"), body: PlatformMemberRequestSchema, responses: { 200: PlatformMemberSchema } }),
   platformMemberDelete: defineContract({ id: "platform.members.delete", method: "DELETE", path: "/platform/members/:memberId", params: idParams("memberId"), responses: noContent }),
   platformRoles: defineContract({ id: "platform.roles.list", method: "GET", path: "/platform/roles", responses: { 200: z.array(RoleSchema) } }),

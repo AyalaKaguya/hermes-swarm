@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { Permission } from "@hermes-swarm/core";
 import {
   ACCESS_OPERATION_METADATA,
   ACCESS_RESOURCE_METADATA,
@@ -8,6 +9,7 @@ import {
   type ResolvedAccessDefinition,
 } from "@hermes-swarm/rbac";
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
+import { In, type EntityManager } from "typeorm";
 import { FilesController } from "../../../infrastructure/files/files.controller.js";
 import {
   PlatformAuditController,
@@ -86,6 +88,47 @@ export function buildSeedPermissionCatalog(): ResolvedAccessDefinition[] {
   return [...definitions.values()].sort((left, right) =>
     left.id.localeCompare(right.id),
   );
+}
+
+/**
+ * Ensures the controller and navigation permission catalog is available inside
+ * the caller's transaction. First-run onboarding must not depend on the later
+ * application lifecycle catalog sync to grant its administrator access.
+ */
+export async function syncPermissionCatalogInTransaction(
+  manager: EntityManager,
+): Promise<Permission[]> {
+  const definitions = buildSeedPermissionCatalog();
+  const codes = definitions.map((definition) => definition.id);
+
+  await manager.upsert(
+    Permission,
+    definitions.map((definition) =>
+      manager.create(Permission, {
+        action: definition.source === "navigation" ? "access" : definition.operation,
+        code: definition.id,
+        defaultRoles: definition.defaultRoles,
+        description: definition.description,
+        entity: definition.entity,
+        entityLabel: definition.entityLabel,
+        entityOrder: definition.entityOrder ?? null,
+        isDangerous: definition.isDangerous,
+        operation: definition.operation,
+        operationLabel: definition.operationLabel,
+        operationOrder: definition.operationOrder,
+        purpose: definition.purpose,
+        purposeLabel: definition.purposeLabel,
+        purposeOrder: definition.purposeOrder ?? null,
+        scope: definition.scope,
+        source: definition.source ?? "controller",
+      }),
+    ),
+    ["code"],
+  );
+
+  return manager.find(Permission, {
+    where: { code: In(codes) },
+  });
 }
 
 function getResourceMetadata(target: object) {

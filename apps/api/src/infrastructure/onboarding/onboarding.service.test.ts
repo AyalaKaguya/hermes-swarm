@@ -53,6 +53,34 @@ describe("OnboardingService", () => {
     assert.equal(state.settings.savedInsideTransaction, true);
     assert.equal(state.settings.invalidationBatches, 1);
     assert.match(state.queries[0]?.sql ?? "", /pg_advisory_xact_lock/);
+
+    const platformRole = state.store.roles.find(
+      (role) => role.name === "platform-admin",
+    );
+    const workspaceOwnerRole = state.store.roles.find(
+      (role) => role.name === "workspace-owner",
+    );
+    const accountSettingsPermission = state.store.permissions.find(
+      (permission) => permission.code === "page.settings.account.access:own",
+    );
+    const platformSettingsPermission = state.store.permissions.find(
+      (permission) => permission.code === "page.settings.platform.access:platform",
+    );
+
+    assert.ok(accountSettingsPermission);
+    assert.ok(platformSettingsPermission);
+    assert.ok(platformRole);
+    assert.ok(workspaceOwnerRole);
+    assert.ok(state.store.rolePermissions.some(
+      (grant) =>
+        grant.roleId === workspaceOwnerRole.id &&
+        grant.permissionId === accountSettingsPermission.id,
+    ));
+    assert.ok(state.store.rolePermissions.some(
+      (grant) =>
+        grant.roleId === platformRole.id &&
+        grant.permissionId === platformSettingsPermission.id,
+    ));
   });
 
   it("rolls back all identity, workspace, role, and setting work on failure", async () => {
@@ -147,7 +175,7 @@ function createState(options: {
 } = {}) {
   const store: Store = {
     accounts: [],
-    permissions: defaultPermissions(),
+    permissions: [],
     platformMemberships: [],
     rolePermissions: [],
     roles: [],
@@ -219,6 +247,22 @@ function createState(options: {
     query: async (sql: string, params?: unknown[]) => {
       queries.push({ params, sql });
       return [];
+    },
+    upsert: async (target: Function, values: any | any[]) => {
+      const records = collection(store, target);
+      const rows = Array.isArray(values) ? values : [values];
+      for (const value of rows) {
+        const existing = target === Permission && value.code
+          ? records.find((item) => item.code === value.code)
+          : records.find((item) => item.id === value.id);
+        if (existing) {
+          Object.assign(existing, value);
+          continue;
+        }
+        value.id ??= `${target.name.toLowerCase()}-${nextId++}`;
+        records.push(value);
+      }
+      return rows;
     },
     save: async (target: Function, value: any) => {
       if (Array.isArray(value)) {
@@ -304,31 +348,6 @@ function matches(value: Record<string, any>, where: Record<string, unknown>) {
 
 function entity<T>(target: new () => T, value: Partial<T>) {
   return Object.assign(new target(), value);
-}
-
-function defaultPermissions() {
-  return [
-    entity(Permission, {
-      defaultRoles: ["platform-admin"],
-      id: "permission-platform",
-      scope: "platform",
-    }),
-    entity(Permission, {
-      defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
-      id: "permission-workspace-view",
-      scope: "workspace",
-    }),
-    entity(Permission, {
-      defaultRoles: ["workspace-owner", "workspace-admin"],
-      id: "permission-workspace-manage",
-      scope: "workspace",
-    }),
-    entity(Permission, {
-      defaultRoles: ["workspace-owner", "workspace-admin", "workspace-member"],
-      id: "permission-own",
-      scope: "own",
-    }),
-  ];
 }
 
 function cloneStore(store: Store): Store {

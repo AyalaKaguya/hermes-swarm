@@ -19,6 +19,7 @@ import type {
   SaveSettingsPayload,
 } from "@hermes-swarm/api-contracts";
 import { DataSource, type EntityManager } from "typeorm";
+import { syncPermissionCatalogInTransaction } from "../../common/database/seed/seed-permission-catalog.js";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { SettingsService } from "../settings/settings.service.js";
 
@@ -71,6 +72,7 @@ export class OnboardingService {
     const transaction = await this.dataSource.transaction(async (manager) => {
       await acquireOnboardingLock(manager);
       assertOnboardingState(await this.getState(manager), "admin_required");
+      const permissions = await syncPermissionCatalogInTransaction(manager);
 
       const existingAccount = await manager.findOne(Account, {
         where: { email: adminEmail },
@@ -101,7 +103,7 @@ export class OnboardingService {
         scope: "platform",
         workspaceId: null,
       });
-      await replaceDefaultRolePermissions(manager, platformRole);
+      await replaceDefaultRolePermissions(manager, platformRole, permissions);
       await manager.save(
         PlatformMembership,
         manager.create(PlatformMembership, {
@@ -112,7 +114,7 @@ export class OnboardingService {
         }),
       );
 
-      const provisioned = await provisionWorkspace(manager, account, input);
+      const provisioned = await provisionWorkspace(manager, account, input, permissions);
       const invalidations = await this.settingsService.savePlatformSettingsInTransaction(
         manager,
         platformSettingsPayload(input),
@@ -134,6 +136,7 @@ export class OnboardingService {
     const transaction = await this.dataSource.transaction(async (manager) => {
       await acquireOnboardingLock(manager);
       assertOnboardingState(await this.getState(manager), "workspace_required");
+      const permissions = await syncPermissionCatalogInTransaction(manager);
 
       const [account, platformMembership] = await Promise.all([
         manager.findOne(Account, {
@@ -148,7 +151,7 @@ export class OnboardingService {
         throw new BadRequestException("当前账号不能续办平台主管理初始化");
       }
 
-      const provisioned = await provisionWorkspace(manager, account, input);
+      const provisioned = await provisionWorkspace(manager, account, input, permissions);
       const invalidations = await this.settingsService.savePlatformSettingsInTransaction(
         manager,
         platformSettingsPayload(input),
@@ -178,6 +181,7 @@ async function provisionWorkspace(
   manager: EntityManager,
   account: Account,
   input: NormalizedWorkspaceOnboarding,
+  permissions: Permission[],
 ) {
   const workspace = await manager.save(
     Workspace,
@@ -211,7 +215,9 @@ async function provisionWorkspace(
       workspaceId: workspace.id,
     }),
   ];
-  for (const role of roles) await replaceDefaultRolePermissions(manager, role);
+  for (const role of roles) {
+    await replaceDefaultRolePermissions(manager, role, permissions);
+  }
 
   const membership = await manager.save(
     WorkspaceMembership,
@@ -261,8 +267,11 @@ async function ensureSystemRole(
   );
 }
 
-async function replaceDefaultRolePermissions(manager: EntityManager, role: Role) {
-  const permissions = await manager.find(Permission);
+async function replaceDefaultRolePermissions(
+  manager: EntityManager,
+  role: Role,
+  permissions: Permission[],
+) {
   const grants = permissions
     .filter((permission) => {
       if (!permission.defaultRoles?.includes(role.name)) return false;

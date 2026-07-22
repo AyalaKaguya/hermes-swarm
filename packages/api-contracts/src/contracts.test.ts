@@ -15,6 +15,7 @@ import {
 import {
   AuditLogQuerySchema,
   OnboardingRequestSchema,
+  PlatformMemberInvitationSchema,
   PublicBootstrapSchema,
   ResumeOnboardingRequestSchema,
   SaveSettingsRequestSchema,
@@ -109,6 +110,30 @@ describe("admin API contracts", () => {
     assert.equal(responseSchemaFor(adminContracts.authLogin, 200), undefined);
     assert.ok(responseSchemaFor(adminContracts.authLogin, 200, true));
     assert.ok(responseSchemaFor(adminContracts.authLogin, 201));
+  });
+
+  it("documents the invitation result when adding a new platform member", () => {
+    const response = {
+      invite: {
+        acceptedCount: 0,
+        acceptedUserId: null,
+        actionDate: null,
+        closedAt: null,
+        contextType: "platform",
+        createdAt: "2026-07-22T00:00:00.000Z",
+        email: "operator@example.com",
+        expireDate: null,
+        id: "invite-1",
+        invitedById: null,
+        roleId: "role-1",
+        status: "invited",
+        workspaceRoleId: "role-1",
+      },
+      status: "invited",
+    } as const;
+    assert.deepEqual(PlatformMemberInvitationSchema.parse(response), response);
+    const schema = responseSchemaFor(adminContracts.platformMemberCreate, 201);
+    assert.equal(schema?.safeParse(response).success, true);
   });
 
   it("keeps access tokens out of browser responses", () => {

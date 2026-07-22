@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
-import { POST } from "../../app/api/admin/[...path]/route";
+import { GET, POST } from "../../app/api/admin/[...path]/route";
 import {
   WEB_SESSION_COOKIE_NAME,
   sealWebSession,
   type WebSession,
+  unsealWebSession,
 } from "./web-session";
 
 const originalFetch = globalThis.fetch;
@@ -377,6 +378,35 @@ describe("admin BFF refresh single-flight", () => {
     assert.equal(refreshRequests, 1);
     assert.equal(apiRequests, 10);
     assert.deepEqual(await responses[0]!.json(), { ok: true });
+  });
+
+  it("persists the rotated session when a CSRF request refreshes an expiring access token", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({ expiresAt: new Date(Date.now() - 1).toISOString() });
+    globalThis.fetch = async (input) => {
+      assert.equal(
+        String(input),
+        "http://localhost:3200/api/admin/auth/refresh",
+      );
+      return refreshResponse(session);
+    };
+    const request = new NextRequest("http://localhost:3100/api/admin/auth/csrf", {
+      headers: {
+        cookie: `${WEB_SESSION_COOKIE_NAME}=${sealWebSession(session)}`,
+        "user-agent": "test-agent",
+      },
+    });
+
+    const response = await GET(request, {
+      params: Promise.resolve({ path: ["auth", "csrf"] }),
+    });
+    const rotatedCookie = response.cookies.get(WEB_SESSION_COOKIE_NAME)?.value;
+    const rotatedSession = rotatedCookie ? unsealWebSession(rotatedCookie) : null;
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { csrfToken: "csrf-token" });
+    assert.equal(rotatedSession?.accessToken, "next-access-token");
+    assert.equal(rotatedSession?.refreshToken, "next-refresh-token");
   });
 
   it("shares one upstream refresh after concurrent upstream 401 responses", async () => {
