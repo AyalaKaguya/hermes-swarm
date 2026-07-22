@@ -1,6 +1,6 @@
 # 当前模块与引用图
 
-更新日期：2026-07-17
+更新日期：2026-07-22
 
 ## Nx 项目
 
@@ -23,7 +23,7 @@ flowchart LR
 | `@hermes-swarm/core` | Shared persistence models: identity、settings、mail、notifications、support |
 | `@hermes-swarm/rbac-api` | Permission IDs、page access catalog、shared DTO |
 | `@hermes-swarm/rbac` | Nest access decorators、guard、catalog、audit runtime |
-| `@hermes-swarm/api` | Nest runtime、database/RLS context、infrastructure 与 business domains |
+| `@hermes-swarm/api` | Nest runtime、认证工作空间上下文、显式 `workspace_id` 数据访问、infrastructure 与 business domains |
 | `@hermes-swarm/web` | Next.js Platform console、Workspace console 与 business pages |
 
 ## 身份与数据关系
@@ -110,7 +110,7 @@ Business routes:
 
 ```text
 apps/api/src/
-├── common/                  # runtime primitives: config, DB/RLS, Redis, generic jobs
+├── common/                  # runtime primitives: config, DB context, Redis, generic jobs
 ├── infrastructure/          # identity, access, settings, mail, notifications
 └── domains/
     └── support/             # tickets, conversations, domain jobs
@@ -130,7 +130,7 @@ packages/core/src/
 
 ## Database baseline
 
-`WorkspaceModelBaseline2026071500001` is the sole initial migration. Workspace-owned repositories require a transaction-local WorkspaceContext and are protected by forced PostgreSQL RLS. The Platform datasource uses a distinct role for audited cross-workspace access.
+`WorkspaceModelBaseline2026071500001` remains the initial migration. Hermes uses one PostgreSQL URL and one TypeORM DataSource. Authentication establishes a trusted workspace context; workspace-owned reads, updates and deletes must explicitly include `workspace_id`, while platform cross-workspace access remains protected by Platform RBAC. PostgreSQL RLS, per-request GUCs and dedicated RLS roles are not part of the active architecture.
 
 ## Verification
 

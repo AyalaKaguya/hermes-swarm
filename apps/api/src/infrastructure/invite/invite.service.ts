@@ -32,7 +32,6 @@ import { PlatformEmailSendService } from "../mail/platform-email-send.service.js
 import { NotificationsService } from "../notifications/notifications.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 
 type InviteExpiry = "3d" | "7d" | "never";
@@ -55,16 +54,13 @@ export class InviteService {
     private readonly grantPolicy: RoleGrantPolicyService =
       new RoleGrantPolicyService(),
     @Optional()
-    @InjectDataSource(PLATFORM_DATA_SOURCE)
-    private readonly injectedPlatformDataSource?: DataSource,
-    @Optional()
     private readonly authSessionService?: AuthSessionService,
     @Optional()
     private readonly platformEmailSendService?: PlatformEmailSendService,
   ) {}
 
   private get platformDataSource() {
-    return this.injectedPlatformDataSource ?? this.dataSource;
+    return this.dataSource;
   }
 
   async list(): Promise<InviteDto[]> {
@@ -636,16 +632,10 @@ export class InviteService {
       }
       return work();
     }
-    return this.dataSource.transaction(async (manager) => {
-      await manager.query(
-        "SELECT set_config('app.workspace_id', $1, true), set_config('app.scope_level', 'workspace', true)",
-        [workspaceId],
-      );
-      return this.workspaceContext.run(
-        { manager, scopeLevel: "workspace", workspaceId },
-        work,
-      );
-    });
+    return this.workspaceContext.run(
+      { scopeLevel: "workspace", workspaceId },
+      work,
+    );
   }
 
   private get workspaceId() {
@@ -653,11 +643,11 @@ export class InviteService {
   }
 
   private get manager() {
-    return this.workspaceContext.current()!.manager;
+    return this.dataSource.manager;
   }
 
   private get invites() {
-    return this.workspaceContext.repository(Invite);
+    return this.dataSource.getRepository(Invite);
   }
 
   private get users() {

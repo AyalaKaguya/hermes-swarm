@@ -3,30 +3,35 @@ import { describe, it } from "node:test";
 import { FeatureAccessGuard } from "./feature-access.guard.js";
 
 describe("FeatureAccessGuard workspace context", () => {
-  it("does not open a transaction when no feature is required", async () => {
-    let transactionStarted = false;
+  it("does not initialize workspace context when no feature is required", async () => {
+    let contextStarted = false;
     const guard = new FeatureAccessGuard(
       {} as never,
       { getAllAndOverride: () => undefined } as never,
-      { transaction: async () => { transactionStarted = true; } } as never,
-      {} as never,
+      {
+        current: () => null,
+        run: () => {
+          contextStarted = true;
+        },
+      } as never,
     );
     assert.equal(await guard.canActivate(context({})), true);
-    assert.equal(transactionStarted, false);
+    assert.equal(contextStarted, false);
   });
 
-  it("checks workspace feature gates in a workspace transaction", async () => {
-    const queries: unknown[] = [];
+  it("checks workspace feature gates in a lightweight trusted workspace context", async () => {
+    const contexts: unknown[] = [];
     let checked = false;
     const workspaceContext = {
       current: () => null,
-      run: (_context: unknown, work: () => unknown) => work(),
+      run: (scope: unknown, work: () => unknown) => {
+        contexts.push(scope);
+        return work();
+      },
     };
-    const manager = { query: async (...args: unknown[]) => { queries.push(args); } };
     const guard = new FeatureAccessGuard(
       { isFeatureEnabled: async (_key: string, input: unknown) => { checked = true; assert.deepEqual(input, { workspaceId: "workspace-a" }); return true; } } as never,
       { getAllAndOverride: () => "feature:invite:enabled" } as never,
-      { transaction: async (work: (manager: unknown) => unknown) => work(manager) } as never,
       workspaceContext as never,
     );
     assert.equal(
@@ -34,7 +39,7 @@ describe("FeatureAccessGuard workspace context", () => {
       true,
     );
     assert.equal(checked, true);
-    assert.equal(queries.length, 1);
+    assert.deepEqual(contexts, [{ scopeLevel: "workspace", workspaceId: "workspace-a" }]);
   });
 });
 

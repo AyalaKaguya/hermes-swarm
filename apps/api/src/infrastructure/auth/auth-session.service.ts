@@ -27,7 +27,6 @@ import {
   type EntityManager,
 } from "typeorm";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { RedisService } from "../../common/redis/redis.service.js";
 import {
   INTEGRATION_SESSION_PREFIX,
@@ -108,9 +107,9 @@ export class AuthSessionService {
     private readonly integrationTokenRepository: Repository<IntegrationToken>,
     @InjectRepository(Account)
     private readonly accountRepository: Repository<Account>,
-    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Account)
     private readonly platformAccountRepository: Repository<Account>,
-    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformMembership)
     private readonly platformMembershipRepository: Repository<PlatformMembership>,
     private readonly dataSource: DataSource,
     private readonly workspaceContext: WorkspaceContextService,
@@ -885,13 +884,8 @@ export class AuthSessionService {
     work: (manager: EntityManager) => Promise<T>,
   ) {
     return this.dataSource.transaction(async (manager) => {
-      await manager.query(
-        "SELECT set_config('app.workspace_id', $1, true), set_config('app.scope_level', 'workspace', true)",
-        [workspaceId],
-      );
       return this.workspaceContext.run(
         {
-          manager,
           scopeLevel: "workspace",
           workspaceId,
         },

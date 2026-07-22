@@ -130,11 +130,11 @@ function createState() {
     }],
   ]);
   const workspaceContext = {
-    current: () => ({ manager, workspaceId: "workspace-a" }),
-    repository: (target: unknown) => repositories.get(target),
+    current: () => ({ scopeLevel: "workspace", workspaceId: "workspace-a" }),
+    run: (_context: unknown, work: () => unknown) => work(),
   };
   const service = new InviteService(
-    { getRepository: (target: unknown) => repositories.get(target) } as never,
+    { getRepository: (target: unknown) => repositories.get(target), manager } as never,
     workspaceContext as never,
     {
       send: async (input: unknown) => {

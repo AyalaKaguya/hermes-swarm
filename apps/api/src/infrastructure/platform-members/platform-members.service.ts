@@ -14,7 +14,6 @@ import {
 } from "@hermes-swarm/core";
 import { IsNull, Repository } from "typeorm";
 import type { PlatformMemberPayload } from "./platform-members.controller.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 import { InviteService } from "../invite/invite.service.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
@@ -22,11 +21,11 @@ import { AuthSessionService } from "../auth/auth-session.service.js";
 @Injectable()
 export class PlatformMembersService {
   constructor(
-    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Account)
     private readonly accountRepository: Repository<Account>,
-    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
-    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformMembership)
     private readonly membershipRepository: Repository<PlatformMembership>,
     private readonly inviteService: InviteService,
     private readonly authSessionService: AuthSessionService,

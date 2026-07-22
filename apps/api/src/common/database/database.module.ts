@@ -2,8 +2,6 @@ import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { WorkspaceContextService } from "./workspace-context.service.js";
-import { PLATFORM_DATA_SOURCE } from "./database.constants.js";
-import { DatabaseRoleValidatorService } from "./database-role-validator.service.js";
 import { DATABASE_ENTITIES } from "./database-entities.js";
 
 @Module({
@@ -16,7 +14,7 @@ import { DATABASE_ENTITIES } from "./database-entities.js";
         );
         return {
           type: "postgres",
-          url: configService.getOrThrow<string>("database.workspaceUrl"),
+          url: configService.getOrThrow<string>("database.url"),
           entities: [...DATABASE_ENTITIES],
           autoLoadEntities: true,
           // Development and isolated tests synchronize directly from entities.
@@ -44,19 +42,8 @@ import { DATABASE_ENTITIES } from "./database-entities.js";
         };
       },
     }),
-    TypeOrmModule.forRootAsync({
-      name: PLATFORM_DATA_SOURCE,
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: "postgres",
-        url: configService.getOrThrow<string>("database.platformUrl"),
-        entities: [...DATABASE_ENTITIES],
-        autoLoadEntities: true,
-        synchronize: false,
-      }),
-    }),
   ],
-  providers: [DatabaseRoleValidatorService, WorkspaceContextService],
+  providers: [WorkspaceContextService],
   exports: [WorkspaceContextService],
 })
 export class DatabaseModule {}

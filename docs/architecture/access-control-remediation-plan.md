@@ -1,10 +1,15 @@
-# 权限控制体系修复实施文档
+# 权限控制体系修复实施文档（历史方案）
 
 日期：2026-07-20
 
-状态：已实施并通过自动化验证；待部署数据库迁移与生产密钥
+状态：已废弃；仅保留为历史记录
 
 适用范围：`@hermes-swarm/core`、`@hermes-swarm/rbac-api`、`@hermes-swarm/rbac`、`@hermes-swarm/api`、`@hermes-swarm/web`
+
+> **已废弃（2026-07-22）**：本文中关于 PostgreSQL RLS、`app.workspace_id`
+> GUC、专用 Workspace 数据库角色及其验收的内容仅保留为历史记录，不再描述
+> 当前架构。现行隔离模型为“认证上下文 + 显式 `workspace_id` 条件”，见
+> [Workspace resource ownership](workspace-resource-ownership.md)。
 
 ## 1. 背景与结论
 

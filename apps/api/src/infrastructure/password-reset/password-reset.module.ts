@@ -6,7 +6,6 @@ import { SettingsModule } from "../settings/settings.module.js";
 import { PasswordResetController } from "./password-reset.controller.js";
 import { PasswordResetService } from "./password-reset.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { AuthModule } from "../auth/auth.module.js";
 
 @Module({
@@ -15,7 +14,7 @@ import { AuthModule } from "../auth/auth.module.js";
     AuthModule,
     MailModule,
     SettingsModule,
-    TypeOrmModule.forFeature([Account, PasswordReset], PLATFORM_DATA_SOURCE),
+    TypeOrmModule.forFeature([Account, PasswordReset]),
   ],
   controllers: [PasswordResetController],
   providers: [PasswordResetService],

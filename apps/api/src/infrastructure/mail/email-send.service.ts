@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import Handlebars from "handlebars";
 import nodemailer from "nodemailer";
@@ -10,8 +10,10 @@ import {
   PlatformEmailTemplate,
   PlatformSmtp,
 } from "@hermes-swarm/core";
-import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
+import {
+  type WorkspaceExecutionContext,
+  WorkspaceContextService,
+} from "../../common/database/workspace-context.service.js";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import { SettingsService } from "../settings/settings.service.js";
 
@@ -46,17 +48,19 @@ export class EmailSendService {
     private readonly templateBaseRepository: Repository<EmailTemplate>,
     @InjectRepository(EmailLog)
     private readonly emailLogBaseRepository: Repository<EmailLog>,
-    @InjectRepository(PlatformEmailTemplate, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformEmailTemplate)
     private readonly platformTemplateRepository: Repository<PlatformEmailTemplate>,
-    @InjectRepository(PlatformSmtp, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformSmtp)
     private readonly platformSmtpRepository: Repository<PlatformSmtp>,
     private readonly settingsService: SettingsService,
     private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async send(ctx: SendEmailContext): Promise<SendEmailResult> {
-    const workspaceId =
-      ctx.workspaceId ?? this.workspaceContext.current(false)?.workspaceId ?? null;
+    const workspaceId = resolveWorkspaceEmailContext(
+      this.workspaceContext.current(false),
+      ctx.workspaceId,
+    );
     if (!workspaceId) return { sent: false, reason: "send_failed" };
     const recipient = ctx.email?.trim();
     if (!recipient) {
@@ -253,19 +257,28 @@ export class EmailSendService {
   }
 
   private get smtpRepository() {
-    return this.workspaceContext.current(false)?.manager?.getRepository(CustomSmtp) ??
-      this.smtpBaseRepository;
+    return this.smtpBaseRepository;
   }
 
   private get templateRepository() {
-    return this.workspaceContext.current(false)?.manager?.getRepository(EmailTemplate) ??
-      this.templateBaseRepository;
+    return this.templateBaseRepository;
   }
 
   private get emailLogRepository() {
-    return this.workspaceContext.current(false)?.manager?.getRepository(EmailLog) ??
-      this.emailLogBaseRepository;
+    return this.emailLogBaseRepository;
   }
+}
+
+export function resolveWorkspaceEmailContext(
+  current: WorkspaceExecutionContext | null,
+  explicitWorkspaceId?: string,
+) {
+  if (!current) return null;
+  const requestedWorkspaceId = explicitWorkspaceId?.trim();
+  if (requestedWorkspaceId && requestedWorkspaceId !== current.workspaceId) {
+    throw new BadRequestException("邮件发送不能跨工作空间访问");
+  }
+  return current.workspaceId;
 }
 
 function normalizeEmailLogEntry(entry: {

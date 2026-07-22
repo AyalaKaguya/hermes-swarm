@@ -6,10 +6,10 @@ import {
   Permission,
   Workspace,
   Account,
+  WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { In, type Repository, type SelectQueryBuilder } from "typeorm";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import type { AuditListQuery } from "./audit-query.js";
 
 type AuditPrincipalScope = "platform" | "workspace";
@@ -18,31 +18,32 @@ type AuditPrincipalScope = "platform" | "workspace";
 export class AuditQueryService {
   constructor(
     private readonly workspaceContext: WorkspaceContextService,
-    @InjectRepository(AccessAuditLog, PLATFORM_DATA_SOURCE)
+    @InjectRepository(AccessAuditLog)
     private readonly platformAccessAuditRepository: Repository<AccessAuditLog>,
-    @InjectRepository(LoginAuditLog, PLATFORM_DATA_SOURCE)
+    @InjectRepository(LoginAuditLog)
     private readonly platformLoginAuditRepository: Repository<LoginAuditLog>,
-    @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Permission)
     private readonly permissionRepository: Repository<Permission>,
-    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Account)
     private readonly platformAccountRepository: Repository<Account>,
-    @InjectRepository(Workspace, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Workspace)
     private readonly workspaceRepository: Repository<Workspace>,
   ) {}
 
   async listLoginLogs(scope: AuditPrincipalScope, query: AuditListQuery) {
-    const repository =
-      scope === "platform"
-        ? this.platformLoginAuditRepository
-        : this.workspaceContext.repository(LoginAuditLog);
-    const builder = repository
+    const workspaceId = this.workspaceIdFor(scope);
+    const builder = this.platformLoginAuditRepository
       .createQueryBuilder("log")
       .leftJoin(
         Account,
         "actor",
-        "actor.id = log.actor_id",
+        actorJoinCondition(scope),
+        workspaceId ? { actorWorkspaceId: workspaceId } : undefined,
       )
       .where("log.scope_type = :scope", { scope });
+    if (workspaceId) {
+      builder.andWhere("log.workspace_id = :workspaceId", { workspaceId });
+    }
     applyDateFilters(builder, query);
     if (query.actorId) {
       builder.andWhere("log.actor_id = :actorId", { actorId: query.actorId });
@@ -70,6 +71,7 @@ export class AuditQueryService {
     const actors = await this.resolveActors(
       scope,
       rows.flatMap((row) => (row.actorId ? [row.actorId] : [])),
+      workspaceId,
     );
     return {
       items: rows.map((row) => ({
@@ -94,21 +96,22 @@ export class AuditQueryService {
   }
 
   async listOperationLogs(scope: AuditPrincipalScope, query: AuditListQuery) {
-    const repository =
-      scope === "platform"
-        ? this.platformAccessAuditRepository
-        : this.workspaceContext.repository(AccessAuditLog);
-    const builder = repository
+    const workspaceId = this.workspaceIdFor(scope);
+    const builder = this.platformAccessAuditRepository
       .createQueryBuilder("log")
       .leftJoin(
         Account,
         "actor",
-        "actor.id = log.actor_id",
+        actorJoinCondition(scope),
+        workspaceId ? { actorWorkspaceId: workspaceId } : undefined,
       );
     if (scope === "platform") {
       builder.where("log.principal_type = 'platform'");
     } else {
-      builder.where("log.principal_type IN ('workspace', 'integration')");
+      builder
+        .where("log.principal_type IN ('workspace', 'integration')")
+        .andWhere("log.scope_type = :scope", { scope })
+        .andWhere("log.workspace_id = :workspaceId", { workspaceId });
     }
     applyDateFilters(builder, query);
     if (query.actorId) {
@@ -149,6 +152,7 @@ export class AuditQueryService {
         this.resolveActors(
           scope,
           rows.flatMap((row) => (row.actorId ? [row.actorId] : [])),
+          workspaceId,
         ),
         this.resolvePermissions(rows.map((row) => row.permission)),
         scope === "platform"
@@ -193,17 +197,35 @@ export class AuditQueryService {
     };
   }
 
-  private async resolveActors(scope: AuditPrincipalScope, ids: string[]) {
+  private async resolveActors(
+    scope: AuditPrincipalScope,
+    ids: string[],
+    workspaceId?: string,
+  ) {
     const uniqueIds = [...new Set(ids)];
     if (!uniqueIds.length) return new Map<string, ActorReference>();
-    const repository =
+    const rows =
       scope === "platform"
-        ? this.platformAccountRepository
-        : this.workspaceContext.repository(Account);
-    const rows = await repository.find({
-      withDeleted: true,
-      where: { id: In(uniqueIds) },
-    });
+        ? await this.platformAccountRepository.find({
+            withDeleted: true,
+            where: { id: In(uniqueIds) },
+          })
+        : await this.platformAccountRepository
+            .createQueryBuilder("account")
+            .withDeleted()
+            .innerJoin(
+              WorkspaceMembership,
+              "membership",
+              `membership.user_id = account.id
+                AND membership.workspace_id = :workspaceId
+                AND membership.status = :membershipStatus`,
+              {
+                membershipStatus: "active",
+                workspaceId: workspaceId ?? this.workspaceIdFor("workspace"),
+              },
+            )
+            .where("account.id IN (:...ids)", { ids: uniqueIds })
+            .getMany();
     return new Map(
       rows.map((row) => [
         row.id,
@@ -238,6 +260,24 @@ export class AuditQueryService {
       rows.map((row) => [row.id, { id: row.id, name: row.name }]),
     );
   }
+
+  private workspaceIdFor(scope: AuditPrincipalScope) {
+    return scope === "workspace"
+      ? this.workspaceContext.current().workspaceId
+      : undefined;
+  }
+}
+
+function actorJoinCondition(scope: AuditPrincipalScope) {
+  if (scope === "platform") return "actor.id = log.actor_id";
+  return `actor.id = log.actor_id
+    AND EXISTS (
+      SELECT 1
+      FROM user_workspace_roles actor_membership
+      WHERE actor_membership.user_id = log.actor_id
+        AND actor_membership.workspace_id = :actorWorkspaceId
+        AND actor_membership.status = 'active'
+    )`;
 }
 
 function applyDateFilters<T extends AccessAuditLog | LoginAuditLog>(

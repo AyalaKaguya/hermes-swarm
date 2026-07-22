@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   IntegrationToken,
+  Permission,
   RolePermission,
   WorkspaceMembership,
 } from "@hermes-swarm/core";
@@ -16,6 +17,7 @@ import { IntegrationTokensService } from "./integration-tokens.service.js";
     DatabaseModule,
     TypeOrmModule.forFeature([
       IntegrationToken,
+      Permission,
       RolePermission,
       WorkspaceMembership,
     ]),

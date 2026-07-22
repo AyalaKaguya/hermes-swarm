@@ -10,7 +10,6 @@ import type {
   RequestPasswordResetPayload,
   ResetPasswordPayload,
 } from "../../common/admin-api.types.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 import { PlatformEmailSendService } from "../mail/platform-email-send.service.js";
@@ -26,11 +25,11 @@ const TEN_MINUTES_MS = 10 * 60 * 1000;
 @Injectable()
 export class PasswordResetService {
   constructor(
-    @InjectDataSource(PLATFORM_DATA_SOURCE)
+    @InjectDataSource()
     private readonly platformDataSource: DataSource,
-    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Account)
     private readonly accounts: Repository<Account>,
-    @InjectRepository(PasswordReset, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PasswordReset)
     private readonly resets: Repository<PasswordReset>,
     private readonly platformEmailSendService: PlatformEmailSendService,
     private readonly settingsService: SettingsService,

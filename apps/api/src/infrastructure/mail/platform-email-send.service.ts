@@ -7,7 +7,6 @@ import {
   PlatformSmtp,
 } from "@hermes-swarm/core";
 import { Repository } from "typeorm";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { MailService } from "./mail.service.js";
 import type {
   EmailLanguageCode,
@@ -27,9 +26,9 @@ export class PlatformEmailSendService {
   private readonly logger = new Logger(PlatformEmailSendService.name);
 
   constructor(
-    @InjectRepository(PlatformEmailTemplate, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformEmailTemplate)
     private readonly templateRepository: Repository<PlatformEmailTemplate>,
-    @InjectRepository(PlatformSmtp, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformSmtp)
     private readonly smtpRepository: Repository<PlatformSmtp>,
     private readonly mailService: MailService,
   ) {}

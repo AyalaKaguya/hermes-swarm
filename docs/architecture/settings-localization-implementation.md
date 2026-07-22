@@ -157,11 +157,9 @@ type RuntimePreferences = {
 - API 输入继续兼容旧别名并规范化；
 - 迁移已在当前开发数据库执行。
 
-本地开发运行时继续启用严格 RLS：
-
-- Workspace datasource：`hermes_workspace_app`，已验证 `NOBYPASSRLS`；
-- Platform datasource：独立的跨租户角色；
-- API 启动不会通过关闭严格 RLS 或复用同一数据库角色绕过校验。
+历史上的严格 RLS 运行时已废弃，不能作为当前设置隔离机制的依据。
+当前应用使用单一 `POSTGRES_URL` / datasource；认证后的可信 `workspaceId`
+通过显式服务层条件隔离工作空间数据，Platform RBAC 控制跨工作空间操作。
 
 ## 6. 验收结果
 

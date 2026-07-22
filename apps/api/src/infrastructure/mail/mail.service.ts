@@ -14,7 +14,6 @@ import {
   PlatformSmtp,
 } from "@hermes-swarm/core";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import Handlebars from "handlebars";
 import { QueryFailedError, Repository, type EntityManager } from "typeorm";
 
@@ -63,9 +62,9 @@ export class MailService implements OnModuleInit {
     private readonly emailTemplateBaseRepository: Repository<EmailTemplate>,
     @InjectRepository(EmailLog)
     private readonly emailLogBaseRepository: Repository<EmailLog>,
-    @InjectRepository(PlatformEmailTemplate, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformEmailTemplate)
     private readonly platformTemplateRepository: Repository<PlatformEmailTemplate>,
-    @InjectRepository(PlatformSmtp, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformSmtp)
     private readonly platformSmtpRepository: Repository<PlatformSmtp>,
     private readonly workspaceContext: WorkspaceContextService,
   ) {}
@@ -364,18 +363,15 @@ export class MailService implements OnModuleInit {
   }
 
   private get smtpRepository() {
-    return this.workspaceContext.current(false)?.manager?.getRepository(CustomSmtp) ??
-      this.smtpBaseRepository;
+    return this.smtpBaseRepository;
   }
 
   private get emailTemplateRepository() {
-    return this.workspaceContext.current(false)?.manager?.getRepository(EmailTemplate) ??
-      this.emailTemplateBaseRepository;
+    return this.emailTemplateBaseRepository;
   }
 
   private get emailLogRepository() {
-    return this.workspaceContext.current(false)?.manager?.getRepository(EmailLog) ??
-      this.emailLogBaseRepository;
+    return this.emailLogBaseRepository;
   }
 }
 

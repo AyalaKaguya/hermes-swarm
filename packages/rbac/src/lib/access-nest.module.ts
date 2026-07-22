@@ -14,7 +14,6 @@ import { AccessAuditService } from "./access-audit.service.js";
 import { AccessCatalogService } from "./access-catalog.service.js";
 import { AccessScopeService } from "./access-scope.service.js";
 import { AccessService } from "./access-service.js";
-import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 import { RoleGrantPolicyService } from "./role-grant-policy.service.js";
 
 @Global()
@@ -24,17 +23,11 @@ import { RoleGrantPolicyService } from "./role-grant-policy.service.js";
     TypeOrmModule.forFeature([
       RolePermission,
       WorkspaceMembership,
+      Permission,
+      AccessAuditLog,
+      PlatformMembership,
+      Role,
     ]),
-    TypeOrmModule.forFeature(
-      [
-        Permission,
-        AccessAuditLog,
-        PlatformMembership,
-        Role,
-        RolePermission,
-      ],
-      PLATFORM_DATA_SOURCE,
-    ),
   ],
   providers: [
     AccessAuditInterceptor,

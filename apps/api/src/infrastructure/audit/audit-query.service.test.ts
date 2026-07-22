@@ -1,33 +1,31 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AccessAuditLog, LoginAuditLog } from "@hermes-swarm/core";
 import { AuditQueryService } from "./audit-query.service.js";
 
 describe("AuditQueryService scope isolation", () => {
-  it("uses the RLS workspace repository for workspace logs", async () => {
-    const targets: unknown[] = [];
-    const workspaceRepository = createRepository();
-    const service = createService({
-      workspaceContext: {
-        repository: (target: unknown) => {
-          targets.push(target);
-          return workspaceRepository;
-        },
-      },
-    });
+  it("adds the trusted workspace id to workspace audit queries", async () => {
+    const platformLogin = createRepository();
+    const platformAccess = createRepository();
+    const service = createService({ platformAccess, platformLogin });
 
     await service.listLoginLogs("workspace", query());
     await service.listOperationLogs("workspace", query());
 
-    assert.equal(targets.includes(LoginAuditLog), true);
-    assert.equal(targets.includes(AccessAuditLog), true);
     assert.equal(
-      workspaceRepository.builders[0]?.whereClauses[0]?.sql,
+      platformLogin.builders[0]?.whereClauses[0]?.sql,
       "log.scope_type = :scope",
     );
+    assert.deepEqual(
+      platformLogin.builders[0]?.whereClauses[1],
+      { parameters: { workspaceId: "workspace-a" }, sql: "log.workspace_id = :workspaceId" },
+    );
+    assert.deepEqual(
+      platformAccess.builders[0]?.whereClauses[2],
+      { parameters: { workspaceId: "workspace-a" }, sql: "log.workspace_id = :workspaceId" },
+    );
     assert.match(
-      workspaceRepository.builders[1]?.whereClauses[0]?.sql ?? "",
-      /workspace.*integration/,
+      platformLogin.builders[0]?.joins[0]?.condition ?? "",
+      /user_workspace_roles/,
     );
   });
 
@@ -47,15 +45,13 @@ describe("AuditQueryService scope isolation", () => {
 function createService(
   options: {
     platformAccess?: ReturnType<typeof createRepository>;
-    workspaceContext?: { repository: (target: unknown) => unknown };
+    platformLogin?: ReturnType<typeof createRepository>;
   } = {},
 ) {
   return new AuditQueryService(
-    (options.workspaceContext ?? {
-      repository: () => createRepository(),
-    }) as never,
+    { current: () => ({ workspaceId: "workspace-a" }) } as never,
     (options.platformAccess ?? createRepository()) as never,
-    createRepository() as never,
+    (options.platformLogin ?? createRepository()) as never,
     { find: async () => [] } as never,
     { find: async () => [] } as never,
     { find: async () => [] } as never,
@@ -76,6 +72,7 @@ function createRepository() {
 }
 
 function createBuilder() {
+  const joins: Array<{ condition: string }> = [];
   const whereClauses: Array<{ parameters?: unknown; sql: string }> = [];
   const builder = {
     addOrderBy: () => builder,
@@ -84,7 +81,10 @@ function createBuilder() {
       return builder;
     },
     getManyAndCount: async () => [[], 0] as [unknown[], number],
-    leftJoin: () => builder,
+    leftJoin: (_target: unknown, _alias: string, condition: string) => {
+      joins.push({ condition });
+      return builder;
+    },
     orderBy: () => builder,
     skip: () => builder,
     take: () => builder,
@@ -93,6 +93,7 @@ function createBuilder() {
       return builder;
     },
     whereClauses,
+    joins,
   };
   return builder;
 }

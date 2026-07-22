@@ -7,7 +7,6 @@ import {
 } from "@hermes-swarm/core";
 import { PlatformMembersController } from "./platform-members.controller.js";
 import { PlatformMembersService } from "./platform-members.service.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { InviteModule } from "../invite/invite.module.js";
 import { AuthModule } from "../auth/auth.module.js";
 
@@ -15,10 +14,7 @@ import { AuthModule } from "../auth/auth.module.js";
   imports: [
     AuthModule,
     InviteModule,
-    TypeOrmModule.forFeature(
-      [Account, PlatformMembership, Role],
-      PLATFORM_DATA_SOURCE,
-    ),
+    TypeOrmModule.forFeature([Account, PlatformMembership, Role]),
   ],
   controllers: [PlatformMembersController],
   providers: [PlatformMembersService],

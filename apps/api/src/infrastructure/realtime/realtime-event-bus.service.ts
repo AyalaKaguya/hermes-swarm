@@ -8,7 +8,10 @@ import { randomUUID } from "node:crypto";
 import type { RedisClientType } from "redis";
 import { PublicRealtimeEnvelopeSchema } from "@hermes-swarm/api-contracts/realtime";
 import { RedisService } from "../../common/redis/redis.service.js";
-import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
+import {
+  type WorkspaceExecutionContext,
+  WorkspaceContextService,
+} from "../../common/database/workspace-context.service.js";
 import { RealtimeService, type RealtimeEvent } from "./realtime.service.js";
 
 const REALTIME_EVENTS_CHANNEL_PREFIX = "realtime.events.v1";
@@ -73,8 +76,9 @@ export class RealtimeEventBus implements OnApplicationBootstrap, OnModuleDestroy
     maybeEvent?: RealtimeEvent,
   ) {
     const explicitWorkspace = typeof userOrEvent === "string";
-    const workspaceId = requireWorkspaceId(
-      explicitWorkspace ? workspaceOrUserId : this.currentWorkspaceId,
+    const workspaceId = resolveRealtimeWorkspaceId(
+      this.workspaceContext.current(false),
+      explicitWorkspace ? workspaceOrUserId : undefined,
     );
     const userId = explicitWorkspace ? userOrEvent : workspaceOrUserId;
     const event = explicitWorkspace
@@ -95,8 +99,9 @@ export class RealtimeEventBus implements OnApplicationBootstrap, OnModuleDestroy
     maybeEvent?: RealtimeEvent,
   ) {
     const explicitWorkspace = typeof workspaceOrUserIds === "string";
-    const workspaceId = requireWorkspaceId(
-      explicitWorkspace ? workspaceOrUserIds : this.currentWorkspaceId,
+    const workspaceId = resolveRealtimeWorkspaceId(
+      this.workspaceContext.current(false),
+      explicitWorkspace ? workspaceOrUserIds : undefined,
     );
     const userIds = explicitWorkspace
       ? (userIdsOrEvent as string[])
@@ -164,20 +169,22 @@ export class RealtimeEventBus implements OnApplicationBootstrap, OnModuleDestroy
       type: event.type,
     });
   }
-
-  private get currentWorkspaceId() {
-    return this.workspaceContext.current()!.workspaceId;
-  }
 }
 
 function realtimeEventsChannel(workspaceId: string) {
   return `${REALTIME_EVENTS_CHANNEL_PREFIX}:${workspaceId}`;
 }
 
-function requireWorkspaceId(value: string) {
-  const workspaceId = value.trim();
-  if (!workspaceId) throw new Error("Realtime workspace id is required");
-  return workspaceId;
+export function resolveRealtimeWorkspaceId(
+  current: WorkspaceExecutionContext | null,
+  explicitWorkspaceId?: string,
+) {
+  if (!current) throw new Error("Realtime workspace context is required");
+  const requestedWorkspaceId = explicitWorkspaceId?.trim();
+  if (requestedWorkspaceId && requestedWorkspaceId !== current.workspaceId) {
+    throw new Error("Realtime events cannot cross workspace context");
+  }
+  return current.workspaceId;
 }
 
 function toWireValue(value: unknown): unknown {

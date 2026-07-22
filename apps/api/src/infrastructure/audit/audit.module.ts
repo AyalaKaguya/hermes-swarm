@@ -8,7 +8,6 @@ import {
   Workspace,
 } from "@hermes-swarm/core";
 import { DatabaseModule } from "../../common/database/database.module.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import {
   PlatformAuditController,
   WorkspaceAuditController,
@@ -19,10 +18,13 @@ import { LoginAuditService } from "./login-audit.service.js";
 @Module({
   imports: [
     DatabaseModule,
-    TypeOrmModule.forFeature(
-      [AccessAuditLog, Account, LoginAuditLog, Permission, Workspace],
-      PLATFORM_DATA_SOURCE,
-    ),
+    TypeOrmModule.forFeature([
+      AccessAuditLog,
+      Account,
+      LoginAuditLog,
+      Permission,
+      Workspace,
+    ]),
   ],
   controllers: [PlatformAuditController, WorkspaceAuditController],
   providers: [AuditQueryService, LoginAuditService],

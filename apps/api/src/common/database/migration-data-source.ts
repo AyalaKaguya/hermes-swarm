@@ -9,7 +9,7 @@ const database = databaseRuntimeConfig();
 /** Release-only datasource. API instances never auto-apply migrations. */
 export default new DataSource({
   type: "postgres",
-  url: database.platformUrl,
+  url: database.url,
   entities: [...DATABASE_ENTITIES],
   migrations: [path.join(import.meta.dirname, "migrations", "*.{js,ts}")],
   synchronize: false,

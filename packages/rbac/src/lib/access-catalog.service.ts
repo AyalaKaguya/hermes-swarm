@@ -25,7 +25,6 @@ import type {
   AccessResourceMetadata,
   ResolvedAccessDefinition,
 } from "./access.types.js";
-import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 const SCOPE_LABELS: Record<PermissionScope, string> = {
   own: "个人",
@@ -48,11 +47,11 @@ export class AccessCatalogService implements OnModuleInit {
 
   constructor(
     private readonly discoveryService: DiscoveryService,
-    @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Permission)
     private readonly permissionRepository: Repository<Permission>,
-    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
-    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
+    @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
   ) {}
 

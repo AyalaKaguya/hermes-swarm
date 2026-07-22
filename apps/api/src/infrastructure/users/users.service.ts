@@ -13,14 +13,13 @@ import {
   normalizeCanonicalLanguage,
   type WorkspaceMembershipStatus,
 } from "@hermes-swarm/core";
-import { IsNull, Repository } from "typeorm";
+import { DataSource, IsNull, Repository, type EntityManager } from "typeorm";
 import type {
   SearchUsersQuery,
   UpdateAccountPasswordPayload,
   UpdateRuntimePreferencesPayload,
   UpdateSelfProfilePayload,
 } from "../../common/admin-api.types.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { hashPassword, verifyPassword } from "../../common/security/password-hash.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
@@ -31,13 +30,18 @@ export class UsersService {
   constructor(
     private readonly workspaceContext: WorkspaceContextService,
     private readonly authSessionService: AuthSessionService,
-    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    private readonly dataSource: DataSource,
+    @InjectRepository(Account)
     private readonly accountRepository: Repository<Account>,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
+    @InjectRepository(WorkspaceMembership)
+    private readonly membershipRepository: Repository<WorkspaceMembership>,
   ) {}
 
   async list(authorization: string | undefined) {
     await this.requireWorkspaceSession(authorization);
-    const memberships = await this.manager.find(WorkspaceMembership, {
+    const memberships = await this.membershipRepository.find({
       order: { createdAt: "DESC" },
       relations: { account: true, role: true },
       where: { workspaceId: this.workspaceId },
@@ -70,23 +74,25 @@ export class UsersService {
     roleId: string,
   ) {
     await this.requireWorkspaceSession(authorization);
-    const membership = await this.getMembershipOrThrow(membershipId);
-    if (membership.status === "removed") {
-      throw new BadRequestException("已移除成员需要通过邀请重新加入");
-    }
-    const role = await this.manager.findOne(Role, {
-      where: { id: requireText(roleId, "工作空间角色"), scope: "workspace", workspaceId: this.workspaceId },
+    return this.dataSource.transaction(async (manager) => {
+      const membership = await this.getMembershipOrThrow(membershipId, manager);
+      if (membership.status === "removed") {
+        throw new BadRequestException("已移除成员需要通过邀请重新加入");
+      }
+      const role = await manager.findOne(Role, {
+        where: { id: requireText(roleId, "工作空间角色"), scope: "workspace", workspaceId: this.workspaceId },
+      });
+      if (!role) throw new BadRequestException("工作空间角色无效");
+      await this.assertOwnerContinuity(manager, membership, role.name === "workspace-owner");
+      membership.roleId = role.id;
+      membership.role = role;
+      membership.updatedAt = new Date();
+      return toWorkspaceMemberDto(
+        await manager.save(WorkspaceMembership, membership),
+        membership.account,
+        role,
+      );
     });
-    if (!role) throw new BadRequestException("工作空间角色无效");
-    await this.assertOwnerContinuity(membership, role.name === "workspace-owner");
-    membership.roleId = role.id;
-    membership.role = role;
-    membership.updatedAt = new Date();
-    return toWorkspaceMemberDto(
-      await this.manager.save(WorkspaceMembership, membership),
-      membership.account,
-      role,
-    );
   }
 
   async updateMembershipStatus(
@@ -96,52 +102,57 @@ export class UsersService {
     roleId?: string,
   ) {
     await this.requireWorkspaceSession(authorization);
-    const membership = await this.getMembershipOrThrow(membershipId);
-    if (!["active", "disabled", "removed"].includes(status)) {
-      throw new BadRequestException("成员关系状态无效");
-    }
-    if (status !== "active") {
-      await this.assertOwnerContinuity(membership, false);
-    }
-    if (status === "removed") {
-      membership.status = "removed";
-      membership.roleId = null;
-      membership.role = null;
-      membership.removedAt = new Date();
-    } else {
-      if (!membership.roleId) {
-        const role = await this.manager.findOne(Role, {
-          where: {
-            id: requireText(roleId, "工作空间角色"),
-            scope: "workspace",
+    const result = await this.dataSource.transaction(async (manager) => {
+      const membership = await this.getMembershipOrThrow(membershipId, manager);
+      if (!["active", "disabled", "removed"].includes(status)) {
+        throw new BadRequestException("成员关系状态无效");
+      }
+      if (status !== "active") {
+        await this.assertOwnerContinuity(manager, membership, false);
+      }
+      if (status === "removed") {
+        membership.status = "removed";
+        membership.roleId = null;
+        membership.role = null;
+        membership.removedAt = new Date();
+      } else {
+        if (!membership.roleId) {
+          const role = await manager.findOne(Role, {
+            where: {
+              id: requireText(roleId, "工作空间角色"),
+              scope: "workspace",
+              workspaceId: this.workspaceId,
+            },
+          });
+          if (!role) throw new BadRequestException("工作空间角色无效");
+          membership.roleId = role.id;
+          membership.role = role;
+        }
+        membership.status = status;
+        membership.removedAt = null;
+      }
+      membership.updatedAt = new Date();
+      const saved = await manager.save(WorkspaceMembership, membership);
+      if (status !== "active") {
+        await manager.update(
+          IntegrationToken,
+          {
+            ownerUserId: membership.accountId,
+            revokedAt: IsNull(),
             workspaceId: this.workspaceId,
           },
-        });
-        if (!role) throw new BadRequestException("工作空间角色无效");
-        membership.roleId = role.id;
-        membership.role = role;
+          { revokedAt: new Date() },
+        );
       }
-      membership.status = status;
-      membership.removedAt = null;
-    }
-    membership.updatedAt = new Date();
-    const saved = await this.manager.save(WorkspaceMembership, membership);
+      return { membership, saved };
+    });
     if (status !== "active") {
-      await this.manager.update(
-        IntegrationToken,
-        {
-          ownerUserId: membership.accountId,
-          revokedAt: IsNull(),
-          workspaceId: this.workspaceId,
-        },
-        { revokedAt: new Date() },
-      );
       await this.authSessionService.revokeUserSessions(
         this.workspaceId,
-        membership.accountId,
+        result.membership.accountId,
       );
     }
-    return toWorkspaceMemberDto(saved, membership.account, membership.role);
+    return toWorkspaceMemberDto(result.saved, result.membership.account, result.membership.role);
   }
 
   async removeMembership(
@@ -253,8 +264,11 @@ export class UsersService {
     }
   }
 
-  private async getMembershipOrThrow(membershipId: string) {
-    const membership = await this.manager.findOne(WorkspaceMembership, {
+  private async getMembershipOrThrow(
+    membershipId: string,
+    manager: EntityManager = this.membershipRepository.manager,
+  ) {
+    const membership = await manager.findOne(WorkspaceMembership, {
       relations: { account: true, role: true },
       where: { id: membershipId, workspaceId: this.workspaceId },
     });
@@ -271,13 +285,14 @@ export class UsersService {
   }
 
   private async assertOwnerContinuity(
+    manager: EntityManager,
     membership: WorkspaceMembership,
     remainsOwner: boolean,
   ) {
     if (remainsOwner || membership.role?.name !== "workspace-owner" || membership.status !== "active") {
       return;
     }
-    const rows = (await this.manager.query(
+    const rows = (await manager.query(
       `SELECT membership.id
          FROM user_workspace_roles membership
          JOIN roles role
@@ -297,10 +312,6 @@ export class UsersService {
         statusCode: 400,
       });
     }
-  }
-
-  private get manager() {
-    return this.workspaceContext.current()!.manager;
   }
 
   private get workspaceId() {

@@ -12,31 +12,22 @@ export const appRuntimeConfig = registerAs("app", () => ({
 }));
 
 export const databaseRuntimeConfig = registerAs("database", () => {
+  validateLegacyRlsConfiguration(process.env);
   const environment = process.env.NODE_ENV ?? "development";
-  const host = process.env.POSTGRES_HOST ?? "localhost";
-  const port = parseInteger(process.env.POSTGRES_PORT, 5432);
-  const user = process.env.POSTGRES_USER ?? "hermes";
-  const password = process.env.POSTGRES_PASSWORD ?? "hermes_dev_pwd";
-  const database = process.env.POSTGRES_DB ?? "hermes_dev";
-  const fallbackUrl =
-    process.env.POSTGRES_URL ??
-    `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
-  const testUrl = environment === "test" ? process.env.POSTGRES_TEST_URL : undefined;
-  const workspaceUrl = testUrl ?? process.env.POSTGRES_WORKSPACE_URL ?? fallbackUrl;
-  const platformUrl = testUrl ?? process.env.POSTGRES_PLATFORM_URL ?? fallbackUrl;
+  const isTest = environment === "test";
+  const name = isTest ? "POSTGRES_TEST_URL" : "POSTGRES_URL";
+  const url = isTest ? process.env.POSTGRES_TEST_URL : process.env.POSTGRES_URL;
+  if (!url) {
+    throw new Error(
+      isTest
+        ? "POSTGRES_TEST_URL is required when NODE_ENV=test"
+        : "POSTGRES_URL is required unless NODE_ENV=test",
+    );
+  }
+  validateUrl(name, url, "postgresql:");
   return {
-    database,
-    host,
-    migrationsRun: parseBoolean(process.env.DATABASE_MIGRATIONS_RUN, false),
-    password,
-    port,
     synchronize: parseBoolean(process.env.DATABASE_SYNCHRONIZE, false),
-    strictRls: parseBoolean(process.env.DATABASE_STRICT_RLS, false),
-    platformUrl,
-    workspaceUrl,
-    // Backwards-compatible alias used by the migration datasource.
-    url: workspaceUrl,
-    user,
+    url,
   };
 });
 
@@ -111,58 +102,23 @@ export function validateRuntimeConfig(
   const environment = String(config.NODE_ENV ?? "development");
   validatePort("API_PORT", config.API_PORT, { fallback: 3200 });
   validateTrustedProxyCidrs(config.TRUSTED_PROXY_CIDRS);
-  validateUrl("POSTGRES_URL", config.POSTGRES_URL, "postgresql:");
-  validateUrl("POSTGRES_WORKSPACE_URL", config.POSTGRES_WORKSPACE_URL, "postgresql:");
-  validateUrl("POSTGRES_PLATFORM_URL", config.POSTGRES_PLATFORM_URL, "postgresql:");
-  validateText("POSTGRES_HOST", config.POSTGRES_HOST, "localhost");
-  validatePort("POSTGRES_PORT", config.POSTGRES_PORT, { fallback: 5432 });
-  validateText("POSTGRES_USER", config.POSTGRES_USER, "hermes");
-  validateText("POSTGRES_PASSWORD", config.POSTGRES_PASSWORD, "hermes_dev_pwd");
-  validateText("POSTGRES_DB", config.POSTGRES_DB, "hermes_dev");
+  validateLegacyRlsConfiguration(config);
   validateUrl("POSTGRES_TEST_URL", config.POSTGRES_TEST_URL, "postgresql:");
+  if (environment !== "test") {
+    validateUrl("POSTGRES_URL", config.POSTGRES_URL, "postgresql:");
+  }
   validateBoolean("DATABASE_SYNCHRONIZE", config.DATABASE_SYNCHRONIZE);
-  validateBoolean("DATABASE_MIGRATIONS_RUN", config.DATABASE_MIGRATIONS_RUN);
-  validateBoolean("DATABASE_STRICT_RLS", config.DATABASE_STRICT_RLS);
   if (
     environment === "production" &&
     parseBoolean(String(config.DATABASE_SYNCHRONIZE ?? "false"), false)
   ) {
     throw new Error("DATABASE_SYNCHRONIZE must be false in production");
   }
-  if (
-    environment === "production" &&
-    parseBoolean(String(config.DATABASE_MIGRATIONS_RUN ?? "false"), false)
-  ) {
-    throw new Error(
-      "DATABASE_MIGRATIONS_RUN is not supported by API startup; run migrations before deploying",
-    );
-  }
   if (environment === "test" && !config.POSTGRES_TEST_URL) {
     throw new Error("POSTGRES_TEST_URL is required when NODE_ENV=test");
   }
-  if (parseBoolean(String(config.DATABASE_STRICT_RLS ?? "false"), false)) {
-    if (!config.POSTGRES_WORKSPACE_URL || !config.POSTGRES_PLATFORM_URL) {
-      throw new Error(
-        "POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required when DATABASE_STRICT_RLS is enabled",
-      );
-    }
-    if (String(config.POSTGRES_WORKSPACE_URL) === String(config.POSTGRES_PLATFORM_URL)) {
-      throw new Error(
-        "POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL must use separate database credentials",
-      );
-    }
-    const workspaceUser = databaseUrlUsername(config.POSTGRES_WORKSPACE_URL);
-    const platformUser = databaseUrlUsername(config.POSTGRES_PLATFORM_URL);
-    if (workspaceUser !== "hermes_workspace_app") {
-      throw new Error(
-        "POSTGRES_WORKSPACE_URL must authenticate as hermes_workspace_app",
-      );
-    }
-    if (!platformUser || platformUser === workspaceUser) {
-      throw new Error(
-        "POSTGRES_PLATFORM_URL must use a database user distinct from hermes_workspace_app",
-      );
-    }
+  if (environment !== "test" && !config.POSTGRES_URL) {
+    throw new Error("POSTGRES_URL is required unless NODE_ENV=test");
   }
   validateUrl("REDIS_URL", config.REDIS_URL, "redis:");
   validateText("REDIS_HOST", config.REDIS_HOST, "localhost");
@@ -316,12 +272,19 @@ function validateUrl(name: string, value: unknown, protocol: string) {
   }
 }
 
-function databaseUrlUsername(value: unknown) {
-  if (typeof value !== "string" || !value) return "";
-  try {
-    return decodeURIComponent(new URL(value).username);
-  } catch {
-    return "";
+function validateLegacyRlsConfiguration(config: Record<string, unknown>) {
+  const names = [
+    "DATABASE_STRICT_RLS",
+    "POSTGRES_PLATFORM_URL",
+    "POSTGRES_WORKSPACE_URL",
+  ].filter((name) => {
+    const value = config[name];
+    return value !== undefined && value !== null && String(value).trim() !== "";
+  });
+  if (names.length > 0) {
+    throw new Error(
+      `Legacy RLS database configuration is no longer supported (${names.join(", ")}). Remove it and configure POSTGRES_URL instead.`,
+    );
   }
 }
 

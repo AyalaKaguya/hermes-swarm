@@ -20,14 +20,17 @@ describe("ConversationCapabilityService workspace source contract", () => {
     const service = new ConversationCapabilityService(
       {
         create: (value: unknown) => value,
-        manager: { transaction: async (work: (manager: unknown) => unknown) => work(manager) },
       } as never,
       {} as never,
       {} as never,
       {} as never,
+      {
+        manager,
+        transaction: async (work: (manager: unknown) => unknown) => work(manager),
+      } as never,
       {} as never,
       {} as never,
-      undefined,
+      { current: () => ({ workspaceId: "workspace-a" }) } as never,
     );
     const result = await service.ensureConversationForSource({
       sourceId: "ticket-a",
@@ -47,13 +50,17 @@ describe("ConversationCapabilityService workspace source contract", () => {
 
   it("rejects conversation sources without an explicit workspace", async () => {
     const service = new ConversationCapabilityService(
-      { manager: { transaction: async (work: (manager: unknown) => unknown) => work({}) } } as never,
       {} as never,
       {} as never,
       {} as never,
       {} as never,
+      {
+        manager: {},
+        transaction: async (work: (manager: unknown) => unknown) => work({}),
+      } as never,
       {} as never,
-      undefined,
+      {} as never,
+      { current: () => ({ workspaceId: "workspace-a" }) } as never,
     );
     await assert.rejects(
       service.ensureConversationForSource({
@@ -62,5 +69,41 @@ describe("ConversationCapabilityService workspace source contract", () => {
         workspaceId: "",
       }),
     );
+  });
+
+  it("filters resolver-provided mentions through active workspace memberships", async () => {
+    const membershipManager = {
+      find: async () => [
+        {
+          account: { id: "member-a", status: "active" },
+          accountId: "member-a",
+        },
+      ],
+    };
+    const service = new ConversationCapabilityService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { manager: membershipManager } as never,
+      {} as never,
+      {} as never,
+      { current: () => ({ workspaceId: "workspace-a" }) } as never,
+    );
+
+    const ids = await service.resolveMentionedUserIdsForSource({
+      authorUserId: "author-a",
+      body: "@member-a @outside-user",
+      resolver: {
+        resolveMentionCandidates: async () => ["member-a", "outside-user"],
+      },
+      source: {
+        sourceId: "ticket-a",
+        sourceType: "ticket",
+        workspaceId: "workspace-a",
+      },
+    });
+
+    assert.deepEqual(ids, ["member-a"]);
   });
 });

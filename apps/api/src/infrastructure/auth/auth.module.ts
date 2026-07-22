@@ -12,7 +12,6 @@ import { AuthController } from "./auth.controller.js";
 import { AuthSessionService } from "./auth-session.service.js";
 import { AuthService } from "./auth.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { WorkspaceLoginResolverService } from "./workspace-login-resolver.service.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { AuditModule } from "../audit/audit.module.js";
@@ -27,11 +26,9 @@ import { AuditModule } from "../audit/audit.module.js";
       RolePermission,
       Account,
       WorkspaceMembership,
+      PlatformMembership,
+      Workspace,
     ]),
-    TypeOrmModule.forFeature(
-      [Account, PlatformMembership, Workspace, WorkspaceMembership],
-      PLATFORM_DATA_SOURCE,
-    ),
   ],
   controllers: [AuthController],
   providers: [AuthService, AuthSessionService, WorkspaceLoginResolverService],

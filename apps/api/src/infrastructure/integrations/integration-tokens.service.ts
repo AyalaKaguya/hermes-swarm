@@ -7,13 +7,14 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { InjectRepository } from "@nestjs/typeorm";
 import {
   IntegrationToken,
   Permission,
   RolePermission,
   WorkspaceMembership,
 } from "@hermes-swarm/core";
-import { In } from "typeorm";
+import { In, type Repository } from "typeorm";
 import type { CreateIntegrationTokenPayload } from "../../common/admin-api.types.js";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { INTEGRATION_SESSION_PREFIX, createAuthSessionToken } from "../auth/auth-session.js";
@@ -29,6 +30,14 @@ export class IntegrationTokensService {
     private readonly authSessionService: AuthSessionService,
     private readonly configService: ConfigService,
     private readonly workspaceContext: WorkspaceContextService,
+    @InjectRepository(IntegrationToken)
+    private readonly integrationTokenRepository: Repository<IntegrationToken>,
+    @InjectRepository(WorkspaceMembership)
+    private readonly workspaceMembershipRepository: Repository<WorkspaceMembership>,
+    @InjectRepository(RolePermission)
+    private readonly rolePermissionRepository: Repository<RolePermission>,
+    @InjectRepository(Permission)
+    private readonly permissionRepository: Repository<Permission>,
   ) {}
 
   async capabilities(authorization: string | undefined) {
@@ -50,7 +59,7 @@ export class IntegrationTokensService {
   async list(authorization: string | undefined) {
     const session = await this.requirePersonalSession(authorization);
     return (
-      await this.tokenRepository.find({
+      await this.integrationTokenRepository.find({
         order: { createdAt: "DESC" },
         where: { ownerUserId: session.userId, workspaceId: this.workspaceId },
       })
@@ -87,8 +96,8 @@ export class IntegrationTokensService {
         ttlSeconds: Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000)),
       },
     );
-    const record = await this.tokenRepository.save(
-      this.tokenRepository.create({
+    const record = await this.integrationTokenRepository.save(
+      this.integrationTokenRepository.create({
         expiresAt,
         id,
         note: nullableText(payload?.note),
@@ -106,7 +115,7 @@ export class IntegrationTokensService {
 
   async revoke(authorization: string | undefined, tokenId: string) {
     const session = await this.requirePersonalSession(authorization);
-    const token = await this.tokenRepository.findOne({
+    const token = await this.integrationTokenRepository.findOne({
       where: {
         id: tokenId,
         ownerUserId: session.userId,
@@ -116,23 +125,30 @@ export class IntegrationTokensService {
     if (!token) throw new NotFoundException("Token 不存在");
     token.revokedAt ??= new Date();
     token.revokedReason ??= "user-revoked";
-    await this.tokenRepository.save(token);
+    await this.integrationTokenRepository.save(token);
   }
 
   private async effectivePermissions(userId: string) {
-    const workspaceAssignments = await this.workspaceContext.repository(WorkspaceMembership).find({
+    const workspaceId = this.workspaceId;
+    const workspaceAssignments = await this.workspaceMembershipRepository.find({
       relations: { role: true },
-      where: { accountId: userId, status: "active", workspaceId: this.workspaceId },
+      where: { accountId: userId, status: "active", workspaceId },
     });
     const roleIds = workspaceAssignments
-      .filter((assignment) => assignment.role?.scope === "workspace")
-      .map((assignment) => assignment.roleId);
+      .flatMap((assignment) =>
+        assignment.roleId &&
+        assignment.role?.scope === "workspace" &&
+        assignment.role.workspaceId === workspaceId
+          ? [assignment.roleId]
+          : [],
+      );
     if (!roleIds.length) return [];
-    const rows = await this.workspaceContext.repository(RolePermission).find({
-      relations: { permissionRecord: true },
+    const rows = await this.rolePermissionRepository.find({
+      relations: { permissionRecord: true, role: true },
       where: {
         enabled: true,
         roleId: In([...new Set(roleIds)]),
+        role: { scope: "workspace", workspaceId },
       },
     });
     return [
@@ -147,7 +163,7 @@ export class IntegrationTokensService {
   private async delegatablePermissions(userId: string) {
     const effectivePermissions = await this.effectivePermissions(userId);
     const definitions = effectivePermissions.length
-      ? await this.workspaceContext.repository(Permission).find({
+      ? await this.permissionRepository.find({
           where: { code: In(effectivePermissions) },
         })
       : [];
@@ -172,10 +188,24 @@ export class IntegrationTokensService {
     if (session.principalType !== "workspace" || session.workspaceId !== this.workspaceId) {
       throw new ForbiddenException("当前会话不能管理个人 API Token");
     }
+    const membership = await this.workspaceMembershipRepository.findOne({
+      relations: { role: true },
+      where: {
+        accountId: session.userId,
+        status: "active",
+        workspaceId: this.workspaceId,
+      },
+    });
+    if (
+      !membership ||
+      membership.role?.scope !== "workspace" ||
+      membership.role.workspaceId !== this.workspaceId
+    ) {
+      throw new ForbiddenException("当前账号不属于该工作空间");
+    }
     return session;
   }
 
-  private get tokenRepository() { return this.workspaceContext.repository(IntegrationToken); }
   private get workspaceId() { return this.workspaceContext.current()!.workspaceId; }
 }
 

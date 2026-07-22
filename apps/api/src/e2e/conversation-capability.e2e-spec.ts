@@ -13,10 +13,15 @@ import { DATABASE_ENTITIES } from "../common/database/database-entities.js";
 import { WorkspaceModelBaseline2026071500001 } from "../common/database/migrations/202607150001-WorkspaceModelBaseline.js";
 import { AuditLogs2026071700002 } from "../common/database/migrations/202607170002-AuditLogs.js";
 import { CredentialVersion2026072000001 } from "../common/database/migrations/2026072000001-CredentialVersion.js";
+import { RemoveWorkspaceRls2026072200001 } from "../common/database/migrations/2026072200001-RemoveWorkspaceRls.js";
 
-const databaseUrl =
-  process.env.POSTGRES_E2E_URL ??
-  "postgresql://hermes:hermes_dev_pwd@localhost:5432/hermes-e2e";
+const databaseUrl = process.env.POSTGRES_TEST_URL;
+
+if (!databaseUrl) {
+  throw new Error(
+    "POSTGRES_TEST_URL is required for database e2e tests",
+  );
+}
 
 const ids = {
   workspaceA: "00000000-0000-4000-8000-000000000001",
@@ -40,6 +45,7 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
         WorkspaceModelBaseline2026071500001,
         AuditLogs2026071700002,
         CredentialVersion2026072000001,
+        RemoveWorkspaceRls2026072200001,
       ],
       migrationsRun: false,
       synchronize: false,
@@ -67,17 +73,15 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
     ]);
     await seedWorkspace(ids.workspaceA, ids.userA);
     await seedWorkspace(ids.workspaceB, ids.userB);
-    await inWorkspace(ids.workspaceA, async (manager) => {
-      await manager.getRepository(Ticket).save({
-        assigneeUserId: null,
-        conversationId: null,
-        id: ids.ticketA,
-        participantUserIds: [ids.userA],
-        requesterUserId: ids.userA,
-        status: "open",
-        subject: "Workspace A ticket",
-        workspaceId: ids.workspaceA,
-      });
+    await dataSource.getRepository(Ticket).save({
+      assigneeUserId: null,
+      conversationId: null,
+      id: ids.ticketA,
+      participantUserIds: [ids.userA],
+      requesterUserId: ids.userA,
+      status: "open",
+      subject: "Workspace A ticket",
+      workspaceId: ids.workspaceA,
     });
   });
 
@@ -102,40 +106,150 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
   it("rejects business references to members from another workspace", async () => {
     await assert.rejects(
       () =>
-        inWorkspace(ids.workspaceA, (manager) =>
-          manager.getRepository(Ticket).save({
-            assigneeUserId: null,
-            conversationId: null,
-            participantUserIds: [],
-            requesterUserId: ids.userB,
-            status: "open",
-            subject: "Cross workspace ticket",
-            workspaceId: ids.workspaceA,
-          }),
-        ),
+        dataSource.getRepository(Ticket).save({
+          assigneeUserId: null,
+          conversationId: null,
+          participantUserIds: [],
+          requesterUserId: ids.userB,
+          status: "open",
+          subject: "Cross workspace ticket",
+          workspaceId: ids.workspaceA,
+        }),
       (error: unknown) => databaseErrorCode(error) === "23503",
     );
   });
 
-  it("restricts workspace-role reads to the current workspace", async () => {
-    const visibleIds = await dataSource.transaction(async (manager) => {
-      await manager.query("SET LOCAL ROLE hermes_workspace_app");
-      await manager.query(
-        `SELECT
-          set_config('app.workspace_id', $1, true),
-          set_config('app.scope_level', 'workspace', true)`,
-        [ids.workspaceA],
-      );
-      const rows = (await manager.query(
-        `SELECT "id" FROM "tickets" ORDER BY "id"`,
-      )) as Array<{ id: string }>;
-      return rows.map((row) => row.id);
-    });
+  it("creates the baseline without PostgreSQL RLS", async () => {
+    const tables = [
+      "access_audit_logs",
+      "conversation_messages",
+      "conversation_participants",
+      "conversations",
+      "custom_smtp",
+      "email_sent",
+      "email_templates",
+      "integration_tokens",
+      "invites",
+      "login_audit_logs",
+      "role_permissions",
+      "roles",
+      "ticket_messages",
+      "tickets",
+      "user_notifications",
+      "user_workspace_roles",
+      "users",
+      "workspace_settings",
+      "workspaces",
+    ];
+    const tableSecurity = (await dataSource.query(
+      `
+        SELECT
+          relname AS "tableName",
+          relforcerowsecurity AS "forceRowSecurity",
+          relrowsecurity AS "rowSecurity"
+        FROM pg_class
+        WHERE relnamespace = 'public'::regnamespace
+          AND relname = ANY($1)
+        ORDER BY relname
+      `,
+      [tables],
+    )) as Array<{
+      forceRowSecurity: boolean;
+      rowSecurity: boolean;
+      tableName: string;
+    }>;
+    assert.deepEqual(
+      tableSecurity,
+      [...tables]
+        .sort()
+        .map((tableName) => ({
+          forceRowSecurity: false,
+          rowSecurity: false,
+          tableName,
+        })),
+    );
 
-    assert.deepEqual(visibleIds, [ids.ticketA]);
+    const policies = await dataSource.query(
+      `
+        SELECT policyname
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = ANY($1)
+      `,
+      [tables],
+    );
+    assert.deepEqual(policies, []);
   });
 
-  it("isolates login audit rows and keeps audit tables append-only", async () => {
+  it("cleans an upgraded legacy policy without touching rows, indexes, constraints, or migration history", async () => {
+    const beforeRows = await dataSource.query(
+      `SELECT count(*)::int AS count FROM "tickets"`,
+    );
+    const beforeHistory = await dataSource.query(
+      `SELECT name FROM "migrations" ORDER BY id`,
+    );
+    const indexBefore = await dataSource.query(
+      `SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'IDX_tickets_workspace_status_updated'`,
+    );
+    const constraintBefore = await dataSource.query(
+      `SELECT 1 FROM pg_constraint WHERE conname = 'FK_tickets_workspace_requester'`,
+    );
+
+    await dataSource.query(
+      `ALTER TABLE "public"."tickets" ENABLE ROW LEVEL SECURITY`,
+    );
+    await dataSource.query(
+      `ALTER TABLE "public"."tickets" FORCE ROW LEVEL SECURITY`,
+    );
+    await dataSource.query(
+      `CREATE POLICY "workspace_isolation_tickets" ON "public"."tickets" USING (true) WITH CHECK (true)`,
+    );
+
+    const runner = dataSource.createQueryRunner();
+    await runner.connect();
+    try {
+      await new RemoveWorkspaceRls2026072200001().up(runner);
+    } finally {
+      await runner.release();
+    }
+
+    assert.deepEqual(
+      await dataSource.query(`SELECT count(*)::int AS count FROM "tickets"`),
+      beforeRows,
+    );
+    assert.deepEqual(
+      await dataSource.query(`SELECT name FROM "migrations" ORDER BY id`),
+      beforeHistory,
+    );
+    assert.deepEqual(
+      await dataSource.query(
+        `SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'IDX_tickets_workspace_status_updated'`,
+      ),
+      indexBefore,
+    );
+    assert.deepEqual(
+      await dataSource.query(
+        `SELECT 1 FROM pg_constraint WHERE conname = 'FK_tickets_workspace_requester'`,
+      ),
+      constraintBefore,
+    );
+    assert.deepEqual(
+      await dataSource.query(
+        `SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tickets'`,
+      ),
+      [],
+    );
+    assert.deepEqual(
+      await dataSource.query(
+        `SELECT relforcerowsecurity AS "forceRowSecurity", relrowsecurity AS "rowSecurity"
+           FROM pg_class
+          WHERE oid = 'public.tickets'::regclass`,
+      ),
+      [{ forceRowSecurity: false, rowSecurity: false }],
+    );
+  });
+
+  it("stores login audit rows without an implicit database filter", async () => {
     await dataSource.query(
       `
         INSERT INTO "login_audit_logs"
@@ -148,40 +262,24 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
       [ids.workspaceA, ids.workspaceB],
     );
 
-    const visibleRows = await dataSource.transaction(async (manager) => {
-      await manager.query("SET LOCAL ROLE hermes_workspace_app");
-      await manager.query("SELECT set_config('app.workspace_id', $1, true)", [
-        ids.workspaceA,
-      ]);
-      return manager.query(
-        `SELECT "workspace_id", "attempted_email" FROM "login_audit_logs" ORDER BY "attempted_email"`,
-      );
-    });
+    const rows = await dataSource.query(
+      `SELECT "workspace_id", "attempted_email" FROM "login_audit_logs" ORDER BY "attempted_email"`,
+    );
 
-    assert.deepEqual(visibleRows, [
+    assert.deepEqual(rows, [
+      {
+        attempted_email: "platform@example.com",
+        workspace_id: null,
+      },
       {
         attempted_email: "user-a@example.com",
         workspace_id: ids.workspaceA,
       },
+      {
+        attempted_email: "user-b@example.com",
+        workspace_id: ids.workspaceB,
+      },
     ]);
-
-    const [privileges] = await dataSource.query(`
-      SELECT
-        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'SELECT') AS "loginSelect",
-        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'INSERT') AS "loginInsert",
-        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'UPDATE') AS "loginUpdate",
-        has_table_privilege('hermes_workspace_app', 'login_audit_logs', 'DELETE') AS "loginDelete",
-        has_table_privilege('hermes_workspace_app', 'access_audit_logs', 'UPDATE') AS "operationUpdate",
-        has_table_privilege('hermes_workspace_app', 'access_audit_logs', 'DELETE') AS "operationDelete"
-    `);
-    assert.deepEqual(privileges, {
-      loginDelete: false,
-      loginInsert: true,
-      loginSelect: true,
-      loginUpdate: false,
-      operationDelete: false,
-      operationUpdate: false,
-    });
   });
 
   async function seedWorkspace(workspaceId: string, userId: string) {
@@ -189,37 +287,20 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
     await dataSource.getRepository(Account).save(
       account(userId, `${userId}@example.com`),
     );
-    await inWorkspace(workspaceId, async (manager) => {
-      await manager.getRepository(Role).save({
-        id: roleId,
-        isSystem: true,
-        label: "Workspace Member",
-        name: "workspace-member",
-        scope: "workspace",
-        workspaceId,
-      });
-      await manager.getRepository(WorkspaceMembership).save({
-        accountId: userId,
-        removedAt: null,
-        roleId,
-        status: "active",
-        workspaceId,
-      });
+    await dataSource.getRepository(Role).save({
+      id: roleId,
+      isSystem: true,
+      label: "Workspace Member",
+      name: "workspace-member",
+      scope: "workspace",
+      workspaceId,
     });
-  }
-
-  function inWorkspace<T>(
-    workspaceId: string,
-    work: (manager: any) => Promise<T>,
-  ) {
-    return dataSource.transaction(async (manager) => {
-      await manager.query("SELECT set_config('app.workspace_id', $1, true)", [
-        workspaceId,
-      ]);
-      await manager.query(
-        "SELECT set_config('app.scope_level', 'workspace', true)",
-      );
-      return work(manager);
+    await dataSource.getRepository(WorkspaceMembership).save({
+      accountId: userId,
+      removedAt: null,
+      roleId,
+      status: "active",
+      workspaceId,
     });
   }
 });

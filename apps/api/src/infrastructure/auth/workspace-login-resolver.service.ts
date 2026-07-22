@@ -3,7 +3,6 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Workspace } from "@hermes-swarm/core";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import { In, Repository } from "typeorm";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { SettingsService } from "../settings/settings.service.js";
 
 export type WorkspaceLoginResolutionSource = "host" | "workspace";
@@ -16,7 +15,7 @@ export type WorkspaceLoginResolution = {
 @Injectable()
 export class WorkspaceLoginResolverService {
   constructor(
-    @InjectRepository(Workspace, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Workspace)
     private readonly workspaces: Repository<Workspace>,
     private readonly settings: SettingsService,
   ) {}

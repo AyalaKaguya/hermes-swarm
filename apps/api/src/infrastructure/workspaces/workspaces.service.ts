@@ -27,7 +27,6 @@ import type {
   WorkspaceRolePermissionsPayload,
   UpdateWorkspacePayload,
 } from "./workspaces.controller.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { PlatformEmailSendService } from "../mail/platform-email-send.service.js";
@@ -44,18 +43,22 @@ const RESERVED_WORKSPACE_ROLE_NAMES = new Set([
 @Injectable()
 export class WorkspacesService {
   constructor(
-    @InjectRepository(Workspace, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Workspace)
     private readonly platformWorkspaceRepository: Repository<Workspace>,
-    @InjectRepository(WorkspaceApplication, PLATFORM_DATA_SOURCE)
+    @InjectRepository(WorkspaceApplication)
     private readonly applicationRepository: Repository<WorkspaceApplication>,
-    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Account)
     private readonly accountRepository: Repository<Account>,
-    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
-    @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Permission)
     private readonly permissionRepository: Repository<Permission>,
-    @InjectRepository(PasswordReset, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PasswordReset)
     private readonly passwordResetRepository: Repository<PasswordReset>,
+    @InjectRepository(RolePermission)
+    private readonly rolePermissionRepository: Repository<RolePermission>,
+    @InjectRepository(WorkspaceMembership)
+    private readonly workspaceMembershipRepository: Repository<WorkspaceMembership>,
     private readonly workspaceContext: WorkspaceContextService,
     private readonly platformEmailSendService: PlatformEmailSendService,
     private readonly grantPolicy: RoleGrantPolicyService =
@@ -393,7 +396,7 @@ export class WorkspacesService {
 
   async get(workspaceId: string) {
     workspaceId = this.requireWorkspaceExecution(workspaceId);
-    const workspace = await this.workspaceContext.repository(Workspace).findOne({
+    const workspace = await this.platformWorkspaceRepository.findOne({
       where: { id: workspaceId },
     });
     if (!workspace) throw new NotFoundException("工作空间不存在");
@@ -406,12 +409,12 @@ export class WorkspacesService {
     if (payload?.name !== undefined) {
       workspace.name = requireText(payload.name, "工作空间名称");
     }
-    return this.workspaceContext.repository(Workspace).save(workspace);
+    return this.platformWorkspaceRepository.save(workspace);
   }
 
   async listWorkspaceRoles(workspaceId: string) {
     workspaceId = this.requireWorkspaceExecution(workspaceId);
-    const roles = await this.workspaceContext.repository(Role).find({
+    const roles = await this.roleRepository.find({
       order: { createdAt: "ASC" },
       relations: { rolePermissions: { permissionRecord: true } },
       where: { scope: "workspace", workspaceId },
@@ -425,7 +428,7 @@ export class WorkspacesService {
     const displayName = requireText(payload.displayName ?? payload.name, "角色名称");
     const name = normalizeSlug(payload.name ?? displayName);
     assertCustomWorkspaceRoleName(name);
-    const roles = this.workspaceContext.repository(Role);
+    const roles = this.roleRepository;
     if (await roles.findOne({ where: { name, scope: "workspace", workspaceId } })) {
       throw new BadRequestException("角色标识已被使用");
     }
@@ -458,7 +461,7 @@ export class WorkspacesService {
         throw new BadRequestException("系统工作空间角色标识不能修改");
       }
       if (!role.isSystem) assertCustomWorkspaceRoleName(name);
-      const duplicate = await this.workspaceContext.repository(Role).findOne({
+      const duplicate = await this.roleRepository.findOne({
         where: { name, scope: "workspace", workspaceId },
       });
       if (duplicate && duplicate.id !== role.id) {
@@ -474,7 +477,7 @@ export class WorkspacesService {
     if (payload.description !== undefined) {
       role.description = normalizeNullableText(payload.description);
     }
-    return toWorkspaceRoleDto(await this.workspaceContext.repository(Role).save(role));
+    return toWorkspaceRoleDto(await this.roleRepository.save(role));
   }
 
   async replaceWorkspaceRolePermissions(
@@ -500,7 +503,7 @@ export class WorkspacesService {
     ];
     const permissions: Permission[] = [];
     for (const code of requestedCodes) {
-      const permission = await this.workspaceContext.repository(Permission).findOne({
+      const permission = await this.permissionRepository.findOne({
         where: { code },
       });
       const allowed = permission && (permission.scope === "workspace" || permission.scope === "own");
@@ -508,7 +511,7 @@ export class WorkspacesService {
       permissions.push(permission);
     }
     if (actorUserId) {
-      const assignments = await this.workspaceContext.repository(WorkspaceMembership).find({
+      const assignments = await this.workspaceMembershipRepository.find({
         relations: { role: { rolePermissions: { permissionRecord: true } } },
         where: { accountId: actorUserId, status: "active", workspaceId },
       });
@@ -523,18 +526,24 @@ export class WorkspacesService {
         ),
       );
     }
-    const manager = this.workspaceContext.current()!.manager;
-    await manager.delete(RolePermission, { roleId });
-    if (permissions.length) {
-      await manager.save(
-        RolePermission,
-        permissions.map((permission) => ({
-          enabled: true,
-          permissionId: permission.id,
-          roleId,
-        })),
-      );
-    }
+    await this.rolePermissionRepository.manager.transaction(async (manager) => {
+      const lockedRole = await manager.findOne(Role, {
+        lock: { mode: "pessimistic_write" },
+        where: { id: roleId, scope: "workspace", workspaceId },
+      });
+      if (!lockedRole) throw new NotFoundException("工作空间角色不存在");
+      await manager.delete(RolePermission, { roleId });
+      if (permissions.length) {
+        await manager.save(
+          RolePermission,
+          permissions.map((permission) => ({
+            enabled: true,
+            permissionId: permission.id,
+            roleId,
+          })),
+        );
+      }
+    });
     return this.requireWorkspaceRole(workspaceId, roleId, true).then(toWorkspaceRoleDto);
   }
 
@@ -542,12 +551,13 @@ export class WorkspacesService {
     workspaceId = this.requireWorkspaceExecution(workspaceId);
     const role = await this.requireWorkspaceRole(workspaceId, roleId);
     if (role.isSystem) throw new BadRequestException("系统工作空间角色不能删除");
-    const manager = this.workspaceContext.current()!.manager;
-    if (await manager.exists(WorkspaceMembership, { where: { roleId, workspaceId } })) {
-      throw new ConflictException("角色仍分配给工作空间用户，不能删除");
-    }
-    await manager.delete(RolePermission, { roleId });
-    await manager.delete(Role, { id: roleId, workspaceId });
+    await this.roleRepository.manager.transaction(async (manager) => {
+      if (await manager.exists(WorkspaceMembership, { where: { roleId, workspaceId } })) {
+        throw new ConflictException("角色仍分配给工作空间用户，不能删除");
+      }
+      await manager.delete(RolePermission, { roleId });
+      await manager.delete(Role, { id: roleId, workspaceId });
+    });
     return { success: true };
   }
 
@@ -556,7 +566,7 @@ export class WorkspacesService {
     roleId: string,
     withPermissions = false,
   ) {
-    const role = await this.workspaceContext.repository(Role).findOne({
+    const role = await this.roleRepository.findOne({
       relations: withPermissions
         ? { rolePermissions: { permissionRecord: true } }
         : undefined,

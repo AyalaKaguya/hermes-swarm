@@ -4,19 +4,19 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  Optional,
 } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
+import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 import {
   Conversation,
   ConversationMessage,
   ConversationParticipant,
-  Account,
+  WorkspaceMembership,
   type ConversationMessageAttachment,
   type ConversationParticipantJoinedReason,
 } from "@hermes-swarm/core";
 import {
   In,
+  DataSource,
   Repository,
   type EntityManager,
 } from "typeorm";
@@ -41,15 +41,16 @@ export class ConversationCapabilityService {
     private readonly messageRepository: Repository<ConversationMessage>,
     @InjectRepository(ConversationParticipant)
     private readonly participantRepository: Repository<ConversationParticipant>,
-    @InjectRepository(Account)
-    private readonly userRepository: Repository<Account>,
+    @InjectRepository(WorkspaceMembership)
+    private readonly workspaceMembershipRepository: Repository<WorkspaceMembership>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     @Inject(NotificationsService)
     private readonly notificationsService: NotificationsService,
     @Inject(RealtimeEventBus)
     private readonly realtimeEventBus: RealtimeEventBus,
-    @Optional()
     @Inject(WorkspaceContextService)
-    private readonly workspaceContext?: WorkspaceContextService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async ensureConversationForSource(source: ConversationSource) {
@@ -75,7 +76,7 @@ export class ConversationCapabilityService {
     try {
       return await manager.save(
         Conversation,
-        this.conversationRepositoryForContext().create({
+        this.conversationRepository.create({
           lastMessageAt: null,
           sourceId: source.sourceId,
           sourceType: source.sourceType,
@@ -104,16 +105,28 @@ export class ConversationCapabilityService {
     userId: string;
   }) {
     this.requireSourceWorkspace(input.source);
-    this.requireSourceWorkspace(input.source);
     if (!(await input.resolver.canRead(input.userId, input.source))) {
       throw new ForbiddenException("没有访问该会话的权限");
     }
     const conversation = await this.ensureConversationForSource(input.source);
-    const messages = await this.messageRepositoryForContext().find({
+    const messages = await this.messageRepository.find({
       order: { createdAt: "ASC" },
       relations: { authorUser: true },
       where: { conversationId: conversation.id, workspaceId: input.source.workspaceId },
     });
+    const visibleAuthorIds = new Set(
+      await this.findActiveWorkspaceUserIds(
+        input.source.workspaceId,
+        messages.flatMap((message) =>
+          message.authorUserId ? [message.authorUserId] : [],
+        ),
+      ),
+    );
+    for (const message of messages) {
+      if (message.authorUserId && !visibleAuthorIds.has(message.authorUserId)) {
+        message.authorUser = null;
+      }
+    }
     return messages.map((message) => toConversationMessageDto(message, conversation));
   }
 
@@ -184,7 +197,7 @@ export class ConversationCapabilityService {
     });
     const message = await manager.save(
       ConversationMessage,
-      this.messageRepositoryForContext().create({
+      this.messageRepository.create({
         attachments: input.message.attachments ?? null,
         authorUserId: input.authorUserId,
         body: input.message.body,
@@ -222,11 +235,13 @@ export class ConversationCapabilityService {
     source: ConversationSource;
   }) {
     this.requireSourceWorkspace(input.source);
-    input.message.authorUser =
-      (await this.userRepositoryForContext().findOne({
-        where: { id: input.authorUserId },
-      })) ??
-      null;
+    if (input.conversation.workspaceId !== input.source.workspaceId) {
+      throw new NotFoundException("会话不存在");
+    }
+    input.message.authorUser = await this.findActiveWorkspaceAccount(
+      input.source.workspaceId,
+      input.authorUserId,
+    );
     const participantIds = await this.findParticipantUserIds(
       input.source.workspaceId,
       input.conversation.id,
@@ -271,6 +286,7 @@ export class ConversationCapabilityService {
     workspaceId: string;
     userIds: string[];
   }) {
+    this.requireWorkspaceId(input.workspaceId);
     await this.withManager((manager) =>
       this.addParticipantsWithManager(manager, input),
     );
@@ -285,7 +301,20 @@ export class ConversationCapabilityService {
       userIds: string[];
     },
   ) {
-    const userIds = [...new Set(input.userIds)].filter(Boolean);
+    this.requireWorkspaceId(input.workspaceId);
+    const requestedUserIds = [...new Set(input.userIds)].filter(Boolean);
+    if (requestedUserIds.length === 0) return;
+    const userIds = await this.findActiveWorkspaceUserIds(
+      input.workspaceId,
+      requestedUserIds,
+      manager,
+    );
+    if (
+      input.joinedReason !== "mention" &&
+      userIds.length !== requestedUserIds.length
+    ) {
+      throw new ForbiddenException("会话参与者不属于当前工作空间");
+    }
     if (userIds.length === 0) return;
     const existing = await manager.find(ConversationParticipant, {
       where: {
@@ -298,7 +327,7 @@ export class ConversationCapabilityService {
     const next = userIds
       .filter((userId) => !existingIds.has(userId))
       .map((userId) =>
-        this.participantRepositoryForContext().create({
+        this.participantRepository.create({
           conversationId: input.conversationId,
           joinedReason: input.joinedReason,
           lastReadAt: null,
@@ -323,6 +352,7 @@ export class ConversationCapabilityService {
     source: ConversationSource;
     userId: string;
   }) {
+    this.requireSourceWorkspace(input.source);
     if (!(await input.resolver.canRead(input.userId, input.source))) {
       throw new ForbiddenException("没有访问该会话的权限");
     }
@@ -332,7 +362,7 @@ export class ConversationCapabilityService {
       input.source.sourceType,
       input.source.sourceId,
     );
-    await this.participantRepositoryForContext().update(
+    await this.participantRepository.update(
       {
         conversationId: conversation.id,
         workspaceId: input.source.workspaceId,
@@ -356,16 +386,28 @@ export class ConversationCapabilityService {
       updatedAt?: Date;
     }>;
   }) {
+    this.requireWorkspaceId(input.workspaceId);
     if (input.messages.length === 0) return { imported: 0 };
-    const existingCount = await this.messageRepositoryForContext().count({
+    const visibleAuthorIds = new Set(
+      await this.findActiveWorkspaceUserIds(
+        input.workspaceId,
+        input.messages.flatMap((message) =>
+          message.authorUserId ? [message.authorUserId] : [],
+        ),
+      ),
+    );
+    const existingCount = await this.messageRepository.count({
       where: { conversationId: input.conversationId, workspaceId: input.workspaceId },
     });
     if (existingCount > 0) return { imported: 0 };
 
     const rows = input.messages.map((message) =>
-      this.messageRepositoryForContext().create({
+      this.messageRepository.create({
         attachments: message.attachments ?? null,
-        authorUserId: message.authorUserId ?? null,
+        authorUserId:
+          message.authorUserId && visibleAuthorIds.has(message.authorUserId)
+            ? message.authorUserId
+            : null,
         body: message.body,
         conversationId: input.conversationId,
         createdAt: message.createdAt,
@@ -375,11 +417,11 @@ export class ConversationCapabilityService {
         updatedAt: message.updatedAt,
       }),
     );
-    await this.messageRepositoryForContext().save(rows);
+    await this.messageRepository.save(rows);
 
     const lastMessage = rows.at(-1);
     if (lastMessage) {
-      await this.conversationRepositoryForContext().update(
+      await this.conversationRepository.update(
         { id: input.conversationId, workspaceId: input.workspaceId },
         { lastMessageAt: lastMessage.createdAt },
       );
@@ -411,7 +453,12 @@ export class ConversationCapabilityService {
 
   async isParticipant(source: ConversationSource, userId: string) {
     this.requireSourceWorkspace(source);
-    const conversation = await this.conversationRepositoryForContext().findOne({
+    const activeUserIds = await this.findActiveWorkspaceUserIds(
+      source.workspaceId,
+      [userId],
+    );
+    if (activeUserIds.length === 0) return false;
+    const conversation = await this.conversationRepository.findOne({
       where: {
         sourceId: source.sourceId,
         sourceType: source.sourceType,
@@ -420,7 +467,7 @@ export class ConversationCapabilityService {
     });
     if (!conversation) return false;
     return Boolean(
-      await this.participantRepositoryForContext().findOne({
+      await this.participantRepository.findOne({
         where: { conversationId: conversation.id, workspaceId: source.workspaceId, userId },
       }),
     );
@@ -432,7 +479,12 @@ export class ConversationCapabilityService {
     userId: string;
   }) {
     this.requireWorkspaceId(input.workspaceId);
-    const participants = await this.participantRepositoryForContext().find({
+    const activeUserIds = await this.findActiveWorkspaceUserIds(
+      input.workspaceId,
+      [input.userId],
+    );
+    if (activeUserIds.length === 0) return [];
+    const participants = await this.participantRepository.find({
       where: { workspaceId: input.workspaceId, userId: input.userId },
     });
     if (participants.length === 0) return [];
@@ -442,13 +494,13 @@ export class ConversationCapabilityService {
       sourceType: input.sourceType,
       workspaceId: input.workspaceId,
     };
-    const conversations = await this.conversationRepositoryForContext().find({ where });
+    const conversations = await this.conversationRepository.find({ where });
     return conversations.map((conversation) => conversation.sourceId);
   }
 
   async getConversationOrThrow(workspaceId: string, conversationId: string) {
     this.requireWorkspaceId(workspaceId);
-    const conversation = await this.conversationRepositoryForContext().findOne({
+    const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId, workspaceId },
     });
     if (!conversation) throw new NotFoundException("会话不存在");
@@ -458,9 +510,12 @@ export class ConversationCapabilityService {
   private async syncConversation(
     conversation: Conversation,
     source: ConversationSource,
-    manager: EntityManager = this.managerForContext(),
+    manager: EntityManager,
   ) {
     this.requireSourceWorkspace(source);
+    if (conversation.workspaceId !== source.workspaceId) {
+      throw new NotFoundException("会话不存在");
+    }
     let changed = false;
     if (conversation.subject !== source.subject) {
       conversation.subject = source.subject;
@@ -479,35 +534,49 @@ export class ConversationCapabilityService {
     authorUserId: string,
     resolver: ConversationAccessResolver,
   ) {
+    this.requireSourceWorkspace(source);
     const mentions = extractMentions(body);
     if (mentions.length === 0) return [];
     if (resolver.resolveMentionCandidates) {
-      return [
+      const candidates = [
         ...new Set(
           (await resolver.resolveMentionCandidates(mentions, source, authorUserId))
             .filter((userId) => userId !== authorUserId),
         ),
       ];
+      return this.findActiveWorkspaceUserIds(source.workspaceId, candidates);
     }
 
-    this.requireSourceWorkspace(source);
-    const users = await this.userRepositoryForContext().find({
+    const memberships = await this.workspaceMembershipRepository.find({
+      relations: { account: true },
       where: [
-        { email: In(mentions) },
-        { username: In(mentions) },
+        {
+          account: { email: In(mentions), status: "active" },
+          status: "active",
+          workspaceId: source.workspaceId,
+        },
+        {
+          account: { status: "active", username: In(mentions) },
+          status: "active",
+          workspaceId: source.workspaceId,
+        },
       ],
     });
-    const candidateIds = users
+    const candidateIds = memberships
+      .flatMap((membership) => (membership.account ? [membership.account] : []))
       .filter((user) => user.id !== authorUserId && user.status === "active")
       .map((user) => user.id);
     return candidateIds;
   }
 
   private async findParticipantUserIds(workspaceId: string, conversationId: string) {
-    const participants = await this.participantRepositoryForContext().find({
+    const participants = await this.participantRepository.find({
       where: { conversationId, workspaceId },
     });
-    return participants.map((participant) => participant.userId);
+    return this.findActiveWorkspaceUserIds(
+      workspaceId,
+      participants.map((participant) => participant.userId),
+    );
   }
 
   private async notifyUsers(
@@ -518,7 +587,11 @@ export class ConversationCapabilityService {
     fallback: ConversationNotificationPayload,
     resolver: ConversationAccessResolver,
   ) {
-    if (userIds.length === 0) return;
+    const recipients = await this.findActiveWorkspaceUserIds(
+      source.workspaceId,
+      userIds,
+    );
+    if (recipients.length === 0) return;
     const payload =
       resolver.buildNotificationPayload?.({
         conversation,
@@ -526,7 +599,7 @@ export class ConversationCapabilityService {
         message,
         source,
       }) ?? fallback;
-    await this.notificationsService.createForUsers(userIds, {
+    await this.notificationsService.createForUsers(recipients, {
       body: payload.body,
       kind: "info",
       payload: {
@@ -547,7 +620,10 @@ export class ConversationCapabilityService {
     message: ConversationMessage,
     resolver: ConversationAccessResolver,
   ) {
-    const recipients = [...new Set(userIds)];
+    const recipients = await this.findActiveWorkspaceUserIds(
+      source.workspaceId,
+      [...new Set(userIds)],
+    );
     if (recipients.length === 0) return;
     const payload =
       resolver.buildNotificationPayload?.({
@@ -578,7 +654,12 @@ export class ConversationCapabilityService {
     conversation: Conversation,
     message: ConversationMessage,
   ) {
-    await this.realtimeEventBus.publishToUsers(userIds, {
+    const activeUserIds = await this.findActiveWorkspaceUserIds(
+      conversation.workspaceId,
+      userIds,
+    );
+    if (activeUserIds.length === 0) return;
+    await this.realtimeEventBus.publishToUsers(activeUserIds, {
       type: "conversation.message.created",
       payload: {
         conversation: toConversationDto(conversation),
@@ -594,48 +675,43 @@ export class ConversationCapabilityService {
   private requireWorkspaceId(workspaceId: string) {
     const normalized = workspaceId?.trim();
     if (!normalized) throw new NotFoundException("会话不存在");
-    const context = this.workspaceContext?.current(false);
-    if (context && context.workspaceId !== normalized) {
+    const context = this.workspaceContext.current();
+    if (!context || context.workspaceId !== normalized) {
       throw new NotFoundException("会话不存在");
     }
     return normalized;
   }
 
-  private managerForContext() {
-    return this.workspaceContext?.current(false)?.manager ?? this.conversationRepository.manager;
-  }
-
   private withManager<T>(work: (manager: EntityManager) => Promise<T>) {
-    const context = this.workspaceContext?.current(false);
-    if (context) return work(context.manager);
-    const manager = this.conversationRepository.manager;
-    return typeof manager.transaction === "function"
-      ? manager.transaction(work)
-      : work(manager);
+    return this.dataSource.transaction(work);
   }
 
-  private conversationRepositoryForContext() {
-    return this.workspaceContext?.current(false)
-      ? this.workspaceContext.repository(Conversation)
-      : this.conversationRepository;
+  private async findActiveWorkspaceAccount(workspaceId: string, userId: string) {
+    const membership = await this.workspaceMembershipRepository.findOne({
+      relations: { account: true },
+      where: { accountId: userId, status: "active", workspaceId },
+    });
+    return membership?.account?.status === "active" ? membership.account : null;
   }
 
-  private messageRepositoryForContext() {
-    return this.workspaceContext?.current(false)
-      ? this.workspaceContext.repository(ConversationMessage)
-      : this.messageRepository;
-  }
-
-  private participantRepositoryForContext() {
-    return this.workspaceContext?.current(false)
-      ? this.workspaceContext.repository(ConversationParticipant)
-      : this.participantRepository;
-  }
-
-  private userRepositoryForContext() {
-    return this.workspaceContext?.current(false)
-      ? this.workspaceContext.repository(Account)
-      : this.userRepository;
+  private async findActiveWorkspaceUserIds(
+    workspaceId: string,
+    userIds: string[],
+    manager: EntityManager = this.dataSource.manager,
+  ) {
+    const uniqueUserIds = [...new Set(userIds)].filter(Boolean);
+    if (uniqueUserIds.length === 0) return [];
+    const memberships = await manager.find(WorkspaceMembership, {
+      relations: { account: true },
+      where: {
+        accountId: In(uniqueUserIds),
+        status: "active",
+        workspaceId,
+      },
+    });
+    return memberships
+      .filter((membership) => membership.account?.status === "active")
+      .map((membership) => membership.accountId);
   }
 
   private async runNonCriticalSideEffect(

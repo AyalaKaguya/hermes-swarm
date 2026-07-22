@@ -6,7 +6,6 @@ import {
   type LoginAuditScopeType,
 } from "@hermes-swarm/core";
 import type { Repository } from "typeorm";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { parseAuthDevice } from "../auth/auth-device.js";
 
 export type LoginAuditRecordInput = {
@@ -26,7 +25,7 @@ export class LoginAuditService {
   private readonly logger = new Logger(LoginAuditService.name);
 
   constructor(
-    @InjectRepository(LoginAuditLog, PLATFORM_DATA_SOURCE)
+    @InjectRepository(LoginAuditLog)
     private readonly repository: Repository<LoginAuditLog>,
   ) {}
 

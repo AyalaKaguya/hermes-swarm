@@ -7,14 +7,13 @@ import {
 import type { Repository } from "typeorm";
 import type { AccessRequest } from "./access.types.js";
 import { resolveClientIp } from "./client-ip.js";
-import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 @Injectable()
 export class AccessAuditService {
   private readonly logger = new Logger(AccessAuditService.name);
 
   constructor(
-    @InjectRepository(AccessAuditLog, PLATFORM_DATA_SOURCE)
+    @InjectRepository(AccessAuditLog)
     private readonly repository: Repository<AccessAuditLog>,
   ) {}
 

@@ -11,7 +11,6 @@ import {
   RolePermission,
 } from "@hermes-swarm/core";
 import { IsNull, Repository } from "typeorm";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import type { ReplaceRolePermissionsPayload } from "../../common/admin-api.types.js";
 import type { PlatformRolePayload } from "./platform-roles.controller.js";
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
@@ -19,11 +18,11 @@ import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 @Injectable()
 export class PlatformRolesService {
   constructor(
-    @InjectRepository(Role, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
-    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
+    @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
-    @InjectRepository(Permission, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Permission)
     private readonly permissionRepository: Repository<Permission>,
     private readonly grantPolicy: RoleGrantPolicyService =
       new RoleGrantPolicyService(),

@@ -7,20 +7,11 @@ import {
 } from "./workspace-job-executor.service.js";
 
 describe("WorkspaceJobExecutor", () => {
-  it("runs a job in a workspace RLS transaction and records workspace-namespaced idempotency", async () => {
+  it("runs a job in a workspace context and records workspace-namespaced idempotency", async () => {
     const redis = new FakeRedis();
     const context = new WorkspaceContextService();
-    const queries: Array<{ parameters: unknown[]; sql: string }> = [];
-    const manager = {
-      query: async (sql: string, parameters: unknown[]) => {
-        queries.push({ parameters, sql });
-      },
-    };
-    const dataSource = {
-      transaction: async (work: (value: any) => Promise<unknown>) => work(manager),
-    };
     const executor = new WorkspaceJobExecutor(
-      dataSource as any,
+      activeWorkspaceRepository(),
       context,
       { getClient: async () => redis } as any,
     );
@@ -40,23 +31,15 @@ describe("WorkspaceJobExecutor", () => {
     });
 
     assert.deepEqual(result, { result: "done", status: "completed" });
-    assert.equal(queries.length, 1);
-    assert.deepEqual(queries[0]?.parameters, ["workspace-a"]);
-    assert.match(queries[0]?.sql ?? "", /app\.workspace_id/);
     assert.equal(redis.values.has(workspaceJobKeys(job).completed), true);
     assert.equal(redis.values.has(workspaceJobKeys(job).lock), false);
     assert.equal(redis.setCalls[0]?.key, workspaceJobKeys(job).lock);
   });
 
-  it("does not open Redis or a transaction without an explicit workspaceId", async () => {
+  it("does not open Redis without an explicit workspaceId", async () => {
     let redisCalls = 0;
-    let transactions = 0;
     const executor = new WorkspaceJobExecutor(
-      {
-        transaction: async () => {
-          transactions += 1;
-        },
-      } as any,
+      activeWorkspaceRepository(),
       new WorkspaceContextService(),
       {
         getClient: async () => {
@@ -80,7 +63,69 @@ describe("WorkspaceJobExecutor", () => {
       /workspaceId is required/,
     );
     assert.equal(redisCalls, 0);
-    assert.equal(transactions, 0);
+  });
+
+  it("does not open Redis for an inactive or unknown workspace", async () => {
+    let redisCalls = 0;
+    const executor = new WorkspaceJobExecutor(
+      { exists: async () => false } as any,
+      new WorkspaceContextService(),
+      {
+        getClient: async () => {
+          redisCalls += 1;
+          return new FakeRedis();
+        },
+      } as any,
+    );
+
+    await assert.rejects(
+      () =>
+        executor.execute(
+          {
+            idempotencyKey: "run-1",
+            name: "example.job",
+            payload: null,
+            workspaceId: "workspace-missing",
+          },
+          async () => undefined,
+        ),
+      /inactive or unknown workspace/,
+    );
+    assert.equal(redisCalls, 0);
+  });
+
+  it("does not switch from an existing workspace context", async () => {
+    let workspaceChecks = 0;
+    const context = new WorkspaceContextService();
+    const executor = new WorkspaceJobExecutor(
+      {
+        exists: async () => {
+          workspaceChecks += 1;
+          return true;
+        },
+      } as any,
+      context,
+      { getClient: async () => new FakeRedis() } as any,
+    );
+
+    await context.run(
+      { scopeLevel: "workspace", workspaceId: "workspace-a" },
+      async () =>
+        assert.rejects(
+          () =>
+            executor.execute(
+              {
+                idempotencyKey: "run-1",
+                name: "example.job",
+                payload: null,
+                workspaceId: "workspace-b",
+              },
+              async () => undefined,
+            ),
+          /cannot cross workspace context/,
+        ),
+    );
+    assert.equal(workspaceChecks, 0);
   });
 
   it("skips a completed delivery without invoking its handler", async () => {
@@ -139,14 +184,15 @@ describe("WorkspaceJobExecutor", () => {
 
 function createExecutor(redis: FakeRedis) {
   const context = new WorkspaceContextService();
-  const manager = { query: async () => undefined };
   return new WorkspaceJobExecutor(
-    {
-      transaction: async (work: (value: any) => Promise<unknown>) => work(manager),
-    } as any,
+    activeWorkspaceRepository(),
     context,
     { getClient: async () => redis } as any,
   );
+}
+
+function activeWorkspaceRepository() {
+  return { exists: async () => true } as any;
 }
 
 class FakeRedis {

@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
-import { InjectDataSource } from "@nestjs/typeorm";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Workspace } from "@hermes-swarm/core";
 import type { RequestScopeLevel } from "@hermes-swarm/rbac-api";
-import { DataSource, type EntityManager } from "typeorm";
+import { IsNull, type Repository } from "typeorm";
 import { WorkspaceContextService } from "../database/workspace-context.service.js";
-import { WORKSPACE_DATABASE_GUCS } from "../database/workspace-database.constants.js";
 import { RedisService } from "../redis/redis.service.js";
 import type {
   WorkspaceJobEnvelope,
@@ -18,7 +18,8 @@ const DEFAULT_IDEMPOTENCY_TTL_SECONDS = 30 * 24 * 60 * 60;
 @Injectable()
 export class WorkspaceJobExecutor {
   constructor(
-    @InjectDataSource() private readonly workspaceDataSource: DataSource,
+    @InjectRepository(Workspace)
+    private readonly workspaceRepository: Repository<Workspace>,
     private readonly workspaceContext: WorkspaceContextService,
     private readonly redisService: RedisService,
   ) {}
@@ -29,6 +30,20 @@ export class WorkspaceJobExecutor {
     options: WorkspaceJobExecutionOptions = {},
   ): Promise<WorkspaceJobExecutionResult<Result>> {
     assertWorkspaceJob(job);
+    const current = this.workspaceContext.current(false);
+    if (current && current.workspaceId !== job.workspaceId) {
+      throw new Error("Workspace job cannot cross workspace context");
+    }
+    const workspaceExists = await this.workspaceRepository.exists({
+      where: {
+        deletedAt: IsNull(),
+        id: job.workspaceId,
+        status: "active",
+      },
+    });
+    if (!workspaceExists) {
+      throw new Error("Workspace job references an inactive or unknown workspace");
+    }
     const redis = await this.redisService.getClient();
     const keys = workspaceJobKeys(job);
     if (await redis.exists(keys.completed)) {
@@ -48,13 +63,10 @@ export class WorkspaceJobExecutor {
         return { status: "already-completed" };
       }
 
-      const result = await this.workspaceDataSource.transaction(async (manager) => {
-        await configureWorkspaceJobRls(manager, job.workspaceId);
-        return this.workspaceContext.run(
-          workspaceJobContext(manager, job.workspaceId),
-          () => handler(job.payload),
-        );
-      });
+      const result = await this.workspaceContext.run(
+        workspaceJobContext(job.workspaceId),
+        () => handler(job.payload),
+      );
       await redis.set(
         keys.completed,
         JSON.stringify({ completedAt: new Date().toISOString() }),
@@ -91,21 +103,11 @@ function requireJobText(value: unknown, field: string) {
   }
 }
 
-function workspaceJobContext(manager: EntityManager, workspaceId: string) {
+function workspaceJobContext(workspaceId: string) {
   return {
-    manager,
     scopeLevel: "workspace" as RequestScopeLevel,
     workspaceId,
   };
-}
-
-async function configureWorkspaceJobRls(manager: EntityManager, workspaceId: string) {
-  await manager.query(
-    `SELECT
-      set_config('${WORKSPACE_DATABASE_GUCS.workspaceId}', $1, true),
-      set_config('${WORKSPACE_DATABASE_GUCS.scopeLevel}', 'workspace', true)`,
-    [workspaceId],
-  );
 }
 
 async function releaseOwnedLock(

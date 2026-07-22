@@ -14,7 +14,6 @@ import { SettingsModule } from "../settings/settings.module.js";
 import { InviteController } from "./invite.controller.js";
 import { InviteService } from "./invite.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 
 @Module({
   imports: [
@@ -28,11 +27,8 @@ import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.j
       Account,
       Role,
       WorkspaceMembership,
+      PlatformMembership,
     ]),
-    TypeOrmModule.forFeature(
-      [Account, Invite, PlatformMembership, Role, WorkspaceMembership],
-      PLATFORM_DATA_SOURCE,
-    ),
   ],
   controllers: [InviteController],
   providers: [InviteService],

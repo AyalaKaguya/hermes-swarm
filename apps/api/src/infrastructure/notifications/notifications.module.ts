@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { UserNotification } from "@hermes-swarm/core";
+import { UserNotification, WorkspaceMembership } from "@hermes-swarm/core";
 import { NotificationsController } from "./notifications.controller.js";
 import { NotificationsService } from "./notifications.service.js";
 import { AuthModule } from "../auth/auth.module.js";
@@ -12,7 +12,7 @@ import { DatabaseModule } from "../../common/database/database.module.js";
     AuthModule,
     DatabaseModule,
     RealtimeModule,
-    TypeOrmModule.forFeature([UserNotification]),
+    TypeOrmModule.forFeature([UserNotification, WorkspaceMembership]),
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService],

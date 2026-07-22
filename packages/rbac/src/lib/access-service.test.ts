@@ -54,6 +54,7 @@ describe("AccessService unified role authorization", () => {
           enabled: true,
           permissionRecord: { code: permission.id },
           roleId: "role-workspace",
+          role: { scope: "workspace", workspaceId: "workspace-1" },
         },
       ],
       workspaceRoles: [
@@ -91,6 +92,7 @@ describe("AccessService unified role authorization", () => {
           enabled: true,
           permissionRecord: { code: permission.id },
           roleId: "role-workspace",
+          role: { scope: "workspace", workspaceId: "workspace-1" },
         },
       ],
       workspaceRoles: [

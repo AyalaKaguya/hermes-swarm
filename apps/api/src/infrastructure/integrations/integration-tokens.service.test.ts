@@ -1,12 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
-import {
-  IntegrationToken,
-  Permission,
-  RolePermission,
-  WorkspaceMembership,
-} from "@hermes-swarm/core";
 import { IntegrationTokensService } from "./integration-tokens.service.js";
 
 describe("IntegrationTokensService personal token contract", () => {
@@ -84,23 +78,45 @@ describe("IntegrationTokensService personal token contract", () => {
     const [token] = await state.service.list("Bearer session");
     assert.equal(token?.isExpired, true);
   });
+
+  it("rejects token management when the assigned role belongs to another workspace", async () => {
+    const state = createState();
+    state.membership.role.workspaceId = "workspace-b";
+
+    await assert.rejects(
+      () => state.service.capabilities("Bearer session"),
+      ForbiddenException,
+    );
+  });
 });
 
 function createState() {
   const tokens: Array<Record<string, unknown>> = [];
-  const repositories = new Map([
-    [WorkspaceMembership, { find: async () => [{
-      role: { scope: "workspace" },
-      roleId: "workspace-role",
-      workspaceId: "workspace-a",
-      userId: "user-a",
-    }] }],
-    [RolePermission, { find: async () => [
+  const membership = {
+    accountId: "user-a",
+    role: { scope: "workspace", workspaceId: "workspace-a" },
+    roleId: "workspace-role",
+    status: "active",
+    workspaceId: "workspace-a",
+  };
+  const workspaceMembershipRepository = {
+    find: async () => [
+      {
+        ...membership,
+        userId: "user-a",
+      },
+    ],
+    findOne: async () => membership,
+  };
+  const rolePermissionRepository = {
+    find: async () => [
       { enabled: true, permission: "ticket.conversation.list:workspace", roleId: "workspace-role" },
       { enabled: true, permission: "integration_token.personal_api_token.create:own", roleId: "workspace-role" },
       { enabled: true, permission: "page.settings.account.access:own", roleId: "workspace-role" },
-    ] }],
-    [Permission, { find: async () => [
+    ],
+  };
+  const permissionRepository = {
+    find: async () => [
       {
         code: "ticket.conversation.list:workspace",
         description: "查看工作空间工单。",
@@ -133,8 +149,9 @@ function createState() {
         scope: "own",
         source: "navigation",
       },
-    ] }],
-    [IntegrationToken, {
+    ],
+  };
+  const integrationTokenRepository = {
       create: (value: Record<string, unknown>) => value,
       find: async () => tokens,
       findOne: async ({ where }: { where: { id: string } }) => tokens.find((item) => item.id === where.id) ?? null,
@@ -150,11 +167,9 @@ function createState() {
         else tokens.push(entity);
         return entity;
       },
-    }],
-  ]);
+  };
   const workspaceContext = {
     current: () => ({ workspaceId: "workspace-a" }),
-    repository: (target: unknown) => repositories.get(target as never),
   };
   const service = new IntegrationTokensService(
     {
@@ -167,6 +182,10 @@ function createState() {
     } as never,
     { getOrThrow: () => "test-session-secret-with-sufficient-entropy" } as never,
     workspaceContext as never,
+    integrationTokenRepository as never,
+    workspaceMembershipRepository as never,
+    rolePermissionRepository as never,
+    permissionRepository as never,
   );
-  return { service, tokens };
+  return { membership, service, tokens };
 }

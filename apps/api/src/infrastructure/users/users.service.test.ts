@@ -18,6 +18,9 @@ describe("UsersService workspace membership contract", () => {
     assert.equal(member.account.id, ACCOUNT_ID);
     assert.equal(member.role.name, "workspace-member");
     assert.equal(member.status, "active");
+    assert.deepEqual(state.membershipFindOptions?.where, {
+      workspaceId: WORKSPACE_ID,
+    });
   });
 
   it("disables only the current workspace membership and its sessions", async () => {
@@ -96,6 +99,7 @@ function createState(options: { roleName?: string } = {}) {
   const revokedWorkspaceSessions: string[] = [];
   const revokedAccountSessions: string[] = [];
   const tokenUpdates: any[] = [];
+  let membershipFindOptions: any;
   const manager = {
     find: async (target: unknown) => target === WorkspaceMembership ? [membership] : [],
     findOne: async (target: unknown, { where }: any) => {
@@ -111,6 +115,10 @@ function createState(options: { roleName?: string } = {}) {
       tokenUpdates.push({ query, value });
       return { affected: 1 };
     },
+  };
+  const dataSource = {
+    transaction: async (work: (transactionManager: typeof manager) => Promise<unknown>) =>
+      work(manager),
   };
   const authSessionService = {
     revokeAccountSessions: async (accountId: string) =>
@@ -128,14 +136,35 @@ function createState(options: { roleName?: string } = {}) {
     findOne: async ({ where }: any) => where.id === account.id ? account : null,
     save: async (value: any) => value,
   };
+  const roleRepository = {
+    findOne: async ({ where }: any) =>
+      where.id === role.id &&
+      where.scope === role.scope &&
+      where.workspaceId === role.workspaceId
+        ? role
+        : null,
+  };
+  const membershipRepository = {
+    find: async (options: any) => {
+      membershipFindOptions = options;
+      return options.where?.workspaceId === WORKSPACE_ID ? [membership] : [];
+    },
+    manager,
+  };
   const service = new UsersService(
-    { current: () => ({ manager, workspaceId: WORKSPACE_ID }) } as never,
+    { current: () => ({ scopeLevel: "workspace", workspaceId: WORKSPACE_ID }) } as never,
     authSessionService as never,
+    dataSource as never,
     accountRepository as never,
+    roleRepository as never,
+    membershipRepository as never,
   );
   return {
     account,
     membership,
+    get membershipFindOptions() {
+      return membershipFindOptions;
+    },
     revokedAccountSessions,
     revokedWorkspaceSessions,
     service,

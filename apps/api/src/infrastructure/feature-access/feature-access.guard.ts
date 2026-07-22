@@ -5,22 +5,19 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { DataSource } from "typeorm";
 import { FeatureAccessService } from "./feature-access.service.js";
 import { REQUIRE_FEATURE_METADATA } from "./require-feature.decorator.js";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import {
-  configureRlsContext,
   resolveWorkspaceRequestScope,
   type ScopedRequest,
-} from "../../common/database/workspace-transaction.interceptor.js";
+} from "../../common/database/workspace-context.interceptor.js";
 
 @Injectable()
 export class FeatureAccessGuard implements CanActivate {
   constructor(
     private readonly featureAccessService: FeatureAccessService,
     private readonly reflector: Reflector,
-    private readonly dataSource: DataSource,
     private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
@@ -41,18 +38,13 @@ export class FeatureAccessGuard implements CanActivate {
     const allowed =
       !workspaceId || currentContext
         ? await checkFeature()
-        : await this.dataSource.transaction(async (manager) => {
-            const scope = resolveWorkspaceRequestScope(request);
-            await configureRlsContext(manager, workspaceId, scope);
-            return this.workspaceContext.run(
-              {
-                manager,
-                scopeLevel: scope.scopeLevel,
-                workspaceId,
-              },
-              checkFeature,
-            );
-          });
+        : await this.workspaceContext.run(
+            {
+              scopeLevel: resolveWorkspaceRequestScope(request).scopeLevel,
+              workspaceId,
+            },
+            checkFeature,
+          );
     if (!allowed) {
       throw new ForbiddenException("功能未启用");
     }

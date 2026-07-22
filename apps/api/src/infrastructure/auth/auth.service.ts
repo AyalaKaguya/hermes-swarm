@@ -18,7 +18,6 @@ import type { LoginPayload, SelectContextPayload } from "../../common/admin-api.
 import { AuthSessionService } from "./auth-session.service.js";
 import { verifyPassword } from "../../common/security/password-hash.js";
 import { toRoleDto, toUserDto, toWorkspaceDto } from "../users/user-dto.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { WorkspaceLoginResolverService } from "./workspace-login-resolver.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import { LoginAuditService } from "../audit/login-audit.service.js";
@@ -31,7 +30,7 @@ import { resolveClientIp } from "@hermes-swarm/rbac";
 export class AuthService {
   constructor(
     private readonly authSessionService: AuthSessionService,
-    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformMembership)
     private readonly platformMembershipRepository: Repository<PlatformMembership>,
     private readonly dataSource: DataSource,
     private readonly workspaceContext: WorkspaceContextService,
@@ -40,10 +39,10 @@ export class AuthService {
     @Optional()
     private readonly loginAuditService?: LoginAuditService,
     @Optional()
-    @InjectRepository(Account, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Account)
     private readonly accountRepository?: Repository<Account>,
     @Optional()
-    @InjectRepository(WorkspaceMembership, PLATFORM_DATA_SOURCE)
+    @InjectRepository(WorkspaceMembership)
     private readonly membershipRepository?: Repository<WorkspaceMembership>,
   ) {}
 
@@ -597,13 +596,8 @@ export class AuthService {
     work: (manager: EntityManager) => Promise<T>,
   ) {
     return this.dataSource.transaction(async (manager) => {
-      await manager.query(
-        "SELECT set_config('app.workspace_id', $1, true), set_config('app.scope_level', 'workspace', true)",
-        [workspaceId],
-      );
       return this.workspaceContext.run(
         {
-          manager,
           scopeLevel: "workspace",
           workspaceId,
         },

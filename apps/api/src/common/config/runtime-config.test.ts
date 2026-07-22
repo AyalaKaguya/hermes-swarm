@@ -8,15 +8,15 @@ import {
 } from "./runtime-config.js";
 
 const originalEnvironment = {
-  NODE_ENV: process.env.NODE_ENV,
-  POSTGRES_TEST_URL: process.env.POSTGRES_TEST_URL,
-  POSTGRES_WORKSPACE_URL: process.env.POSTGRES_WORKSPACE_URL,
-  POSTGRES_PLATFORM_URL: process.env.POSTGRES_PLATFORM_URL,
-  POSTGRES_URL: process.env.POSTGRES_URL,
   DATABASE_SYNCHRONIZE: process.env.DATABASE_SYNCHRONIZE,
   DATABASE_STRICT_RLS: process.env.DATABASE_STRICT_RLS,
-  TRUSTED_PROXY_CIDRS: process.env.TRUSTED_PROXY_CIDRS,
+  NODE_ENV: process.env.NODE_ENV,
+  POSTGRES_PLATFORM_URL: process.env.POSTGRES_PLATFORM_URL,
+  POSTGRES_TEST_URL: process.env.POSTGRES_TEST_URL,
+  POSTGRES_URL: process.env.POSTGRES_URL,
+  POSTGRES_WORKSPACE_URL: process.env.POSTGRES_WORKSPACE_URL,
   SETTINGS_ENCRYPTION_KEY: process.env.SETTINGS_ENCRYPTION_KEY,
+  TRUSTED_PROXY_CIDRS: process.env.TRUSTED_PROXY_CIDRS,
 };
 
 afterEach(() => {
@@ -61,6 +61,7 @@ describe("database runtime configuration", () => {
 
   it("requires an explicit opt-in to synchronize during development", () => {
     process.env.NODE_ENV = "development";
+    process.env.POSTGRES_URL = "postgresql://app.example/hermes";
     delete process.env.DATABASE_SYNCHRONIZE;
 
     assert.equal(databaseRuntimeConfig().synchronize, false);
@@ -69,75 +70,97 @@ describe("database runtime configuration", () => {
     assert.equal(databaseRuntimeConfig().synchronize, true);
   });
 
-  it("uses only POSTGRES_TEST_URL for test runtime", () => {
+  it("uses POSTGRES_TEST_URL as the only test database connection", () => {
     process.env.NODE_ENV = "test";
     process.env.POSTGRES_URL = "postgresql://regular.example/hermes";
     process.env.POSTGRES_TEST_URL = "postgresql://test.example/hermes-test";
 
+    const database = databaseRuntimeConfig();
+    assert.equal(database.url, "postgresql://test.example/hermes-test");
+    assert.equal("workspaceUrl" in database, false);
+    assert.equal("platformUrl" in database, false);
+  });
+
+  it("uses POSTGRES_URL for every non-test runtime", () => {
+    process.env.NODE_ENV = "development";
+    process.env.POSTGRES_URL = "postgresql://app.example/hermes";
+    process.env.POSTGRES_TEST_URL = "postgresql://test.example/hermes-test";
+
     assert.equal(
       databaseRuntimeConfig().url,
-      "postgresql://test.example/hermes-test",
-    );
-    assert.equal(
-      databaseRuntimeConfig().workspaceUrl,
-      "postgresql://test.example/hermes-test",
-    );
-    assert.equal(
-      databaseRuntimeConfig().platformUrl,
-      "postgresql://test.example/hermes-test",
+      "postgresql://app.example/hermes",
     );
   });
 
-  it("uses POSTGRES_URL for both datasources when dedicated URLs are absent", () => {
+  it("rejects legacy RLS variables before a direct runtime consumer opens a connection", () => {
     process.env.NODE_ENV = "development";
-    process.env.POSTGRES_URL = "postgresql://shared.example/hermes";
-    delete process.env.POSTGRES_TEST_URL;
-    delete process.env.POSTGRES_WORKSPACE_URL;
-    delete process.env.POSTGRES_PLATFORM_URL;
+    process.env.POSTGRES_URL = "postgresql://app.example/hermes";
+    process.env.DATABASE_STRICT_RLS = "false";
 
-    assert.equal(
-      databaseRuntimeConfig().workspaceUrl,
-      "postgresql://shared.example/hermes",
-    );
-    assert.equal(
-      databaseRuntimeConfig().platformUrl,
-      "postgresql://shared.example/hermes",
+    assert.throws(
+      () => databaseRuntimeConfig(),
+      /no longer supported.*DATABASE_STRICT_RLS/,
     );
   });
 
-  it("prefers dedicated datasource URLs over the shared fallback", () => {
-    process.env.NODE_ENV = "development";
-    process.env.POSTGRES_URL = "postgresql://shared.example/hermes";
-    process.env.POSTGRES_WORKSPACE_URL =
-      "postgresql://hermes_workspace_app@workspace.example/hermes";
-    process.env.POSTGRES_PLATFORM_URL =
-      "postgresql://platform@platform.example/hermes";
-    delete process.env.POSTGRES_TEST_URL;
-
-    assert.equal(
-      databaseRuntimeConfig().workspaceUrl,
-      process.env.POSTGRES_WORKSPACE_URL,
-    );
-    assert.equal(
-      databaseRuntimeConfig().platformUrl,
-      process.env.POSTGRES_PLATFORM_URL,
-    );
-  });
-
-  it("keeps strict RLS disabled by default and supports explicit opt-in", () => {
-    process.env.NODE_ENV = "production";
-    delete process.env.DATABASE_STRICT_RLS;
-    assert.equal(databaseRuntimeConfig().strictRls, false);
-
-    process.env.DATABASE_STRICT_RLS = "true";
-    assert.equal(databaseRuntimeConfig().strictRls, true);
-  });
-
-  it("rejects test startup without an isolated database URL", () => {
+  it("requires POSTGRES_TEST_URL for test startup", () => {
     assert.throws(
       () => validateRuntimeConfig({ NODE_ENV: "test" }),
       /POSTGRES_TEST_URL is required/,
     );
+  });
+
+  it("does not validate or use POSTGRES_URL during test startup", () => {
+    assert.doesNotThrow(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "test",
+        POSTGRES_TEST_URL: "postgresql://test.example/hermes-test",
+        POSTGRES_URL: "not-a-postgres-url",
+      }),
+    );
+  });
+
+  it("requires POSTGRES_URL outside test runtime", () => {
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          NODE_ENV: "development",
+          POSTGRES_HOST: "db.example",
+        }),
+      /POSTGRES_URL is required/,
+    );
+    assert.doesNotThrow(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "development",
+        POSTGRES_URL: "postgresql://app.example/hermes",
+      }),
+    );
+
+    process.env.NODE_ENV = "development";
+    delete process.env.POSTGRES_URL;
+    assert.throws(
+      () => databaseRuntimeConfig(),
+      /POSTGRES_URL is required/,
+    );
+  });
+
+  it("rejects all retired RLS connection settings with a migration message", () => {
+    const base = {
+      NODE_ENV: "development",
+      POSTGRES_URL: "postgresql://app.example/hermes",
+    };
+    const legacySettings = {
+      DATABASE_STRICT_RLS: "false",
+      POSTGRES_PLATFORM_URL: "postgresql://platform.example/hermes",
+      POSTGRES_WORKSPACE_URL: "postgresql://workspace.example/hermes",
+    };
+
+    for (const [name, value] of Object.entries(legacySettings)) {
+      assert.throws(
+        () => validateRuntimeConfig({ ...base, [name]: value }),
+        new RegExp(`no longer supported.*${name}`),
+      );
+    }
   });
 
   it("rejects synchronize in production", () => {
@@ -146,59 +169,9 @@ describe("database runtime configuration", () => {
         validateRuntimeConfig({
           DATABASE_SYNCHRONIZE: "true",
           NODE_ENV: "production",
-        }),
-      /DATABASE_SYNCHRONIZE must be false/,
-    );
-  });
-
-  it("allows one shared PostgreSQL URL when strict RLS is disabled", () => {
-    assert.doesNotThrow(() =>
-      validateRuntimeConfig({
-        DATABASE_STRICT_RLS: "false",
-        NODE_ENV: "development",
-        POSTGRES_URL: "postgresql://app.example/hermes",
-      }),
-    );
-  });
-
-  it("requires dedicated database credentials only when strict RLS is enabled", () => {
-    assert.throws(
-      () =>
-        validateRuntimeConfig({
-          DATABASE_STRICT_RLS: "true",
-          NODE_ENV: "development",
           POSTGRES_URL: "postgresql://app.example/hermes",
         }),
-      /POSTGRES_WORKSPACE_URL and POSTGRES_PLATFORM_URL are required/,
-    );
-    assert.throws(
-      () =>
-        validateRuntimeConfig({
-          DATABASE_STRICT_RLS: "true",
-          NODE_ENV: "development",
-          POSTGRES_PLATFORM_URL: "postgresql://app.example/hermes",
-          POSTGRES_WORKSPACE_URL: "postgresql://app.example/hermes",
-        }),
-      /must use separate database credentials/,
-    );
-    assert.doesNotThrow(() =>
-      validateRuntimeConfig({
-        DATABASE_STRICT_RLS: "true",
-        NODE_ENV: "development",
-        POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
-        POSTGRES_WORKSPACE_URL:
-          "postgresql://hermes_workspace_app@app.example/hermes",
-      }),
-    );
-    assert.throws(
-      () =>
-        validateRuntimeConfig({
-          DATABASE_STRICT_RLS: "true",
-          NODE_ENV: "development",
-          POSTGRES_PLATFORM_URL: "postgresql://platform@app.example/hermes",
-          POSTGRES_WORKSPACE_URL: "postgresql://workspace@app.example/hermes",
-        }),
-      /must authenticate as hermes_workspace_app/,
+      /DATABASE_SYNCHRONIZE must be false/,
     );
   });
 

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { Account, UserNotification } from "@hermes-swarm/core";
 import { NotificationsService } from "./notifications.service.js";
 
 describe("NotificationsService", () => {
@@ -97,7 +96,7 @@ describe("NotificationsService", () => {
     assert.equal(published[0].userId, "recipient");
   });
 
-  it("uses the current workspace transaction before publishing realtime events", async () => {
+  it("does not open a global transaction before publishing realtime events", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const published: any[] = [];
     const service = createNotificationsService(
@@ -266,6 +265,28 @@ describe("NotificationsService", () => {
     assert.equal(notificationRepository.saved.length, 0);
   });
 
+  it("rejects notification actors that are outside the active workspace", async () => {
+    const notificationRepository = createNotificationRepositoryHarness();
+    const service = createNotificationsService(
+      notificationRepository.repository,
+      {} as any,
+      {} as any,
+      {} as any,
+      { workspaceId: "workspace-1", userIds: ["recipient"] },
+    );
+
+    await assert.rejects(
+      () =>
+        service.createForUser({
+          actorUserId: "other-workspace-user",
+          recipientUserId: "recipient",
+          title: "Notice",
+        }),
+      BadRequestException,
+    );
+    assert.equal(notificationRepository.saved.length, 0);
+  });
+
   it("keeps saved notifications when realtime publish fails", async () => {
     const notificationRepository = createNotificationRepositoryHarness();
     const service = createNotificationsService(
@@ -368,22 +389,22 @@ function createNotificationsService(
   options: { workspaceId?: string; userIds?: string[] } = {},
 ) {
   const workspaceId = options.workspaceId ?? "workspace-1";
-  const userRepository = {
+  const workspaceMembershipRepository = {
     find: async ({ where }: any) => {
-      const requested = where.id?._value ?? where.id?.value ?? [];
+      const requested = where.accountId?._value ?? where.accountId?.value ?? [];
       const allowed = options.userIds ?? requested;
       return requested
         .filter((id: string) => allowed.includes(id))
-        .map((id: string) => ({ id, status: "active", workspaceId }));
+        .map((accountId: string) => ({
+          account: { id: accountId, status: "active" },
+          accountId,
+          status: "active",
+          workspaceId,
+        }));
     },
   };
   const workspaceContext = {
     current: () => ({ workspaceId }),
-    repository: (target: unknown) => {
-      if (target === UserNotification) return notificationRepository;
-      if (target === Account) return userRepository;
-      throw new Error("Unexpected repository");
-    },
   };
   const sessionService = authSessionService?.validateAccessToken
     ? {
@@ -405,6 +426,8 @@ function createNotificationsService(
     workspaceContext as any,
     sessionService,
     eventBus,
+    notificationRepository,
+    workspaceMembershipRepository as any,
   );
 }
 

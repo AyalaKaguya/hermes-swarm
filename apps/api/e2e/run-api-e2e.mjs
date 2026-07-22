@@ -9,34 +9,9 @@ const workspaceRoot = resolve(apiRoot, "../..");
 
 loadEnvFile(resolve(workspaceRoot, ".env"));
 
-const e2eDatabase = process.env.POSTGRES_E2E_DB ?? "hermes-e2e";
-const baseDatabaseUrl = process.env.POSTGRES_URL
-  ? new URL(process.env.POSTGRES_URL)
-  : undefined;
-const postgresAdminDatabase =
-  process.env.POSTGRES_ADMIN_DB ??
-  process.env.POSTGRES_DB ??
-  baseDatabaseUrl?.pathname.slice(1) ??
-  "postgres";
-const postgresHost = process.env.POSTGRES_HOST ?? baseDatabaseUrl?.hostname ?? "localhost";
-const postgresPassword =
-  process.env.POSTGRES_PASSWORD ??
-  (baseDatabaseUrl ? decodeURIComponent(baseDatabaseUrl.password) : undefined) ??
-  "hermes_dev_pwd";
-const postgresPort = Number(
-  process.env.POSTGRES_PORT ?? baseDatabaseUrl?.port ?? 5432,
-);
-const postgresUser =
-  process.env.POSTGRES_USER ??
-  (baseDatabaseUrl ? decodeURIComponent(baseDatabaseUrl.username) : undefined) ??
-  "hermes";
-const e2eDatabaseUrl =
-  process.env.POSTGRES_E2E_URL ??
-  `postgresql://${encodeURIComponent(postgresUser)}:${encodeURIComponent(
-    postgresPassword,
-  )}@${postgresHost}:${postgresPort}/${encodeURIComponent(e2eDatabase)}`;
+const e2eDatabaseUrl = requireTestDatabaseUrl(process.env.POSTGRES_TEST_URL);
 
-await ensureE2EDatabase();
+await prepareE2EDatabase(e2eDatabaseUrl);
 
 console.log(`Running API e2e tests against ${redactDatabaseUrl(e2eDatabaseUrl)}`);
 
@@ -53,9 +28,8 @@ const result = spawnSync(
     cwd: apiRoot,
     env: {
       ...process.env,
-      POSTGRES_E2E_URL: e2eDatabaseUrl,
-      POSTGRES_DB: e2eDatabase,
-      POSTGRES_URL: e2eDatabaseUrl,
+      NODE_ENV: "test",
+      POSTGRES_TEST_URL: e2eDatabaseUrl,
       RBAC_SYNC_CATALOG_ENABLED: "false",
       TYPEORM_CACHE_ENABLED: "false",
     },
@@ -69,65 +43,44 @@ if (result.error) {
 }
 process.exit(result.status ?? 1);
 
-async function ensureE2EDatabase() {
+async function prepareE2EDatabase(connectionString) {
   const client = new pg.Client({
-    database: postgresAdminDatabase,
-    host: postgresHost,
-    password: postgresPassword,
-    port: postgresPort,
-    user: postgresUser,
+    connectionString,
   });
 
   try {
     await client.connect();
-    const existing = await client.query(
-      "select 1 from pg_database where datname = $1",
-      [e2eDatabase],
-    );
-    if (existing.rowCount === 0) {
-      await client.query(`create database "${e2eDatabase.replaceAll('"', '""')}"`);
-      console.log(`Created PostgreSQL database ${e2eDatabase}`);
-    } else {
-      await client.query(
-        `
-          select pg_terminate_backend(pid)
-          from pg_stat_activity
-          where datname = $1
-            and pid <> pg_backend_pid()
-        `,
-        [e2eDatabase],
-      );
-    }
-    console.log(
-      `Prepared PostgreSQL database ${e2eDatabase} at ${postgresHost}:${postgresPort}`,
-    );
+    console.log(`Prepared API E2E database ${redactDatabaseUrl(connectionString)}`);
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+    await client.query('CREATE EXTENSION IF NOT EXISTS "pg_trgm"');
   } catch (error) {
     console.error(
-      `Unable to prepare PostgreSQL database ${e2eDatabase} at ${postgresHost}:${postgresPort}.`,
+      `Unable to prepare API E2E database ${redactDatabaseUrl(connectionString)}.`,
     );
-    console.error(
-      "Start the repo Postgres service or provide POSTGRES_E2E_URL/POSTGRES_* values, then rerun the API e2e target.",
-    );
+    console.error("Set POSTGRES_TEST_URL to a dedicated, disposable remote test database. API E2E resets its public schema; never use a production URL.");
     console.error(error);
     process.exit(1);
   } finally {
     await client.end().catch(() => undefined);
   }
+}
 
-  const e2eClient = new pg.Client({
-    database: e2eDatabase,
-    host: postgresHost,
-    password: postgresPassword,
-    port: postgresPort,
-    user: postgresUser,
-  });
-  try {
-    await e2eClient.connect();
-    await e2eClient.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
-    await e2eClient.query('CREATE EXTENSION IF NOT EXISTS "pg_trgm"');
-  } finally {
-    await e2eClient.end().catch(() => undefined);
+function requireTestDatabaseUrl(value) {
+  const connectionString = value?.trim();
+  if (!connectionString) {
+    throw new Error(
+      "POSTGRES_TEST_URL is required for API E2E. It must point to a dedicated, disposable remote test database.",
+    );
   }
+  try {
+    const url = new URL(connectionString);
+    if (url.protocol !== "postgresql:") {
+      throw new Error("invalid protocol");
+    }
+  } catch {
+    throw new Error("POSTGRES_TEST_URL must be a valid postgresql:// URL");
+  }
+  return connectionString;
 }
 
 function redactDatabaseUrl(value) {

@@ -339,6 +339,8 @@ function createState(options: {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
+      { current: () => ({ scopeLevel: "workspace", workspaceId: "workspace-1" }) } as never,
       {
         send: async (input: any) => {
           sentEmails.push(input);
@@ -359,64 +361,81 @@ function createWorkspaceRoleState() {
   const roles: any[] = [];
   const permissions: any[] = [];
   const workspaceContext = {
-    current: () => ({
-      manager: {
-        delete: async (target: { name?: string }, where: any) => {
-          if (target.name === "RolePermission") {
-            const role = roles.find((item) => item.id === where.roleId);
-            if (role) role.rolePermissions = [];
-          }
-          return { affected: 0 };
-        },
-        save: async (target: { name?: string }, values: any) => {
-          if (target.name === "RolePermission") {
-            const rows = Array.isArray(values) ? values : [values];
-            const role = roles.find((item) => item.id === rows[0]?.roleId);
-            if (role) {
-              role.rolePermissions = rows.map((row, index) => ({
-                id: `role-permission-${index + 1}`,
-                ...row,
-                permissionRecord: permissions.find(
-                  (permission) => permission.id === row.permissionId,
-                ),
-                permission: permissions.find(
-                  (permission) => permission.id === row.permissionId,
-                )?.code,
-              }));
-            }
-          }
-          return values;
-        },
-      },
-      workspaceId: "workspace-1",
-    }),
-    repository: (target: { name?: string }) => {
-      if (target.name === "Role") {
-        return {
-          create: (value: any) => ({ id: `role-${roles.length + 1}`, ...value }),
-          find: async () => roles,
-          findOne: async ({ where }: any) =>
-            roles.find(
-              (role) =>
-                (!where.id || role.id === where.id) &&
-                (!where.name || role.name === where.name) &&
-                role.workspaceId === where.workspaceId,
-            ) ?? null,
-          save: async (value: any) => {
-            const index = roles.findIndex((role) => role.id === value.id);
-            if (index >= 0) roles[index] = value;
-            else roles.push(value);
-            return value;
-          },
-        };
+    current: () => ({ scopeLevel: "workspace", workspaceId: "workspace-1" }),
+  };
+  const manager = {
+    delete: async (target: { name?: string }, where: any) => {
+      if (target.name === "RolePermission") {
+        const role = roles.find((item) => item.id === where.roleId);
+        if (role) role.rolePermissions = [];
       }
-      if (target.name === "Permission") {
-        return {
-          findOne: async ({ where }: any) =>
-            permissions.find((permission) => permission.code === where.code) ?? null,
-        };
+      return { affected: 0 };
+    },
+    findOne: async (target: { name?: string }, { where }: any) => {
+      if (target.name !== "Role") return null;
+      return (
+        roles.find(
+          (role) =>
+            role.id === where.id &&
+            role.scope === where.scope &&
+            role.workspaceId === where.workspaceId,
+        ) ?? null
+      );
+    },
+    save: async (target: { name?: string }, values: any) => {
+      if (target.name === "RolePermission") {
+        const rows = Array.isArray(values) ? values : [values];
+        const role = roles.find((item) => item.id === rows[0]?.roleId);
+        if (role) {
+          role.rolePermissions = rows.map((row, index) => ({
+            id: `role-permission-${index + 1}`,
+            ...row,
+            permissionRecord: permissions.find(
+              (permission) => permission.id === row.permissionId,
+            ),
+            permission: permissions.find(
+              (permission) => permission.id === row.permissionId,
+            )?.code,
+          }));
+        }
       }
-      return { findOne: async () => null };
+      return values;
+    },
+  };
+  const roleRepository = {
+    create: (value: any) => ({ id: `role-${roles.length + 1}`, ...value }),
+    find: async ({ where }: any) =>
+      roles.filter(
+        (role) =>
+          role.scope === where.scope && role.workspaceId === where.workspaceId,
+      ),
+    findOne: async ({ where }: any) =>
+      roles.find(
+        (role) =>
+          (!where.id || role.id === where.id) &&
+          (!where.name || role.name === where.name) &&
+          role.scope === where.scope &&
+          role.workspaceId === where.workspaceId,
+      ) ?? null,
+    manager: {
+      transaction: async (work: (transactionManager: typeof manager) => Promise<unknown>) =>
+        work(manager),
+    },
+    save: async (value: any) => {
+      const index = roles.findIndex((role) => role.id === value.id);
+      if (index >= 0) roles[index] = value;
+      else roles.push(value);
+      return value;
+    },
+  };
+  const permissionRepository = {
+    findOne: async ({ where }: any) =>
+      permissions.find((permission) => permission.code === where.code) ?? null,
+  };
+  const rolePermissionRepository = {
+    manager: {
+      transaction: async (work: (transactionManager: typeof manager) => Promise<unknown>) =>
+        work(manager),
     },
   };
   return {
@@ -426,9 +445,11 @@ function createWorkspaceRoleState() {
       {} as never,
       {} as never,
       {} as never,
+      roleRepository as never,
+      permissionRepository as never,
       {} as never,
-      {} as never,
-      {} as never,
+      rolePermissionRepository as never,
+      { find: async () => [] } as never,
       workspaceContext as never,
       { send: async () => ({ sent: true }) } as never,
     ),

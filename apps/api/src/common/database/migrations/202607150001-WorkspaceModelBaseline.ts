@@ -1,25 +1,4 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
-import { WORKSPACE_DATABASE_GUCS } from "../workspace-database.constants.js";
-
-export const WORKSPACE_RLS_TABLES = [
-    "access_audit_logs",
-    "conversation_messages",
-    "conversation_participants",
-    "conversations",
-    "custom_smtp",
-    "email_sent",
-    "email_templates",
-    "integration_tokens",
-    "invites",
-    "roles",
-    "workspace_settings",
-    "ticket_messages",
-    "tickets",
-    "user_notifications",
-    "user_workspace_roles",
-] as const;
-
-export const WORKSPACE_RLS_GAPS = [] as const;
 
 export class WorkspaceModelBaseline2026071500001 implements MigrationInterface {
     name = 'WorkspaceModelBaseline2026071500001'
@@ -221,35 +200,9 @@ export class WorkspaceModelBaseline2026071500001 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "invites" ADD CONSTRAINT "FK_invites_role" FOREIGN KEY ("role_id") REFERENCES "roles"("id") ON DELETE RESTRICT`);
         await queryRunner.query(`ALTER TABLE "invites" ADD CONSTRAINT "FK_invites_workspace_role" FOREIGN KEY ("workspace_id", "role_id") REFERENCES "roles"("workspace_id", "id") ON DELETE RESTRICT`);
 
-        const workspacePredicate = `"workspace_id" = NULLIF(current_setting('${WORKSPACE_DATABASE_GUCS.workspaceId}', true), '')::uuid`;
-        for (const table of WORKSPACE_RLS_TABLES) {
-            await queryRunner.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);
-            await queryRunner.query(`ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY`);
-            await queryRunner.query(`CREATE POLICY "workspace_isolation_${table}" ON "${table}" USING (${workspacePredicate}) WITH CHECK (${workspacePredicate})`);
-        }
-        await queryRunner.query(`ALTER TABLE "role_permissions" ENABLE ROW LEVEL SECURITY`);
-        await queryRunner.query(`ALTER TABLE "role_permissions" FORCE ROW LEVEL SECURITY`);
-        await queryRunner.query(`CREATE POLICY "workspace_isolation_role_permissions" ON "role_permissions" USING (EXISTS (SELECT 1 FROM "roles" role WHERE role."id" = "role_permissions"."role_id" AND role."scope" = 'workspace' AND role."workspace_id" = NULLIF(current_setting('${WORKSPACE_DATABASE_GUCS.workspaceId}', true), '')::uuid)) WITH CHECK (EXISTS (SELECT 1 FROM "roles" role WHERE role."id" = "role_permissions"."role_id" AND role."scope" = 'workspace' AND role."workspace_id" = NULLIF(current_setting('${WORKSPACE_DATABASE_GUCS.workspaceId}', true), '')::uuid))`);
-        await queryRunner.query(`ALTER TABLE "users" ENABLE ROW LEVEL SECURITY`);
-        await queryRunner.query(`ALTER TABLE "users" FORCE ROW LEVEL SECURITY`);
-        await queryRunner.query(`CREATE POLICY "workspace_accounts_read" ON "users" FOR SELECT USING (EXISTS (SELECT 1 FROM "user_workspace_roles" membership WHERE membership."user_id" = "users"."id" AND membership."workspace_id" = NULLIF(current_setting('${WORKSPACE_DATABASE_GUCS.workspaceId}', true), '')::uuid AND membership."status" <> 'removed'))`);
-        const workspaceRowPredicate = `"id" = NULLIF(current_setting('${WORKSPACE_DATABASE_GUCS.workspaceId}', true), '')::uuid`;
-        await queryRunner.query(`ALTER TABLE "workspaces" ENABLE ROW LEVEL SECURITY`);
-        await queryRunner.query(`ALTER TABLE "workspaces" FORCE ROW LEVEL SECURITY`);
-        await queryRunner.query(`CREATE POLICY "workspace_isolation_workspaces" ON "workspaces" USING (${workspaceRowPredicate}) WITH CHECK (${workspaceRowPredicate})`);
-
-        await queryRunner.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hermes_workspace_app') THEN CREATE ROLE hermes_workspace_app LOGIN NOBYPASSRLS; END IF; END $$`);
-        await queryRunner.query(`GRANT USAGE ON SCHEMA public TO hermes_workspace_app`);
-        await queryRunner.query(`GRANT SELECT ON "permissions" TO hermes_workspace_app`);
-        await queryRunner.query(`GRANT SELECT ON "users" TO hermes_workspace_app`);
-        await queryRunner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "role_permissions" TO hermes_workspace_app`);
-        await queryRunner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "workspaces", ${WORKSPACE_RLS_TABLES.map((table) => `"${table}"`).join(", ")} TO hermes_workspace_app`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        for (const table of [...WORKSPACE_RLS_TABLES, "workspaces"]) {
-            await queryRunner.query(`DROP POLICY IF EXISTS "workspace_isolation_${table}" ON "${table}"`);
-        }
         for (const [table, constraint] of [
             ["invites", "FK_invites_workspace_workspace_role"], ["invites", "FK_invites_workspace_invited_by"], ["invites", "FK_invites_workspace_accepted_user"],
             ["integration_tokens", "FK_integration_tokens_workspace_owner"], ["email_verifications", "FK_email_verifications_workspace_user"],

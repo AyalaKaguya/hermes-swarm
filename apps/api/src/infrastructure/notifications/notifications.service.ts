@@ -6,13 +6,14 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
 import {
-  Account,
   UserNotification,
+  WorkspaceMembership,
   type UserNotificationKind,
   type UserNotificationStatus,
 } from "@hermes-swarm/core";
-import { In, IsNull } from "typeorm";
+import { In, IsNull, type Repository } from "typeorm";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
 import { RealtimeEventBus } from "../realtime/realtime-event-bus.service.js";
@@ -38,12 +39,19 @@ export class NotificationsService {
     private readonly authSessionService: AuthSessionService,
     @Inject(RealtimeEventBus)
     private readonly realtimeEventBus: RealtimeEventBus,
+    @InjectRepository(UserNotification)
+    private readonly notifications: Repository<UserNotification>,
+    @InjectRepository(WorkspaceMembership)
+    private readonly workspaceMemberships: Repository<WorkspaceMembership>,
   ) {}
 
   async createForUser(input: CreateUserNotificationInput) {
     const workspaceId = this.workspaceId;
     const entityInput = toNotificationEntityInput(input, workspaceId);
     await this.requireWorkspaceRecipients(workspaceId, [entityInput.recipientUserId]);
+    if (entityInput.actorUserId) {
+      await this.requireWorkspaceMembers(workspaceId, [entityInput.actorUserId]);
+    }
     const notification = await this.notifications.save(
       this.notifications.create(entityInput),
     );
@@ -60,6 +68,9 @@ export class NotificationsService {
     if (recipientUserIds.length === 0) return [];
     const workspaceId = this.workspaceId;
     await this.requireWorkspaceRecipients(workspaceId, recipientUserIds);
+    if (input.actorUserId) {
+      await this.requireWorkspaceMembers(workspaceId, [input.actorUserId]);
+    }
 
     const savedNotifications = await this.notifications.save(
       recipientUserIds.map((recipientUserId) =>
@@ -272,26 +283,30 @@ export class NotificationsService {
   }
 
   private async requireWorkspaceRecipients(workspaceId: string, userIds: string[]) {
-    const users = await this.users.find({
-      select: { id: true },
-      where: { id: In(userIds), status: "active" },
+    await this.requireWorkspaceMembers(workspaceId, userIds);
+  }
+
+  private async requireWorkspaceMembers(workspaceId: string, userIds: string[]) {
+    const memberships = await this.workspaceMemberships.find({
+      relations: { account: true },
+      where: {
+        accountId: In(userIds),
+        status: "active",
+        workspaceId,
+      },
     });
-    const found = new Set(users.map((user) => user.id));
+    const found = new Set(
+      memberships
+        .filter((membership) => membership.account?.status === "active")
+        .map((membership) => membership.accountId),
+    );
     if (userIds.some((userId) => !found.has(userId))) {
-      throw new BadRequestException("接收人不属于当前工作空间或不可用");
+      throw new BadRequestException("通知相关账号不属于当前工作空间或不可用");
     }
   }
 
   private get workspaceId() {
     return this.workspaceContext.current()!.workspaceId;
-  }
-
-  private get notifications() {
-    return this.workspaceContext.repository(UserNotification);
-  }
-
-  private get users() {
-    return this.workspaceContext.repository(Account);
   }
 }
 

@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
+import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 import {
   RolePermission,
   Ticket,
@@ -13,7 +14,7 @@ import {
   type ConversationMessageAttachment,
   type TicketStatus,
 } from "@hermes-swarm/core";
-import { LessThan } from "typeorm";
+import { DataSource, In, LessThan, type Repository } from "typeorm";
 import { WorkspaceContextService } from "../../../common/database/workspace-context.service.js";
 import { AuthSessionService } from "../../../infrastructure/auth/auth-session.service.js";
 import type {
@@ -51,6 +52,14 @@ export class TicketsService {
     @Inject(ConversationCapabilityService)
     private readonly conversationsService: ConversationCapabilityService,
     private readonly workspaceContext: WorkspaceContextService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
+    @InjectRepository(Ticket)
+    private readonly tickets: Repository<Ticket>,
+    @InjectRepository(RolePermission)
+    private readonly rolePermissions: Repository<RolePermission>,
+    @InjectRepository(WorkspaceMembership)
+    private readonly workspaceMemberships: Repository<WorkspaceMembership>,
   ) {}
 
   async listTickets(
@@ -84,7 +93,7 @@ export class TicketsService {
     let ticket!: Ticket;
     let firstMessage!: Awaited<ReturnType<ConversationCapabilityService["createMessageInTransaction"]>>["message"];
     let conversation!: Awaited<ReturnType<ConversationCapabilityService["ensureConversationForSource"]>>;
-    await this.manager.transaction(async (manager) => {
+    await this.dataSource.transaction(async (manager) => {
       ticket = await manager.save(
         Ticket,
         manager.create(Ticket, {
@@ -113,7 +122,14 @@ export class TicketsService {
       firstMessage = created.message;
       ticket.conversationId = conversation.id;
       ticket.lastMessageAt = firstMessage.createdAt;
-      ticket = await manager.save(Ticket, ticket);
+      await manager.update(
+        Ticket,
+        { id: ticket.id, workspaceId: session.workspaceId },
+        {
+          conversationId: ticket.conversationId,
+          lastMessageAt: ticket.lastMessageAt,
+        },
+      );
     });
     await this.conversationsService.publishMessageAfterCommit({
       authorUserId: session.userId,
@@ -161,7 +177,14 @@ export class TicketsService {
     if (!ticket.participantUserIds.includes(session.userId)) {
       ticket.participantUserIds = [...ticket.participantUserIds, session.userId];
     }
-    await this.tickets.save(ticket);
+    const update = await this.tickets.update(
+      { id: ticket.id, workspaceId: session.workspaceId },
+      {
+        lastMessageAt: ticket.lastMessageAt,
+        participantUserIds: ticket.participantUserIds,
+      },
+    );
+    if (update.affected !== 1) throw new NotFoundException("工单不存在");
     return message;
   }
 
@@ -172,7 +195,20 @@ export class TicketsService {
     if (ticket.requesterUserId === session.userId) ticket.requesterClosedAt = now;
     else ticket.handlerClosedAt = now;
     ticket.status = "closed";
-    const saved = await this.tickets.save(ticket);
+    const update = await this.tickets.update(
+      { id: ticket.id, workspaceId: session.workspaceId },
+      {
+        handlerClosedAt: ticket.handlerClosedAt,
+        requesterClosedAt: ticket.requesterClosedAt,
+        status: ticket.status,
+      },
+    );
+    if (update.affected !== 1) throw new NotFoundException("工单不存在");
+    const saved = await this.tickets.findOne({
+      relations: { assigneeUser: true, requesterUser: true },
+      where: { id: ticket.id, workspaceId: session.workspaceId },
+    });
+    if (!saved) throw new NotFoundException("工单不存在");
     await this.conversationsService.publishSourceUpdated(toConversationSource(saved), {
       status: saved.status,
     });
@@ -206,16 +242,20 @@ export class TicketsService {
     });
     if (tickets.length === 0) return { archived: 0 };
     const now = new Date();
-    for (const ticket of tickets) {
-      ticket.archivedAt = now;
-      ticket.status = "archived";
-    }
-    await this.tickets.save(tickets);
-    return { archived: tickets.length };
+    const result = await this.tickets.update(
+      { id: In(tickets.map((ticket) => ticket.id)), workspaceId },
+      { archivedAt: now, status: "archived" },
+    );
+    return { archived: result.affected ?? 0 };
   }
 
   private async canAccessSource(userId: string, source: ConversationSource) {
-    if (source.sourceType !== TICKET_SOURCE_TYPE) return false;
+    if (
+      source.sourceType !== TICKET_SOURCE_TYPE ||
+      source.workspaceId !== this.workspaceId
+    ) {
+      return false;
+    }
     const ticket = await this.tickets.findOne({
       where: { id: source.sourceId, workspaceId: source.workspaceId },
     });
@@ -240,6 +280,12 @@ export class TicketsService {
 
   private async canAccessTicket(userId: string, ticket: Ticket) {
     if (
+      ticket.workspaceId !== this.workspaceId ||
+      !(await this.hasActiveWorkspaceMembership(userId, ticket.workspaceId))
+    ) {
+      return false;
+    }
+    if (
       ticket.requesterUserId === userId ||
       ticket.assigneeUserId === userId ||
       ticket.participantUserIds.includes(userId) ||
@@ -251,24 +297,39 @@ export class TicketsService {
   }
 
   private async hasWorkspacePermission(userId: string, permission: string) {
-    const roleAssignment = await this.workspaceContext
-      .repository(WorkspaceMembership)
-      .findOne({
-        where: {
-          accountId: userId,
-          status: "active",
-          workspaceId: this.workspaceId,
-        },
-      });
-    if (!roleAssignment?.roleId) return false;
+    const workspaceId = this.workspaceId;
+    const roleAssignment = await this.workspaceMemberships.findOne({
+      relations: { role: true },
+      where: {
+        accountId: userId,
+        status: "active",
+        workspaceId,
+      },
+    });
+    if (
+      !roleAssignment?.roleId ||
+      roleAssignment.role?.scope !== "workspace" ||
+      roleAssignment.role.workspaceId !== workspaceId
+    ) {
+      return false;
+    }
     return Boolean(
       await this.rolePermissions.findOne({
-        relations: { permissionRecord: true },
+        relations: { permissionRecord: true, role: true },
         where: {
           enabled: true,
           permissionRecord: { code: permission },
           roleId: roleAssignment.roleId,
+          role: { scope: "workspace", workspaceId },
         },
+      }),
+    );
+  }
+
+  private async hasActiveWorkspaceMembership(userId: string, workspaceId: string) {
+    return Boolean(
+      await this.workspaceMemberships.findOne({
+        where: { accountId: userId, status: "active", workspaceId },
       }),
     );
   }
@@ -294,18 +355,6 @@ export class TicketsService {
 
   private get workspaceId() {
     return this.workspaceContext.current()!.workspaceId;
-  }
-
-  private get manager() {
-    return this.workspaceContext.current()!.manager;
-  }
-
-  private get tickets() {
-    return this.workspaceContext.repository(Ticket);
-  }
-
-  private get rolePermissions() {
-    return this.workspaceContext.repository(RolePermission);
   }
 }
 

@@ -1,5 +1,4 @@
 import type { MigrationInterface, QueryRunner } from "typeorm";
-import { WORKSPACE_DATABASE_GUCS } from "../workspace-database.constants.js";
 
 export class AuditLogs2026071700002 implements MigrationInterface {
   name = "AuditLogs2026071700002";
@@ -53,32 +52,10 @@ export class AuditLogs2026071700002 implements MigrationInterface {
     await queryRunner.query(
       `CREATE INDEX "IDX_login_audit_email" ON "login_audit_logs" ("attempted_email", "created_at")`,
     );
-    const workspacePredicate = `"workspace_id" = NULLIF(current_setting('${WORKSPACE_DATABASE_GUCS.workspaceId}', true), '')::uuid`;
-    await queryRunner.query(
-      `ALTER TABLE "login_audit_logs" ENABLE ROW LEVEL SECURITY`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "login_audit_logs" FORCE ROW LEVEL SECURITY`,
-    );
-    await queryRunner.query(
-      `CREATE POLICY "workspace_isolation_login_audit_logs" ON "login_audit_logs" USING (${workspacePredicate}) WITH CHECK (${workspacePredicate})`,
-    );
-    await queryRunner.query(
-      `GRANT SELECT, INSERT ON "login_audit_logs" TO hermes_workspace_app`,
-    );
-    await queryRunner.query(
-      `REVOKE UPDATE, DELETE ON "access_audit_logs" FROM hermes_workspace_app`,
-    );
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP POLICY IF EXISTS "workspace_isolation_login_audit_logs" ON "login_audit_logs"`,
-    );
     await queryRunner.query(`DROP TABLE "login_audit_logs"`);
-    await queryRunner.query(
-      `GRANT UPDATE, DELETE ON "access_audit_logs" TO hermes_workspace_app`,
-    );
     await queryRunner.query(`
       ALTER TABLE "access_audit_logs"
       DROP COLUMN "user_agent",

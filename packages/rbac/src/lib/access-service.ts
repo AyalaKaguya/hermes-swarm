@@ -5,25 +5,23 @@ import {
   RolePermission,
   WorkspaceMembership,
 } from "@hermes-swarm/core";
-import { DataSource, In, Repository, type EntityManager } from "typeorm";
+import { In, Repository } from "typeorm";
 import type {
   AccessCheckContext,
   ResolvedAccessDefinition,
 } from "./access.types.js";
-import { PLATFORM_DATA_SOURCE } from "./tokens.js";
 
 @Injectable()
 export class AccessService {
   constructor(
-    @InjectRepository(PlatformMembership, PLATFORM_DATA_SOURCE)
+    @InjectRepository(PlatformMembership)
     private readonly platformMembershipRepository: Repository<PlatformMembership>,
-    @InjectRepository(RolePermission, PLATFORM_DATA_SOURCE)
+    @InjectRepository(RolePermission)
     private readonly platformRolePermissionRepository: Repository<RolePermission>,
     @InjectRepository(WorkspaceMembership)
     private readonly workspaceRoleRepository: Repository<WorkspaceMembership>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
-    private readonly dataSource: DataSource,
   ) {}
 
   async can(
@@ -41,16 +39,7 @@ export class AccessService {
     const workspaceId = context.workspaceId ?? undefined;
     if (!workspaceId) return false;
 
-    return this.dataSource.transaction(async (manager) => {
-      await manager.query(
-        "SELECT set_config('app.workspace_id', $1, true), set_config('app.scope_level', $2, true)",
-        [
-          workspaceId,
-          context.scopeLevel ?? scopeLevelForPermission(definition.scope),
-        ],
-      );
-      return this.canInWorkspace(userId, workspaceId, definition, context, manager);
-    });
+    return this.canInWorkspace(userId, workspaceId, definition, context);
   }
 
   private async canInWorkspace(
@@ -58,23 +47,21 @@ export class AccessService {
     workspaceId: string,
     definition: ResolvedAccessDefinition,
     context: AccessCheckContext,
-    manager: EntityManager,
   ) {
 
     if (definition.scope === "own") {
       if (context.targetUserId !== userId) return false;
-      const workspaceRoleIds = await this.findWorkspaceRoleIds(workspaceId, userId, manager);
+      const workspaceRoleIds = await this.findWorkspaceRoleIds(workspaceId, userId);
       return this.anyWorkspaceRoleAllows(
         workspaceId,
         workspaceRoleIds,
         definition.id,
-        manager,
       );
     }
 
-    const roleIds = await this.findWorkspaceRoleIds(workspaceId, userId, manager);
+    const roleIds = await this.findWorkspaceRoleIds(workspaceId, userId);
     if (definition.scope === "workspace") {
-      return this.anyWorkspaceRoleAllows(workspaceId, roleIds, definition.id, manager);
+      return this.anyWorkspaceRoleAllows(workspaceId, roleIds, definition.id);
     }
 
     return false;
@@ -101,9 +88,8 @@ export class AccessService {
   private async findWorkspaceRoleIds(
     workspaceId: string,
     userId: string,
-    manager: EntityManager,
   ) {
-    const assignments = await manager.getRepository(WorkspaceMembership).find({
+    const assignments = await this.workspaceRoleRepository.find({
       relations: { role: true },
       where: { accountId: userId, status: "active", workspaceId },
     });
@@ -119,23 +105,19 @@ export class AccessService {
     workspaceId: string,
     roleIds: string[],
     permission: string,
-    manager: EntityManager,
   ) {
     const uniqueRoleIds = [...new Set(roleIds)];
     if (uniqueRoleIds.length === 0) return false;
     return Boolean(
-      await manager.getRepository(RolePermission).findOne({
-        relations: { permissionRecord: true },
+      await this.rolePermissionRepository.findOne({
+        relations: { permissionRecord: true, role: true },
         where: {
           enabled: true,
           permissionRecord: { code: permission },
           roleId: In(uniqueRoleIds),
+          role: { scope: "workspace", workspaceId },
         },
       }),
     );
   }
-}
-
-function scopeLevelForPermission(scope: ResolvedAccessDefinition["scope"]) {
-  return "workspace";
 }

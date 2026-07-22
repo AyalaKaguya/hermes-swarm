@@ -13,18 +13,19 @@ import { WorkspaceMailController } from "./mail.controller.js";
 import { MailService } from "./mail.service.js";
 import { PlatformMailController } from "./platform-mail.controller.js";
 import { SettingsModule } from "../settings/settings.module.js";
-import { PLATFORM_DATA_SOURCE } from "../../common/database/database.constants.js";
 import { PlatformEmailSendService } from "./platform-email-send.service.js";
 
 @Module({
   imports: [
     SettingsModule,
     DatabaseModule,
-    TypeOrmModule.forFeature([CustomSmtp, EmailTemplate, EmailLog]),
-    TypeOrmModule.forFeature(
-      [PlatformEmailTemplate, PlatformSmtp],
-      PLATFORM_DATA_SOURCE,
-    ),
+    TypeOrmModule.forFeature([
+      CustomSmtp,
+      EmailTemplate,
+      EmailLog,
+      PlatformEmailTemplate,
+      PlatformSmtp,
+    ]),
   ],
   controllers: [WorkspaceMailController, PlatformMailController],
   providers: [MailService, EmailSendService, PlatformEmailSendService],

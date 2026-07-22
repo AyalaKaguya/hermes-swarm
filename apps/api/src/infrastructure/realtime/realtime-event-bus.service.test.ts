@@ -1,8 +1,29 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { RealtimeEventBus } from "./realtime-event-bus.service.js";
+import {
+  RealtimeEventBus,
+  resolveRealtimeWorkspaceId,
+} from "./realtime-event-bus.service.js";
 
 describe("RealtimeEventBus", () => {
+  it("rejects explicit cross-workspace recipients", () => {
+    assert.equal(
+      resolveRealtimeWorkspaceId(
+        { scopeLevel: "workspace", workspaceId: "workspace-1" },
+        "workspace-1",
+      ),
+      "workspace-1",
+    );
+    assert.throws(
+      () =>
+        resolveRealtimeWorkspaceId(
+          { scopeLevel: "workspace", workspaceId: "workspace-1" },
+          "workspace-2",
+        ),
+      /cannot cross workspace context/,
+    );
+  });
+
   it("delivers locally and remotely once while ignoring its own Redis event", async () => {
     const channelCallbacks = new Map<
       string,

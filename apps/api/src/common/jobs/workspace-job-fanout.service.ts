@@ -2,13 +2,12 @@ import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Workspace } from "@hermes-swarm/core";
 import { IsNull, Repository } from "typeorm";
-import { PLATFORM_DATA_SOURCE } from "../database/database.constants.js";
 import type { WorkspaceJobEnvelope } from "./workspace-job.types.js";
 
 @Injectable()
 export class WorkspaceJobFanoutService {
   constructor(
-    @InjectRepository(Workspace, PLATFORM_DATA_SOURCE)
+    @InjectRepository(Workspace)
     private readonly platformWorkspaceRepository: Repository<Workspace>,
   ) {}
 
