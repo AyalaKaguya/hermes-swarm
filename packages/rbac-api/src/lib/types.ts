@@ -13,6 +13,7 @@ export type PageAccessSection =
   | "infrastructure"
   | "personal"
   | "platform"
+  | "platform-governance"
   | "workspace";
 
 export type PageAccessDefinition = {

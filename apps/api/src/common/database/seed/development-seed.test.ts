@@ -115,6 +115,23 @@ describe("development seed contract", () => {
     }
   });
 
+  it("grants platform administrators the unified ticket inbox permissions", () => {
+    const catalog = buildSeedPermissionCatalog();
+    for (const operation of [
+      "list",
+      "view",
+      "list_messages",
+      "send_message",
+      "close",
+      "mark_read",
+    ]) {
+      const definition = catalog.find(
+        (item) => item.id === `ticket.conversation.${operation}:platform`,
+      );
+      assert.ok(definition?.defaultRoles.includes("platform-admin"));
+    }
+  });
+
   it("covers only workspace member and ticket business states", () => {
     assert.deepEqual(DEVELOPMENT_FIXTURE_SCENARIOS.ticketStatuses, [
       "open",

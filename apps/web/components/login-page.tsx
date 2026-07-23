@@ -36,6 +36,7 @@ import {
 } from "@/lib/login-workspace";
 import {
   resolvePlatformNameFromSettings,
+  resolvePlatformSloganFromSettings,
   resolveWorkspaceApplicationsEnabled,
 } from "@/lib/platform-settings";
 import { clearStoredSession } from "@/lib/session";
@@ -59,6 +60,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [platformName, setPlatformName] = useState<string | null>(null);
+  const [platformSlogan, setPlatformSlogan] = useState<string | null>(null);
   const [workspaceApplicationsEnabled, setWorkspaceApplicationsEnabled] =
     useState(true);
 
@@ -73,6 +75,9 @@ export function LoginPage() {
         const bootstrap = await getPublicBootstrap();
         if (cancelled) return;
         setPlatformName(resolvePlatformNameFromSettings(bootstrap.systemSettings));
+        setPlatformSlogan(
+          resolvePlatformSloganFromSettings(bootstrap.systemSettings),
+        );
         setWorkspaceApplicationsEnabled(
           resolveWorkspaceApplicationsEnabled(bootstrap.systemSettings),
         );
@@ -188,6 +193,11 @@ export function LoginPage() {
 
   const currentWorkspace = workspaceContext?.workspace;
   const title = currentWorkspace?.name || platformName || "Hermes Swarm";
+  const platformContextLabel = platformSlogan?.trim() || t("auth.console");
+
+  useEffect(() => {
+    document.title = t("shell.documentTitle", { name: title });
+  }, [t, title]);
 
   return (
     <main className="relative grid min-h-svh place-items-center bg-muted/30 p-4">
@@ -201,7 +211,7 @@ export function LoginPage() {
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{title}</p>
               <p className="text-xs text-muted-foreground">
-                {currentWorkspace?.slug || t("auth.console")}
+                {currentWorkspace?.slug || platformContextLabel}
               </p>
             </div>
           </div>
@@ -238,7 +248,9 @@ export function LoginPage() {
                   <AppIcon className="size-4" name={option.type === "platform" ? "shield" : "building"} />
                   <span className="grid min-w-0 flex-1 text-left">
                     <span className="truncate text-sm font-medium">
-                      {option.type === "platform" ? t("auth.console") : option.workspace.name}
+                      {option.type === "platform"
+                        ? platformContextLabel
+                        : option.workspace.name}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
                       {option.role.displayName}

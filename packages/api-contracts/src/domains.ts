@@ -45,13 +45,20 @@ export const WorkspaceApplicationRequestSchema = z.strictObject({
 });
 export type WorkspaceApplicationPayload = z.input<typeof WorkspaceApplicationRequestSchema>;
 export const WorkspaceApplicationSubmissionSchema = z.strictObject({
-  applicationId: IdentifierSchema, cancellationToken: z.string().optional(), verificationToken: z.string().optional(),
+  applicationId: IdentifierSchema, cancellationToken: z.string().optional(), verificationEmailSent: z.boolean(), verificationToken: z.string().optional(),
 });
 export type WorkspaceApplicationSubmission = z.infer<typeof WorkspaceApplicationSubmissionSchema>;
 export const WorkspaceApplicationApprovalSchema = z.strictObject({
-  application: WorkspaceApplicationSchema, ownerActivationToken: z.string().optional(), ownerUser: UserSchema, workspace: WorkspaceSchema,
+  application: WorkspaceApplicationSchema, ownerActivationEmailSent: z.boolean(), ownerActivationToken: z.string().optional(), workspace: WorkspaceSchema,
 });
 export type WorkspaceApplicationApproval = z.infer<typeof WorkspaceApplicationApprovalSchema>;
+export const WorkspaceOwnerActivationSchema = z.strictObject({
+  account: z.strictObject({ displayName: z.string(), email: z.email(), id: IdentifierSchema }),
+  existingAccount: z.boolean(),
+  membershipId: IdentifierSchema,
+  workspace: WorkspaceSchema,
+});
+export type WorkspaceOwnerActivation = z.infer<typeof WorkspaceOwnerActivationSchema>;
 
 export const IntegrationTokenPermissionOptionSchema = z.strictObject({
   description: z.string().nullable(), entity: z.string(), entityLabel: z.string(), entityOrder: z.number().nullable(),

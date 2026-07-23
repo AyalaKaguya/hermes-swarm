@@ -8,13 +8,15 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 import {
+  PlatformMembership,
   RolePermission,
   Ticket,
+  Workspace,
   WorkspaceMembership,
   type ConversationMessageAttachment,
   type TicketStatus,
 } from "@hermes-swarm/core";
-import { DataSource, In, LessThan, type Repository } from "typeorm";
+import { DataSource, In, IsNull, LessThan, type Repository } from "typeorm";
 import { WorkspaceContextService } from "../../../common/database/workspace-context.service.js";
 import { AuthSessionService } from "../../../infrastructure/auth/auth-session.service.js";
 import type {
@@ -28,7 +30,14 @@ import {
 
 const TICKET_SOURCE_TYPE = "ticket";
 const TICKET_SUBMIT_PERMISSION = "ticket.conversation.submit:workspace";
-const TICKET_HANDLE_PERMISSION = "ticket.conversation.handle:workspace";
+const PLATFORM_TICKET_PERMISSIONS = {
+  close: "ticket.conversation.close:platform",
+  list: "ticket.conversation.list:platform",
+  listMessages: "ticket.conversation.list_messages:platform",
+  markRead: "ticket.conversation.mark_read:platform",
+  sendMessage: "ticket.conversation.send_message:platform",
+  view: "ticket.conversation.view:platform",
+} as const;
 const MAX_TICKET_ATTACHMENTS = 6;
 const MAX_TICKET_ATTACHMENT_SIZE = 2 * 1024 * 1024;
 
@@ -60,6 +69,10 @@ export class TicketsService {
     private readonly rolePermissions: Repository<RolePermission>,
     @InjectRepository(WorkspaceMembership)
     private readonly workspaceMemberships: Repository<WorkspaceMembership>,
+    @InjectRepository(PlatformMembership)
+    private readonly platformMemberships: Repository<PlatformMembership>,
+    @InjectRepository(Workspace)
+    private readonly platformWorkspaces: Repository<Workspace>,
   ) {}
 
   async listTickets(
@@ -81,6 +94,117 @@ export class TicketsService {
       if (await this.canAccessTicket(session.userId, ticket)) visible.push(ticket);
     }
     return visible.map(toTicketDto);
+  }
+
+  async listPlatformTickets(
+    accountId: string,
+    options: { status?: string } = {},
+  ) {
+    await this.assertPlatformPermission(accountId, PLATFORM_TICKET_PERMISSIONS.list);
+    const status = parseOptionalTicketStatus(options.status);
+    const tickets = await this.tickets.find({
+      order: { updatedAt: "DESC" },
+      relations: { assigneeUser: true, requesterUser: true },
+      where: status ? { status } : {},
+    });
+    return this.toPlatformTicketDtos(tickets);
+  }
+
+  async getPlatformTicket(accountId: string, ticketId: string) {
+    await this.assertPlatformPermission(accountId, PLATFORM_TICKET_PERMISSIONS.view);
+    const ticket = await this.requirePlatformTicket(ticketId);
+    return this.toPlatformTicketDto(ticket);
+  }
+
+  async listPlatformMessages(accountId: string, ticketId: string) {
+    await this.assertPlatformPermission(
+      accountId,
+      PLATFORM_TICKET_PERMISSIONS.listMessages,
+    );
+    const ticket = await this.requirePlatformTicket(ticketId);
+    const resolver = this.platformConversationResolver(accountId);
+    return this.withTicketWorkspace(ticket, () =>
+      this.conversationsService.listMessages({
+        resolver,
+        source: toConversationSource(ticket),
+        userId: accountId,
+      }),
+    );
+  }
+
+  async sendPlatformMessage(
+    accountId: string,
+    ticketId: string,
+    payload: unknown,
+  ) {
+    await this.assertPlatformPermission(
+      accountId,
+      PLATFORM_TICKET_PERMISSIONS.sendMessage,
+    );
+    const ticket = await this.requirePlatformTicket(ticketId);
+    if (ticket.status !== "open") throw new BadRequestException("工单已关闭");
+    const input = parseMessagePayload(payload);
+    const resolver = this.platformConversationResolver(accountId);
+    const message = await this.withTicketWorkspace(ticket, () =>
+      this.conversationsService.sendMessage({
+        authorUserId: accountId,
+        message: input,
+        resolver,
+        source: toConversationSource(ticket),
+      }),
+    );
+    ticket.lastMessageAt = new Date(message.createdAt);
+    if (!ticket.participantUserIds.includes(accountId)) {
+      ticket.participantUserIds = [...ticket.participantUserIds, accountId];
+    }
+    const update = await this.tickets.update(
+      { id: ticket.id, workspaceId: ticket.workspaceId },
+      {
+        lastMessageAt: ticket.lastMessageAt,
+        participantUserIds: ticket.participantUserIds,
+      },
+    );
+    if (update.affected !== 1) throw new NotFoundException("工单不存在");
+    return message;
+  }
+
+  async closePlatformTicket(accountId: string, ticketId: string) {
+    await this.assertPlatformPermission(accountId, PLATFORM_TICKET_PERMISSIONS.close);
+    const ticket = await this.requirePlatformTicket(ticketId);
+    if (ticket.status !== "open") return this.toPlatformTicketDto(ticket);
+    ticket.handlerClosedAt = new Date();
+    ticket.status = "closed";
+    const update = await this.tickets.update(
+      { id: ticket.id, workspaceId: ticket.workspaceId },
+      {
+        handlerClosedAt: ticket.handlerClosedAt,
+        status: ticket.status,
+      },
+    );
+    if (update.affected !== 1) throw new NotFoundException("工单不存在");
+    const saved = await this.requirePlatformTicket(ticket.id);
+    await this.withTicketWorkspace(saved, () =>
+      this.conversationsService.publishSourceUpdated(toConversationSource(saved), {
+        status: saved.status,
+      }),
+    );
+    return this.toPlatformTicketDto(saved);
+  }
+
+  async markPlatformTicketRead(accountId: string, ticketId: string) {
+    await this.assertPlatformPermission(
+      accountId,
+      PLATFORM_TICKET_PERMISSIONS.markRead,
+    );
+    const ticket = await this.requirePlatformTicket(ticketId);
+    const resolver = this.platformConversationResolver(accountId);
+    return this.withTicketWorkspace(ticket, () =>
+      this.conversationsService.markRead({
+        resolver,
+        source: toConversationSource(ticket),
+        userId: accountId,
+      }),
+    );
   }
 
   async createTicket(authorization: string | undefined, payload: unknown) {
@@ -191,9 +315,11 @@ export class TicketsService {
   async closeTicket(authorization: string | undefined, ticketId: string) {
     const { session, ticket } = await this.requireAccessibleTicket(authorization, ticketId);
     if (ticket.status !== "open") return toTicketDto(ticket);
+    if (ticket.requesterUserId !== session.userId) {
+      throw new ForbiddenException("工单由平台支持团队处理");
+    }
     const now = new Date();
-    if (ticket.requesterUserId === session.userId) ticket.requesterClosedAt = now;
-    else ticket.handlerClosedAt = now;
+    ticket.requesterClosedAt = now;
     ticket.status = "closed";
     const update = await this.tickets.update(
       { id: ticket.id, workspaceId: session.workspaceId },
@@ -225,13 +351,8 @@ export class TicketsService {
   }
 
   async handlingCapability(authorization: string | undefined) {
-    const session = await this.requireWorkspaceSession(authorization);
-    return {
-      canHandle: await this.hasWorkspacePermission(
-        session.userId,
-        TICKET_HANDLE_PERMISSION,
-      ),
-    };
+    await this.requireWorkspaceSession(authorization);
+    return { canHandle: false };
   }
 
   async archiveExpiredTickets(workspaceId: string) {
@@ -287,13 +408,121 @@ export class TicketsService {
     }
     if (
       ticket.requesterUserId === userId ||
-      ticket.assigneeUserId === userId ||
       ticket.participantUserIds.includes(userId) ||
       (await this.conversationsService.isParticipant(toConversationSource(ticket), userId))
     ) {
       return true;
     }
-    return this.hasWorkspacePermission(userId, TICKET_HANDLE_PERMISSION);
+    return false;
+  }
+
+  private platformConversationResolver(
+    accountId: string,
+  ): ConversationAccessResolver {
+    return {
+      buildNotificationPayload: this.conversationResolver.buildNotificationPayload,
+      canJoin: async (userId, source) =>
+        userId === accountId && await this.canPlatformJoinSource(accountId, source),
+      canRead: async (userId, source) =>
+        userId === accountId && await this.canAccessPlatformSource(accountId, source),
+      canWrite: async (userId, source) =>
+        userId === accountId && await this.canAccessPlatformSource(accountId, source),
+    };
+  }
+
+  private async canAccessPlatformSource(
+    accountId: string,
+    source: ConversationSource,
+  ) {
+    if (
+      !accountId ||
+      source.sourceType !== TICKET_SOURCE_TYPE ||
+      source.workspaceId !== this.workspaceId
+    ) {
+      return false;
+    }
+    return Boolean(
+      await this.tickets.findOne({
+        where: { id: source.sourceId, workspaceId: source.workspaceId },
+      }),
+    );
+  }
+
+  private async canPlatformJoinSource(
+    accountId: string,
+    source: ConversationSource,
+  ) {
+    if (!(await this.canAccessPlatformSource(accountId, source))) return false;
+    const membership = await this.platformMemberships.findOne({
+      relations: { role: true },
+      where: { accountId, status: "active" },
+    });
+    return Boolean(
+      membership?.roleId &&
+        membership.role?.scope === "platform" &&
+        membership.role.workspaceId === null,
+    );
+  }
+
+  private async assertPlatformPermission(accountId: string, permission: string) {
+    const membership = await this.platformMemberships.findOne({
+      relations: { role: true },
+      where: { accountId, status: "active" },
+    });
+    if (
+      !membership?.roleId ||
+      membership.role?.scope !== "platform" ||
+      membership.role.workspaceId !== null
+    ) {
+      throw new ForbiddenException("没有处理平台工单的权限");
+    }
+    const granted = await this.rolePermissions.findOne({
+      relations: { permissionRecord: true, role: true },
+      where: {
+        enabled: true,
+        permissionRecord: { code: permission },
+        role: { scope: "platform", workspaceId: IsNull() },
+        roleId: membership.roleId,
+      },
+    });
+    if (!granted) throw new ForbiddenException("没有处理平台工单的权限");
+  }
+
+  private async requirePlatformTicket(ticketId: string) {
+    const ticket = await this.tickets.findOne({
+      relations: { assigneeUser: true, requesterUser: true },
+      where: { id: ticketId },
+    });
+    if (!ticket) throw new NotFoundException("工单不存在");
+    return ticket;
+  }
+
+  private withTicketWorkspace<T>(ticket: Ticket, work: () => Promise<T>) {
+    return this.workspaceContext.run(
+      { scopeLevel: "workspace", workspaceId: ticket.workspaceId },
+      work,
+    );
+  }
+
+  private async toPlatformTicketDto(ticket: Ticket) {
+    const workspace = await this.platformWorkspaces.findOne({
+      where: { id: ticket.workspaceId },
+    });
+    if (!workspace) throw new NotFoundException("工单所属工作空间不存在");
+    return toPlatformTicketDto(ticket, workspace);
+  }
+
+  private async toPlatformTicketDtos(tickets: Ticket[]) {
+    if (tickets.length === 0) return [];
+    const workspaces = await this.platformWorkspaces.find({
+      where: { id: In([...new Set(tickets.map((ticket) => ticket.workspaceId))]) },
+    });
+    const workspacesById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+    return tickets.map((ticket) => {
+      const workspace = workspacesById.get(ticket.workspaceId);
+      if (!workspace) throw new NotFoundException("工单所属工作空间不存在");
+      return toPlatformTicketDto(ticket, workspace);
+    });
   }
 
   private async hasWorkspacePermission(userId: string, permission: string) {
@@ -382,8 +611,19 @@ function toTicketDto(ticket: Ticket) {
     requesterUserId: ticket.requesterUserId,
     status: ticket.status,
     subject: ticket.subject,
-    workspaceId: ticket.workspaceId,
     updatedAt: ticket.updatedAt,
+  };
+}
+
+function toPlatformTicketDto(ticket: Ticket, workspace: Workspace) {
+  return {
+    ...toTicketDto(ticket),
+    workspace: {
+      id: workspace.id,
+      name: workspace.name,
+      slug: workspace.slug,
+      status: workspace.status,
+    },
   };
 }
 

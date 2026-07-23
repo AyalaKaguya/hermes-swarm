@@ -28,7 +28,10 @@ import {
 } from "@/lib/admin-api";
 import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/session";
 import { hasPageAccess } from "@/lib/access-control";
-import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
+import {
+  resolvePlatformNameFromSettings,
+  resolvePlatformSloganFromSettings,
+} from "@/lib/platform-settings";
 import { resolveLoginRoute, resolvePrincipalRoute } from "@/lib/principal-route";
 
 type AdminShellContextValue = {
@@ -163,7 +166,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     snapshot,
     resolvedSession.user.preferredLanguage,
   );
-  const navSections = buildMainNavSections(resolvedSession);
+  const platformSlogan = resolvePlatformSlogan(snapshot);
+  const navSections = buildMainNavSections(resolvedSession, snapshot);
   const ticketAccess = buildTicketAccess(resolvedSession, snapshot);
 
   async function switchContext(option: ContextSelectionOption) {
@@ -206,6 +210,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       }
       onUserUpdated={() => loadSnapshot({ showLoading: false })}
       platformName={platformName}
+      platformSlogan={platformSlogan}
       navSections={navSections}
       settingsHref={
         snapshot.principalType === "platform"
@@ -243,6 +248,10 @@ function resolvePlatformName(
     snapshot.systemSettings,
     preferredLanguage,
   );
+}
+
+function resolvePlatformSlogan(snapshot: Snapshot) {
+  return resolvePlatformSloganFromSettings(snapshot.systemSettings);
 }
 
 export function createShellSnapshot(
@@ -314,29 +323,63 @@ function hasPlatformManagementPermission(permissions: string[] | undefined) {
   );
 }
 
-function buildMainNavSections(resolvedSession: ResolvedSession) {
+function buildMainNavSections(
+  resolvedSession: ResolvedSession,
+  snapshot: Snapshot,
+) {
   if (resolvedSession.principalType === "platform") {
-    const items = PAGE_ACCESS_DEFINITIONS.filter(
-      (page) =>
-        page.section === "platform" &&
-        page.key !== "platform.audit" &&
-        hasPageAccess(resolvedSession, page.key),
-    ).map((page) => ({
-      href: page.href,
-      icon: page.icon as any,
-      key: page.key,
-      label: page.label,
-    }));
-    return items.length > 0
-      ? [
-          {
-            items,
-            key: "platform",
-            label: "平台控制面",
-            order: 1,
-          },
-        ]
-      : [];
+    const sections = new Map<
+      string,
+      {
+        items: Array<{
+          href: string;
+          icon?: any;
+          key: string;
+          label: string;
+        }>;
+        key: string;
+        label: string;
+        order: number;
+      }
+    >();
+
+    for (const page of PAGE_ACCESS_DEFINITIONS) {
+      if (
+        page.section !== "platform" &&
+        page.section !== "platform-governance"
+      ) {
+        continue;
+      }
+      if (
+        page.key === "platform.tickets" &&
+        !getPlatformBooleanSetting(snapshot, PLATFORM_SETTING_KEYS.ticketingVisible, true)
+      ) {
+        continue;
+      }
+      if (!hasPageAccess(resolvedSession, page.key)) continue;
+      const section = sections.get(page.section) ?? {
+        items: [],
+        key: page.section,
+        label:
+          page.section === "platform" ? "平台控制面" : "平台治理",
+        order: page.section === "platform" ? 1 : 2,
+      };
+      section.items.push({
+        href: page.href,
+        icon: page.icon,
+        key: page.key,
+        label: page.label,
+      });
+      sections.set(page.section, section);
+    }
+
+    return [...sections.values()]
+      .sort((left, right) => left.order - right.order)
+      .map((section) => ({
+        items: section.items,
+        key: section.key,
+        label: section.label,
+      }));
   }
 
   const sections = new Map<
@@ -391,6 +434,10 @@ function buildTicketAccess(
     return { visible: false };
   }
 
+  if (resolvedSession.principalType === "platform") {
+    return { visible: false };
+  }
+
   const canOpenTickets =
     hasPageAccess(resolvedSession, "tickets") ||
     hasPageAccess(resolvedSession, "tickets.workspace") ||
@@ -398,7 +445,7 @@ function buildTicketAccess(
       "ticket.workspace_conversation.list_workspace:own",
     );
 
-  return { visible: canOpenTickets };
+  return { href: "/tickets", visible: canOpenTickets };
 }
 
 function getPlatformBooleanSetting(

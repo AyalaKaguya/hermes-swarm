@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 import {
+  Account,
   Conversation,
   ConversationMessage,
   ConversationParticipant,
@@ -35,6 +36,8 @@ export class ConversationCapabilityService {
   private readonly logger = new Logger(ConversationCapabilityService.name);
 
   constructor(
+    @InjectRepository(Account)
+    private readonly accountRepository: Repository<Account>,
     @InjectRepository(Conversation)
     private readonly conversationRepository: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
@@ -114,14 +117,19 @@ export class ConversationCapabilityService {
       relations: { authorUser: true },
       where: { conversationId: conversation.id, workspaceId: input.source.workspaceId },
     });
-    const visibleAuthorIds = new Set(
-      await this.findActiveWorkspaceUserIds(
-        input.source.workspaceId,
-        messages.flatMap((message) =>
-          message.authorUserId ? [message.authorUserId] : [],
-        ),
-      ),
+    const authorIds = messages.flatMap((message) =>
+      message.authorUserId ? [message.authorUserId] : [],
     );
+    const visibleAuthorIds = new Set(
+      await this.findActiveWorkspaceUserIds(input.source.workspaceId, authorIds),
+    );
+    for (const userId of await this.findTrustedExternalUserIds(
+      input.resolver,
+      input.source,
+      authorIds,
+    )) {
+      visibleAuthorIds.add(userId);
+    }
     for (const message of messages) {
       if (message.authorUserId && !visibleAuthorIds.has(message.authorUserId)) {
         message.authorUser = null;
@@ -154,6 +162,7 @@ export class ConversationCapabilityService {
         joinedReason: "reply",
         mentionUserIds,
         message: input.message,
+        resolver: input.resolver,
         source: input.source,
       }));
     });
@@ -175,6 +184,7 @@ export class ConversationCapabilityService {
       joinedReason: ConversationParticipantJoinedReason;
       mentionUserIds?: string[];
       message: ConversationMessageInput;
+      resolver?: ConversationAccessResolver;
       source: ConversationSource;
     },
   ) {
@@ -184,16 +194,20 @@ export class ConversationCapabilityService {
       manager,
     );
     await this.addParticipantsWithManager(manager, {
-      conversationId: conversation.id,
-      joinedReason: input.joinedReason,
-      workspaceId: input.source.workspaceId,
-      userIds: [input.authorUserId],
+        conversationId: conversation.id,
+        joinedReason: input.joinedReason,
+        resolver: input.resolver,
+        source: input.source,
+        workspaceId: input.source.workspaceId,
+        userIds: [input.authorUserId],
     });
     await this.addParticipantsWithManager(manager, {
-      conversationId: conversation.id,
-      joinedReason: "mention",
-      workspaceId: input.source.workspaceId,
-      userIds: input.mentionUserIds ?? [],
+        conversationId: conversation.id,
+        joinedReason: "mention",
+        resolver: input.resolver,
+        source: input.source,
+        workspaceId: input.source.workspaceId,
+        userIds: input.mentionUserIds ?? [],
     });
     const message = await manager.save(
       ConversationMessage,
@@ -240,6 +254,10 @@ export class ConversationCapabilityService {
     }
     input.message.authorUser = await this.findActiveWorkspaceAccount(
       input.source.workspaceId,
+      input.authorUserId,
+    ) ?? await this.findTrustedExternalAccount(
+      input.resolver,
+      input.source,
       input.authorUserId,
     );
     const participantIds = await this.findParticipantUserIds(
@@ -297,6 +315,8 @@ export class ConversationCapabilityService {
     input: {
       conversationId: string;
       joinedReason: ConversationParticipantJoinedReason;
+      resolver?: ConversationAccessResolver;
+      source?: ConversationSource;
       workspaceId: string;
       userIds: string[];
     },
@@ -304,11 +324,23 @@ export class ConversationCapabilityService {
     this.requireWorkspaceId(input.workspaceId);
     const requestedUserIds = [...new Set(input.userIds)].filter(Boolean);
     if (requestedUserIds.length === 0) return;
-    const userIds = await this.findActiveWorkspaceUserIds(
+    const workspaceUserIds = await this.findActiveWorkspaceUserIds(
       input.workspaceId,
       requestedUserIds,
       manager,
     );
+    const userIds = [
+      ...new Set([
+        ...workspaceUserIds,
+        ...(input.source
+          ? await this.findTrustedExternalUserIds(
+              input.resolver,
+              input.source,
+              requestedUserIds,
+            )
+          : []),
+      ]),
+    ];
     if (
       input.joinedReason !== "mention" &&
       userIds.length !== requestedUserIds.length
@@ -692,6 +724,33 @@ export class ConversationCapabilityService {
       where: { accountId: userId, status: "active", workspaceId },
     });
     return membership?.account?.status === "active" ? membership.account : null;
+  }
+
+  private async findTrustedExternalAccount(
+    resolver: ConversationAccessResolver,
+    source: ConversationSource,
+    userId: string,
+  ) {
+    if (!(await resolver.canJoin?.(userId, source))) return null;
+    return this.accountRepository.findOne({
+      where: { id: userId, status: "active" },
+    });
+  }
+
+  private async findTrustedExternalUserIds(
+    resolver: ConversationAccessResolver | undefined,
+    source: ConversationSource,
+    userIds: string[],
+  ) {
+    const canJoin = resolver?.canJoin;
+    if (!canJoin) return [];
+    const candidates = [...new Set(userIds)].filter(Boolean);
+    const allowed = await Promise.all(
+      candidates.map(async (userId) =>
+        (await canJoin(userId, source)) ? userId : null,
+      ),
+    );
+    return allowed.filter((userId): userId is string => Boolean(userId));
   }
 
   private async findActiveWorkspaceUserIds(

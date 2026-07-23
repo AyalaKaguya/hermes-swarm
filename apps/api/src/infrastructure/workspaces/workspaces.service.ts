@@ -33,6 +33,10 @@ import { PlatformEmailSendService } from "../mail/platform-email-send.service.js
 import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import { SettingsService } from "../settings/settings.service.js";
+import {
+  toWorkspaceApplicationDto,
+  toWorkspaceDto,
+} from "../users/user-dto.js";
 
 const RESERVED_WORKSPACE_ROLE_NAMES = new Set([
   "workspace-owner",
@@ -137,7 +141,9 @@ export class WorkspacesService {
       application.cancellationTokenHash = null;
       application.emailVerificationTokenHash = null;
       application.status = "cancelled";
-      return manager.save(WorkspaceApplication, application);
+      return toWorkspaceApplicationDto(
+        await manager.save(WorkspaceApplication, application),
+      );
     });
   }
 
@@ -153,16 +159,24 @@ export class WorkspacesService {
       application.emailVerifiedAt = new Date();
       application.emailVerificationTokenHash = null;
       application.status = "pending_review";
-      return manager.save(WorkspaceApplication, application);
+      return toWorkspaceApplicationDto(
+        await manager.save(WorkspaceApplication, application),
+      );
     });
   }
 
-  listApplications() {
-    return this.applicationRepository.find({ order: { createdAt: "DESC" } });
+  async listApplications() {
+    const applications = await this.applicationRepository.find({
+      order: { createdAt: "DESC" },
+    });
+    return applications.map(toWorkspaceApplicationDto);
   }
 
-  listWorkspaces() {
-    return this.platformWorkspaceRepository.find({ order: { createdAt: "DESC" } });
+  async listWorkspaces() {
+    const workspaces = await this.platformWorkspaceRepository.find({
+      order: { createdAt: "DESC" },
+    });
+    return workspaces.map(toWorkspaceDto);
   }
 
   async updateWorkspaceStatus(workspaceId: string, status: unknown) {
@@ -176,7 +190,7 @@ export class WorkspacesService {
         where: { id },
       });
       if (!workspace) throw new NotFoundException("工作空间不存在");
-      if (workspace.status === status) return workspace;
+      if (workspace.status === status) return toWorkspaceDto(workspace);
       if (!isAllowedWorkspaceStatusTransition(workspace.status, status)) {
         throw new BadRequestException(
           workspace.status === "provisioning"
@@ -185,7 +199,7 @@ export class WorkspacesService {
         );
       }
       workspace.status = status;
-      return manager.save(Workspace, workspace);
+      return toWorkspaceDto(await manager.save(Workspace, workspace));
     });
   }
 
@@ -270,12 +284,13 @@ export class WorkspacesService {
       templateName: "workspace-owner-activation",
     });
     return {
-      ...result,
+      application: toWorkspaceApplicationDto(result.application),
       ownerActivationEmailSent: emailDelivery.sent,
       ownerActivationToken:
         process.env.NODE_ENV === "production"
           ? undefined
           : result.ownerActivationToken,
+      workspace: toWorkspaceDto(result.workspace),
     };
   }
 
@@ -366,7 +381,7 @@ export class WorkspacesService {
         },
         existingAccount,
         membershipId: membership.id,
-        workspace,
+        workspace: toWorkspaceDto(workspace),
       };
     });
   }
@@ -390,7 +405,9 @@ export class WorkspacesService {
       application.reviewedAt = new Date();
       application.reviewedByAccountId = reviewerId;
       application.reviewNote = normalizeNullableText(payload?.note);
-      return manager.save(WorkspaceApplication, application);
+      return toWorkspaceApplicationDto(
+        await manager.save(WorkspaceApplication, application),
+      );
     });
   }
 
@@ -400,16 +417,21 @@ export class WorkspacesService {
       where: { id: workspaceId },
     });
     if (!workspace) throw new NotFoundException("工作空间不存在");
-    return workspace;
+    return toWorkspaceDto(workspace);
   }
 
   async update(workspaceId: string, payload: UpdateWorkspacePayload) {
     workspaceId = this.requireWorkspaceExecution(workspaceId);
-    const workspace = await this.get(workspaceId);
+    const workspace = await this.platformWorkspaceRepository.findOne({
+      where: { id: workspaceId },
+    });
+    if (!workspace) throw new NotFoundException("工作空间不存在");
     if (payload?.name !== undefined) {
       workspace.name = requireText(payload.name, "工作空间名称");
     }
-    return this.platformWorkspaceRepository.save(workspace);
+    return toWorkspaceDto(
+      await this.platformWorkspaceRepository.save(workspace),
+    );
   }
 
   async listWorkspaceRoles(workspaceId: string) {

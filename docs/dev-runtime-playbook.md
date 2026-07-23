@@ -10,6 +10,31 @@
 
 Web proxies `/api/**` to API. Root `.env` provides local PostgreSQL/Redis URLs and API overrides.
 
+## Debug runtime logs
+
+Store ad-hoc local API, web, worker, and test-process logs only in the
+repository-root `.runtime/logs/` directory. This directory is local-only and
+is ignored by Git.
+
+Use one shared run identifier and this filename format:
+
+```text
+YYYYMMDD-HHmmss--<service>--<stream>.log
+```
+
+Examples:
+
+```text
+.runtime/logs/20260723-094500--api--stdout.log
+.runtime/logs/20260723-094500--api--stderr.log
+.runtime/logs/20260723-094500--web--stdout.log
+```
+
+`<service>` is a lowercase service name such as `api`, `web`, `worker`, or
+`e2e`; `<stream>` is `stdout` or `stderr`. Keep framework-owned diagnostics in
+their native ignored caches (`.nx/` and `apps/web/.next-dev/`); do not copy or
+move those files into `.runtime/logs/`.
+
 ## Audit client IP behind a proxy or CDN
 
 Login and operation audits always record the direct TCP peer. They use

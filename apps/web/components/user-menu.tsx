@@ -37,6 +37,7 @@ import {
 import { getAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 
 export type UserMenuTicketAccess = {
+  href?: string;
   visible: boolean;
 };
 
@@ -106,7 +107,7 @@ export function UserMenu({
   }
 
   function openTickets() {
-    router.push("/tickets");
+    router.push(ticketAccess?.href ?? "/tickets");
   }
 
   async function logout() {

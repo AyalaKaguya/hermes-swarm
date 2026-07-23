@@ -1,8 +1,10 @@
 export {
   TicketMessageAttachmentSchema,
   TicketMessageSchema,
+  PlatformTicketSchema,
   TicketSchema,
   TicketStatusSchema,
+  type PlatformTicket,
   type Ticket,
   type TicketMessage,
   type TicketMessageAttachment,

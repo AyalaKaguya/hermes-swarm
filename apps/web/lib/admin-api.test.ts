@@ -15,6 +15,8 @@ import {
   replaceWorkspaceRolePermissions,
   replaceWorkspaceMemberRole,
   resolveWorkspaceLoginContext,
+  uploadAdminFile,
+  uploadPlatformFile,
 } from "./admin-api";
 
 const originalFetch = globalThis.fetch;
@@ -124,6 +126,68 @@ describe("admin API browser client", () => {
         url: "/api/admin/workspace/roles/role-1/permissions",
       },
     ]);
+  });
+
+  it("sends the CSRF token with multipart file uploads", async () => {
+    const uploads: Array<{ body: BodyInit | null | undefined; headers: Headers }> = [];
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
+      uploads.push({
+        body: init?.body,
+        headers: new Headers(init?.headers),
+      });
+      return Response.json(
+        {
+          destinations: [{ kind: "local", status: "success", url: "/files/ticket.png" }],
+          status: "success",
+          url: "/files/ticket.png",
+        },
+        { status: 201 },
+      );
+    };
+
+    const result = await uploadAdminFile(
+      "web-session",
+      new File(["image"], "ticket.png", { type: "image/png" }),
+    );
+
+    assert.equal(uploads.length, 1);
+    const [upload] = uploads;
+    assert.ok(upload);
+    assert.equal(upload.headers.get("X-CSRF-Token"), "csrf-token");
+    assert.equal(upload.headers.has("Content-Type"), false);
+    assert.equal(upload.body instanceof FormData, true);
+    const uploadedFile = (upload.body as FormData).get("file");
+    assert.ok(uploadedFile instanceof File);
+    assert.equal(uploadedFile.name, "ticket.png");
+    assert.equal(result.url, "/files/ticket.png");
+  });
+
+  it("uses the platform upload route for platform ticket replies", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = async (input) => {
+      if (String(input) === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
+      urls.push(String(input));
+      return Response.json(
+        {
+          destinations: [{ kind: "local", status: "success", url: "/files/ticket.png" }],
+          status: "success",
+          url: "/files/ticket.png",
+        },
+        { status: 201 },
+      );
+    };
+
+    await uploadPlatformFile(
+      "web-session",
+      new File(["image"], "ticket.png", { type: "image/png" }),
+    );
+
+    assert.deepEqual(urls, ["/api/admin/files/platform/upload"]);
   });
 
   it("uses the personal API Token route without a user id or scope", async () => {

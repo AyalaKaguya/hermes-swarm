@@ -25,6 +25,7 @@ import { PlatformRolesController } from "../../../infrastructure/platform-roles/
 import { SettingsController } from "../../../infrastructure/settings/settings.controller.js";
 import { WorkspaceApplicationsController, WorkspacesController } from "../../../infrastructure/workspaces/workspaces.controller.js";
 import { TicketsController } from "../../../domains/support/tickets/tickets.controller.js";
+import { PlatformTicketsController } from "../../../domains/support/tickets/platform-tickets.controller.js";
 import { UsersController } from "../../../infrastructure/users/users.controller.js";
 
 const ACCESS_CONTROLLERS = [
@@ -42,6 +43,7 @@ const ACCESS_CONTROLLERS = [
   WorkspaceAuditController,
   WorkspacesController,
   TicketsController,
+  PlatformTicketsController,
   UsersController,
 ] as const;
 

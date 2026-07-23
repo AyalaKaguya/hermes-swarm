@@ -71,6 +71,7 @@ export function AppShell({
   onSwitchContext,
   onUserUpdated,
   platformName,
+  platformSlogan,
   settingsHref,
   ticketAccess,
   workspace,
@@ -90,6 +91,7 @@ export function AppShell({
   onSwitchContext?: (option: ContextSelectionOption) => void;
   onUserUpdated?: () => Promise<void>;
   platformName?: string | null;
+  platformSlogan?: string | null;
   settingsHref?: string | null;
   ticketAccess?: UserMenuTicketAccess | null;
   workspace?: Workspace | null;
@@ -160,6 +162,8 @@ export function AppShell({
           <WorkspaceIdentity
             onSwitchContext={onSwitchContext}
             options={contextOptions}
+            platformName={shellTitle}
+            platformSlogan={platformSlogan}
             switching={switchingContext}
             workspace={workspace}
           />
@@ -300,17 +304,23 @@ function writeStoredSidebarState(open: boolean) {
 function WorkspaceIdentity({
   onSwitchContext,
   options = [],
+  platformName,
+  platformSlogan,
   switching,
   workspace,
 }: {
   onSwitchContext?: (option: ContextSelectionOption) => void;
   options?: ContextSelectionOption[];
+  platformName?: string | null;
+  platformSlogan?: string | null;
   switching?: boolean;
   workspace?: Workspace | null;
 }) {
   const t = useTranslations();
   const currentType = workspace ? "workspace" : "platform";
-  const currentName = workspace?.name ?? t("auth.console");
+  const platformContextLabel = platformSlogan?.trim() || t("auth.console");
+  const platformDisplayName = platformName?.trim() || "Hermes Swarm";
+  const currentName = workspace?.name ?? platformDisplayName;
 
   const button = (
     <SidebarMenu>
@@ -326,7 +336,9 @@ function WorkspaceIdentity({
           </span>
           <span className="grid min-w-0 flex-1 leading-tight">
             <span className="truncate text-[0.65rem] uppercase">
-              {workspace ? t("workspaceScope.workspaceConsole") : t("auth.console")}
+              {workspace
+                ? t("workspaceScope.workspaceConsole")
+                : platformContextLabel}
             </span>
             <span className="truncate text-sm font-medium">{currentName}</span>
           </span>
@@ -358,7 +370,9 @@ function WorkspaceIdentity({
             <AppIcon className="size-4" name={option.type === "platform" ? "shield" : "building"} />
             <span className="grid min-w-0 flex-1">
               <span className="truncate">
-                {option.type === "platform" ? t("auth.console") : option.workspace.name}
+                {option.type === "platform"
+                  ? platformContextLabel
+                  : option.workspace.name}
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {option.role.displayName}

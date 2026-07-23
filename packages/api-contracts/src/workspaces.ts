@@ -11,9 +11,11 @@ export {
   WorkspaceApplicationRequestSchema,
   WorkspaceApplicationSubmissionSchema,
   WorkspaceLoginContextSchema,
+  WorkspaceOwnerActivationSchema,
   type WorkspaceApplicationApproval,
   type WorkspaceApplicationPayload,
   type WorkspaceApplicationSubmission,
   type WorkspaceApplicationStatus,
   type WorkspaceLoginContext,
+  type WorkspaceOwnerActivation,
 } from "./domains.js";

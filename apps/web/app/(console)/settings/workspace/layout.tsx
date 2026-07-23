@@ -1,6 +1,7 @@
 "use client";
 
 import type { AppIconName } from "@/components/app-icon";
+import { usePathname } from "next/navigation";
 import { SettingsSubnav } from "@/components/settings/settings-page";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 
@@ -21,6 +22,13 @@ export default function WorkspaceSettingsLayout({
   children: React.ReactNode;
 }) {
   const tr = useTextTranslation();
+  const pathname = usePathname();
+  const showSettingsSubnav = WORKSPACE_SETTINGS_NAV.some(
+    (item) => item.href === pathname,
+  );
+
+  if (!showSettingsSubnav) return children;
+
   return (
     <div className="grid gap-4">
       <SettingsSubnav

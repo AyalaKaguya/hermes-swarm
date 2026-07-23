@@ -4,7 +4,9 @@ import {
   CURRENCY_OPTIONS,
   FEATURE_SETTING_KEYS,
   FEATURE_SETTING_DEFINITIONS,
+  KNOWN_PLATFORM_SETTING_KEYS,
   PLATFORM_SETTING_KEYS,
+  PLATFORM_SLOGAN_SETTING_KEY,
   SECRET_SETTING_MASK,
   getSettingDefinitionByKey,
   inferSettingValueTypeFromKey,
@@ -61,6 +63,10 @@ describe("setting definitions", () => {
     const feature = FEATURE_SETTING_DEFINITIONS[0];
 
     assert.equal(getSettingDefinitionByKey(feature.key), feature);
+  });
+
+  it("recognizes the platform slogan as a managed platform setting", () => {
+    assert.ok(KNOWN_PLATFORM_SETTING_KEYS.includes(PLATFORM_SLOGAN_SETTING_KEY));
   });
 
   it("keeps business feature gates at workspace scope", () => {

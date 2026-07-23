@@ -89,6 +89,7 @@ export const FEATURE_SETTING_KEYS = {
 } as const;
 
 export const PLATFORM_TITLE_SETTING_KEY = "platform.title";
+export const PLATFORM_SLOGAN_SETTING_KEY = "platform.slogan";
 
 export const PLATFORM_SETTING_KEYS = {
   workspaceApplicationsEnabled: "platform.workspaceApplicationsEnabled",
@@ -375,6 +376,7 @@ export const PLATFORM_WORKSPACE_SETTING_DEFAULTS: readonly PlatformDefaultSettin
 
 export const KNOWN_PLATFORM_SETTING_KEYS = [
   PLATFORM_TITLE_SETTING_KEY,
+  PLATFORM_SLOGAN_SETTING_KEY,
   ...Object.values(PLATFORM_SETTING_KEYS),
 ] as const;
 

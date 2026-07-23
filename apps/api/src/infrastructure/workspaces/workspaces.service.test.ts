@@ -6,6 +6,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import {
+  WorkspaceApplicationSchema,
+  WorkspaceSchema,
+} from "@hermes-swarm/api-contracts";
+import {
   buildWorkspaceApplicationLinks,
   buildWorkspaceOwnerActivationLink,
   WorkspacesService,
@@ -79,8 +83,8 @@ describe("WorkspacesService applications", () => {
       applied.verificationToken,
     );
     assert.equal(verified.status, "pending_review");
-    assert.ok(verified.emailVerifiedAt instanceof Date);
-    assert.equal(verified.emailVerificationTokenHash, null);
+    assert.match(verified.emailVerifiedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(state.applications[0]?.emailVerificationTokenHash, null);
   });
 
   it("rejects duplicate workspace slugs before creating an application", async () => {
@@ -109,8 +113,8 @@ describe("WorkspacesService applications", () => {
       applied.cancellationToken,
     );
     assert.equal(cancelled.status, "cancelled");
-    assert.equal(cancelled.cancellationTokenHash, null);
-    assert.equal(cancelled.emailVerificationTokenHash, null);
+    assert.equal(state.applications[0]?.cancellationTokenHash, null);
+    assert.equal(state.applications[0]?.emailVerificationTokenHash, null);
   });
 
   it("does not expose application cancellation by id alone", async () => {
@@ -150,6 +154,53 @@ describe("WorkspacesService applications", () => {
       provisioning.service.updateWorkspaceStatus("missing", "suspended"),
       NotFoundException,
     );
+  });
+
+  it("returns contract-safe DTOs for the platform workspace directory and application queue", async () => {
+    const state = createState({
+      workspace: {
+        id: "workspace-1",
+        name: "North Region",
+        slug: "north-region",
+        status: "active",
+      },
+    });
+    state.applications.push({
+      cancellationTokenHash: "must-not-be-public",
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      emailVerificationTokenHash: "must-not-be-public",
+      emailVerifiedAt: new Date("2026-07-01T00:01:00.000Z"),
+      id: "application-1",
+      ownerDisplayName: "Alice",
+      ownerEmail: "alice@example.com",
+      preferredLanguage: "en",
+      requestedName: "North Region",
+      requestedSlug: "north-region",
+      requestedSubdomain: null,
+      reviewedAt: null,
+      reviewedByAccount: null,
+      reviewedByAccountId: null,
+      reviewNote: null,
+      status: "pending_review",
+      updatedAt: new Date("2026-07-01T00:01:00.000Z"),
+      workspace: null,
+      workspaceId: null,
+    });
+
+    const [workspace] = await state.service.listWorkspaces();
+    const [application] = await state.service.listApplications();
+
+    assert.deepEqual(workspace, {
+      id: "workspace-1",
+      name: "North Region",
+      slug: "north-region",
+      status: "active",
+    });
+    assert.equal(WorkspaceSchema.safeParse(workspace).success, true);
+    assert.equal(WorkspaceApplicationSchema.safeParse(application).success, true);
+    assert.equal("cancellationTokenHash" in application, false);
+    assert.equal("emailVerificationTokenHash" in application, false);
+    assert.equal("workspace" in application, false);
   });
 
   it("creates roles directly at workspace scope", async () => {
@@ -283,12 +334,25 @@ describe("WorkspacesService applications", () => {
 function createState(options: {
   duplicateSlug?: string;
   failEmail?: boolean;
-  workspace?: { id: string; status: string };
+  workspace?: { id: string; name?: string; slug?: string; status: string };
   workspaceApplicationsEnabled?: boolean;
 } = {}) {
+  const workspace = options.workspace
+    ? {
+        name: "Workspace",
+        slug: "workspace",
+        ...options.workspace,
+      }
+    : undefined;
   const applications: any[] = [];
   const applicationRepository: any = {
-    create: (value: any) => ({ id: `application-${applications.length + 1}`, ...value }),
+    create: (value: any) => ({
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      id: `application-${applications.length + 1}`,
+      updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+      ...value,
+    }),
+    find: async () => applications,
     findOne: async ({ where }: any) =>
       applications.find((item) => item.id === where.id) ?? null,
     save: async (value: any) => {
@@ -299,11 +363,11 @@ function createState(options: {
     },
   };
   const workspaceRepository: any = {
-    find: async () => options.workspace ? [options.workspace] : [],
+    find: async () => workspace ? [workspace] : [],
     findOne: async ({ where }: any) => {
       const candidates = Array.isArray(where) ? where : [where];
-      if (options.workspace && candidates.some((candidate) => candidate.id === options.workspace?.id)) {
-        return options.workspace;
+      if (workspace && candidates.some((candidate) => candidate.id === workspace.id)) {
+        return workspace;
       }
       return options.duplicateSlug &&
         candidates.some((candidate) => candidate.slug === options.duplicateSlug)

@@ -18,6 +18,7 @@ describe("ConversationCapabilityService workspace source contract", () => {
       },
     };
     const service = new ConversationCapabilityService(
+      {} as never,
       {
         create: (value: unknown) => value,
       } as never,
@@ -54,6 +55,7 @@ describe("ConversationCapabilityService workspace source contract", () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {
         manager: {},
         transaction: async (work: (manager: unknown) => unknown) => work({}),
@@ -81,6 +83,7 @@ describe("ConversationCapabilityService workspace source contract", () => {
       ],
     };
     const service = new ConversationCapabilityService(
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

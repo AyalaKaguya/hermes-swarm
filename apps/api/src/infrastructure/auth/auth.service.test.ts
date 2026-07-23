@@ -29,6 +29,7 @@ describe("AuthService unified account contexts", () => {
     );
     assert.deepEqual(created[0]?.slice(0, 3), ["account-platform", null, "platform"]);
     assert.equal(result.snapshot.principalType, "platform");
+    assert.deepEqual(result.snapshot.systemSettings, [platformTitleSetting()]);
   });
 
   it("serializes platform role permissions in the web session contract", async () => {
@@ -201,6 +202,7 @@ function createService(options: Record<string, Record<string, unknown>> = {}) {
     { run: (_context: unknown, work: () => unknown) => work() } as never,
     (options.workspaceLoginResolver ?? { resolve: async () => null }) as never,
     (options.settingsService ?? {
+      listPlatformSettings: async () => [platformTitleSetting()],
       resolvePlatformRuntimePreferences: async () => ({
         currency: "CNY",
         dateFormat: "YYYY-MM-DD",
@@ -220,6 +222,17 @@ function createService(options: Record<string, Record<string, unknown>> = {}) {
     options.accountRepository as never,
     options.membershipRepository as never,
   );
+}
+
+function platformTitleSetting() {
+  return {
+    id: "platform-title",
+    name: "platform.title",
+    scope: "platform",
+    value: "Hermes Swarm",
+    valueOptions: null,
+    valueType: "string",
+  };
 }
 
 function platformAccount() {

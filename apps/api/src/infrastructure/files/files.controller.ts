@@ -152,6 +152,25 @@ export class FilesController {
     };
   }
 
+  @Post("platform/upload")
+  @AccessOperation({
+    description: "上传用于平台工单回复的图片资源。",
+    label: "上传平台图片",
+    operation: "upload",
+    scope: "platform",
+    sortOrder: 20,
+  })
+  @UseFilters(UploadExceptionFilter)
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: MAX_IMAGE_SIZE } }),
+  )
+  uploadForPlatform(
+    @Headers("authorization") authorization: string | undefined,
+    @UploadedFile() file?: UploadedImage,
+  ) {
+    return this.upload(authorization, file);
+  }
+
   @Get(":filename")
   @PublicAccess({ reason: "Generated images are served by opaque filenames." })
   async read(@Param("filename") filename: string, @Res() response: any) {

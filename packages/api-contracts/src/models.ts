@@ -237,6 +237,12 @@ export const TicketSchema = z.strictObject({
 });
 export type Ticket = z.infer<typeof TicketSchema>;
 
+/** A ticket as seen from the platform-wide support inbox. */
+export const PlatformTicketSchema = TicketSchema.extend({
+  workspace: WorkspaceSchema,
+});
+export type PlatformTicket = z.infer<typeof PlatformTicketSchema>;
+
 export const TicketMessageAttachmentSchema = z.strictObject({
   mimeType: z.string().optional(), name: z.string(), size: z.number().nonnegative().optional(),
   type: z.literal("image"), url: z.string(),

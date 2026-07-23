@@ -484,6 +484,13 @@ export class AuthService {
         })
       : [];
     const permissionsByRoleId = groupPermissionsByRoleId(permissions);
+    const [runtimePreferences, systemSettings] = await Promise.all([
+      this.settingsService.resolveWorkspaceRuntimePreferences(
+        workspaceId,
+        account,
+      ),
+      this.settingsService.listPlatformSettings(),
+    ]);
 
     return {
       account: toUserDto(account),
@@ -507,11 +514,8 @@ export class AuthService {
         membership.role,
         permissionsByRoleId.get(membership.roleId) ?? [],
       ),
-      runtimePreferences:
-        await this.settingsService.resolveWorkspaceRuntimePreferences(
-          workspaceId,
-          account,
-        ),
+      runtimePreferences,
+      systemSettings,
       workspace: workspace ? toWorkspaceDto(workspace) : workspace,
       workspaceId,
       workspaceRole: toRoleDto(
@@ -537,6 +541,10 @@ export class AuthService {
     const permissions = (resolved.role.rolePermissions ?? [])
       .filter((item) => item.enabled && item.permissionRecord?.code)
       .map((item) => item.permissionRecord.code!);
+    const [runtimePreferences, systemSettings] = await Promise.all([
+      this.settingsService.resolvePlatformRuntimePreferences(account),
+      this.settingsService.listPlatformSettings(),
+    ]);
     return {
       account: toUserDto(account),
       context: {
@@ -551,8 +559,8 @@ export class AuthService {
       permissions,
       principalType: "platform" as const,
       role: toRoleDto(resolved.role, resolved.role.rolePermissions ?? []),
-      runtimePreferences:
-        await this.settingsService.resolvePlatformRuntimePreferences(account),
+      runtimePreferences,
+      systemSettings,
     };
   }
 

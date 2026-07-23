@@ -15,12 +15,12 @@ import {
   SendTicketMessageRequestSchema, SmtpRequestSchema, UpdateRuntimePreferencesRequestSchema,
   UpdateUserRequestSchema, UserNotificationRequestSchema, ValidateInviteRequestSchema,
   WorkspaceApplicationApprovalSchema, WorkspaceApplicationRequestSchema,
-  WorkspaceApplicationSubmissionSchema, WorkspaceLoginContextSchema,
+  WorkspaceApplicationSubmissionSchema, WorkspaceLoginContextSchema, WorkspaceOwnerActivationSchema,
 } from "./domains.js";
 import {
   AllowedSchema, EffectiveWorkspaceSettingSchema, EmailLogSchema, EmailTemplateSchema, FileUploadResponseSchema,
   IdentifierSchema, InviteSchema, OkSchema, PermissionCatalogSchema, PlatformMemberSchema,
-  RolePermissionSchema, RoleSchema, SmtpConfigSchema, SuccessSchema, SystemSettingSchema,
+  PlatformTicketSchema, RolePermissionSchema, RoleSchema, SmtpConfigSchema, SuccessSchema, SystemSettingSchema,
   TicketMessageSchema, TicketSchema, TicketStatusSchema, UserNotificationSchema,
   UserNotificationStatusSchema, UserSchema, WorkspaceApplicationSchema, WorkspaceMemberSchema,
   WorkspaceSchema, WorkspaceStatusSchema,
@@ -90,12 +90,18 @@ export const adminContracts = {
   workspaceApplicationCreate: defineContract({ id: "workspaceApplications.create", method: "POST", path: "/workspace-applications", body: WorkspaceApplicationRequestSchema, responses: { 201: WorkspaceApplicationSubmissionSchema } }),
   workspaceApplicationVerify: defineContract({ id: "workspaceApplications.verify", method: "POST", path: "/workspace-applications/:applicationId/verify", params: idParams("applicationId"), body: tokenBody, responses: { 201: WorkspaceApplicationSchema } }),
   workspaceApplicationCancel: defineContract({ id: "workspaceApplications.cancel", method: "POST", path: "/workspace-applications/:applicationId/cancel", params: idParams("applicationId"), body: tokenBody, responses: { 201: WorkspaceApplicationSchema } }),
-  workspaceOwnerActivate: defineContract({ id: "workspaceApplications.activateOwner", method: "POST", path: "/workspace-applications/activate-owner", body: z.strictObject({ displayName: z.string().min(1), password: z.string().min(1), token: z.string().min(1) }), responses: { 201: z.strictObject({ account: UserSchema, membership: WorkspaceMemberSchema, workspace: WorkspaceSchema }) } }),
+  workspaceOwnerActivate: defineContract({ id: "workspaceApplications.activateOwner", method: "POST", path: "/workspace-applications/activate-owner", body: z.strictObject({ displayName: z.string().min(1), password: z.string().min(1), token: z.string().min(1) }), responses: { 201: WorkspaceOwnerActivationSchema } }),
   platformWorkspaceApplications: defineContract({ id: "platform.workspaceApplications.list", method: "GET", path: "/platform/workspace-applications", responses: { 200: z.array(WorkspaceApplicationSchema) } }),
   platformWorkspaces: defineContract({ id: "platform.workspaces.list", method: "GET", path: "/platform/workspaces", responses: { 200: z.array(WorkspaceSchema) } }),
   platformWorkspaceStatus: defineContract({ id: "platform.workspaces.status", method: "PATCH", path: "/platform/workspaces/:workspaceId/status", params: idParams("workspaceId"), body: z.strictObject({ status: WorkspaceStatusSchema.exclude(["provisioning"]) }), responses: { 200: WorkspaceSchema } }),
   platformWorkspaceApprove: defineContract({ id: "platform.workspaceApplications.approve", method: "POST", path: "/platform/workspace-applications/:applicationId/approve", params: idParams("applicationId"), body: z.strictObject({ note: z.string().nullable().optional() }), responses: { 201: WorkspaceApplicationApprovalSchema } }),
   platformWorkspaceReject: defineContract({ id: "platform.workspaceApplications.reject", method: "POST", path: "/platform/workspace-applications/:applicationId/reject", params: idParams("applicationId"), body: z.strictObject({ note: z.string().nullable().optional() }), responses: { 201: WorkspaceApplicationSchema } }),
+  platformTickets: defineContract({ id: "platform.tickets.list", method: "GET", path: "/platform/tickets", query: z.strictObject({ status: TicketStatusSchema.optional() }), responses: { 200: z.array(PlatformTicketSchema) } }),
+  platformTicketGet: defineContract({ id: "platform.tickets.get", method: "GET", path: "/platform/tickets/:ticketId", params: idParams("ticketId"), responses: { 200: PlatformTicketSchema } }),
+  platformTicketMessages: defineContract({ id: "platform.tickets.messages.list", method: "GET", path: "/platform/tickets/:ticketId/messages", params: idParams("ticketId"), responses: { 200: z.array(TicketMessageSchema) } }),
+  platformTicketMessageSend: defineContract({ id: "platform.tickets.messages.send", method: "POST", path: "/platform/tickets/:ticketId/messages", params: idParams("ticketId"), body: SendTicketMessageRequestSchema, responses: { 201: TicketMessageSchema } }),
+  platformTicketClose: defineContract({ id: "platform.tickets.close", method: "PATCH", path: "/platform/tickets/:ticketId/close", params: idParams("ticketId"), responses: { 200: PlatformTicketSchema } }),
+  platformTicketRead: defineContract({ id: "platform.tickets.read", method: "PATCH", path: "/platform/tickets/:ticketId/read", params: idParams("ticketId"), responses: { 200: OkSchema } }),
   workspaceGet: defineContract({ id: "workspace.get", method: "GET", path: "/workspace", responses: { 200: WorkspaceSchema } }),
   workspaceConsole: defineContract({ id: "workspace.console", method: "GET", path: "/workspace/console-capability", responses: { 200: AllowedSchema } }),
   workspaceUpdate: defineContract({ id: "workspace.update", method: "PATCH", path: "/workspace", body: z.strictObject({ name: z.string().min(1).optional() }), responses: { 200: WorkspaceSchema } }),
@@ -186,6 +192,7 @@ export const adminContracts = {
   platformTemplateDelete: defineContract({ id: "platform.mail.templates.delete", method: "DELETE", path: "/platform/mail/templates/:templateId", params: idParams("templateId"), responses: noContent }),
 
   fileUpload: defineContract({ id: "files.upload", method: "POST", path: "/files/upload", multipart: true, responses: { 201: FileUploadResponseSchema } }),
+  platformFileUpload: defineContract({ id: "platform.files.upload", method: "POST", path: "/files/platform/upload", multipart: true, responses: { 201: FileUploadResponseSchema } }),
   fileDownload: defineContract({ id: "files.download", method: "GET", path: "/files/:filename", params: idParams("filename"), binary: true, responses: { 200: null } }),
 } as const;
 

@@ -3,6 +3,7 @@ import type {
   Role,
   RolePermission,
   Workspace,
+  WorkspaceApplication,
   WorkspaceMembership,
 } from "@hermes-swarm/core";
 
@@ -80,5 +81,30 @@ export function toWorkspaceDto(workspace: Workspace) {
     name: workspace.name,
     slug: workspace.slug,
     status: workspace.status,
+  };
+}
+
+/**
+ * Public representation of a workspace application.
+ *
+ * Token hashes and TypeORM relations are deliberately omitted: those values
+ * are implementation details and do not belong in the HTTP contract.
+ */
+export function toWorkspaceApplicationDto(application: WorkspaceApplication) {
+  return {
+    createdAt: application.createdAt.toISOString(),
+    emailVerifiedAt: application.emailVerifiedAt?.toISOString() ?? null,
+    id: application.id,
+    ownerDisplayName: application.ownerDisplayName,
+    ownerEmail: application.ownerEmail,
+    requestedName: application.requestedName,
+    requestedSlug: application.requestedSlug,
+    requestedSubdomain: application.requestedSubdomain,
+    reviewedAt: application.reviewedAt?.toISOString() ?? null,
+    reviewedByAccountId: application.reviewedByAccountId,
+    reviewNote: application.reviewNote,
+    status: application.status,
+    updatedAt: application.updatedAt.toISOString(),
+    workspaceId: application.workspaceId,
   };
 }

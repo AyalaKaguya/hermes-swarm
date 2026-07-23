@@ -1,5 +1,6 @@
 import {
   PLATFORM_SETTING_KEYS,
+  PLATFORM_SLOGAN_SETTING_KEY,
   PLATFORM_TITLE_SETTING_KEY,
 } from "@hermes-swarm/core/settings/definitions";
 import type { SystemSettingDto } from "@/lib/admin-api";
@@ -16,6 +17,16 @@ export function resolvePlatformNameFromSettings(
     settings?.find((setting) => setting.name === PLATFORM_TITLE_SETTING_KEY)
       ?.value?.trim() ||
     null
+  );
+}
+
+export function resolvePlatformSloganFromSettings(
+  settings: SystemSettingDto[] | undefined,
+) {
+  return (
+    settings
+      ?.find((setting) => setting.name === PLATFORM_SLOGAN_SETTING_KEY)
+      ?.value?.trim() || null
   );
 }
 

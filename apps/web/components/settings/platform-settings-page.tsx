@@ -57,6 +57,7 @@ import {
   LANGUAGE_OPTIONS,
   PASSWORD_LENGTH_OPTIONS,
   PLATFORM_SETTING_DEFINITIONS,
+  PLATFORM_SLOGAN_SETTING_KEY,
   PLATFORM_TITLE_SETTING_KEY,
   REGION_OPTIONS,
   resolveSettingValueOptions,
@@ -75,6 +76,7 @@ type PlatformForm = {
   messageServiceEnabled: boolean;
   messageServiceProvider: string;
   passwordMinLength: string;
+  platformSlogan: string;
   platformTitle: string;
   publicBaseUrl: string;
   publicSmtpEnabled: boolean;
@@ -219,7 +221,13 @@ export function PlatformSettingsPage({
       await saveSystemSettings(token, {
         settings: platformSettingsForSection(targetSection, form),
       });
-      notifications.success(tr("平台设置已保存"));
+      notifications.success(
+        tr(
+          targetSection === "general"
+            ? "平台品牌已保存并同步"
+            : "平台设置已保存",
+        ),
+      );
       await refreshSnapshot();
       await load();
     } catch (reason) {
@@ -301,7 +309,9 @@ export function PlatformSettingsPage({
       onClick={() => void savePlatform(targetSection)}
       type="button"
     >
-      {savingPlatform ? tr("保存中...") : tr("保存")}
+      {savingPlatform
+        ? tr("保存中...")
+        : tr(targetSection === "general" ? "保存并应用" : "保存")}
     </Button>
   );
 
@@ -323,7 +333,11 @@ export function PlatformSettingsPage({
           title={tr("平台信息")}
         >
           <div className="grid gap-3">
-            <SettingsFieldRow htmlFor="platform-title" label={tr("平台名称")}>
+            <SettingsFieldRow
+              description={tr("保存后会同步到导航、登录页和页面标题")}
+              htmlFor="platform-title"
+              label={tr("平台名称")}
+            >
               <Input
                 disabled={!canManagePlatform}
                 id="platform-title"
@@ -332,6 +346,21 @@ export function PlatformSettingsPage({
                 }
                 placeholder="Hermes Swarm"
                 value={form.platformTitle}
+              />
+            </SettingsFieldRow>
+            <SettingsFieldRow
+              description={tr("用于登录页和平台上下文切换器的简短描述")}
+              htmlFor="platform-slogan"
+              label={tr("平台 Slogan")}
+            >
+              <Input
+                disabled={!canManagePlatform}
+                id="platform-slogan"
+                onChange={(event) =>
+                  updateField("platformSlogan", event.target.value)
+                }
+                placeholder={tr("AI 驱动的 SaaS 服务平台")}
+                value={form.platformSlogan}
               />
             </SettingsFieldRow>
             <SettingsFieldRow
@@ -982,7 +1011,7 @@ function platformSectionDescription(section: PlatformSection) {
     case "parameters":
       return "管理平台和工作空间可使用的自定义参数";
     default:
-      return "维护平台名称、访问地址和主域名";
+      return "维护平台名称、平台标语、访问地址和主域名";
   }
 }
 
@@ -1001,6 +1030,7 @@ function emptyPlatformForm(): PlatformForm {
       PLATFORM_SETTING_DEFINITIONS.messageServiceProvider.defaultValue,
     passwordMinLength:
       PLATFORM_SETTING_DEFINITIONS.passwordMinLength.defaultValue,
+    platformSlogan: "",
     platformTitle: "",
     publicBaseUrl: PLATFORM_SETTING_DEFINITIONS.publicBaseUrl.defaultValue,
     publicSmtpEnabled: false,
@@ -1041,6 +1071,7 @@ function toPlatformForm(settings: SystemSettingDto[], smtp: SmtpConfig | null) {
     ),
     messageServiceProvider: getDefined("messageServiceProvider"),
     passwordMinLength: getDefined("passwordMinLength"),
+    platformSlogan: get(PLATFORM_SLOGAN_SETTING_KEY) || "",
     platformTitle: get(PLATFORM_TITLE_SETTING_KEY) || "",
     publicBaseUrl: getDefined("publicBaseUrl"),
     publicSmtpEnabled: parseBoolean(getDefined("publicSmtpEnabled"), false),
@@ -1097,6 +1128,12 @@ function platformSettingsForSection(
   switch (section) {
     case "general":
       return [
+        {
+          name: PLATFORM_SLOGAN_SETTING_KEY,
+          scope: "platform",
+          value: form.platformSlogan.trim() || null,
+          valueType: "string",
+        },
         {
           name: PLATFORM_TITLE_SETTING_KEY,
           scope: "platform",

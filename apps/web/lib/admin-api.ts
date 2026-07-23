@@ -48,6 +48,7 @@ import type {
   PlatformMember,
   PlatformMemberInvitation,
   PlatformMemberPayload,
+  PlatformTicket,
   PlatformPrincipalSession,
   PrincipalSession,
   PublicBootstrap,
@@ -119,6 +120,7 @@ export type {
   PlatformMember,
   PlatformMemberInvitation,
   PlatformMemberPayload,
+  PlatformTicket,
   PlatformPrincipalSession,
   PrincipalSession,
   PublicBootstrap,
@@ -238,8 +240,10 @@ async function sendAdminRequest(
     method?: string;
   },
 ) {
+  const body = options?.body;
+  const isMultipart = body instanceof FormData;
   const headers = new Headers();
-  if (options?.body !== undefined) {
+  if (body !== undefined && !isMultipart) {
     headers.set("Content-Type", "application/json");
   }
   const method = options?.method ?? "GET";
@@ -259,7 +263,12 @@ async function sendAdminRequest(
       cache: options?.cache,
       method,
       headers,
-      body: options?.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        body === undefined
+          ? undefined
+          : body instanceof FormData
+            ? body
+            : JSON.stringify(body),
       credentials: "include",
       signal: controller.signal,
     });
@@ -426,12 +435,27 @@ function maskSecretSettingPayload(value: unknown): unknown {
 }
 
 export async function uploadAdminFile(session: AuthenticatedAdminSessionMarker, file: File) {
+  return uploadFile(session, "/files/upload", "files.upload", file);
+}
+
+export async function uploadPlatformFile(
+  session: AuthenticatedAdminSessionMarker,
+  file: File,
+) {
+  return uploadFile(session, "/files/platform/upload", "platform.files.upload", file);
+}
+
+async function uploadFile(
+  _session: AuthenticatedAdminSessionMarker,
+  path: string,
+  contractId: string,
+  file: File,
+) {
   const body = new FormData();
   body.append("file", file);
 
-  const response = await fetch(`${ADMIN_API_BASE_URL}/files/upload`, {
+  const response = await sendAdminRequest(path, {
     body,
-    credentials: "include",
     method: "POST",
   });
 
@@ -447,7 +471,7 @@ export async function uploadAdminFile(session: AuthenticatedAdminSessionMarker, 
   const result = FileUploadResponseSchema.safeParse(payload);
   if (!result.success) {
     throw new AdminContractError(
-      "files.upload",
+      contractId,
       "response",
       result.error.issues.map((issue) => issue.path.join(".") || "response"),
     );
@@ -1262,6 +1286,62 @@ export function listTickets(
   if (options.status) params.set("status", options.status);
   const query = params.toString();
   return fetchAdmin<Ticket[]>(`/tickets${query ? `?${query}` : ""}`, {});
+}
+
+export function listPlatformTickets(
+  session: AuthenticatedAdminSessionMarker,
+  options: { status?: TicketStatus } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.status) params.set("status", options.status);
+  const query = params.toString();
+  return fetchAdmin<PlatformTicket[]>(
+    `/platform/tickets${query ? `?${query}` : ""}`,
+    {},
+  );
+}
+
+export function getPlatformTicket(
+  session: AuthenticatedAdminSessionMarker,
+  ticketId: string,
+) {
+  return fetchAdmin<PlatformTicket>(`/platform/tickets/${ticketId}`, {});
+}
+
+export function listPlatformTicketMessages(
+  session: AuthenticatedAdminSessionMarker,
+  ticketId: string,
+) {
+  return fetchAdmin<TicketMessage[]>(`/platform/tickets/${ticketId}/messages`, {});
+}
+
+export function sendPlatformTicketMessage(
+  session: AuthenticatedAdminSessionMarker,
+  ticketId: string,
+  payload: { attachments?: TicketMessageAttachment[] | null; body: string },
+) {
+  return fetchAdmin<TicketMessage>(`/platform/tickets/${ticketId}/messages`, {
+    body: payload,
+    method: "POST",
+  });
+}
+
+export function closePlatformTicket(
+  session: AuthenticatedAdminSessionMarker,
+  ticketId: string,
+) {
+  return fetchAdmin<PlatformTicket>(`/platform/tickets/${ticketId}/close`, {
+    method: "PATCH",
+  });
+}
+
+export function markPlatformTicketRead(
+  session: AuthenticatedAdminSessionMarker,
+  ticketId: string,
+) {
+  return fetchAdmin<{ ok: boolean }>(`/platform/tickets/${ticketId}/read`, {
+    method: "PATCH",
+  });
 }
 
 export function createTicket(

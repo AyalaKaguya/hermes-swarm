@@ -104,12 +104,38 @@ describe("page access definitions", () => {
 
     assert.equal(workspaceAudit?.href, "/settings/audit-logs");
     assert.equal(workspaceAudit?.scope, "workspace");
-    assert.equal(platformAudit?.href, "/platform");
+    assert.equal(platformAudit?.href, "/platform/governance/audit");
     assert.equal(platformAudit?.scope, "platform");
+    assert.equal(platformAudit?.section, "platform-governance");
+    assert.deepEqual(
+      findPageAccessDefinitionsByPath("/platform/governance/audit").map(
+        (item) => item.key,
+      ),
+      ["platform.audit"],
+    );
     assert.deepEqual(
       findPageAccessDefinitionsByPath("/platform/workspaces").map(
         (item) => item.key,
       ),
+      ["platform.workspaces"],
+    );
+    const platformTickets = getPageAccessDefinition("platform.tickets");
+    assert.equal(platformTickets?.href, "/platform/governance/tickets");
+    assert.equal(platformTickets?.section, "platform-governance");
+    assert.deepEqual(
+      findPageAccessDefinitionsByPath("/platform/governance/tickets").map(
+        (item) => item.key,
+      ),
+      ["platform.tickets"],
+    );
+    assert.deepEqual(
+      findPageAccessDefinitionsByPath("/platform/tickets").map(
+        (item) => item.key,
+      ),
+      ["platform.tickets"],
+    );
+    assert.deepEqual(
+      findPageAccessDefinitionsByPath("/platform").map((item) => item.key),
       ["platform.workspaces"],
     );
   });

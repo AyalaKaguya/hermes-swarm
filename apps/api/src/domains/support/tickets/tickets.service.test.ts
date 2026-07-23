@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ForbiddenException } from "@nestjs/common";
+import { TicketMessageSchema, TicketSchema } from "@hermes-swarm/api-contracts";
 import { TicketsService } from "./tickets.service.js";
 
 describe("TicketsService workspace access", () => {
@@ -10,7 +11,9 @@ describe("TicketsService workspace access", () => {
       body: "Need help",
       subject: "Access issue",
     });
-    assert.equal(created.workspaceId, "workspace-a");
+    const response = JSON.parse(JSON.stringify(created));
+    const result = TicketSchema.extend({ firstMessage: TicketMessageSchema }).safeParse(response);
+    assert.equal(result.success, true, result.success ? undefined : result.error.message);
     assert.equal(state.tickets.at(-1)?.requesterUserId, "requester");
 
     state.permissions.splice(0, state.permissions.length);
@@ -43,7 +46,7 @@ describe("TicketsService workspace access", () => {
     );
   });
 
-  it("lets an authorized handler read all workspace tickets", async () => {
+  it("does not let a workspace handler receive another member's ticket", async () => {
     const state = createState({ sessionUserId: "handler" });
     state.assignments.push({
       roleId: "handler-role",
@@ -60,11 +63,37 @@ describe("TicketsService workspace access", () => {
     });
 
     const items = await state.service.listTickets("Bearer handler");
-    assert.deepEqual(items.map((item) => item.id), ["ticket-existing"]);
+    assert.deepEqual(items, []);
     assert.deepEqual(
       await state.service.handlingCapability("Bearer handler"),
-      { canHandle: true },
+      { canHandle: false },
     );
+  });
+
+  it("lets a platform operator receive tickets across workspaces", async () => {
+    const state = createState();
+    state.platformMemberships.push({
+      accountId: "platform-agent",
+      role: { scope: "platform", workspaceId: null },
+      roleId: "platform-role",
+      status: "active",
+    });
+    state.permissions.push({
+      enabled: true,
+      permissionRecord: { code: "ticket.conversation.list:platform" },
+      role: { scope: "platform", workspaceId: null },
+      roleId: "platform-role",
+    });
+
+    const items = await state.service.listPlatformTickets("platform-agent");
+
+    assert.deepEqual(items.map((item) => item.id), ["ticket-existing"]);
+    assert.deepEqual(items[0]?.workspace, {
+      id: "workspace-a",
+      name: "Acme",
+      slug: "acme",
+      status: "active",
+    });
   });
 
   it("hides unrelated tickets from members without handler permission", async () => {
@@ -116,11 +145,22 @@ function createState(options: { sessionUserId?: string } = {}) {
       roleId: "submit-role",
     },
   ];
+  const platformMemberships: Array<Record<string, any>> = [];
+  const workspaces: Array<Record<string, any>> = [
+    {
+      id: "workspace-a",
+      name: "Acme",
+      slug: "acme",
+      status: "active",
+    },
+  ];
   const ticketRepository = {
     find: async () => tickets,
     findOne: async ({ where }: any) =>
       tickets.find(
-        (item) => item.id === where.id && item.workspaceId === where.workspaceId,
+        (item) =>
+          item.id === where.id &&
+          (where.workspaceId === undefined || item.workspaceId === where.workspaceId),
       ) ?? null,
     update: async (where: any, values: any) => {
       const ticket = tickets.find(
@@ -147,7 +187,9 @@ function createState(options: { sessionUserId?: string } = {}) {
           item.enabled === where.enabled &&
           item.permissionRecord.code === where.permissionRecord.code &&
           item.roleId === where.roleId &&
-          item.role.workspaceId === where.role.workspaceId,
+          item.role.scope === where.role.scope &&
+          item.role.workspaceId ===
+            (where.role.scope === "platform" ? null : where.role.workspaceId),
       ) ?? null,
   };
   const manager = {
@@ -193,7 +235,7 @@ function createState(options: { sessionUserId?: string } = {}) {
           conversationId: "conversation-new",
           createdAt: new Date(),
           id: "message-new",
-          kind: "user",
+          kind: "message",
           metadata: null,
           updatedAt: new Date(),
         },
@@ -202,12 +244,31 @@ function createState(options: { sessionUserId?: string } = {}) {
       publishMessageAfterCommit: async () => undefined,
     } as never,
     {
-      current: () => ({ workspaceId: "workspace-a" }),
+      current: () => ({ scopeLevel: "workspace", workspaceId: "workspace-a" }),
+      run: (_context: unknown, work: () => unknown) => work(),
     } as never,
     { transaction: async (work: (manager: unknown) => unknown) => work(manager) } as never,
     ticketRepository as never,
     rolePermissionRepository as never,
     workspaceMembershipRepository as never,
+    {
+      findOne: async ({ where }: any) =>
+        platformMemberships.find(
+          (item) =>
+            item.accountId === where.accountId && item.status === where.status,
+        ) ?? null,
+    } as never,
+    {
+      find: async () => workspaces,
+      findOne: async ({ where }: any) =>
+        workspaces.find((item) => item.id === where.id) ?? null,
+    } as never,
   );
-  return { assignments, permissions, service, tickets };
+  return {
+    assignments,
+    permissions,
+    platformMemberships,
+    service,
+    tickets,
+  };
 }

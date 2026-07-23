@@ -32,6 +32,11 @@ export type ConversationAccessResolver = {
   }) => ConversationNotificationPayload;
   canRead: (userId: string, source: ConversationSource) => Promise<boolean>;
   canWrite: (userId: string, source: ConversationSource) => Promise<boolean>;
+  /**
+   * Allows a source to explicitly admit a trusted participant that is not a
+   * member of the source workspace (for example, a platform support agent).
+   */
+  canJoin?: (userId: string, source: ConversationSource) => Promise<boolean>;
   resolveMentionCandidates?: (
     mentionKeys: string[],
     source: ConversationSource,

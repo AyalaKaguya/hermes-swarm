@@ -49,6 +49,7 @@ import {
   type OnboardingValidationIssue,
 } from "@/lib/onboarding";
 import { rememberWorkspace } from "@/lib/login-workspace";
+import { resolvePlatformNameFromSettings } from "@/lib/platform-settings";
 
 const LANGUAGE_OPTIONS = [
   { label: "简体中文", value: "zh-Hans" },
@@ -135,6 +136,10 @@ export function OnboardingPage() {
         const bootstrap = await getPublicBootstrap();
         if (cancelled) return;
         setOnboardingState(bootstrap.onboardingState);
+        setPlatformTitle(
+          resolvePlatformNameFromSettings(bootstrap.systemSettings) ??
+            "Hermes Swarm",
+        );
         if (bootstrap.onboardingState === "workspace_required") {
           try {
             const current = await fetchMe();
@@ -265,7 +270,7 @@ export function OnboardingPage() {
     return (
       <OnboardingFrame>
         <CardHeader className="gap-3">
-          <BrandHeader />
+          <BrandHeader platformName={platformTitle} />
           <div className="grid gap-1">
             <CardTitle>
               {t(recovery ? "onboarding.recoveryTitle" : "onboarding.alreadyCompleteTitle")}
@@ -302,7 +307,7 @@ export function OnboardingPage() {
   return (
     <OnboardingFrame>
       <CardHeader className="gap-4">
-        <BrandHeader />
+        <BrandHeader platformName={platformTitle} />
         <div className="grid gap-1">
           <CardTitle>{t("onboarding.title")}</CardTitle>
           <CardDescription>
@@ -555,7 +560,7 @@ function OnboardingFrame({ children }: { children: ReactNode }) {
   );
 }
 
-function BrandHeader() {
+function BrandHeader({ platformName }: { platformName?: string | null }) {
   const t = useTranslations();
   return (
     <div className="flex items-center gap-2">
@@ -563,7 +568,9 @@ function BrandHeader() {
         <AppIcon className="size-4" name="sparkles" />
       </div>
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium">Hermes Swarm</p>
+        <p className="truncate text-sm font-medium">
+          {platformName?.trim() || "Hermes Swarm"}
+        </p>
         <p className="text-xs text-muted-foreground">{t("onboarding.firstSetup")}</p>
       </div>
     </div>
