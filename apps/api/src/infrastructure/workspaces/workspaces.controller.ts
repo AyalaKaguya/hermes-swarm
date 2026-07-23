@@ -9,8 +9,21 @@ import {
   Req,
 } from "@nestjs/common";
 import { AccessOperation, AccessResource, PublicAccess } from "@hermes-swarm/rbac";
+import { WorkspaceApplicationsService } from "./workspace-applications.service.js";
 import { WorkspacesService } from "./workspaces.service.js";
+import type {
+  UpdateWorkspacePayload,
+  UpdateWorkspaceStatusPayload,
+  WorkspaceApplicationPayload,
+  WorkspaceApplicationReviewPayload,
+  WorkspaceRolePayload,
+  WorkspaceRolePermissionsPayload,
+} from "./workspace.types.js";
 export type {
+  UpdateWorkspacePayload,
+  UpdateWorkspaceStatusPayload,
+  WorkspaceApplicationPayload,
+  WorkspaceApplicationReviewPayload,
   WorkspaceRolePayload,
   WorkspaceRolePermissionsPayload,
 } from "./workspace.types.js";
@@ -25,7 +38,10 @@ export type PrincipalRequest = {
 
 @Controller("admin")
 export class WorkspaceApplicationsController {
-  constructor(private readonly workspacesService: WorkspacesService) {}
+  constructor(
+    private readonly workspaceApplicationsService: WorkspaceApplicationsService,
+    private readonly workspacesService: WorkspacesService,
+  ) {}
 
   @Post("workspace-applications")
   @PublicAccess({ reason: "A prospective workspace owner can submit an application before login." })
@@ -33,7 +49,7 @@ export class WorkspaceApplicationsController {
     @Body() payload: WorkspaceApplicationPayload,
     @Headers("accept-language") acceptLanguage?: string,
   ) {
-    return this.workspacesService.apply({
+    return this.workspaceApplicationsService.apply({
       ...payload,
       preferredLanguage: payload?.preferredLanguage ?? acceptLanguage,
     });
@@ -45,7 +61,10 @@ export class WorkspaceApplicationsController {
     @Param("applicationId") applicationId: string,
     @Body() payload: { token?: string },
   ) {
-    return this.workspacesService.verifyApplication(applicationId, payload?.token);
+    return this.workspaceApplicationsService.verifyApplication(
+      applicationId,
+      payload?.token,
+    );
   }
 
   @Post("workspace-applications/:applicationId/cancel")
@@ -54,7 +73,10 @@ export class WorkspaceApplicationsController {
     @Param("applicationId") applicationId: string,
     @Body() payload: { token?: string },
   ) {
-    return this.workspacesService.cancelApplication(applicationId, payload?.token);
+    return this.workspaceApplicationsService.cancelApplication(
+      applicationId,
+      payload?.token,
+    );
   }
 
   @Post("workspace-applications/activate-owner")
@@ -66,7 +88,7 @@ export class WorkspaceApplicationsController {
       token?: string;
     },
   ) {
-    return this.workspacesService.activateWorkspaceOwner(payload);
+    return this.workspaceApplicationsService.activateWorkspaceOwner(payload);
   }
 
   @Get("platform/workspace-applications")
@@ -83,7 +105,7 @@ export class WorkspaceApplicationsController {
     operation: "list",
   })
   listApplications() {
-    return this.workspacesService.listApplications();
+    return this.workspaceApplicationsService.listApplications();
   }
 
   @Get("platform/workspaces")
@@ -143,7 +165,7 @@ export class WorkspaceApplicationsController {
     @Param("applicationId") applicationId: string,
     @Body() payload: WorkspaceApplicationReviewPayload,
   ) {
-    return this.workspacesService.approveApplication(
+    return this.workspaceApplicationsService.approveApplication(
       requirePlatformAccountId(request),
       applicationId,
       payload,
@@ -169,7 +191,7 @@ export class WorkspaceApplicationsController {
     @Param("applicationId") applicationId: string,
     @Body() payload: WorkspaceApplicationReviewPayload,
   ) {
-    return this.workspacesService.rejectApplication(
+    return this.workspaceApplicationsService.rejectApplication(
       requirePlatformAccountId(request),
       applicationId,
       payload,
@@ -225,27 +247,6 @@ export class WorkspacesController {
   }
 
 }
-
-export type WorkspaceApplicationPayload = {
-  ownerDisplayName?: string;
-  ownerEmail?: string;
-  preferredLanguage?: string;
-  requestedName?: string;
-  requestedSlug?: string;
-  requestedSubdomain?: string | null;
-};
-
-export type WorkspaceApplicationReviewPayload = {
-  note?: string | null;
-};
-
-export type UpdateWorkspacePayload = {
-  name?: string;
-};
-
-export type UpdateWorkspaceStatusPayload = {
-  status?: "active" | "archived" | "suspended";
-};
 
 function requireWorkspaceId(request: PrincipalRequest) {
   const workspaceId = request.accessPrincipal?.workspaceId?.trim();

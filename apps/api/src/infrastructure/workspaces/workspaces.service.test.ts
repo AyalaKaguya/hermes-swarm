@@ -14,12 +14,13 @@ import {
   buildWorkspaceOwnerActivationLink,
   WorkspacesService,
 } from "./workspaces.service.js";
+import { WorkspaceApplicationsService } from "./workspace-applications.service.js";
 import { WorkspaceRolesService } from "./workspace-roles.service.js";
 
-describe("WorkspacesService applications", () => {
+describe("workspace infrastructure services", () => {
   it("normalizes a public application and requires email verification", async () => {
     const state = createState();
-    const result = await state.service.apply({
+    const result = await state.applicationsService.apply({
       ownerDisplayName: " Alice ",
       ownerEmail: "ALICE@example.com",
       requestedName: "North Region",
@@ -37,7 +38,7 @@ describe("WorkspacesService applications", () => {
 
   it("keeps an application when platform email delivery fails", async () => {
     const state = createState({ failEmail: true });
-    const result = await state.service.apply({
+    const result = await state.applicationsService.apply({
       ownerDisplayName: "Alice",
       ownerEmail: "alice@example.com",
       preferredLanguage: "en-US",
@@ -50,7 +51,7 @@ describe("WorkspacesService applications", () => {
   it("rejects new applications when the platform has closed workspace applications", async () => {
     const state = createState({ workspaceApplicationsEnabled: false });
     await assert.rejects(
-      state.service.apply({
+      state.applicationsService.apply({
         ownerDisplayName: "Alice",
         ownerEmail: "alice@example.com",
         requestedName: "North Region",
@@ -73,13 +74,13 @@ describe("WorkspacesService applications", () => {
 
   it("moves a verified application into platform review", async () => {
     const state = createState();
-    const applied = await state.service.apply({
+    const applied = await state.applicationsService.apply({
       ownerDisplayName: "Alice",
       ownerEmail: "alice@example.com",
       requestedName: "North Region",
       requestedSlug: "north-region",
     });
-    const verified = await state.service.verifyApplication(
+    const verified = await state.applicationsService.verifyApplication(
       applied.applicationId,
       applied.verificationToken,
     );
@@ -91,7 +92,7 @@ describe("WorkspacesService applications", () => {
   it("rejects duplicate workspace slugs before creating an application", async () => {
     const state = createState({ duplicateSlug: "north-region" });
     await assert.rejects(
-      state.service.apply({
+      state.applicationsService.apply({
         ownerDisplayName: "Alice",
         ownerEmail: "alice@example.com",
         requestedName: "North Region",
@@ -103,13 +104,13 @@ describe("WorkspacesService applications", () => {
 
   it("allows the applicant to cancel an unprocessed application with a private token", async () => {
     const state = createState();
-    const applied = await state.service.apply({
+    const applied = await state.applicationsService.apply({
       ownerDisplayName: "Alice",
       ownerEmail: "alice@example.com",
       requestedName: "North Region",
       requestedSlug: "north-region",
     });
-    const cancelled = await state.service.cancelApplication(
+    const cancelled = await state.applicationsService.cancelApplication(
       applied.applicationId,
       applied.cancellationToken,
     );
@@ -120,14 +121,14 @@ describe("WorkspacesService applications", () => {
 
   it("does not expose application cancellation by id alone", async () => {
     const state = createState();
-    const applied = await state.service.apply({
+    const applied = await state.applicationsService.apply({
       ownerDisplayName: "Alice",
       ownerEmail: "alice@example.com",
       requestedName: "North Region",
       requestedSlug: "north-region",
     });
     await assert.rejects(
-      state.service.cancelApplication(applied.applicationId, "wrong-token"),
+      state.applicationsService.cancelApplication(applied.applicationId, "wrong-token"),
       BadRequestException,
     );
     assert.equal(state.applications[0]?.status, "pending_email_verification");
@@ -189,7 +190,7 @@ describe("WorkspacesService applications", () => {
     });
 
     const [workspace] = await state.service.listWorkspaces();
-    const [application] = await state.service.listApplications();
+    const [application] = await state.applicationsService.listApplications();
 
     assert.deepEqual(workspace, {
       id: "workspace-1",
@@ -396,15 +397,11 @@ function createState(options: {
   return {
     applications,
     sentEmails,
-    service: new WorkspacesService(
+    applicationsService: new WorkspaceApplicationsService(
       workspaceRepository as never,
       applicationRepository as never,
       {} as never,
       {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      { current: () => ({ scopeLevel: "workspace", workspaceId: "workspace-1" }) } as never,
       {
         send: async (input: any) => {
           sentEmails.push(input);
@@ -416,6 +413,10 @@ function createState(options: {
         getPlatformValue: async () =>
           options.workspaceApplicationsEnabled === false ? "false" : "true",
       } as never,
+    ),
+    service: new WorkspacesService(
+      workspaceRepository as never,
+      { current: () => ({ scopeLevel: "workspace", workspaceId: "workspace-1" }) } as never,
     ),
   };
 }

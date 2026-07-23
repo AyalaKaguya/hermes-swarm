@@ -2,7 +2,6 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Account,
-  PasswordReset,
   Permission,
   Role,
   RolePermission,
@@ -13,6 +12,7 @@ import {
 import { WorkspaceApplicationsController, WorkspacesController } from "./workspaces.controller.js";
 import { RolesController } from "./roles.controller.js";
 import { WorkspacesService } from "./workspaces.service.js";
+import { WorkspaceApplicationsService } from "./workspace-applications.service.js";
 import { WorkspaceRolesService } from "./workspace-roles.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { MailModule } from "../mail/mail.module.js";
@@ -25,7 +25,6 @@ import { SettingsModule } from "../settings/settings.module.js";
     SettingsModule,
     TypeOrmModule.forFeature([
       Permission,
-      PasswordReset,
       Account,
       Role,
       RolePermission,
@@ -35,7 +34,11 @@ import { SettingsModule } from "../settings/settings.module.js";
     ]),
   ],
   controllers: [RolesController, WorkspaceApplicationsController, WorkspacesController],
-  providers: [WorkspaceRolesService, WorkspacesService],
-  exports: [WorkspaceRolesService, WorkspacesService],
+  providers: [
+    WorkspaceApplicationsService,
+    WorkspaceRolesService,
+    WorkspacesService,
+  ],
+  exports: [WorkspaceApplicationsService, WorkspaceRolesService, WorkspacesService],
 })
 export class WorkspacesModule {}
