@@ -27,78 +27,31 @@ import {
   type EntityManager,
 } from "typeorm";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
-import { RedisService } from "../../common/redis/redis.service.js";
 import {
   INTEGRATION_SESSION_PREFIX,
   createAuthSessionToken,
   parseAuthSessionToken,
 } from "./auth-session.js";
 import { parseAuthDevice } from "./auth-device.js";
+import { AuthSessionStoreService } from "./auth-session-store.service.js";
+import type {
+  AuthRequestContext,
+  AuthSessionRecord,
+  ContextSelectionRecord,
+  IssuedAuthSession,
+  RealtimeTicketSession,
+  RefreshRotationResult,
+  ValidatedAuthSession,
+} from "./auth-session.types.js";
 
-export type AuthRequestContext = {
-  ipAddress?: string | null;
-  userAgent?: string | null;
-};
-
-export type AuthSessionRecord = {
-  accountId: string | null;
-  browser: string;
-  credentialVersion: number;
-  createdAt: string;
-  deviceLabel: string;
-  expiresAt: string;
-  ipAddress: string | null;
-  lastSeenAt: string;
-  membershipId: string | null;
-  os: string;
-  principalType: "platform" | "workspace";
-  refreshTokenHash: string;
-  revokedAt: string | null;
-  sessionId: string;
-  workspaceId: string | null;
-  userAgent: string | null;
-  userId: string;
-};
-
-export type ValidatedAuthSession = {
-  accountId: string | null;
-  integrationToken?: {
-    id: string;
-    permissions: string[];
-    scope: IntegrationToken["scope"];
-    workspaceId: string;
-  } | null;
-  jti: string;
-  membershipId: string | null;
-  principalType: "integration" | "platform" | "workspace";
-  record: AuthSessionRecord;
-  sessionId: string;
-  workspaceId: string | null;
-  tokenKind: "integration" | "session";
-  userId: string;
-};
-
-export type IssuedAuthSession = {
-  accessToken: string;
-  expiresAt: string;
-  principalType: "platform" | "workspace";
-  refreshToken: string;
-  sessionId: string;
-  workspaceId: string | null;
-};
-
-export type RealtimeTicketSession = {
-  sessionId: string;
-  workspaceId: string;
-  userId: string;
-};
-
-export type ContextSelectionRecord = {
-  accountId: string;
-  credentialVersion: number;
-  contextMembershipIds: string[];
-  expiresAt: string;
-};
+export type {
+  AuthRequestContext,
+  AuthSessionRecord,
+  ContextSelectionRecord,
+  IssuedAuthSession,
+  RealtimeTicketSession,
+  ValidatedAuthSession,
+} from "./auth-session.types.js";
 
 @Injectable()
 export class AuthSessionService {
@@ -114,7 +67,7 @@ export class AuthSessionService {
     private readonly dataSource: DataSource,
     private readonly workspaceContext: WorkspaceContextService,
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService,
+    private readonly sessionStore: AuthSessionStoreService,
   ) {}
 
   async createContextSelection(
@@ -123,25 +76,26 @@ export class AuthSessionService {
     contextMembershipIds: string[],
   ) {
     const selectionToken = randomBytes(32).toString("base64url");
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const expiresAt = new Date(
+      Date.now() + CONTEXT_SELECTION_TTL_SECONDS * 1000,
+    ).toISOString();
     const record: ContextSelectionRecord = {
       accountId,
       credentialVersion,
       contextMembershipIds: [...new Set(contextMembershipIds)],
       expiresAt,
     };
-    await (await this.redisService.getClient()).set(
-      this.contextSelectionKey(hashToken(selectionToken)),
-      JSON.stringify(record),
-      { EX: 300 },
+    await this.sessionStore.saveContextSelection(
+      hashToken(selectionToken),
+      record,
+      CONTEXT_SELECTION_TTL_SECONDS,
     );
     return { expiresAt, selectionToken };
   }
 
   async consumeContextSelection(selectionToken: string) {
-    const raw = await this.getAndDelete(
-      await this.redisService.getClient(),
-      this.contextSelectionKey(hashToken(selectionToken)),
+    const raw = await this.sessionStore.consumeContextSelection(
+      hashToken(selectionToken),
     );
     if (!raw) throw new UnauthorizedException("上下文选择凭证无效或已过期");
     const parsed = JSON.parse(raw) as ContextSelectionRecord;
@@ -198,14 +152,20 @@ export class AuthSessionService {
       userId,
     };
 
-    await this.saveSession(record);
-    await this.indexRefreshToken(record.refreshTokenHash, workspaceId, sessionId);
-    await this.addUserSession(
+    await this.sessionStore.saveSession(record, this.sessionHistoryTtlSeconds);
+    await this.sessionStore.indexRefreshToken(
+      record.refreshTokenHash,
+      workspaceId,
+      sessionId,
+      this.refreshTokenTtlSeconds,
+    );
+    await this.sessionStore.addUserSession(
       workspaceId,
       userId,
       sessionId,
       principalType,
       membershipId,
+      this.sessionHistoryTtlSeconds,
     );
 
     return {
@@ -231,39 +191,36 @@ export class AuthSessionService {
     }
 
     const refreshTokenHash = hashToken(refreshToken);
-    const client = await this.redisService.getClient();
-    const lockKey = this.refreshLockKey(refreshTokenHash);
     const lockOwner = randomUUID();
-    const lockAcquired = await client.set(lockKey, lockOwner, {
-      EX: REFRESH_LOCK_TTL_SECONDS,
-      NX: true,
-    });
+    const lockAcquired = await this.sessionStore.acquireRefreshLock(
+      refreshTokenHash,
+      lockOwner,
+      REFRESH_LOCK_TTL_SECONDS,
+    );
     if (!lockAcquired) {
-      const rotated = await this.waitForRefreshRotation(client, refreshTokenHash);
+      const rotated = await this.waitForRefreshRotation(refreshTokenHash);
       if (rotated) return rotated;
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
     try {
-      const refreshIndex = parseRefreshIndex(
-        await client.get(this.refreshIndexKey(refreshTokenHash)),
-      );
+      const refreshIndex = await this.sessionStore.getRefreshIndex(refreshTokenHash);
       if (!refreshIndex) {
-        const rotated = await this.getRefreshRotationResult(client, refreshTokenHash);
+        const rotated = await this.getRefreshRotationResult(refreshTokenHash);
         if (rotated) return rotated;
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
 
       const { sessionId, workspaceId } = refreshIndex;
-      const record = await this.getSessionRecord(workspaceId, sessionId);
+      const record = await this.sessionStore.getSessionRecord(workspaceId, sessionId);
       if (
         !record ||
         record.revokedAt ||
         record.refreshTokenHash !== refreshTokenHash ||
         isSessionExpired(record)
       ) {
-        await client.del(this.refreshIndexKey(refreshTokenHash));
-        const rotated = await this.getRefreshRotationResult(client, refreshTokenHash);
+        await this.sessionStore.deleteRefreshIndex(refreshTokenHash);
+        const rotated = await this.getRefreshRotationResult(refreshTokenHash);
         if (rotated) return rotated;
         throw new UnauthorizedException("登录已失效，请重新登录");
       }
@@ -309,22 +266,28 @@ export class AuthSessionService {
       };
 
       await Promise.all([
-        this.saveSession(nextRecord),
-        this.indexRefreshToken(nextHash, record.workspaceId, sessionId),
-        this.addUserSession(
+        this.sessionStore.saveSession(nextRecord, this.sessionHistoryTtlSeconds),
+        this.sessionStore.indexRefreshToken(
+          nextHash,
+          record.workspaceId,
+          sessionId,
+          this.refreshTokenTtlSeconds,
+        ),
+        this.sessionStore.addUserSession(
           record.workspaceId,
           record.userId,
           sessionId,
           record.principalType,
           record.membershipId,
+          this.sessionHistoryTtlSeconds,
         ),
       ]);
-      await this.saveRefreshRotationResult(client, refreshTokenHash, issued);
-      await client.del(this.refreshIndexKey(refreshTokenHash));
+      await this.saveRefreshRotationResult(refreshTokenHash, issued);
+      await this.sessionStore.deleteRefreshIndex(refreshTokenHash);
 
       return issued;
     } finally {
-      await this.releaseRefreshLock(client, lockKey, lockOwner);
+      await this.sessionStore.releaseRefreshLock(refreshTokenHash, lockOwner);
     }
   }
 
@@ -343,7 +306,10 @@ export class AuthSessionService {
       return this.validateIntegrationToken(accessToken, payload);
     }
 
-    const record = await this.getSessionRecord(payload.workspaceId, payload.sessionId);
+    const record = await this.sessionStore.getSessionRecord(
+      payload.workspaceId,
+      payload.sessionId,
+    );
     if (
       !record ||
       record.userId !== payload.userId ||
@@ -383,19 +349,15 @@ export class AuthSessionService {
 
   async createRealtimeTicket(session: RealtimeTicketSession) {
     const ticket = randomBytes(32).toString("base64url");
-    const expiresAt = new Date(Date.now() + 30_000).toISOString();
-    const client = await this.redisService.getClient();
+    const expiresAt = new Date(
+      Date.now() + REALTIME_TICKET_TTL_SECONDS * 1000,
+    ).toISOString();
     const ticketHash = hashToken(ticket);
-    await Promise.all([
-      client.set(
-        this.realtimeTicketKey(session.workspaceId, ticketHash),
-        JSON.stringify(session satisfies RealtimeTicketSession),
-        { EX: 30 },
-      ),
-      client.set(this.realtimeTicketIndexKey(ticketHash), session.workspaceId, {
-        EX: 30,
-      }),
-    ]);
+    await this.sessionStore.createRealtimeTicket(
+      ticketHash,
+      session,
+      REALTIME_TICKET_TTL_SECONDS,
+    );
     return { expiresAt, ticket };
   }
 
@@ -404,14 +366,7 @@ export class AuthSessionService {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
-    const client = await this.redisService.getClient();
-    const indexKey = this.realtimeTicketIndexKey(hashToken(ticket));
-    const workspaceId = await this.getAndDelete(client, indexKey);
-    if (!workspaceId) {
-      throw new UnauthorizedException("登录已失效，请重新登录");
-    }
-    const key = this.realtimeTicketKey(workspaceId, hashToken(ticket));
-    const rawValue = await this.getAndDelete(client, key);
+    const rawValue = await this.sessionStore.consumeRealtimeTicket(hashToken(ticket));
     if (!rawValue) {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
@@ -423,7 +378,7 @@ export class AuthSessionService {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
-    const record = await this.getSessionRecord(
+    const record = await this.sessionStore.getSessionRecord(
       ticketSession.workspaceId,
       ticketSession.sessionId,
     );
@@ -451,14 +406,19 @@ export class AuthSessionService {
     userId: string,
     currentSessionId: string,
   ) {
-    const client = await this.redisService.getClient();
-    const sessionIds = await client.sMembers(this.userSessionsKey(workspaceId, userId));
+    const sessionIds = await this.sessionStore.listUserSessionIds(workspaceId, userId);
     const records = await Promise.all(
-      sessionIds.map((sessionId) => this.getSessionRecord(workspaceId, sessionId)),
+      sessionIds.map((sessionId) =>
+        this.sessionStore.getSessionRecord(workspaceId, sessionId),
+      ),
     );
     const missingSessionIds = sessionIds.filter((_, index) => !records[index]);
     if (missingSessionIds.length > 0) {
-      await client.sRem(this.userSessionsKey(workspaceId, userId), missingSessionIds);
+      await this.sessionStore.removeUserSessionIds(
+        workspaceId,
+        userId,
+        missingSessionIds,
+      );
     }
 
     return records
@@ -488,7 +448,7 @@ export class AuthSessionService {
     sessionId: string,
     expectedUserId?: string,
   ) {
-    const record = await this.getSessionRecord(workspaceId, sessionId);
+    const record = await this.sessionStore.getSessionRecord(workspaceId, sessionId);
     if (!record || (expectedUserId && record.userId !== expectedUserId)) {
       return;
     }
@@ -497,10 +457,9 @@ export class AuthSessionService {
       ...record,
       revokedAt: record.revokedAt ?? new Date().toISOString(),
     };
-    const client = await this.redisService.getClient();
     await Promise.all([
-      client.del(this.refreshIndexKey(record.refreshTokenHash)),
-      this.saveSession(revokedRecord),
+      this.sessionStore.deleteRefreshIndex(record.refreshTokenHash),
+      this.sessionStore.saveSession(revokedRecord, this.sessionHistoryTtlSeconds),
     ]);
   }
 
@@ -509,9 +468,7 @@ export class AuthSessionService {
     userId: string,
     currentSessionId: string,
   ) {
-    const sessionIds = await (
-      await this.redisService.getClient()
-    ).sMembers(this.userSessionsKey(workspaceId, userId));
+    const sessionIds = await this.sessionStore.listUserSessionIds(workspaceId, userId);
     await Promise.all(
       sessionIds
         .filter((sessionId) => sessionId !== currentSessionId)
@@ -523,9 +480,7 @@ export class AuthSessionService {
     workspaceId: string,
     userId: string,
   ) {
-    const sessionIds = await (
-      await this.redisService.getClient()
-    ).sMembers(this.userSessionsKey(workspaceId, userId));
+    const sessionIds = await this.sessionStore.listUserSessionIds(workspaceId, userId);
     await Promise.all(
       sessionIds.map((sessionId) =>
         this.revokeSession(workspaceId, sessionId, userId),
@@ -534,8 +489,7 @@ export class AuthSessionService {
   }
 
   async revokeAccountSessions(accountId: string) {
-    const client = await this.redisService.getClient();
-    const entries = await client.sMembers(this.accountSessionsKey(accountId));
+    const entries = await this.sessionStore.listAccountSessionEntries(accountId);
     await Promise.all(
       entries.map(async (entry) => {
         const [contextId, sessionId] = entry.split(":", 2);
@@ -554,9 +508,10 @@ export class AuthSessionService {
     principalType: "platform" | "workspace",
     membershipId: string,
   ) {
-    const client = await this.redisService.getClient();
-    const key = this.membershipSessionsKey(principalType, membershipId);
-    const entries = await client.sMembers(key);
+    const entries = await this.sessionStore.listMembershipSessionEntries(
+      principalType,
+      membershipId,
+    );
     await Promise.all(
       entries.map(async (entry) => {
         const [contextId, sessionId] = entry.split(":", 2);
@@ -576,7 +531,7 @@ export class AuthSessionService {
     expectedUserId: string,
     currentSessionId: string,
   ) {
-    const record = await this.getSessionRecord(workspaceId, sessionId);
+    const record = await this.sessionStore.getSessionRecord(workspaceId, sessionId);
     if (!record || record.userId !== expectedUserId) return;
     if (record.sessionId === currentSessionId && !record.revokedAt) {
       throw new BadRequestException("不能删除当前活跃设备");
@@ -585,15 +540,7 @@ export class AuthSessionService {
       throw new BadRequestException("请先登出设备后再删除记录");
     }
 
-    const client = await this.redisService.getClient();
-    await Promise.all([
-      client.del(this.sessionKey(record.workspaceId, record.sessionId)),
-      client.del(this.refreshIndexKey(record.refreshTokenHash)),
-      client.sRem(
-        this.userSessionsKey(record.workspaceId, record.userId),
-        record.sessionId,
-      ),
-    ]);
+    await this.sessionStore.deleteSessionRecord(record);
   }
 
   getRefreshCookieName() {
@@ -747,70 +694,15 @@ export class AuthSessionService {
     } satisfies ValidatedAuthSession;
   }
 
-  private async getSessionRecord(workspaceId: string | null, sessionId: string) {
-    const rawValue = await (
-      await this.redisService.getClient()
-    ).get(this.sessionKey(workspaceId, sessionId));
-    if (!rawValue) return null;
-    try {
-      return JSON.parse(rawValue) as AuthSessionRecord;
-    } catch {
-      return null;
-    }
-  }
-
-  private async saveSession(record: AuthSessionRecord) {
-    await (
-      await this.redisService.getClient()
-    ).set(this.sessionKey(record.workspaceId, record.sessionId), JSON.stringify(record), {
-      EX: this.sessionHistoryTtlSeconds,
-    });
-  }
-
-  private async indexRefreshToken(
-    refreshTokenHash: string,
-    workspaceId: string | null,
-    sessionId: string,
-  ) {
-    await (
-      await this.redisService.getClient()
-    ).set(
-      this.refreshIndexKey(refreshTokenHash),
-      JSON.stringify({ sessionId, workspaceId }),
-      {
-      EX: this.refreshTokenTtlSeconds,
-      },
-    );
-  }
-
-  private async addUserSession(
-    workspaceId: string | null,
-    userId: string,
-    sessionId: string,
-    principalType: "platform" | "workspace",
-    membershipId: string | null,
-  ) {
-    const client = await this.redisService.getClient();
-    const key = this.userSessionsKey(workspaceId, userId);
-    await client.sAdd(key, sessionId);
-    await client.expire(key, this.sessionHistoryTtlSeconds);
-    const contextId = workspaceId ?? "platform";
-    const accountKey = this.accountSessionsKey(userId);
-    await client.sAdd(accountKey, `${contextId}:${sessionId}`);
-    await client.expire(accountKey, this.sessionHistoryTtlSeconds);
-    if (membershipId) {
-      const membershipKey = this.membershipSessionsKey(principalType, membershipId);
-      await client.sAdd(membershipKey, `${contextId}:${sessionId}`);
-      await client.expire(membershipKey, this.sessionHistoryTtlSeconds);
-    }
-  }
-
   private async touchSession(
     sessionId: string,
     workspaceId: string | null,
     userId: string,
   ) {
-    const latestRecord = await this.getSessionRecord(workspaceId, sessionId);
+    const latestRecord = await this.sessionStore.getSessionRecord(
+      workspaceId,
+      sessionId,
+    );
     if (
       !latestRecord ||
       latestRecord.userId !== userId ||
@@ -824,7 +716,10 @@ export class AuthSessionService {
       ...latestRecord,
       lastSeenAt: new Date().toISOString(),
     };
-    await this.saveSession(touchedRecord);
+    await this.sessionStore.saveSession(
+      touchedRecord,
+      this.sessionHistoryTtlSeconds,
+    );
     return touchedRecord;
   }
 
@@ -937,108 +832,32 @@ export class AuthSessionService {
   }
 
   private async waitForRefreshRotation(
-    client: Awaited<ReturnType<RedisService["getClient"]>>,
     refreshTokenHash: string,
   ) {
     const deadline = Date.now() + REFRESH_ROTATION_WAIT_MS;
     do {
-      const rotated = await this.getRefreshRotationResult(client, refreshTokenHash);
+      const rotated = await this.getRefreshRotationResult(refreshTokenHash);
       if (rotated) return rotated;
       await delay(REFRESH_ROTATION_POLL_MS);
     } while (Date.now() < deadline);
 
-    return this.getRefreshRotationResult(client, refreshTokenHash);
+    return this.getRefreshRotationResult(refreshTokenHash);
   }
 
-  private async getRefreshRotationResult(
-    client: Awaited<ReturnType<RedisService["getClient"]>>,
-    refreshTokenHash: string,
-  ) {
-    const value = await client.get(this.refreshRotationKey(refreshTokenHash));
+  private async getRefreshRotationResult(refreshTokenHash: string) {
+    const value = await this.sessionStore.getRefreshRotationResult(refreshTokenHash);
     return value ? decryptRefreshRotation(value, this.sessionSecret) : null;
   }
 
   private async saveRefreshRotationResult(
-    client: Awaited<ReturnType<RedisService["getClient"]>>,
     refreshTokenHash: string,
     issued: RefreshRotationResult,
   ) {
-    await client.set(
-      this.refreshRotationKey(refreshTokenHash),
+    await this.sessionStore.saveRefreshRotationResult(
+      refreshTokenHash,
       encryptRefreshRotation(issued, this.sessionSecret),
-      { EX: REFRESH_ROTATION_RESULT_TTL_SECONDS },
+      REFRESH_ROTATION_RESULT_TTL_SECONDS,
     );
-  }
-
-  private async releaseRefreshLock(
-    client: Awaited<ReturnType<RedisService["getClient"]>>,
-    lockKey: string,
-    lockOwner: string,
-  ) {
-    await client.eval(
-      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0",
-      {
-        arguments: [lockOwner],
-        keys: [lockKey],
-      },
-    );
-  }
-  private async getAndDelete(
-    client: Awaited<ReturnType<RedisService["getClient"]>>,
-    key: string,
-  ) {
-    if ("getDel" in client && typeof client.getDel === "function") {
-      return client.getDel(key);
-    }
-
-    const rawValue = await client.get(key);
-    if (rawValue) {
-      await client.del(key);
-    }
-    return rawValue;
-  }
-
-  private sessionKey(workspaceId: string | null, sessionId: string) {
-    return `auth:${workspaceNamespace(workspaceId)}:session:${sessionId}`;
-  }
-
-  private refreshIndexKey(refreshTokenHash: string) {
-    return `auth:refresh:${refreshTokenHash}`;
-  }
-
-  private refreshLockKey(refreshTokenHash: string) {
-    return `auth:refresh_lock:${refreshTokenHash}`;
-  }
-
-  private refreshRotationKey(refreshTokenHash: string) {
-    return `auth:refresh_rotation:${refreshTokenHash}`;
-  }
-
-  private userSessionsKey(workspaceId: string | null, userId: string) {
-    return `auth:${workspaceNamespace(workspaceId)}:user_sessions:${userId}`;
-  }
-
-  private accountSessionsKey(accountId: string) {
-    return `auth:account:${accountId}:sessions`;
-  }
-
-  private contextSelectionKey(tokenHash: string) {
-    return `auth:context_selection:${tokenHash}`;
-  }
-
-  private membershipSessionsKey(
-    principalType: "platform" | "workspace",
-    membershipId: string,
-  ) {
-    return `auth:membership:${principalType}:${membershipId}:sessions`;
-  }
-
-  private realtimeTicketKey(workspaceId: string, ticketHash: string) {
-    return `auth:${workspaceId}:realtime_ticket:${ticketHash}`;
-  }
-
-  private realtimeTicketIndexKey(ticketHash: string) {
-    return `auth:realtime_ticket_index:${ticketHash}`;
   }
 
   private get accessTokenTtlSeconds() {
@@ -1072,10 +891,6 @@ export class AuthSessionService {
   }
 }
 
-function workspaceNamespace(workspaceId: string | null) {
-  return workspaceId ?? "platform";
-}
-
 function assertPrincipalWorkspaceContext(
   principalType: "platform" | "workspace",
   workspaceId: string | null,
@@ -1088,31 +903,12 @@ function assertPrincipalWorkspaceContext(
   }
 }
 
-function parseRefreshIndex(value: string | null) {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value) as {
-      sessionId?: unknown;
-      workspaceId?: unknown;
-    };
-    return typeof parsed.sessionId === "string" &&
-      (typeof parsed.workspaceId === "string" || parsed.workspaceId === null)
-      ? { sessionId: parsed.sessionId, workspaceId: parsed.workspaceId }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
+const CONTEXT_SELECTION_TTL_SECONDS = 5 * 60;
+const REALTIME_TICKET_TTL_SECONDS = 30;
 const REFRESH_LOCK_TTL_SECONDS = 10;
 const REFRESH_ROTATION_RESULT_TTL_SECONDS = 10;
 const REFRESH_ROTATION_WAIT_MS = 2_000;
 const REFRESH_ROTATION_POLL_MS = 50;
-
-type RefreshRotationResult = IssuedAuthSession & {
-  workspaceId: string | null;
-  userId: string;
-};
 
 function encryptRefreshRotation(value: RefreshRotationResult, secret: string) {
   const iv = randomBytes(12);

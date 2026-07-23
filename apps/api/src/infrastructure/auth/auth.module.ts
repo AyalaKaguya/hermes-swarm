@@ -10,6 +10,7 @@ import {
 } from "@hermes-swarm/core";
 import { AuthController } from "./auth.controller.js";
 import { AuthSessionService } from "./auth-session.service.js";
+import { AuthSessionStoreService } from "./auth-session-store.service.js";
 import { AuthService } from "./auth.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { WorkspaceLoginResolverService } from "./workspace-login-resolver.service.js";
@@ -31,7 +32,12 @@ import { AuditModule } from "../audit/audit.module.js";
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthSessionService, WorkspaceLoginResolverService],
+  providers: [
+    AuthService,
+    AuthSessionService,
+    AuthSessionStoreService,
+    WorkspaceLoginResolverService,
+  ],
   exports: [AuthService, AuthSessionService, WorkspaceLoginResolverService],
 })
 export class AuthModule {}
