@@ -32,9 +32,7 @@ export const databaseRuntimeConfig = registerAs("database", () => {
 });
 
 export const redisRuntimeConfig = registerAs("redis", () => {
-  const host = process.env.REDIS_HOST ?? "localhost";
-  const port = parseInteger(process.env.REDIS_PORT, 6379);
-  const password = process.env.REDIS_PASSWORD ?? "hermes_redis_pwd";
+  const url = resolveRedisUrl(process.env);
   return {
     cacheAlwaysEnabled: parseBoolean(
       process.env.TYPEORM_CACHE_ALWAYS_ENABLED,
@@ -46,12 +44,7 @@ export const redisRuntimeConfig = registerAs("redis", () => {
       process.env.TYPEORM_CACHE_IGNORE_ERRORS,
       true,
     ),
-    host,
-    password,
-    port,
-    url:
-      process.env.REDIS_URL ??
-      `redis://:${encodeURIComponent(password)}@${host}:${port}`,
+    url,
   };
 });
 
@@ -120,10 +113,14 @@ export function validateRuntimeConfig(
   if (environment !== "test" && !config.POSTGRES_URL) {
     throw new Error("POSTGRES_URL is required unless NODE_ENV=test");
   }
-  validateUrl("REDIS_URL", config.REDIS_URL, "redis:");
-  validateText("REDIS_HOST", config.REDIS_HOST, "localhost");
-  validatePort("REDIS_PORT", config.REDIS_PORT, { fallback: 6379 });
-  validateText("REDIS_PASSWORD", config.REDIS_PASSWORD, "hermes_redis_pwd");
+  const redisUrl = readOptionalText(config.REDIS_URL);
+  if (redisUrl) {
+    validateUrl("REDIS_URL", redisUrl, ["redis:", "rediss:"]);
+  } else {
+    validateText("REDIS_HOST", config.REDIS_HOST, "localhost");
+    validatePort("REDIS_PORT", config.REDIS_PORT, { fallback: 6379 });
+    validateText("REDIS_PASSWORD", config.REDIS_PASSWORD, "hermes_redis_pwd");
+  }
   validateBoolean("TYPEORM_CACHE_ENABLED", config.TYPEORM_CACHE_ENABLED);
   validateBoolean(
     "TYPEORM_CACHE_ALWAYS_ENABLED",
@@ -259,7 +256,11 @@ function validateText(name: string, value: unknown, fallback: string) {
   if (!text.trim()) throw new Error(`${name} cannot be empty`);
 }
 
-function validateUrl(name: string, value: unknown, protocol: string) {
+function validateUrl(
+  name: string,
+  value: unknown,
+  protocol: string | readonly string[],
+) {
   if (value === undefined || value === null || value === "") return;
   let url: URL;
   try {
@@ -267,9 +268,28 @@ function validateUrl(name: string, value: unknown, protocol: string) {
   } catch {
     throw new Error(`${name} must be a valid URL`);
   }
-  if (url.protocol !== protocol) {
-    throw new Error(`${name} must use ${protocol}//`);
+  const protocols = Array.isArray(protocol) ? protocol : [protocol];
+  if (!protocols.includes(url.protocol)) {
+    throw new Error(
+      `${name} must use ${protocols.map((item) => `${item}//`).join(" or ")}`,
+    );
   }
+}
+
+function resolveRedisUrl(config: Record<string, string | undefined>) {
+  const url = readOptionalText(config.REDIS_URL);
+  if (url) return url;
+
+  const host = config.REDIS_HOST?.trim() || "localhost";
+  const port = parseInteger(config.REDIS_PORT, 6379);
+  const password = config.REDIS_PASSWORD ?? "hermes_redis_pwd";
+  return `redis://:${encodeURIComponent(password)}@${host}:${port}`;
+}
+
+function readOptionalText(value: unknown) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text || null;
 }
 
 function validateLegacyRlsConfiguration(config: Record<string, unknown>) {

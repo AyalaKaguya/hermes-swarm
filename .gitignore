@@ -10,7 +10,8 @@ coverage/
 .nx/
 uploads/
 .env
-devenv/.env
+docker/.env
+docker/data/
 
 .claude/worktrees
 .claude/settings.local.json

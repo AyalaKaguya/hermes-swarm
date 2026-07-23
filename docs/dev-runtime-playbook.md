@@ -8,7 +8,31 @@
 | API | `http://localhost:3200/api` |
 | API health | `http://localhost:3200/api/health` |
 
-Web proxies `/api/**` to API. Root `.env` provides local PostgreSQL/Redis URLs and API overrides.
+Web proxies `/api/**` to API. Root `.env` provides the configured PostgreSQL and
+Redis application URLs plus API overrides; remote services are the normal
+development setup.
+
+## Runtime configuration
+
+- `POSTGRES_URL` is the only non-test PostgreSQL application endpoint.
+- `POSTGRES_TEST_URL` is used only when `NODE_ENV=test`.
+- `REDIS_URL` is the single canonical Redis endpoint for sessions, rate limits,
+  realtime events, job locks, and caches. Both `redis://` and TLS `rediss://`
+  URLs are supported.
+- Old `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` settings remain only as
+  a startup fallback when `REDIS_URL` is absent. Do not add them to new
+  deployments.
+
+Local Docker is optional and never starts as part of an Nx app command:
+
+```powershell
+Copy-Item docker/.env.example docker/.env
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
+```
+
+When using local Docker, update root `.env` so `POSTGRES_URL` and `REDIS_URL`
+point to those containers. Keep container credentials and port mappings only in
+`docker/.env`.
 
 ## Debug runtime logs
 
@@ -136,7 +160,9 @@ $env:DEV_SEED_ADMIN_PASSWORD='<至少 8 位>'
 pnpm nx run @hermes-swarm/api:seed:development
 ```
 
-When Docker is used locally, infrastructure is defined by `docker/docker-compose.yml`. Removing the local PostgreSQL data directory is destructive and is only allowed for the development baseline.
+When optional Docker infrastructure is used locally, it is defined by
+`docker/docker-compose.yml`. Removing its local PostgreSQL data directory is
+destructive and is only allowed for the development baseline.
 
 Current development seed defaults:
 

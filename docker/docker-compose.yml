@@ -3,8 +3,6 @@ services:
     image: postgres:17-alpine
     container_name: hermes-postgres
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-hermes}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hermes_dev_pwd}
@@ -26,8 +24,6 @@ services:
     image: redis:7-alpine
     container_name: hermes-redis
     restart: unless-stopped
-    env_file:
-      - .env
     command: redis-server --requirepass ${REDIS_PASSWORD:-hermes_redis_pwd} --appendonly yes
     ports:
       - "${REDIS_PORT:-6379}:6379"

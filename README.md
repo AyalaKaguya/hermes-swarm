@@ -13,7 +13,7 @@ hermes-swarm/
 │   ├── core/                 # Shared persistence models and settings definitions
 │   ├── rbac-api/             # Client-safe permission contracts
 │   └── rbac/                 # NestJS access-control runtime
-├── devenv/                   # Local dev infrastructure (Docker)
+├── docker/                   # Optional local PostgreSQL + Redis
 │   ├── docker-compose.yml    # PostgreSQL 17 + Redis 7
 │   └── init/                 # Infrastructure initialization assets
 ├── docs/architecture/        # Architecture boundaries and review records
@@ -26,7 +26,7 @@ hermes-swarm/
 
 - **Node.js** >= 20.9
 - **pnpm** >= 9
-- **Docker** & **Docker Compose**
+- **Docker** & **Docker Compose** (optional; only for local infrastructure)
 
 ## Getting Started
 
@@ -36,14 +36,15 @@ hermes-swarm/
 pnpm install
 ```
 
-### 2. Start development services
+### 2. Configure application runtime
 
-```bash
-cp .env.example .env
-cd devenv && cp ../.env.example .env && docker compose up -d
+```powershell
+Copy-Item .env.example .env
 ```
 
-This starts PostgreSQL and Redis containers with health checks.
+Set `POSTGRES_URL` and `REDIS_URL` in `.env` to the managed or remote services
+for your environment. The API uses one PostgreSQL URL and one Redis URL; it
+does not start Docker services automatically.
 
 ### 3. Start the app servers
 
@@ -59,8 +60,22 @@ The API runs on `http://localhost:3200/api` (configurable via `API_PORT`).
 
 ```bash
 curl http://localhost:3200/api/health
-# { "status": "ok", "db": "connected" }
+# { "status": "ok", "db": "connected", "redis": "connected" }
 ```
+
+### Optional: local Docker infrastructure
+
+Only use this when you explicitly want local PostgreSQL and Redis instead of
+the configured remote services.
+
+```powershell
+Copy-Item docker/.env.example docker/.env
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
+```
+
+Then point root `.env` at the local containers using `POSTGRES_URL` and
+`REDIS_URL`. Docker credentials and ports stay in `docker/.env`; application
+URLs and secrets stay in root `.env`.
 
 ## Commands
 
@@ -79,14 +94,15 @@ pnpm nx run @hermes-swarm/api:dev
 pnpm nx run @hermes-swarm/web:dev
 ```
 
-## Development Services
+## Optional Local Development Services
 
 | Service | Image | Port |
 |---------|-------|------|
 | PostgreSQL 17 | `postgres:17-alpine` | 5432 |
 | Redis 7 | `redis:7-alpine` | 6379 |
 
-Configuration is managed via `.env` (see `.env.example` for defaults).
+Docker infrastructure is configured through `docker/.env`; the application is
+configured through root `.env` (see their respective `.env.example` files).
 
 ## License
 

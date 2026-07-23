@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 import {
   appRuntimeConfig,
   databaseRuntimeConfig,
+  redisRuntimeConfig,
   settingsRuntimeConfig,
   validateRuntimeConfig,
 } from "./runtime-config.js";
@@ -15,6 +16,10 @@ const originalEnvironment = {
   POSTGRES_TEST_URL: process.env.POSTGRES_TEST_URL,
   POSTGRES_URL: process.env.POSTGRES_URL,
   POSTGRES_WORKSPACE_URL: process.env.POSTGRES_WORKSPACE_URL,
+  REDIS_HOST: process.env.REDIS_HOST,
+  REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+  REDIS_PORT: process.env.REDIS_PORT,
+  REDIS_URL: process.env.REDIS_URL,
   SETTINGS_ENCRYPTION_KEY: process.env.SETTINGS_ENCRYPTION_KEY,
   TRUSTED_PROXY_CIDRS: process.env.TRUSTED_PROXY_CIDRS,
 };
@@ -89,6 +94,38 @@ describe("database runtime configuration", () => {
     assert.equal(
       databaseRuntimeConfig().url,
       "postgresql://app.example/hermes",
+    );
+  });
+
+  it("uses REDIS_URL as the canonical endpoint and accepts TLS Redis", () => {
+    process.env.REDIS_URL = "rediss://cache-user:cache-password@cache.example:6380/0";
+    process.env.REDIS_HOST = " ";
+    process.env.REDIS_PORT = "not-a-number";
+
+    assert.equal(
+      redisRuntimeConfig().url,
+      "rediss://cache-user:cache-password@cache.example:6380/0",
+    );
+    assert.doesNotThrow(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "development",
+        POSTGRES_URL: "postgresql://app.example/hermes",
+        REDIS_HOST: process.env.REDIS_HOST,
+        REDIS_PORT: process.env.REDIS_PORT,
+        REDIS_URL: process.env.REDIS_URL,
+      }),
+    );
+  });
+
+  it("derives a Redis URL from legacy split settings when needed", () => {
+    delete process.env.REDIS_URL;
+    process.env.REDIS_HOST = "cache.example";
+    process.env.REDIS_PORT = "6380";
+    process.env.REDIS_PASSWORD = "password with spaces";
+
+    assert.equal(
+      redisRuntimeConfig().url,
+      "redis://:password%20with%20spaces@cache.example:6380",
     );
   });
 
