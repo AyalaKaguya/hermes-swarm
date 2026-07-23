@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   AuthLoginInternalResponseSchema,
   AuthLoginResponseSchema,
@@ -22,6 +22,12 @@ const REFRESH_COOKIE_NAME =
   process.env.AUTH_REFRESH_COOKIE_NAME ??
   process.env.WEB_REFRESH_COOKIE_NAME ??
   "hermes_refresh";
+const REFRESH_RETRY_DELAYS_MS = [125, 400] as const;
+const DEFINITIVE_REFRESH_INVALID_CODES = new Set([
+  "AUTH_CREDENTIALS_CHANGED",
+  "AUTH_REFRESH_SESSION_INVALID",
+  "AUTH_REFRESH_TOKEN_INVALID",
+]);
 
 const PUBLIC_ADMIN_PATHS = new Set([
   "/bootstrap",
@@ -285,19 +291,38 @@ async function getUsableWebSession(request: NextRequest) {
 }
 
 function refreshWebSession(session: WebSession, request: NextRequest): Promise<WebSession> {
-  const existing = refreshJobs.get(session.sessionId);
+  const refreshJobKey = getRefreshJobKey(session);
+  const existing = refreshJobs.get(refreshJobKey);
   if (existing) return existing;
 
   const job = refreshWebSessionUpstream(session, request).finally(() => {
-    if (refreshJobs.get(session.sessionId) === job) {
-      refreshJobs.delete(session.sessionId);
+    if (refreshJobs.get(refreshJobKey) === job) {
+      refreshJobs.delete(refreshJobKey);
     }
   });
-  refreshJobs.set(session.sessionId, job);
+  refreshJobs.set(refreshJobKey, job);
   return job;
 }
 
 async function refreshWebSessionUpstream(
+  session: WebSession,
+  request: NextRequest,
+): Promise<WebSession> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await refreshWebSessionAttempt(session, request);
+    } catch (error) {
+      const refreshError = normalizeRefreshError(error);
+      const retryDelay = REFRESH_RETRY_DELAYS_MS[attempt];
+      if (!refreshError.retryable || retryDelay === undefined) {
+        throw refreshError;
+      }
+      await delay(retryDelay);
+    }
+  }
+}
+
+async function refreshWebSessionAttempt(
   session: WebSession,
   request: NextRequest,
 ): Promise<WebSession> {
@@ -314,16 +339,11 @@ async function refreshWebSessionUpstream(
       method: "POST",
     });
   } catch {
-    throw new RefreshSessionError("unavailable");
+    throw new RefreshSessionError("unavailable", undefined, true);
   }
   const rawDetail = await readJson(upstream);
   if (!upstream.ok) {
-    throw new RefreshSessionError(
-      upstream.status === 401 || upstream.status === 403
-        ? "invalid"
-        : "unavailable",
-      getString(rawDetail?.message) ?? undefined,
-    );
+    throw refreshUpstreamFailure(upstream.status, rawDetail);
   }
 
   const parsed = RefreshSessionInternalSchema.safeParse(rawDetail);
@@ -356,6 +376,28 @@ async function refreshWebSessionUpstream(
     refreshToken,
     sessionId,
   };
+}
+
+function refreshUpstreamFailure(
+  status: number,
+  detail: Record<string, unknown> | null,
+) {
+  const code = getString(detail?.code);
+  if (
+    (status === 401 || status === 403) &&
+    code !== null &&
+    DEFINITIVE_REFRESH_INVALID_CODES.has(code)
+  ) {
+    return new RefreshSessionError(
+      "invalid",
+      getString(detail?.message) ?? undefined,
+    );
+  }
+  return new RefreshSessionError(
+    "unavailable",
+    getString(detail?.message) ?? undefined,
+    status === 401 || status === 403 || status === 429 || status >= 500,
+  );
 }
 
 function isPublicAdminPath(path: string) {
@@ -521,10 +563,21 @@ class RefreshSessionError extends Error {
       kind === "invalid"
         ? "登录已失效，请重新登录"
         : "认证服务暂时不可用，请稍后重试",
+    readonly retryable = false,
   ) {
     super(message);
     this.name = "RefreshSessionError";
   }
+}
+
+function getRefreshJobKey(session: WebSession) {
+  return `${session.sessionId}:${createHash("sha256")
+    .update(session.refreshToken)
+    .digest("base64url")}`;
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown> | null> {

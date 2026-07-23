@@ -458,6 +458,37 @@ describe("admin BFF refresh single-flight", () => {
     assert.equal(response.headers.get("set-cookie"), null);
   });
 
+  it("retries a refresh that is still being rotated instead of logging the user out", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    });
+    let refreshRequests = 0;
+    globalThis.fetch = async () => {
+      refreshRequests += 1;
+      if (refreshRequests === 1) {
+        return Response.json(
+          {
+            code: "AUTH_REFRESH_IN_PROGRESS",
+            message: "登录状态正在同步，请稍后重试",
+            statusCode: 503,
+          },
+          { status: 503 },
+        );
+      }
+      return refreshResponse(session);
+    };
+
+    const response = await sendRefreshRequest(session);
+
+    assert.equal(response.status, 200);
+    assert.equal(refreshRequests, 2);
+    assert.equal(
+      response.headers.get("set-cookie")?.includes(WEB_SESSION_COOKIE_NAME),
+      true,
+    );
+  });
+
   it("uses a still-valid access token when preemptive refresh is temporarily unavailable", async () => {
     process.env.WEB_SESSION_SECRET = "test-secret";
     const session = createSession({
@@ -483,14 +514,38 @@ describe("admin BFF refresh single-flight", () => {
     assert.deepEqual(await response.json(), { ok: true });
   });
 
-  it("clears the web session only when the refresh token is rejected", async () => {
+  it("keeps the web session for an ambiguous upstream 401", async () => {
     process.env.WEB_SESSION_SECRET = "test-secret";
     const session = createSession({
       expiresAt: new Date(Date.now() - 1).toISOString(),
     });
     globalThis.fetch = async () =>
       Response.json(
-        { message: "登录已失效，请重新登录" },
+        { message: "登录状态正在同步" },
+        { status: 401 },
+      );
+
+    const response = await sendRefreshRequest(session);
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      message: "认证服务暂时不可用，请稍后重试",
+    });
+    assert.equal(response.headers.get("set-cookie"), null);
+  });
+
+  it("clears the web session only when the refresh token is explicitly rejected", async () => {
+    process.env.WEB_SESSION_SECRET = "test-secret";
+    const session = createSession({
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    });
+    globalThis.fetch = async () =>
+      Response.json(
+        {
+          code: "AUTH_REFRESH_TOKEN_INVALID",
+          message: "登录已失效，请重新登录",
+          statusCode: 401,
+        },
         { status: 401 },
       );
 

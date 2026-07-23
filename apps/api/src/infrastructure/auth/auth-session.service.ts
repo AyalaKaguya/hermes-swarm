@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   Injectable,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -165,7 +166,7 @@ export class AuthSessionService {
     context: AuthRequestContext = {},
   ) {
     if (!refreshToken) {
-      throw new UnauthorizedException("登录已失效，请重新登录");
+      throwRefreshTokenInvalid();
     }
 
     const refreshTokenHash = hashAuthToken(refreshToken);
@@ -178,7 +179,12 @@ export class AuthSessionService {
     if (!lockAcquired) {
       const rotated = await this.waitForRefreshRotation(refreshTokenHash);
       if (rotated) return rotated;
-      throw new UnauthorizedException("登录已失效，请重新登录");
+      throw new ServiceUnavailableException({
+        code: "AUTH_REFRESH_IN_PROGRESS",
+        message: "登录状态正在同步，请稍后重试",
+        retryAfter: 1,
+        statusCode: 503,
+      });
     }
 
     try {
@@ -186,7 +192,7 @@ export class AuthSessionService {
       if (!refreshIndex) {
         const rotated = await this.getRefreshRotationResult(refreshTokenHash);
         if (rotated) return rotated;
-        throw new UnauthorizedException("登录已失效，请重新登录");
+        throwRefreshTokenInvalid();
       }
 
       const { sessionId, workspaceId } = refreshIndex;
@@ -200,7 +206,7 @@ export class AuthSessionService {
         await this.sessionStore.deleteRefreshIndex(refreshTokenHash);
         const rotated = await this.getRefreshRotationResult(refreshTokenHash);
         if (rotated) return rotated;
-        throw new UnauthorizedException("登录已失效，请重新登录");
+        throwRefreshTokenInvalid();
       }
       const principal = await this.ensureActivePrincipal(
         record.userId,
@@ -264,6 +270,11 @@ export class AuthSessionService {
       await this.sessionStore.deleteRefreshIndex(refreshTokenHash);
 
       return issued;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw toRefreshSessionUnauthorized(error);
+      }
+      throw error;
     } finally {
       await this.sessionStore.releaseRefreshLock(refreshTokenHash, lockOwner);
     }
@@ -686,10 +697,14 @@ export class AuthSessionService {
     refreshTokenHash: string,
   ) {
     const deadline = Date.now() + REFRESH_ROTATION_WAIT_MS;
+    let pollAttempt = 0;
     do {
       const rotated = await this.getRefreshRotationResult(refreshTokenHash);
       if (rotated) return rotated;
-      await delay(REFRESH_ROTATION_POLL_MS);
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await delay(Math.min(remaining, getRefreshRotationPollDelay(pollAttempt)));
+      pollAttempt += 1;
     } while (Date.now() < deadline);
 
     return this.getRefreshRotationResult(refreshTokenHash);
@@ -754,10 +769,44 @@ function assertPrincipalWorkspaceContext(
   }
 }
 
-const REFRESH_LOCK_TTL_SECONDS = 10;
-const REFRESH_ROTATION_RESULT_TTL_SECONDS = 10;
-const REFRESH_ROTATION_WAIT_MS = 2_000;
-const REFRESH_ROTATION_POLL_MS = 50;
+const REFRESH_LOCK_TTL_SECONDS = 30;
+const REFRESH_ROTATION_RESULT_TTL_SECONDS = 120;
+const REFRESH_ROTATION_WAIT_MS = 8_000;
+const REFRESH_ROTATION_POLL_MS = 75;
+const REFRESH_ROTATION_MAX_POLL_MS = 750;
+
+function throwRefreshTokenInvalid(): never {
+  throw new UnauthorizedException({
+    code: "AUTH_REFRESH_TOKEN_INVALID",
+    message: "登录已失效，请重新登录",
+    statusCode: 401,
+  });
+}
+
+function toRefreshSessionUnauthorized(error: UnauthorizedException) {
+  const response = error.getResponse();
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "code" in response &&
+    (response.code === "AUTH_REFRESH_TOKEN_INVALID" ||
+      response.code === "AUTH_CREDENTIALS_CHANGED")
+  ) {
+    return error;
+  }
+  return new UnauthorizedException({
+    code: "AUTH_REFRESH_SESSION_INVALID",
+    message: "登录已失效，请重新登录",
+    statusCode: 401,
+  });
+}
+
+function getRefreshRotationPollDelay(attempt: number) {
+  return Math.min(
+    REFRESH_ROTATION_MAX_POLL_MS,
+    REFRESH_ROTATION_POLL_MS * 2 ** Math.min(attempt, 4),
+  );
+}
 
 function delay(milliseconds: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
