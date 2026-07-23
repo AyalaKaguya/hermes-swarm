@@ -7,7 +7,10 @@ import {
   EmailTemplate,
   WorkspaceOwnedBaseEntity,
 } from "@hermes-swarm/core";
+import { MailLogsService } from "./mail-logs.service.js";
 import { MailService } from "./mail.service.js";
+import { MailSmtpService } from "./mail-smtp.service.js";
+import { MailTemplatesService } from "./mail-templates.service.js";
 
 describe("MailService workspace ownership", () => {
   it("stores SMTP and templates directly at workspace scope", () => {
@@ -98,13 +101,23 @@ function createState() {
     findOne: async () => null,
     save: async (value: any) => value,
   };
-  const service = new MailService(
+  const workspaceContext = {
+    current: () => ({ manager, workspaceId: "workspace-a" }),
+  } as never;
+  const smtpService = new MailSmtpService(
     smtpRepository as never,
-    templateRepository as never,
-    logRepository as never,
     emptyPlatformRepository as never,
-    emptyPlatformRepository as never,
-    { current: () => ({ manager, workspaceId: "workspace-a" }) } as never,
+    workspaceContext,
   );
+  const templatesService = new MailTemplatesService(
+    templateRepository as never,
+    emptyPlatformRepository as never,
+    workspaceContext,
+  );
+  const logsService = new MailLogsService(
+    logRepository as never,
+    workspaceContext,
+  );
+  const service = new MailService(smtpService, templatesService, logsService);
   return { logQueries, service, smtp, templates };
 }

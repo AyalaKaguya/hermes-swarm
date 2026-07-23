@@ -10,7 +10,10 @@ import {
 } from "@hermes-swarm/core";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { WorkspaceMailController } from "./mail.controller.js";
+import { MailLogsService } from "./mail-logs.service.js";
 import { MailService } from "./mail.service.js";
+import { MailSmtpService } from "./mail-smtp.service.js";
+import { MailTemplatesService } from "./mail-templates.service.js";
 import { PlatformMailController } from "./platform-mail.controller.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { PlatformEmailSendService } from "./platform-email-send.service.js";
@@ -28,7 +31,14 @@ import { PlatformEmailSendService } from "./platform-email-send.service.js";
     ]),
   ],
   controllers: [WorkspaceMailController, PlatformMailController],
-  providers: [MailService, EmailSendService, PlatformEmailSendService],
+  providers: [
+    MailLogsService,
+    MailSmtpService,
+    MailTemplatesService,
+    MailService,
+    EmailSendService,
+    PlatformEmailSendService,
+  ],
   exports: [MailService, EmailSendService, PlatformEmailSendService],
 })
 export class MailModule {}
