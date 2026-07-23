@@ -9,6 +9,8 @@ import {
   WorkspaceMembership,
 } from "@hermes-swarm/core";
 import { AuthController } from "./auth.controller.js";
+import { AuthSessionEphemeralService } from "./auth-session-ephemeral.service.js";
+import { AuthSessionRecordsService } from "./auth-session-records.service.js";
 import { AuthSessionService } from "./auth-session.service.js";
 import { AuthSessionStoreService } from "./auth-session-store.service.js";
 import { AuthService } from "./auth.service.js";
@@ -34,6 +36,8 @@ import { AuditModule } from "../audit/audit.module.js";
   controllers: [AuthController],
   providers: [
     AuthService,
+    AuthSessionEphemeralService,
+    AuthSessionRecordsService,
     AuthSessionService,
     AuthSessionStoreService,
     WorkspaceLoginResolverService,

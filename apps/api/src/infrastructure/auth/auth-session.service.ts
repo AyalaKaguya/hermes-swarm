@@ -1,12 +1,5 @@
+import { randomUUID } from "node:crypto";
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  randomUUID,
-} from "node:crypto";
-import {
-  BadRequestException,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -33,11 +26,19 @@ import {
   parseAuthSessionToken,
 } from "./auth-session.js";
 import { parseAuthDevice } from "./auth-device.js";
+import { AuthSessionEphemeralService } from "./auth-session-ephemeral.service.js";
+import { AuthSessionRecordsService } from "./auth-session-records.service.js";
+import {
+  createRefreshToken,
+  decryptRefreshRotation,
+  encryptRefreshRotation,
+  hashAuthToken,
+  isSessionExpired,
+} from "./auth-session-security.js";
 import { AuthSessionStoreService } from "./auth-session-store.service.js";
 import type {
   AuthRequestContext,
   AuthSessionRecord,
-  ContextSelectionRecord,
   IssuedAuthSession,
   RealtimeTicketSession,
   RefreshRotationResult,
@@ -59,14 +60,14 @@ export class AuthSessionService {
     @InjectRepository(IntegrationToken)
     private readonly integrationTokenRepository: Repository<IntegrationToken>,
     @InjectRepository(Account)
-    private readonly accountRepository: Repository<Account>,
-    @InjectRepository(Account)
     private readonly platformAccountRepository: Repository<Account>,
     @InjectRepository(PlatformMembership)
     private readonly platformMembershipRepository: Repository<PlatformMembership>,
     private readonly dataSource: DataSource,
     private readonly workspaceContext: WorkspaceContextService,
     private readonly configService: ConfigService,
+    private readonly ephemeralSession: AuthSessionEphemeralService,
+    private readonly sessionRecords: AuthSessionRecordsService,
     private readonly sessionStore: AuthSessionStoreService,
   ) {}
 
@@ -75,38 +76,15 @@ export class AuthSessionService {
     credentialVersion: number,
     contextMembershipIds: string[],
   ) {
-    const selectionToken = randomBytes(32).toString("base64url");
-    const expiresAt = new Date(
-      Date.now() + CONTEXT_SELECTION_TTL_SECONDS * 1000,
-    ).toISOString();
-    const record: ContextSelectionRecord = {
+    return this.ephemeralSession.createContextSelection(
       accountId,
       credentialVersion,
-      contextMembershipIds: [...new Set(contextMembershipIds)],
-      expiresAt,
-    };
-    await this.sessionStore.saveContextSelection(
-      hashToken(selectionToken),
-      record,
-      CONTEXT_SELECTION_TTL_SECONDS,
+      contextMembershipIds,
     );
-    return { expiresAt, selectionToken };
   }
 
   async consumeContextSelection(selectionToken: string) {
-    const raw = await this.sessionStore.consumeContextSelection(
-      hashToken(selectionToken),
-    );
-    if (!raw) throw new UnauthorizedException("上下文选择凭证无效或已过期");
-    const parsed = JSON.parse(raw) as ContextSelectionRecord;
-    if (
-      !parsed.accountId ||
-      !Array.isArray(parsed.contextMembershipIds) ||
-      new Date(parsed.expiresAt).getTime() <= Date.now()
-    ) {
-      throw new UnauthorizedException("上下文选择凭证无效或已过期");
-    }
-    return parsed;
+    return this.ephemeralSession.consumeContextSelection(selectionToken);
   }
 
   async createSession(
@@ -144,7 +122,7 @@ export class AuthSessionService {
       membershipId,
       os: device.os,
       principalType,
-      refreshTokenHash: hashToken(refreshToken),
+      refreshTokenHash: hashAuthToken(refreshToken),
       revokedAt: null,
       sessionId,
       workspaceId,
@@ -190,7 +168,7 @@ export class AuthSessionService {
       throw new UnauthorizedException("登录已失效，请重新登录");
     }
 
-    const refreshTokenHash = hashToken(refreshToken);
+    const refreshTokenHash = hashAuthToken(refreshToken);
     const lockOwner = randomUUID();
     const lockAcquired = await this.sessionStore.acquireRefreshLock(
       refreshTokenHash,
@@ -232,7 +210,7 @@ export class AuthSessionService {
       this.assertCredentialVersion(record, principal.credentialVersion ?? 0);
 
       const nextRefreshToken = createRefreshToken();
-      const nextHash = hashToken(nextRefreshToken);
+      const nextHash = hashAuthToken(nextRefreshToken);
       const now = new Date();
       const nowIso = now.toISOString();
       const expiresAt = new Date(
@@ -328,7 +306,7 @@ export class AuthSessionService {
     );
     this.assertCredentialVersion(record, principal.credentialVersion ?? 0);
 
-    const touchedRecord = await this.touchSession(
+    const touchedRecord = await this.sessionRecords.touchSession(
       payload.sessionId,
       payload.workspaceId,
       payload.userId,
@@ -348,35 +326,11 @@ export class AuthSessionService {
   }
 
   async createRealtimeTicket(session: RealtimeTicketSession) {
-    const ticket = randomBytes(32).toString("base64url");
-    const expiresAt = new Date(
-      Date.now() + REALTIME_TICKET_TTL_SECONDS * 1000,
-    ).toISOString();
-    const ticketHash = hashToken(ticket);
-    await this.sessionStore.createRealtimeTicket(
-      ticketHash,
-      session,
-      REALTIME_TICKET_TTL_SECONDS,
-    );
-    return { expiresAt, ticket };
+    return this.ephemeralSession.createRealtimeTicket(session);
   }
 
   async consumeRealtimeTicket(ticket: string | undefined) {
-    if (!ticket) {
-      throw new UnauthorizedException("登录已失效，请重新登录");
-    }
-
-    const rawValue = await this.sessionStore.consumeRealtimeTicket(hashToken(ticket));
-    if (!rawValue) {
-      throw new UnauthorizedException("登录已失效，请重新登录");
-    }
-
-    let ticketSession: RealtimeTicketSession;
-    try {
-      ticketSession = JSON.parse(rawValue) as RealtimeTicketSession;
-    } catch {
-      throw new UnauthorizedException("登录已失效，请重新登录");
-    }
+    const ticketSession = await this.ephemeralSession.consumeRealtimeTicket(ticket);
 
     const record = await this.sessionStore.getSessionRecord(
       ticketSession.workspaceId,
@@ -393,7 +347,7 @@ export class AuthSessionService {
     }
     await this.ensureActiveUser(ticketSession.userId, ticketSession.workspaceId);
 
-    await this.touchSession(
+    await this.sessionRecords.touchSession(
       ticketSession.sessionId,
       ticketSession.workspaceId,
       ticketSession.userId,
@@ -406,41 +360,11 @@ export class AuthSessionService {
     userId: string,
     currentSessionId: string,
   ) {
-    const sessionIds = await this.sessionStore.listUserSessionIds(workspaceId, userId);
-    const records = await Promise.all(
-      sessionIds.map((sessionId) =>
-        this.sessionStore.getSessionRecord(workspaceId, sessionId),
-      ),
+    return this.sessionRecords.listSessions(
+      workspaceId,
+      userId,
+      currentSessionId,
     );
-    const missingSessionIds = sessionIds.filter((_, index) => !records[index]);
-    if (missingSessionIds.length > 0) {
-      await this.sessionStore.removeUserSessionIds(
-        workspaceId,
-        userId,
-        missingSessionIds,
-      );
-    }
-
-    return records
-      .filter((record): record is AuthSessionRecord => Boolean(record))
-      .sort(
-        (left, right) =>
-          dateToSortableTime(right.lastSeenAt) -
-          dateToSortableTime(left.lastSeenAt),
-      )
-      .map((record) => ({
-        browser: record.browser,
-        createdAt: record.createdAt,
-        deviceLabel: record.deviceLabel,
-        expiresAt: record.expiresAt,
-        ipAddress: record.ipAddress,
-        isCurrent: record.sessionId === currentSessionId,
-        isExpired: isSessionExpired(record),
-        lastSeenAt: record.lastSeenAt,
-        os: record.os,
-        revokedAt: record.revokedAt,
-        sessionId: record.sessionId,
-      }));
   }
 
   async revokeSession(
@@ -448,19 +372,11 @@ export class AuthSessionService {
     sessionId: string,
     expectedUserId?: string,
   ) {
-    const record = await this.sessionStore.getSessionRecord(workspaceId, sessionId);
-    if (!record || (expectedUserId && record.userId !== expectedUserId)) {
-      return;
-    }
-
-    const revokedRecord = {
-      ...record,
-      revokedAt: record.revokedAt ?? new Date().toISOString(),
-    };
-    await Promise.all([
-      this.sessionStore.deleteRefreshIndex(record.refreshTokenHash),
-      this.sessionStore.saveSession(revokedRecord, this.sessionHistoryTtlSeconds),
-    ]);
+    return this.sessionRecords.revokeSession(
+      workspaceId,
+      sessionId,
+      expectedUserId,
+    );
   }
 
   async revokeOtherSessions(
@@ -468,60 +384,28 @@ export class AuthSessionService {
     userId: string,
     currentSessionId: string,
   ) {
-    const sessionIds = await this.sessionStore.listUserSessionIds(workspaceId, userId);
-    await Promise.all(
-      sessionIds
-        .filter((sessionId) => sessionId !== currentSessionId)
-        .map((sessionId) => this.revokeSession(workspaceId, sessionId, userId)),
+    return this.sessionRecords.revokeOtherSessions(
+      workspaceId,
+      userId,
+      currentSessionId,
     );
   }
 
-  async revokeUserSessions(
-    workspaceId: string,
-    userId: string,
-  ) {
-    const sessionIds = await this.sessionStore.listUserSessionIds(workspaceId, userId);
-    await Promise.all(
-      sessionIds.map((sessionId) =>
-        this.revokeSession(workspaceId, sessionId, userId),
-      ),
-    );
+  async revokeUserSessions(workspaceId: string, userId: string) {
+    return this.sessionRecords.revokeUserSessions(workspaceId, userId);
   }
 
   async revokeAccountSessions(accountId: string) {
-    const entries = await this.sessionStore.listAccountSessionEntries(accountId);
-    await Promise.all(
-      entries.map(async (entry) => {
-        const [contextId, sessionId] = entry.split(":", 2);
-        if (contextId && sessionId) {
-          await this.revokeSession(
-            contextId === "platform" ? null : contextId,
-            sessionId,
-            accountId,
-          );
-        }
-      }),
-    );
+    return this.sessionRecords.revokeAccountSessions(accountId);
   }
 
   async revokeMembershipSessions(
     principalType: "platform" | "workspace",
     membershipId: string,
   ) {
-    const entries = await this.sessionStore.listMembershipSessionEntries(
+    return this.sessionRecords.revokeMembershipSessions(
       principalType,
       membershipId,
-    );
-    await Promise.all(
-      entries.map(async (entry) => {
-        const [contextId, sessionId] = entry.split(":", 2);
-        if (contextId && sessionId) {
-          await this.revokeSession(
-            contextId === "platform" ? null : contextId,
-            sessionId,
-          );
-        }
-      }),
     );
   }
 
@@ -531,16 +415,12 @@ export class AuthSessionService {
     expectedUserId: string,
     currentSessionId: string,
   ) {
-    const record = await this.sessionStore.getSessionRecord(workspaceId, sessionId);
-    if (!record || record.userId !== expectedUserId) return;
-    if (record.sessionId === currentSessionId && !record.revokedAt) {
-      throw new BadRequestException("不能删除当前活跃设备");
-    }
-    if (!record.revokedAt && !isSessionExpired(record)) {
-      throw new BadRequestException("请先登出设备后再删除记录");
-    }
-
-    await this.sessionStore.deleteSessionRecord(record);
+    return this.sessionRecords.deleteSessionRecord(
+      workspaceId,
+      sessionId,
+      expectedUserId,
+      currentSessionId,
+    );
   }
 
   getRefreshCookieName() {
@@ -616,7 +496,7 @@ export class AuthSessionService {
             id: tokenId,
             ownerUserId: payload.userId,
             workspaceId: payload.workspaceId!,
-            tokenHash: hashToken(token),
+            tokenHash: hashAuthToken(token),
           },
         });
         if (
@@ -645,7 +525,7 @@ export class AuthSessionService {
             ownerUserId: record.ownerUserId,
             revokedAt: IsNull(),
             workspaceId,
-            tokenHash: hashToken(token),
+            tokenHash: hashAuthToken(token),
           },
           { lastUsedAt },
         );
@@ -692,35 +572,6 @@ export class AuthSessionService {
       tokenKind: "integration",
       userId: record.ownerUserId,
     } satisfies ValidatedAuthSession;
-  }
-
-  private async touchSession(
-    sessionId: string,
-    workspaceId: string | null,
-    userId: string,
-  ) {
-    const latestRecord = await this.sessionStore.getSessionRecord(
-      workspaceId,
-      sessionId,
-    );
-    if (
-      !latestRecord ||
-      latestRecord.userId !== userId ||
-      latestRecord.revokedAt ||
-      isSessionExpired(latestRecord)
-    ) {
-      throw new UnauthorizedException("登录已失效，请重新登录");
-    }
-
-    const touchedRecord = {
-      ...latestRecord,
-      lastSeenAt: new Date().toISOString(),
-    };
-    await this.sessionStore.saveSession(
-      touchedRecord,
-      this.sessionHistoryTtlSeconds,
-    );
-    return touchedRecord;
   }
 
   private async ensureActiveUser(userId: string, workspaceId: string) {
@@ -903,87 +754,11 @@ function assertPrincipalWorkspaceContext(
   }
 }
 
-const CONTEXT_SELECTION_TTL_SECONDS = 5 * 60;
-const REALTIME_TICKET_TTL_SECONDS = 30;
 const REFRESH_LOCK_TTL_SECONDS = 10;
 const REFRESH_ROTATION_RESULT_TTL_SECONDS = 10;
 const REFRESH_ROTATION_WAIT_MS = 2_000;
 const REFRESH_ROTATION_POLL_MS = 50;
 
-function encryptRefreshRotation(value: RefreshRotationResult, secret: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", createEncryptionKey(secret), iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify(value), "utf8"),
-    cipher.final(),
-  ]);
-  return JSON.stringify({
-    ciphertext: ciphertext.toString("base64url"),
-    iv: iv.toString("base64url"),
-    tag: cipher.getAuthTag().toString("base64url"),
-  });
-}
-
-function decryptRefreshRotation(value: string, secret: string): RefreshRotationResult | null {
-  try {
-    const payload = JSON.parse(value) as Partial<{
-      ciphertext: string;
-      iv: string;
-      tag: string;
-    }>;
-    if (!payload.ciphertext || !payload.iv || !payload.tag) return null;
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      createEncryptionKey(secret),
-      Buffer.from(payload.iv, "base64url"),
-    );
-    decipher.setAuthTag(Buffer.from(payload.tag, "base64url"));
-    const plaintext = Buffer.concat([
-      decipher.update(Buffer.from(payload.ciphertext, "base64url")),
-      decipher.final(),
-    ]);
-    const issued = JSON.parse(plaintext.toString("utf8")) as Partial<RefreshRotationResult>;
-    if (
-      typeof issued.accessToken !== "string" ||
-      typeof issued.expiresAt !== "string" ||
-      (issued.principalType !== "platform" && issued.principalType !== "workspace") ||
-      typeof issued.refreshToken !== "string" ||
-      typeof issued.sessionId !== "string" ||
-      (issued.principalType === "platform"
-        ? issued.workspaceId !== null
-        : typeof issued.workspaceId !== "string") ||
-      typeof issued.userId !== "string"
-    ) {
-      return null;
-    }
-    return issued as RefreshRotationResult;
-  } catch {
-    return null;
-  }
-}
-
-function createEncryptionKey(secret: string) {
-  return createHash("sha256").update(secret).digest();
-}
-
 function delay(milliseconds: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function isSessionExpired(record: Pick<AuthSessionRecord, "expiresAt">) {
-  const expiresAt = new Date(record.expiresAt).getTime();
-  return !Number.isFinite(expiresAt) || expiresAt <= Date.now();
-}
-
-function dateToSortableTime(value: string) {
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? time : 0;
-}
-
-function createRefreshToken() {
-  return randomBytes(48).toString("base64url");
-}
-
-function hashToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
 }
