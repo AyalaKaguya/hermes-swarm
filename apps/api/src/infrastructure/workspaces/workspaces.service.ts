@@ -1,7 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -23,26 +22,17 @@ import { Repository, type EntityManager } from "typeorm";
 import type {
   WorkspaceApplicationPayload,
   WorkspaceApplicationReviewPayload,
-  WorkspaceRolePayload,
-  WorkspaceRolePermissionsPayload,
   UpdateWorkspacePayload,
 } from "./workspaces.controller.js";
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { hashPassword } from "../../common/security/password-hash.js";
 import { PlatformEmailSendService } from "../mail/platform-email-send.service.js";
-import { RoleGrantPolicyService } from "@hermes-swarm/rbac";
 import { PLATFORM_SETTING_KEYS } from "@hermes-swarm/core/settings/definitions";
 import { SettingsService } from "../settings/settings.service.js";
 import {
   toWorkspaceApplicationDto,
   toWorkspaceDto,
 } from "../users/user-dto.js";
-
-const RESERVED_WORKSPACE_ROLE_NAMES = new Set([
-  "workspace-owner",
-  "workspace-admin",
-  "workspace-member",
-]);
 
 @Injectable()
 export class WorkspacesService {
@@ -61,12 +51,8 @@ export class WorkspacesService {
     private readonly passwordResetRepository: Repository<PasswordReset>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
-    @InjectRepository(WorkspaceMembership)
-    private readonly workspaceMembershipRepository: Repository<WorkspaceMembership>,
     private readonly workspaceContext: WorkspaceContextService,
     private readonly platformEmailSendService: PlatformEmailSendService,
-    private readonly grantPolicy: RoleGrantPolicyService =
-      new RoleGrantPolicyService(),
     @Optional()
     private readonly settingsService?: SettingsService,
   ) {}
@@ -434,174 +420,6 @@ export class WorkspacesService {
     );
   }
 
-  async listWorkspaceRoles(workspaceId: string) {
-    workspaceId = this.requireWorkspaceExecution(workspaceId);
-    const roles = await this.roleRepository.find({
-      order: { createdAt: "ASC" },
-      relations: { rolePermissions: { permissionRecord: true } },
-      where: { scope: "workspace", workspaceId },
-    });
-    return roles.map(toWorkspaceRoleDto);
-  }
-
-  async createWorkspaceRole(workspaceId: string, payload: WorkspaceRolePayload) {
-    workspaceId = this.requireWorkspaceExecution(workspaceId);
-    requireObject(payload, "角色");
-    const displayName = requireText(payload.displayName ?? payload.name, "角色名称");
-    const name = normalizeSlug(payload.name ?? displayName);
-    assertCustomWorkspaceRoleName(name);
-    const roles = this.roleRepository;
-    if (await roles.findOne({ where: { name, scope: "workspace", workspaceId } })) {
-      throw new BadRequestException("角色标识已被使用");
-    }
-    const role = await roles.save(
-      roles.create({
-        color: normalizeNullableText(payload.color),
-        description: normalizeNullableText(payload.description),
-        displayName,
-        isSystem: false,
-        label: displayName,
-        name,
-        scope: "workspace",
-        workspaceId,
-      }),
-    );
-    return toWorkspaceRoleDto(role);
-  }
-
-  async updateWorkspaceRole(
-    workspaceId: string,
-    roleId: string,
-    payload: Partial<WorkspaceRolePayload>,
-  ) {
-    workspaceId = this.requireWorkspaceExecution(workspaceId);
-    requireObject(payload, "角色");
-    const role = await this.requireWorkspaceRole(workspaceId, roleId);
-    if (payload.name !== undefined) {
-      const name = normalizeSlug(payload.name);
-      if (role.isSystem && name !== role.name) {
-        throw new BadRequestException("系统工作空间角色标识不能修改");
-      }
-      if (!role.isSystem) assertCustomWorkspaceRoleName(name);
-      const duplicate = await this.roleRepository.findOne({
-        where: { name, scope: "workspace", workspaceId },
-      });
-      if (duplicate && duplicate.id !== role.id) {
-        throw new BadRequestException("角色标识已被使用");
-      }
-      role.name = name;
-    }
-    if (payload.displayName !== undefined) {
-      role.displayName = requireText(payload.displayName, "角色名称");
-      role.label = role.displayName;
-    }
-    if (payload.color !== undefined) role.color = normalizeNullableText(payload.color);
-    if (payload.description !== undefined) {
-      role.description = normalizeNullableText(payload.description);
-    }
-    return toWorkspaceRoleDto(await this.roleRepository.save(role));
-  }
-
-  async replaceWorkspaceRolePermissions(
-    workspaceId: string,
-    roleId: string,
-    payload: WorkspaceRolePermissionsPayload,
-    actorUserId?: string,
-  ) {
-    workspaceId = this.requireWorkspaceExecution(workspaceId);
-    const role = await this.requireWorkspaceRole(workspaceId, roleId);
-    if (isProtectedWorkspaceRole(role)) {
-      throw new BadRequestException("Workspace Owner 权限不能修改");
-    }
-    if (!payload || !Array.isArray(payload.permissions)) {
-      throw new BadRequestException("权限列表格式不正确");
-    }
-    const requestedCodes = [
-      ...new Set(
-        payload.permissions
-          .filter((item) => item?.enabled !== false)
-          .map((item) => requireText(item?.permission, "权限")),
-      ),
-    ];
-    const permissions: Permission[] = [];
-    for (const code of requestedCodes) {
-      const permission = await this.permissionRepository.findOne({
-        where: { code },
-      });
-      const allowed = permission && (permission.scope === "workspace" || permission.scope === "own");
-      if (!allowed) throw new BadRequestException(`角色权限范围不匹配: ${code}`);
-      permissions.push(permission);
-    }
-    if (actorUserId) {
-      const assignments = await this.workspaceMembershipRepository.find({
-        relations: { role: { rolePermissions: { permissionRecord: true } } },
-        where: { accountId: actorUserId, status: "active", workspaceId },
-      });
-      this.grantPolicy.assertCanReplacePermissions(
-        assignments.flatMap((assignment) =>
-          (assignment.role?.rolePermissions ?? [])
-            .filter((permission) => permission.enabled)
-            .map((permission) => permission.permission),
-        ),
-        permissions.flatMap((permission) =>
-          permission.code ? [permission.code] : [],
-        ),
-      );
-    }
-    await this.rolePermissionRepository.manager.transaction(async (manager) => {
-      const lockedRole = await manager.findOne(Role, {
-        lock: { mode: "pessimistic_write" },
-        where: { id: roleId, scope: "workspace", workspaceId },
-      });
-      if (!lockedRole) throw new NotFoundException("工作空间角色不存在");
-      await manager.delete(RolePermission, { roleId });
-      if (permissions.length) {
-        await manager.save(
-          RolePermission,
-          permissions.map((permission) => ({
-            enabled: true,
-            permissionId: permission.id,
-            roleId,
-          })),
-        );
-      }
-    });
-    return this.requireWorkspaceRole(workspaceId, roleId, true).then(toWorkspaceRoleDto);
-  }
-
-  async deleteWorkspaceRole(workspaceId: string, roleId: string) {
-    workspaceId = this.requireWorkspaceExecution(workspaceId);
-    const role = await this.requireWorkspaceRole(workspaceId, roleId);
-    if (role.isSystem) throw new BadRequestException("系统工作空间角色不能删除");
-    await this.roleRepository.manager.transaction(async (manager) => {
-      if (await manager.exists(WorkspaceMembership, { where: { roleId, workspaceId } })) {
-        throw new ConflictException("角色仍分配给工作空间用户，不能删除");
-      }
-      await manager.delete(RolePermission, { roleId });
-      await manager.delete(Role, { id: roleId, workspaceId });
-    });
-    return { success: true };
-  }
-
-  private async requireWorkspaceRole(
-    workspaceId: string,
-    roleId: string,
-    withPermissions = false,
-  ) {
-    const role = await this.roleRepository.findOne({
-      relations: withPermissions
-        ? { rolePermissions: { permissionRecord: true } }
-        : undefined,
-      where: {
-        id: requireText(roleId, "角色"),
-        scope: "workspace",
-        workspaceId,
-      },
-    });
-    if (!role) throw new NotFoundException("工作空间角色不存在");
-    return role;
-  }
-
   private requireWorkspaceExecution(workspaceId: string) {
     const id = requireText(workspaceId, "工作空间");
     if (this.workspaceContext.current()!.workspaceId !== id) {
@@ -725,11 +543,6 @@ function normalizeNullableText(value: unknown) {
   return value.trim() || null;
 }
 
-function normalizeOptionalName(value: unknown) {
-  if (value === undefined || value === null || value === "") return null;
-  return requireText(value, "工作空间名称");
-}
-
 function hashToken(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -828,41 +641,4 @@ function isAllowedWorkspaceStatusTransition(
   if (current === "active") return next === "suspended" || next === "archived";
   if (current === "suspended") return next === "active" || next === "archived";
   return false;
-}
-
-function assertCustomWorkspaceRoleName(name: string) {
-  if (RESERVED_WORKSPACE_ROLE_NAMES.has(name)) {
-    throw new BadRequestException("系统工作空间角色标识不能用于自定义角色");
-  }
-}
-
-function requireObject(value: unknown, label: string): asserts value is object {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new BadRequestException(`${label}内容无效`);
-  }
-}
-
-function isProtectedWorkspaceRole(role: Pick<Role, "name">) {
-  return role.name === "workspace-owner";
-}
-
-function toWorkspaceRoleDto(role: Role) {
-  return {
-    color: role.color,
-    description: role.description,
-    displayName: role.displayName ?? role.label,
-    id: role.id,
-    isSystem: role.isSystem,
-    label: role.label,
-    name: role.name,
-    permissions: (role.rolePermissions ?? []).map((permission) => ({
-      enabled: permission.enabled,
-      id: permission.id,
-      permission: permission.permission,
-      permissionId: permission.permissionId,
-      roleId: permission.roleId,
-    })),
-    scope: role.scope,
-    workspaceId: role.workspaceId,
-  };
 }

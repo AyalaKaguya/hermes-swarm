@@ -10,7 +10,7 @@ import {
   Req,
 } from "@nestjs/common";
 import { AccessOperation, AccessResource } from "@hermes-swarm/rbac";
-import { WorkspacesService } from "./workspaces.service.js";
+import { WorkspaceRolesService } from "./workspace-roles.service.js";
 import type {
   PrincipalRequest,
   WorkspaceRolePayload,
@@ -26,7 +26,7 @@ import type {
   scope: "workspace",
 })
 export class RolesController {
-  constructor(private readonly workspacesService: WorkspacesService) {}
+  constructor(private readonly workspaceRolesService: WorkspaceRolesService) {}
 
   @Get()
   @AccessOperation({
@@ -35,7 +35,7 @@ export class RolesController {
     operation: "list",
   })
   list(@Req() request: PrincipalRequest) {
-    return this.workspacesService.listWorkspaceRoles(requireWorkspaceId(request));
+    return this.workspaceRolesService.list(requireWorkspaceId(request));
   }
 
   @Post()
@@ -45,7 +45,7 @@ export class RolesController {
     operation: "create",
   })
   create(@Req() request: PrincipalRequest, @Body() payload: WorkspaceRolePayload) {
-    return this.workspacesService.createWorkspaceRole(requireWorkspaceId(request), payload);
+    return this.workspaceRolesService.create(requireWorkspaceId(request), payload);
   }
 
   @Patch(":roleId")
@@ -59,7 +59,7 @@ export class RolesController {
     @Param("roleId") roleId: string,
     @Body() payload: Partial<WorkspaceRolePayload>,
   ) {
-    return this.workspacesService.updateWorkspaceRole(requireWorkspaceId(request), roleId, payload);
+    return this.workspaceRolesService.update(requireWorkspaceId(request), roleId, payload);
   }
 
   @Put(":roleId/permissions")
@@ -74,7 +74,7 @@ export class RolesController {
     @Param("roleId") roleId: string,
     @Body() payload: WorkspaceRolePermissionsPayload,
   ) {
-    return this.workspacesService.replaceWorkspaceRolePermissions(
+    return this.workspaceRolesService.replacePermissions(
       requireWorkspaceId(request),
       roleId,
       payload,
@@ -90,7 +90,7 @@ export class RolesController {
     operation: "delete",
   })
   remove(@Req() request: PrincipalRequest, @Param("roleId") roleId: string) {
-    return this.workspacesService.deleteWorkspaceRole(requireWorkspaceId(request), roleId);
+    return this.workspaceRolesService.remove(requireWorkspaceId(request), roleId);
   }
 }
 

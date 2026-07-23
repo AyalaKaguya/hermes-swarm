@@ -13,6 +13,7 @@ import {
 import { WorkspaceApplicationsController, WorkspacesController } from "./workspaces.controller.js";
 import { RolesController } from "./roles.controller.js";
 import { WorkspacesService } from "./workspaces.service.js";
+import { WorkspaceRolesService } from "./workspace-roles.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
 import { MailModule } from "../mail/mail.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
@@ -34,7 +35,7 @@ import { SettingsModule } from "../settings/settings.module.js";
     ]),
   ],
   controllers: [RolesController, WorkspaceApplicationsController, WorkspacesController],
-  providers: [WorkspacesService],
-  exports: [WorkspacesService],
+  providers: [WorkspaceRolesService, WorkspacesService],
+  exports: [WorkspaceRolesService, WorkspacesService],
 })
 export class WorkspacesModule {}

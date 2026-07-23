@@ -14,6 +14,7 @@ import {
   buildWorkspaceOwnerActivationLink,
   WorkspacesService,
 } from "./workspaces.service.js";
+import { WorkspaceRolesService } from "./workspace-roles.service.js";
 
 describe("WorkspacesService applications", () => {
   it("normalizes a public application and requires email verification", async () => {
@@ -205,7 +206,7 @@ describe("WorkspacesService applications", () => {
 
   it("creates roles directly at workspace scope", async () => {
     const state = createWorkspaceRoleState();
-    const created = await state.service.createWorkspaceRole("workspace-1", {
+    const created = await state.service.create("workspace-1", {
       displayName: "Support Lead",
       name: "Support Lead",
     });
@@ -216,14 +217,14 @@ describe("WorkspacesService applications", () => {
   it("keeps reserved system role names and workspace context isolated", async () => {
     const state = createWorkspaceRoleState();
     await assert.rejects(
-      state.service.createWorkspaceRole("workspace-1", {
+      state.service.create("workspace-1", {
         displayName: "Looks like owner",
         name: "workspace-owner",
       }),
       BadRequestException,
     );
     await assert.rejects(
-      state.service.listWorkspaceRoles("workspace-2"),
+      state.service.list("workspace-2"),
       NotFoundException,
     );
   });
@@ -248,7 +249,7 @@ describe("WorkspacesService applications", () => {
       workspaceId: "workspace-1",
     });
 
-    const [role] = await state.service.listWorkspaceRoles("workspace-1");
+    const [role] = await state.service.list("workspace-1");
 
     assert.deepEqual(role.permissions, [
       {
@@ -263,16 +264,16 @@ describe("WorkspacesService applications", () => {
 
   it("rejects duplicate workspace role renames", async () => {
     const state = createWorkspaceRoleState();
-    const first = await state.service.createWorkspaceRole("workspace-1", {
+    const first = await state.service.create("workspace-1", {
       displayName: "First",
       name: "first",
     });
-    await state.service.createWorkspaceRole("workspace-1", {
+    await state.service.create("workspace-1", {
       displayName: "Second",
       name: "second",
     });
     await assert.rejects(
-      state.service.updateWorkspaceRole("workspace-1", first.id, { name: "second" }),
+      state.service.update("workspace-1", first.id, { name: "second" }),
       BadRequestException,
     );
   });
@@ -294,7 +295,7 @@ describe("WorkspacesService applications", () => {
       workspaceId: "workspace-1",
     });
 
-    const updated = await state.service.replaceWorkspaceRolePermissions(
+    const updated = await state.service.replacePermissions(
       "workspace-1",
       "role-member",
       {
@@ -323,7 +324,7 @@ describe("WorkspacesService applications", () => {
     });
 
     await assert.rejects(
-      state.service.replaceWorkspaceRolePermissions("workspace-1", "role-owner", {
+      state.service.replacePermissions("workspace-1", "role-owner", {
         permissions: [],
       }),
       BadRequestException,
@@ -403,7 +404,6 @@ function createState(options: {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
       { current: () => ({ scopeLevel: "workspace", workspaceId: "workspace-1" }) } as never,
       {
         send: async (input: any) => {
@@ -412,7 +412,6 @@ function createState(options: {
           return { sent: true };
         },
       } as never,
-      {} as never,
       {
         getPlatformValue: async () =>
           options.workspaceApplicationsEnabled === false ? "false" : "true",
@@ -505,17 +504,13 @@ function createWorkspaceRoleState() {
   return {
     permissions,
     roles,
-    service: new WorkspacesService(
-      {} as never,
-      {} as never,
-      {} as never,
+    service: new WorkspaceRolesService(
       roleRepository as never,
       permissionRepository as never,
-      {} as never,
       rolePermissionRepository as never,
       { find: async () => [] } as never,
       workspaceContext as never,
-      { send: async () => ({ sent: true }) } as never,
+      {} as never,
     ),
   };
 }

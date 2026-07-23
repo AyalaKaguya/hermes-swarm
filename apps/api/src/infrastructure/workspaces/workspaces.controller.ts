@@ -10,6 +10,10 @@ import {
 } from "@nestjs/common";
 import { AccessOperation, AccessResource, PublicAccess } from "@hermes-swarm/rbac";
 import { WorkspacesService } from "./workspaces.service.js";
+export type {
+  WorkspaceRolePayload,
+  WorkspaceRolePermissionsPayload,
+} from "./workspace.types.js";
 
 export type PrincipalRequest = {
   accessPrincipal?: {
@@ -241,17 +245,6 @@ export type UpdateWorkspacePayload = {
 
 export type UpdateWorkspaceStatusPayload = {
   status?: "active" | "archived" | "suspended";
-};
-
-export type WorkspaceRolePayload = {
-  color?: string | null;
-  description?: string | null;
-  displayName?: string;
-  name?: string;
-};
-
-export type WorkspaceRolePermissionsPayload = {
-  permissions?: Array<{ enabled?: boolean; permission?: string }>;
 };
 
 function requireWorkspaceId(request: PrincipalRequest) {
