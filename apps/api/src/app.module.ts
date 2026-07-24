@@ -10,6 +10,7 @@ import {
   getApiEnvFilePaths,
   redisRuntimeConfig,
   settingsRuntimeConfig,
+  storageRuntimeConfig,
   validateRuntimeConfig,
 } from "./common/config/runtime-config.js";
 import { HealthModule } from "./common/health/health.module.js";
@@ -32,6 +33,7 @@ import { AdminContractInterceptor } from "./common/contracts/contract-validation
         databaseRuntimeConfig,
         redisRuntimeConfig,
         settingsRuntimeConfig,
+        storageRuntimeConfig,
       ],
       validate: validateRuntimeConfig,
     }),

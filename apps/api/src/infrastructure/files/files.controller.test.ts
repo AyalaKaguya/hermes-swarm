@@ -1,158 +1,95 @@
 import assert from "node:assert/strict";
-import { unlink } from "node:fs/promises";
-import path from "node:path";
 import { describe, it } from "node:test";
 import {
   BadRequestException,
   NotFoundException,
   PayloadTooLargeException,
-  UnauthorizedException,
 } from "@nestjs/common";
 import { FilesController, UploadExceptionFilter } from "./files.controller.js";
 
+const workspacePrincipal = {
+  principalType: "workspace" as const,
+  userId: "11111111-1111-4111-8111-111111111111",
+  workspaceId: "22222222-2222-4222-8222-222222222222",
+};
+
 describe("FilesController", () => {
-  it("rejects missing uploads with a business error", async () => {
-    const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
-    } as any);
-
+  it("requires an explicit small-upload purpose", async () => {
+    const controller = new FilesController({} as any);
     await assert.rejects(
-      () => controller.upload("Bearer token", undefined),
+      async () => controller.upload(workspacePrincipal as any, undefined, undefined),
       BadRequestException,
     );
   });
 
-  it("rejects unsupported image mime types before writing files", async () => {
+  it("delegates avatar uploads using account scope", async () => {
+    let received: unknown;
     const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
+      uploadImage: async (...args: unknown[]) => {
+        received = args;
+        return { fileId: "file-1", status: "success" };
+      },
     } as any);
-
-    await assert.rejects(
-      () =>
-        controller.upload("Bearer token", {
-          buffer: Buffer.from("not an image"),
-          mimetype: "text/plain",
-          originalname: "note.txt",
-          size: 12,
-        }),
-      BadRequestException,
-    );
-  });
-
-  it("rejects empty image buffers", async () => {
-    const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
-    } as any);
-
-    await assert.rejects(
-      () =>
-        controller.upload("Bearer token", {
-          buffer: Buffer.alloc(0),
-          mimetype: "image/png",
-          originalname: "empty.png",
-          size: 0,
-        }),
-      BadRequestException,
-    );
-  });
-
-  it("rejects oversized buffers even when the interceptor is bypassed", async () => {
-    const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
-    } as any);
-    const buffer = Buffer.concat([
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      Buffer.alloc(2 * 1024 * 1024),
+    const file = { buffer: Buffer.from("image"), mimetype: "image/png" };
+    await controller.upload(workspacePrincipal as any, file, "avatar");
+    assert.deepEqual(received, [
+      workspacePrincipal,
+      file,
+      { purpose: "avatar", scope: "account" },
     ]);
-
-    await assert.rejects(
-      () =>
-        controller.upload("Bearer token", {
-          buffer,
-          mimetype: "image/png",
-          originalname: "large.png",
-          size: 8,
-        }),
-      (error: unknown) =>
-        error instanceof BadRequestException &&
-        (error.getResponse() as { code?: string }).code ===
-          "UPLOAD_FILE_TOO_LARGE",
-    );
   });
 
-  it("rejects files whose bytes do not match the declared image mime type", async () => {
+  it("delegates platform uploads using a platform temporary scope", async () => {
+    let received: unknown;
+    const principal = { ...workspacePrincipal, principalType: "platform", workspaceId: null };
     const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
+      uploadImage: async (...args: unknown[]) => {
+        received = args;
+        return { fileId: "file-1", status: "success" };
+      },
     } as any);
-
-    await assert.rejects(
-      () =>
-        controller.upload("Bearer token", {
-          buffer: Buffer.from("not actually a png"),
-          mimetype: "image/png",
-          originalname: "spoof.png",
-          size: 18,
-        }),
-      BadRequestException,
-    );
-  });
-
-  it("stores valid images with a generated filename", async () => {
-    const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
-    } as any);
-    const buffer = Buffer.concat([
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      Buffer.from("payload"),
+    await controller.uploadForPlatform(principal as any, undefined);
+    assert.deepEqual(received, [
+      principal,
+      undefined,
+      { purpose: "ticket_attachment", scope: "platform" },
     ]);
-    let storedPath: string | null = null;
-
-    try {
-      const result = await controller.upload("Bearer token", {
-        buffer,
-        mimetype: "image/png",
-        originalname: "avatar.png",
-        size: buffer.length,
-      });
-
-      assert.equal(result.mimeType, "image/png");
-      assert.equal(result.size, buffer.length);
-      assert.match(
-        result.name,
-        /^\d{10,}-[a-f0-9]{16}-[0-9a-f-]{36}\.png$/,
-      );
-      assert.equal(result.url, `/api/admin/files/${result.name}`);
-      storedPath = path.resolve(process.cwd(), "uploads", "avatars", result.name);
-    } finally {
-      if (storedPath) {
-        await unlink(storedPath).catch(() => undefined);
-      }
-    }
   });
 
-  it("rejects read requests outside generated image filenames", async () => {
+  it("redirects only after the file service authorizes content", async () => {
     const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
+      getContentUrl: async () => "https://storage.example/signed",
     } as any);
+    const response = {
+      status: 0,
+      url: "",
+      redirect(status: number, url: string) {
+        this.status = status;
+        this.url = url;
+      },
+    };
+    await controller.content(workspacePrincipal as any, "file-1", response);
+    assert.equal(response.status, 302);
+    assert.equal(response.url, "https://storage.example/signed");
+  });
 
+  it("rejects legacy read requests outside generated image filenames", async () => {
+    const controller = new FilesController({} as any);
     await assert.rejects(
-      () => controller.read("../secret.png", createFakeSendFileResponse()),
+      () => controller.readLegacy("../secret.png", createFakeSendFileResponse()),
       NotFoundException,
     );
     await assert.rejects(
-      () => controller.read("manual.png", createFakeSendFileResponse()),
+      () => controller.readLegacy("manual.png", createFakeSendFileResponse()),
       NotFoundException,
     );
   });
 
-  it("returns not found for missing generated image files", async () => {
-    const controller = new FilesController({
-      validateAccessToken: async () => ({ sessionId: "s1", userId: "user-1" }),
-    } as any);
-
+  it("returns not found for missing legacy generated image files", async () => {
+    const controller = new FilesController({} as any);
     await assert.rejects(
       () =>
-        controller.read(
+        controller.readLegacy(
           "1700000000000-0123456789abcdef-123e4567-e89b-12d3-a456-426614174000.png",
           createFakeSendFileResponse(),
         ),
@@ -160,29 +97,12 @@ describe("FilesController", () => {
     );
   });
 
-  it("maps missing sessions to a stable unauthorized error", async () => {
-    const controller = new FilesController({
-      validateAccessToken: async () => {
-        throw new Error("invalid token");
-      },
-    } as any);
-
-    await assert.rejects(
-      () => controller.upload("Bearer bad", undefined),
-      UnauthorizedException,
-    );
-  });
-
   it("maps upload size limit errors to a stable 400 response", () => {
     const response = createFakeResponse();
     const filter = new UploadExceptionFilter();
-
     filter.catch(new PayloadTooLargeException("File too large"), {
-      switchToHttp: () => ({
-        getResponse: () => response,
-      }),
+      switchToHttp: () => ({ getResponse: () => response }),
     } as any);
-
     assert.equal(response.statusCode, 400);
     assert.deepEqual(response.body, {
       code: "UPLOAD_FILE_TOO_LARGE",
@@ -194,13 +114,9 @@ describe("FilesController", () => {
   it("keeps regular bad request responses intact in the upload filter", () => {
     const response = createFakeResponse();
     const filter = new UploadExceptionFilter();
-
     filter.catch(new BadRequestException("请选择要上传的图片"), {
-      switchToHttp: () => ({
-        getResponse: () => response,
-      }),
+      switchToHttp: () => ({ getResponse: () => response }),
     } as any);
-
     assert.equal(response.statusCode, 400);
     assert.deepEqual(response.body, {
       error: "Bad Request",
@@ -226,10 +142,5 @@ function createFakeResponse() {
 }
 
 function createFakeSendFileResponse() {
-  return {
-    sentFile: null as string | null,
-    sendFile(filepath: string) {
-      this.sentFile = filepath;
-    },
-  };
+  return { sendFile() {} };
 }

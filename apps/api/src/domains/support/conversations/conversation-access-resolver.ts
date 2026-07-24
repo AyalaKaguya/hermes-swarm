@@ -1,7 +1,6 @@
 import type {
   Conversation,
   ConversationMessage,
-  ConversationMessageAttachment,
 } from "@hermes-swarm/core";
 
 export type ConversationSource = {
@@ -18,7 +17,7 @@ export type ConversationNotificationPayload = {
 };
 
 export type ConversationMessageInput = {
-  attachments?: ConversationMessageAttachment[] | null;
+  attachments?: Array<{ fileId: string }> | null;
   body: string;
   metadata?: Record<string, unknown> | null;
 };

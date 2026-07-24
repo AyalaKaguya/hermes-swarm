@@ -10,6 +10,7 @@ import {
   Account,
   Conversation,
   ConversationMessage,
+  ConversationMessageFile,
   ConversationParticipant,
   WorkspaceMembership,
   type ConversationMessageAttachment,
@@ -30,6 +31,10 @@ import type {
   ConversationSource,
 } from "./conversation-access-resolver.js";
 import { WorkspaceContextService } from "../../../common/database/workspace-context.service.js";
+import {
+  FileObjectService,
+  type FileActor,
+} from "../../../infrastructure/files/file-object.service.js";
 
 @Injectable()
 export class ConversationCapabilityService {
@@ -42,6 +47,8 @@ export class ConversationCapabilityService {
     private readonly conversationRepository: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
     private readonly messageRepository: Repository<ConversationMessage>,
+    @InjectRepository(ConversationMessageFile)
+    private readonly messageFileRepository: Repository<ConversationMessageFile>,
     @InjectRepository(ConversationParticipant)
     private readonly participantRepository: Repository<ConversationParticipant>,
     @InjectRepository(WorkspaceMembership)
@@ -54,6 +61,8 @@ export class ConversationCapabilityService {
     private readonly realtimeEventBus: RealtimeEventBus,
     @Inject(WorkspaceContextService)
     private readonly workspaceContext: WorkspaceContextService,
+    @Inject(FileObjectService)
+    private readonly fileObjects: FileObjectService,
   ) {}
 
   async ensureConversationForSource(source: ConversationSource) {
@@ -135,11 +144,14 @@ export class ConversationCapabilityService {
         message.authorUser = null;
       }
     }
+    await this.hydrateMessageAttachments(messages, input.source.workspaceId);
     return messages.map((message) => toConversationMessageDto(message, conversation));
   }
 
   async sendMessage(input: {
+    allowPlatformFiles?: boolean;
     authorUserId: string;
+    fileActor?: FileActor;
     message: ConversationMessageInput;
     resolver: ConversationAccessResolver;
     source: ConversationSource;
@@ -159,6 +171,8 @@ export class ConversationCapabilityService {
     await this.withManager(async (manager) => {
       ({ conversation, message } = await this.createMessageInTransaction(manager, {
         authorUserId: input.authorUserId,
+        allowPlatformFiles: input.allowPlatformFiles,
+        fileActor: input.fileActor,
         joinedReason: "reply",
         mentionUserIds,
         message: input.message,
@@ -181,6 +195,8 @@ export class ConversationCapabilityService {
     manager: EntityManager,
     input: {
       authorUserId: string;
+      allowPlatformFiles?: boolean;
+      fileActor?: FileActor;
       joinedReason: ConversationParticipantJoinedReason;
       mentionUserIds?: string[];
       message: ConversationMessageInput;
@@ -209,10 +225,24 @@ export class ConversationCapabilityService {
         workspaceId: input.source.workspaceId,
         userIds: input.mentionUserIds ?? [],
     });
+    const fileIds = (input.message.attachments ?? []).map(
+      (attachment) => attachment.fileId,
+    );
+    if (fileIds.length > 0 && !input.fileActor) {
+      throw new ForbiddenException("文件附件缺少可信上传上下文");
+    }
+    const claimedFiles = fileIds.length > 0
+      ? await this.fileObjects.claimTicketFiles(manager, {
+          actor: input.fileActor!,
+          allowPlatformFiles: input.allowPlatformFiles ?? false,
+          fileIds,
+          workspaceId: input.source.workspaceId,
+        })
+      : [];
     const message = await manager.save(
       ConversationMessage,
       this.messageRepository.create({
-        attachments: input.message.attachments ?? null,
+        attachments: null,
         authorUserId: input.authorUserId,
         body: input.message.body,
         conversationId: conversation.id,
@@ -221,6 +251,19 @@ export class ConversationCapabilityService {
         workspaceId: input.source.workspaceId,
       }),
     );
+    if (claimedFiles.length > 0) {
+      await manager.save(
+        ConversationMessageFile,
+        claimedFiles.map((file, ordinal) =>
+          this.messageFileRepository.create({
+            fileObjectId: file.id,
+            messageId: message.id,
+            ordinal,
+            workspaceId: input.source.workspaceId,
+          }),
+        ),
+      );
+    }
     conversation.lastMessageAt = message.createdAt;
     conversation.status = input.source.status ?? conversation.status;
     return { conversation: await manager.save(Conversation, conversation), message };
@@ -259,6 +302,10 @@ export class ConversationCapabilityService {
       input.resolver,
       input.source,
       input.authorUserId,
+    );
+    await this.hydrateMessageAttachments(
+      [input.message],
+      input.source.workspaceId,
     );
     const participantIds = await this.findParticipantUserIds(
       input.source.workspaceId,
@@ -698,6 +745,46 @@ export class ConversationCapabilityService {
         message: toConversationMessageDto(message, conversation),
       },
     });
+  }
+
+  private async hydrateMessageAttachments(
+    messages: ConversationMessage[],
+    workspaceId: string,
+  ) {
+    if (messages.length === 0) return;
+    const links = await this.messageFileRepository.find({
+      order: { ordinal: "ASC" },
+      relations: { fileObject: true },
+      where: {
+        messageId: In(messages.map((message) => message.id)),
+        workspaceId,
+      },
+    });
+    if (links.length === 0) return;
+    const signed = await this.fileObjects.createWorkspaceDownloadUrls(
+      links.map((link) => link.fileObject),
+      workspaceId,
+    );
+    const byMessage = new Map<string, ConversationMessageAttachment[]>();
+    links.forEach((link, index) => {
+      const item = signed[index]!;
+      const attachments = byMessage.get(link.messageId) ?? [];
+      attachments.push({
+        fileId: item.file.id,
+        mimeType: item.file.mimeType,
+        name: item.file.originalName,
+        size: item.file.byteSize,
+        type: "image",
+        url: item.url,
+      });
+      byMessage.set(link.messageId, attachments);
+    });
+    for (const message of messages) {
+      const objectAttachments = byMessage.get(message.id);
+      if (objectAttachments) {
+        message.attachments = [...(message.attachments ?? []), ...objectAttachments];
+      }
+    }
   }
 
   private requireSourceWorkspace(source: ConversationSource) {

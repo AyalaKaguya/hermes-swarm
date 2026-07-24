@@ -13,7 +13,6 @@ import {
   Ticket,
   Workspace,
   WorkspaceMembership,
-  type ConversationMessageAttachment,
   type TicketStatus,
 } from "@hermes-swarm/core";
 import { DataSource, In, IsNull, LessThan, type Repository } from "typeorm";
@@ -39,7 +38,6 @@ const PLATFORM_TICKET_PERMISSIONS = {
   view: "ticket.conversation.view:platform",
 } as const;
 const MAX_TICKET_ATTACHMENTS = 6;
-const MAX_TICKET_ATTACHMENT_SIZE = 2 * 1024 * 1024;
 
 @Injectable()
 export class TicketsService {
@@ -147,7 +145,13 @@ export class TicketsService {
     const resolver = this.platformConversationResolver(accountId);
     const message = await this.withTicketWorkspace(ticket, () =>
       this.conversationsService.sendMessage({
+        allowPlatformFiles: true,
         authorUserId: accountId,
+        fileActor: {
+          principalType: "platform",
+          userId: accountId,
+          workspaceId: null,
+        },
         message: input,
         resolver,
         source: toConversationSource(ticket),
@@ -237,6 +241,11 @@ export class TicketsService {
       const source = toConversationSource(ticket);
       const created = await this.conversationsService.createMessageInTransaction(manager, {
         authorUserId: session.userId,
+        fileActor: {
+          principalType: "workspace",
+          userId: session.userId,
+          workspaceId: session.workspaceId,
+        },
         joinedReason: "creator",
         mentionUserIds: [],
         message: { attachments: input.attachments, body: input.body },
@@ -293,6 +302,11 @@ export class TicketsService {
     const input = parseMessagePayload(payload);
     const message = await this.conversationsService.sendMessage({
       authorUserId: session.userId,
+      fileActor: {
+        principalType: "workspace",
+        userId: session.userId,
+        workspaceId: session.workspaceId,
+      },
       message: input,
       resolver: this.conversationResolver,
       source: toConversationSource(ticket),
@@ -644,24 +658,18 @@ function parseMessagePayload(payload: unknown) {
   };
 }
 
-function parseAttachments(value: unknown): ConversationMessageAttachment[] {
+function parseAttachments(value: unknown): Array<{ fileId: string }> {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > MAX_TICKET_ATTACHMENTS) {
     throw new BadRequestException(`附件最多 ${MAX_TICKET_ATTACHMENTS} 个`);
   }
   return value.map((item) => {
     const attachment = requireRecord(item);
-    const size = attachment.size === undefined ? undefined : Number(attachment.size);
-    if (size !== undefined && (!Number.isFinite(size) || size > MAX_TICKET_ATTACHMENT_SIZE)) {
-      throw new BadRequestException("单个附件不能超过 2MB");
+    const fileId = requireText(attachment.fileId, "附件文件标识");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fileId)) {
+      throw new BadRequestException("附件文件标识无效");
     }
-    return {
-      mimeType: optionalText(attachment.mimeType),
-      name: requireText(attachment.name, "附件名称"),
-      size,
-      type: "image" as const,
-      url: requireText(attachment.url, "附件地址"),
-    };
+    return { fileId };
   });
 }
 

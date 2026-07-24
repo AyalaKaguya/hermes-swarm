@@ -43,17 +43,37 @@
         ]
       }
     },
-    "/api/admin/workspace/permissions/catalog": {
-      "get": {
-        "operationId": "workspace_permissions_catalog",
-        "summary": "workspace.permissions.catalog",
+    "/api/admin/files/upload": {
+      "post": {
+        "operationId": "files_upload",
+        "summary": "files.upload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {
+          "201": {
             "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/workspace_permissions_catalog_Response200"
+                  "$ref": "#/components/schemas/files_upload_Response201"
                 }
               }
             }
@@ -81,17 +101,334 @@
         }
       }
     },
-    "/api/admin/platform/permissions/catalog": {
+    "/api/admin/files/platform/upload": {
+      "post": {
+        "operationId": "platform_files_upload",
+        "summary": "platform.files.upload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_files_upload_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/files/objects": {
+      "post": {
+        "operationId": "files_objects_create",
+        "summary": "files.objects.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/files_objects_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/files_objects_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/files/objects/{fileId}/complete": {
+      "post": {
+        "operationId": "files_objects_complete",
+        "summary": "files.objects.complete",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/files_objects_complete_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/files_objects_complete_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/files/objects/{fileId}": {
       "get": {
-        "operationId": "platform_permissions_catalog",
-        "summary": "platform.permissions.catalog",
+        "operationId": "files_objects_get",
+        "summary": "files.objects.get",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/platform_permissions_catalog_Response200"
+                  "$ref": "#/components/schemas/files_objects_get_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "files_objects_delete",
+        "summary": "files.objects.delete",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/files/objects/{fileId}/content": {
+      "get": {
+        "operationId": "files_objects_content",
+        "summary": "files.objects.content",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "fileId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Binary file",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/files/{filename}": {
+      "get": {
+        "operationId": "files_download",
+        "summary": "files.download",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 260
+            },
+            "required": true,
+            "name": "filename",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary file",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
                 }
               }
             }
@@ -1292,6 +1629,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/workspace_settings_save_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/permissions/catalog": {
+      "get": {
+        "operationId": "workspace_permissions_catalog",
+        "summary": "workspace.permissions.catalog",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_permissions_catalog_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/permissions/catalog": {
+      "get": {
+        "operationId": "platform_permissions_catalog",
+        "summary": "platform.permissions.catalog",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_permissions_catalog_Response200"
                 }
               }
             }
@@ -3228,114 +3641,6 @@
         }
       }
     },
-    "/api/admin/files/upload": {
-      "post": {
-        "operationId": "files_upload",
-        "summary": "files.upload",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "file"
-                ],
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/files_upload_Response201"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Request validation failed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Response contract mismatch",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/files/{filename}": {
-      "get": {
-        "operationId": "files_download",
-        "summary": "files.download",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "required": true,
-            "name": "filename",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Binary file",
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Request validation failed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Response contract mismatch",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/admin/account/integration-tokens/capabilities": {
       "get": {
         "operationId": "integrations_capabilities",
@@ -4838,6 +5143,312 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/auth_resetPassword_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/tickets": {
+      "get": {
+        "operationId": "platform_tickets_list",
+        "summary": "platform.tickets.list",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "archived",
+                "closed",
+                "open"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_tickets_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/tickets/{ticketId}": {
+      "get": {
+        "operationId": "platform_tickets_get",
+        "summary": "platform.tickets.get",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "ticketId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_tickets_get_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/tickets/{ticketId}/messages": {
+      "get": {
+        "operationId": "platform_tickets_messages_list",
+        "summary": "platform.tickets.messages.list",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "ticketId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_tickets_messages_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "platform_tickets_messages_send",
+        "summary": "platform.tickets.messages.send",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "ticketId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_tickets_messages_send_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_tickets_messages_send_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/tickets/{ticketId}/close": {
+      "patch": {
+        "operationId": "platform_tickets_close",
+        "summary": "platform.tickets.close",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "ticketId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_tickets_close_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/tickets/{ticketId}/read": {
+      "patch": {
+        "operationId": "platform_tickets_read",
+        "summary": "platform.tickets.read",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "ticketId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_tickets_read_Response200"
                 }
               }
             }
@@ -13988,12 +14599,16 @@
           "cancellationToken": {
             "type": "string"
           },
+          "verificationEmailSent": {
+            "type": "boolean"
+          },
           "verificationToken": {
             "type": "string"
           }
         },
         "required": [
-          "applicationId"
+          "applicationId",
+          "verificationEmailSent"
         ],
         "additionalProperties": false
       },
@@ -14222,10 +14837,6 @@
           "account": {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              },
               "displayName": {
                 "type": "string"
               },
@@ -14233,460 +14844,24 @@
                 "type": "string",
                 "format": "email"
               },
-              "firstName": {
+              "id": {
                 "type": "string",
-                "nullable": true
-              },
-              "lastName": {
-                "type": "string",
-                "nullable": true
-              },
-              "username": {
-                "type": "string",
-                "nullable": true
-              },
-              "mobile": {
-                "type": "string",
-                "nullable": true
-              },
-              "imageUrl": {
-                "type": "string",
-                "nullable": true
-              },
-              "nickname": {
-                "type": "string",
-                "nullable": true
-              },
-              "avatarUrl": {
-                "type": "string",
-                "nullable": true
-              },
-              "preferredLanguage": {
-                "type": "string",
-                "nullable": true
-              },
-              "emailVerified": {
-                "type": "boolean"
-              },
-              "timeZone": {
-                "type": "string",
-                "nullable": true
-              },
-              "workspaceRole": {
-                "type": "object",
-                "nullable": true,
-                "properties": {
-                  "color": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "description": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "displayName": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "isSystem": {
-                    "type": "boolean"
-                  },
-                  "label": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "permissions": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "permission": {
-                          "type": "string"
-                        },
-                        "permissionId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "roleId": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "enabled",
-                        "permission",
-                        "roleId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "scope": {
-                    "type": "string",
-                    "enum": [
-                      "platform",
-                      "workspace"
-                    ]
-                  },
-                  "workspaceId": {
-                    "type": "string",
-                    "nullable": true,
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "id",
-                  "isSystem",
-                  "label",
-                  "name"
-                ],
-                "additionalProperties": false
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "active",
-                  "disabled"
-                ]
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "service",
-                  "user"
-                ]
-              },
-              "createdAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "updatedAt": {
-                "type": "string",
-                "format": "date-time"
+                "minLength": 1
               }
             },
             "required": [
-              "id",
               "displayName",
               "email",
-              "firstName",
-              "lastName",
-              "username",
-              "mobile",
-              "imageUrl",
-              "preferredLanguage",
-              "emailVerified",
-              "timeZone",
-              "status",
-              "type",
-              "createdAt",
-              "updatedAt"
+              "id"
             ],
             "additionalProperties": false
           },
-          "membership": {
-            "type": "object",
-            "properties": {
-              "account": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "displayName": {
-                    "type": "string"
-                  },
-                  "email": {
-                    "type": "string",
-                    "format": "email"
-                  },
-                  "firstName": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "lastName": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "username": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "mobile": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "imageUrl": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "nickname": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "avatarUrl": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "preferredLanguage": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "emailVerified": {
-                    "type": "boolean"
-                  },
-                  "timeZone": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "workspaceRole": {
-                    "type": "object",
-                    "nullable": true,
-                    "properties": {
-                      "color": {
-                        "type": "string",
-                        "nullable": true
-                      },
-                      "description": {
-                        "type": "string",
-                        "nullable": true
-                      },
-                      "displayName": {
-                        "type": "string",
-                        "nullable": true
-                      },
-                      "id": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "isSystem": {
-                        "type": "boolean"
-                      },
-                      "label": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "permissions": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "minLength": 1
-                            },
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "permission": {
-                              "type": "string"
-                            },
-                            "permissionId": {
-                              "type": "string",
-                              "minLength": 1
-                            },
-                            "roleId": {
-                              "type": "string",
-                              "minLength": 1
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "enabled",
-                            "permission",
-                            "roleId"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "scope": {
-                        "type": "string",
-                        "enum": [
-                          "platform",
-                          "workspace"
-                        ]
-                      },
-                      "workspaceId": {
-                        "type": "string",
-                        "nullable": true,
-                        "minLength": 1
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "isSystem",
-                      "label",
-                      "name"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "active",
-                      "disabled"
-                    ]
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "service",
-                      "user"
-                    ]
-                  },
-                  "createdAt": {
-                    "type": "string",
-                    "format": "date-time"
-                  },
-                  "updatedAt": {
-                    "type": "string",
-                    "format": "date-time"
-                  }
-                },
-                "required": [
-                  "id",
-                  "displayName",
-                  "email",
-                  "firstName",
-                  "lastName",
-                  "username",
-                  "mobile",
-                  "imageUrl",
-                  "preferredLanguage",
-                  "emailVerified",
-                  "timeZone",
-                  "status",
-                  "type",
-                  "createdAt",
-                  "updatedAt"
-                ],
-                "additionalProperties": false
-              },
-              "membershipId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "removedAt": {
-                "type": "string",
-                "nullable": true,
-                "format": "date-time"
-              },
-              "role": {
-                "type": "object",
-                "nullable": true,
-                "properties": {
-                  "color": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "description": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "displayName": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "isSystem": {
-                    "type": "boolean"
-                  },
-                  "label": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "permissions": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "permission": {
-                          "type": "string"
-                        },
-                        "permissionId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "roleId": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "enabled",
-                        "permission",
-                        "roleId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "scope": {
-                    "type": "string",
-                    "enum": [
-                      "platform",
-                      "workspace"
-                    ]
-                  },
-                  "workspaceId": {
-                    "type": "string",
-                    "nullable": true,
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "id",
-                  "isSystem",
-                  "label",
-                  "name"
-                ],
-                "additionalProperties": false
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "active",
-                  "disabled",
-                  "removed"
-                ]
-              }
-            },
-            "required": [
-              "account",
-              "membershipId",
-              "removedAt",
-              "role",
-              "status"
-            ],
-            "additionalProperties": false
+          "existingAccount": {
+            "type": "boolean"
+          },
+          "membershipId": {
+            "type": "string",
+            "minLength": 1
           },
           "workspace": {
             "type": "object",
@@ -14722,7 +14897,8 @@
         },
         "required": [
           "account",
-          "membership",
+          "existingAccount",
+          "membershipId",
           "workspace"
         ],
         "additionalProperties": false
@@ -14995,186 +15171,11 @@
             ],
             "additionalProperties": false
           },
+          "ownerActivationEmailSent": {
+            "type": "boolean"
+          },
           "ownerActivationToken": {
             "type": "string"
-          },
-          "ownerUser": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              },
-              "displayName": {
-                "type": "string"
-              },
-              "email": {
-                "type": "string",
-                "format": "email"
-              },
-              "firstName": {
-                "type": "string",
-                "nullable": true
-              },
-              "lastName": {
-                "type": "string",
-                "nullable": true
-              },
-              "username": {
-                "type": "string",
-                "nullable": true
-              },
-              "mobile": {
-                "type": "string",
-                "nullable": true
-              },
-              "imageUrl": {
-                "type": "string",
-                "nullable": true
-              },
-              "nickname": {
-                "type": "string",
-                "nullable": true
-              },
-              "avatarUrl": {
-                "type": "string",
-                "nullable": true
-              },
-              "preferredLanguage": {
-                "type": "string",
-                "nullable": true
-              },
-              "emailVerified": {
-                "type": "boolean"
-              },
-              "timeZone": {
-                "type": "string",
-                "nullable": true
-              },
-              "workspaceRole": {
-                "type": "object",
-                "nullable": true,
-                "properties": {
-                  "color": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "description": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "displayName": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "isSystem": {
-                    "type": "boolean"
-                  },
-                  "label": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "permissions": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "permission": {
-                          "type": "string"
-                        },
-                        "permissionId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "roleId": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "enabled",
-                        "permission",
-                        "roleId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "scope": {
-                    "type": "string",
-                    "enum": [
-                      "platform",
-                      "workspace"
-                    ]
-                  },
-                  "workspaceId": {
-                    "type": "string",
-                    "nullable": true,
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "id",
-                  "isSystem",
-                  "label",
-                  "name"
-                ],
-                "additionalProperties": false
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "active",
-                  "disabled"
-                ]
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "service",
-                  "user"
-                ]
-              },
-              "createdAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "updatedAt": {
-                "type": "string",
-                "format": "date-time"
-              }
-            },
-            "required": [
-              "id",
-              "displayName",
-              "email",
-              "firstName",
-              "lastName",
-              "username",
-              "mobile",
-              "imageUrl",
-              "preferredLanguage",
-              "emailVerified",
-              "timeZone",
-              "status",
-              "type",
-              "createdAt",
-              "updatedAt"
-            ],
-            "additionalProperties": false
           },
           "workspace": {
             "type": "object",
@@ -15210,7 +15211,7 @@
         },
         "required": [
           "application",
-          "ownerUser",
+          "ownerActivationEmailSent",
           "workspace"
         ],
         "additionalProperties": false
@@ -15307,6 +15308,731 @@
           "status",
           "workspaceId",
           "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_tickets_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "archivedAt": {
+              "type": "string",
+              "nullable": true,
+              "format": "date-time"
+            },
+            "assigneeUserId": {
+              "type": "string",
+              "nullable": true,
+              "minLength": 1
+            },
+            "conversationId": {
+              "type": "string",
+              "nullable": true,
+              "minLength": 1
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "handlerClosedAt": {
+              "type": "string",
+              "nullable": true,
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "lastMessageAt": {
+              "type": "string",
+              "nullable": true,
+              "format": "date-time"
+            },
+            "participantUserIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "requesterClosedAt": {
+              "type": "string",
+              "nullable": true,
+              "format": "date-time"
+            },
+            "requesterUserId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "archived",
+                "closed",
+                "open"
+              ]
+            },
+            "subject": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspace": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "provisioning",
+                    "active",
+                    "suspended",
+                    "archived"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "slug",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "archivedAt",
+            "assigneeUserId",
+            "conversationId",
+            "createdAt",
+            "handlerClosedAt",
+            "id",
+            "lastMessageAt",
+            "participantUserIds",
+            "requesterClosedAt",
+            "requesterUserId",
+            "status",
+            "subject",
+            "updatedAt",
+            "workspace"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "platform_tickets_get_Response200": {
+        "type": "object",
+        "properties": {
+          "archivedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "assigneeUserId": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1
+          },
+          "conversationId": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "handlerClosedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "participantUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "requesterClosedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "requesterUserId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "archived",
+              "closed",
+              "open"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "provisioning",
+                  "active",
+                  "suspended",
+                  "archived"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "slug",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "archivedAt",
+          "assigneeUserId",
+          "conversationId",
+          "createdAt",
+          "handlerClosedAt",
+          "id",
+          "lastMessageAt",
+          "participantUserIds",
+          "requesterClosedAt",
+          "requesterUserId",
+          "status",
+          "subject",
+          "updatedAt",
+          "workspace"
+        ],
+        "additionalProperties": false
+      },
+      "platform_tickets_messages_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fileId": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "uuid"
+                  },
+                  "mimeType": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image"
+                    ]
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "url"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "author": {
+              "type": "object",
+              "nullable": true,
+              "properties": {
+                "avatarUrl": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "imageUrl": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "username": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "displayName",
+                "email",
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "authorUserId": {
+              "type": "string",
+              "nullable": true,
+              "minLength": 1
+            },
+            "body": {
+              "type": "string"
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "message",
+                "system"
+              ]
+            },
+            "metadata": {
+              "type": "object",
+              "nullable": true,
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "nullable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "nullable": true
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "nullable": true
+                    }
+                  }
+                ]
+              }
+            },
+            "sourceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sourceType": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "attachments",
+            "author",
+            "authorUserId",
+            "body",
+            "conversationId",
+            "createdAt",
+            "id",
+            "kind",
+            "metadata",
+            "sourceId",
+            "sourceType",
+            "updatedAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "platform_tickets_messages_send_Request": {
+        "type": "object",
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileId": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "fileId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "platform_tickets_messages_send_Response201": {
+        "type": "object",
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileId": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "uuid"
+                },
+                "mimeType": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "size": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "image"
+                  ]
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type",
+                "url"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "author": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "avatarUrl": {
+                "type": "string",
+                "nullable": true
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "imageUrl": {
+                "type": "string",
+                "nullable": true
+              },
+              "username": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "displayName",
+              "email",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "authorUserId": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1
+          },
+          "body": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "message",
+              "system"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "nullable": true
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "nullable": true
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {
+                    "nullable": true
+                  }
+                }
+              ]
+            }
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceType": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "attachments",
+          "author",
+          "authorUserId",
+          "body",
+          "conversationId",
+          "createdAt",
+          "id",
+          "kind",
+          "metadata",
+          "sourceId",
+          "sourceType",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_tickets_close_Response200": {
+        "type": "object",
+        "properties": {
+          "archivedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "assigneeUserId": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1
+          },
+          "conversationId": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "handlerClosedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "participantUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "requesterClosedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "requesterUserId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "archived",
+              "closed",
+              "open"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "provisioning",
+                  "active",
+                  "suspended",
+                  "archived"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "slug",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "archivedAt",
+          "assigneeUserId",
+          "conversationId",
+          "createdAt",
+          "handlerClosedAt",
+          "id",
+          "lastMessageAt",
+          "participantUserIds",
+          "requesterClosedAt",
+          "requesterUserId",
+          "status",
+          "subject",
+          "updatedAt",
+          "workspace"
+        ],
+        "additionalProperties": false
+      },
+      "platform_tickets_read_Response200": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
         ],
         "additionalProperties": false
       },
@@ -16790,9 +17516,10 @@
             "type": "string",
             "nullable": true
           },
-          "imageUrl": {
+          "imageFileId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "lastName": {
             "type": "string",
@@ -18204,14 +18931,187 @@
         "additionalProperties": false
       },
       "platform_members_create_Response201": {
-        "type": "object",
-        "properties": {
-          "account": {
+        "anyOf": [
+          {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
+              "account": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "firstName": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "username": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "mobile": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "imageUrl": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "nickname": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "avatarUrl": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "preferredLanguage": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "emailVerified": {
+                    "type": "boolean"
+                  },
+                  "timeZone": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "workspaceRole": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "color": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "isSystem": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "permissions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "permission": {
+                              "type": "string"
+                            },
+                            "permissionId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "roleId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "enabled",
+                            "permission",
+                            "roleId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "workspace"
+                        ]
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "nullable": true,
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "isSystem",
+                      "label",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "disabled"
+                    ]
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "service",
+                      "user"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "id",
+                  "displayName",
+                  "email",
+                  "firstName",
+                  "lastName",
+                  "username",
+                  "mobile",
+                  "imageUrl",
+                  "preferredLanguage",
+                  "emailVerified",
+                  "timeZone",
+                  "status",
+                  "type",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
               },
               "displayName": {
                 "type": "string"
@@ -18220,46 +19120,15 @@
                 "type": "string",
                 "format": "email"
               },
-              "firstName": {
+              "id": {
                 "type": "string",
-                "nullable": true
+                "minLength": 1
               },
-              "lastName": {
+              "membershipId": {
                 "type": "string",
-                "nullable": true
+                "minLength": 1
               },
-              "username": {
-                "type": "string",
-                "nullable": true
-              },
-              "mobile": {
-                "type": "string",
-                "nullable": true
-              },
-              "imageUrl": {
-                "type": "string",
-                "nullable": true
-              },
-              "nickname": {
-                "type": "string",
-                "nullable": true
-              },
-              "avatarUrl": {
-                "type": "string",
-                "nullable": true
-              },
-              "preferredLanguage": {
-                "type": "string",
-                "nullable": true
-              },
-              "emailVerified": {
-                "type": "boolean"
-              },
-              "timeZone": {
-                "type": "string",
-                "nullable": true
-              },
-              "workspaceRole": {
+              "role": {
                 "type": "object",
                 "nullable": true,
                 "properties": {
@@ -18342,176 +19211,183 @@
                 ],
                 "additionalProperties": false
               },
+              "roleId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1
+              },
               "status": {
                 "type": "string",
                 "enum": [
                   "active",
-                  "disabled"
+                  "disabled",
+                  "removed"
                 ]
               },
-              "type": {
+              "userId": {
                 "type": "string",
-                "enum": [
-                  "service",
-                  "user"
-                ]
-              },
-              "createdAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "updatedAt": {
-                "type": "string",
-                "format": "date-time"
+                "minLength": 1
               }
             },
             "required": [
-              "id",
+              "account",
               "displayName",
               "email",
-              "firstName",
-              "lastName",
-              "username",
-              "mobile",
-              "imageUrl",
-              "preferredLanguage",
-              "emailVerified",
-              "timeZone",
+              "id",
+              "membershipId",
+              "role",
+              "roleId",
               "status",
-              "type",
-              "createdAt",
-              "updatedAt"
+              "userId"
             ],
             "additionalProperties": false
           },
-          "displayName": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string",
-            "format": "email"
-          },
-          "id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "membershipId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "role": {
+          {
             "type": "object",
-            "nullable": true,
             "properties": {
-              "color": {
-                "type": "string",
-                "nullable": true
-              },
-              "description": {
-                "type": "string",
-                "nullable": true
-              },
-              "displayName": {
-                "type": "string",
-                "nullable": true
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1
-              },
-              "isSystem": {
-                "type": "boolean"
-              },
-              "label": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "permissions": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "enabled": {
-                      "type": "boolean"
-                    },
-                    "permission": {
-                      "type": "string"
-                    },
-                    "permissionId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "roleId": {
-                      "type": "string",
-                      "minLength": 1
-                    }
+              "invite": {
+                "type": "object",
+                "properties": {
+                  "acceptedCount": {
+                    "type": "integer",
+                    "minimum": 0
                   },
-                  "required": [
-                    "id",
-                    "enabled",
-                    "permission",
-                    "roleId"
-                  ],
-                  "additionalProperties": false
-                }
+                  "acceptedUserId": {
+                    "type": "string",
+                    "nullable": true,
+                    "minLength": 1
+                  },
+                  "actionDate": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "date-time"
+                  },
+                  "closedAt": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "date-time"
+                  },
+                  "email": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "email"
+                  },
+                  "existingUser": {
+                    "type": "boolean"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "contextType": {
+                    "type": "string",
+                    "enum": [
+                      "platform",
+                      "workspace"
+                    ]
+                  },
+                  "expireDate": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "date-time"
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "invitedById": {
+                    "type": "string",
+                    "nullable": true,
+                    "minLength": 1
+                  },
+                  "invitedBy": {
+                    "type": "object",
+                    "nullable": true,
+                    "properties": {
+                      "avatarUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "imageUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "username": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "displayName",
+                      "email",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "link": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "accepted",
+                      "declined",
+                      "expired",
+                      "invited",
+                      "revoked"
+                    ]
+                  },
+                  "roleId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspaceRoleId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "acceptedCount",
+                  "acceptedUserId",
+                  "actionDate",
+                  "closedAt",
+                  "email",
+                  "createdAt",
+                  "contextType",
+                  "expireDate",
+                  "id",
+                  "invitedById",
+                  "status",
+                  "roleId",
+                  "workspaceRoleId"
+                ],
+                "additionalProperties": false
               },
-              "scope": {
+              "status": {
                 "type": "string",
                 "enum": [
-                  "platform",
-                  "workspace"
+                  "invited"
                 ]
-              },
-              "workspaceId": {
-                "type": "string",
-                "nullable": true,
-                "minLength": 1
               }
             },
             "required": [
-              "id",
-              "isSystem",
-              "label",
-              "name"
+              "invite",
+              "status"
             ],
             "additionalProperties": false
-          },
-          "roleId": {
-            "type": "string",
-            "nullable": true,
-            "minLength": 1
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "disabled",
-              "removed"
-            ]
-          },
-          "userId": {
-            "type": "string",
-            "minLength": 1
           }
-        },
-        "required": [
-          "account",
-          "displayName",
-          "email",
-          "id",
-          "membershipId",
-          "role",
-          "roleId",
-          "status",
-          "userId"
-        ],
-        "additionalProperties": false
+        ]
       },
       "platform_members_update_Request": {
         "type": "object",
@@ -21994,30 +22870,13 @@
             "items": {
               "type": "object",
               "properties": {
-                "mimeType": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "size": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "type": {
+                "fileId": {
                   "type": "string",
-                  "enum": [
-                    "image"
-                  ]
-                },
-                "url": {
-                  "type": "string"
+                  "format": "uuid"
                 }
               },
               "required": [
-                "name",
-                "type",
-                "url"
+                "fileId"
               ],
               "additionalProperties": false
             }
@@ -22112,6 +22971,11 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "fileId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
                     "mimeType": {
                       "type": "string"
                     },
@@ -22388,6 +23252,11 @@
               "items": {
                 "type": "object",
                 "properties": {
+                  "fileId": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "uuid"
+                  },
                   "mimeType": {
                     "type": "string"
                   },
@@ -22548,30 +23417,13 @@
             "items": {
               "type": "object",
               "properties": {
-                "mimeType": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "size": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "type": {
+                "fileId": {
                   "type": "string",
-                  "enum": [
-                    "image"
-                  ]
-                },
-                "url": {
-                  "type": "string"
+                  "format": "uuid"
                 }
               },
               "required": [
-                "name",
-                "type",
-                "url"
+                "fileId"
               ],
               "additionalProperties": false
             }
@@ -22594,6 +23446,11 @@
             "items": {
               "type": "object",
               "properties": {
+                "fileId": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "uuid"
+                },
                 "mimeType": {
                   "type": "string"
                 },
@@ -23717,6 +24574,10 @@
               "additionalProperties": false
             }
           },
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "mimeType": {
             "type": "string"
           },
@@ -23745,6 +24606,470 @@
         "required": [
           "destinations",
           "status"
+        ],
+        "additionalProperties": false
+      },
+      "platform_files_upload_Response201": {
+        "type": "object",
+        "properties": {
+          "destinations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "failed",
+                    "success"
+                  ]
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "originalName": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "partial_success",
+              "success"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "destinations",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "files_objects_create_Request": {
+        "type": "object",
+        "properties": {
+          "byteSize": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "mimeType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "originalName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "artifact",
+              "avatar",
+              "dashboard_asset",
+              "document",
+              "generic",
+              "ticket_attachment"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "platform",
+              "workspace"
+            ]
+          }
+        },
+        "required": [
+          "byteSize",
+          "mimeType",
+          "originalName",
+          "purpose"
+        ],
+        "additionalProperties": false
+      },
+      "files_objects_create_Response201": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "object",
+            "properties": {
+              "byteSize": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdByAccountId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "deletedAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              },
+              "expiresAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "originalName": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string",
+                "enum": [
+                  "artifact",
+                  "avatar",
+                  "dashboard_asset",
+                  "document",
+                  "generic",
+                  "ticket_attachment"
+                ]
+              },
+              "retention": {
+                "type": "string",
+                "enum": [
+                  "persistent",
+                  "temporary"
+                ]
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "account",
+                  "platform",
+                  "workspace"
+                ]
+              },
+              "sha256": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "deleted",
+                  "failed",
+                  "pending",
+                  "ready"
+                ]
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "workspaceId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "byteSize",
+              "createdAt",
+              "createdByAccountId",
+              "deletedAt",
+              "expiresAt",
+              "id",
+              "mimeType",
+              "originalName",
+              "purpose",
+              "retention",
+              "scope",
+              "sha256",
+              "status",
+              "updatedAt",
+              "workspaceId"
+            ],
+            "additionalProperties": false
+          },
+          "requiredHeaders": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "uploadUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "uploadUrlExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "file",
+          "requiredHeaders",
+          "uploadUrl",
+          "uploadUrlExpiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "files_objects_complete_Request": {
+        "type": "object",
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$/i"
+          }
+        },
+        "additionalProperties": false
+      },
+      "files_objects_complete_Response201": {
+        "type": "object",
+        "properties": {
+          "byteSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdByAccountId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "originalName": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "artifact",
+              "avatar",
+              "dashboard_asset",
+              "document",
+              "generic",
+              "ticket_attachment"
+            ]
+          },
+          "retention": {
+            "type": "string",
+            "enum": [
+              "persistent",
+              "temporary"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "platform",
+              "workspace"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "failed",
+              "pending",
+              "ready"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "byteSize",
+          "createdAt",
+          "createdByAccountId",
+          "deletedAt",
+          "expiresAt",
+          "id",
+          "mimeType",
+          "originalName",
+          "purpose",
+          "retention",
+          "scope",
+          "sha256",
+          "status",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "files_objects_get_Response200": {
+        "type": "object",
+        "properties": {
+          "byteSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdByAccountId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "originalName": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "artifact",
+              "avatar",
+              "dashboard_asset",
+              "document",
+              "generic",
+              "ticket_attachment"
+            ]
+          },
+          "retention": {
+            "type": "string",
+            "enum": [
+              "persistent",
+              "temporary"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "platform",
+              "workspace"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "failed",
+              "pending",
+              "ready"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "byteSize",
+          "createdAt",
+          "createdByAccountId",
+          "deletedAt",
+          "expiresAt",
+          "id",
+          "mimeType",
+          "originalName",
+          "purpose",
+          "retention",
+          "scope",
+          "sha256",
+          "status",
+          "updatedAt",
+          "workspaceId"
         ],
         "additionalProperties": false
       }

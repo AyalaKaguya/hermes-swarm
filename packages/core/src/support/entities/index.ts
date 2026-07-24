@@ -7,6 +7,7 @@ export {
   type ConversationMessageAttachment,
   type ConversationMessageKind,
 } from "./conversation-message.entity.js";
+export { ConversationMessageFile } from "./conversation-message-file.entity.js";
 export {
   ConversationParticipant,
   type ConversationParticipantJoinedReason,

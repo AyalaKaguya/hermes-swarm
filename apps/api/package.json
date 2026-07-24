@@ -14,6 +14,8 @@
     "migration:show": "typeorm-ts-node-esm migration:show -d src/common/database/migration-data-source.ts",
     "seed:development": "tsx src/common/database/seed/development-seed.cli.ts",
     "settings:rotate-secrets": "tsx src/infrastructure/settings/settings-secret-rotation.cli.ts",
+    "files:gc": "tsx src/infrastructure/files/files-gc.cli.ts",
+    "files:migrate-local": "tsx src/infrastructure/files/files-migrate-local.cli.ts",
     "openapi:generate": "node dist/openapi.generate.js",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:jobs-seed": "node --import tsx --test \"src/common/jobs/*.test.ts\" \"src/common/database/seed/*.test.ts\" \"src/domains/support/jobs/*.test.ts\"",
@@ -24,6 +26,9 @@
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
+    "@aws-sdk/client-s3": "^3.1093.0",
+    "@aws-sdk/lib-storage": "^3.1093.0",
+    "@aws-sdk/s3-request-presigner": "^3.1093.0",
     "@hermes-swarm/api-contracts": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@hermes-swarm/rbac": "workspace:*",

@@ -25,6 +25,7 @@ describe("ConversationCapabilityService workspace source contract", () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {
         manager,
         transaction: async (work: (manager: unknown) => unknown) => work(manager),
@@ -32,6 +33,7 @@ describe("ConversationCapabilityService workspace source contract", () => {
       {} as never,
       {} as never,
       { current: () => ({ workspaceId: "workspace-a" }) } as never,
+      {} as never,
     );
     const result = await service.ensureConversationForSource({
       sourceId: "ticket-a",
@@ -56,6 +58,7 @@ describe("ConversationCapabilityService workspace source contract", () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {
         manager: {},
         transaction: async (work: (manager: unknown) => unknown) => work({}),
@@ -63,6 +66,7 @@ describe("ConversationCapabilityService workspace source contract", () => {
       {} as never,
       {} as never,
       { current: () => ({ workspaceId: "workspace-a" }) } as never,
+      {} as never,
     );
     await assert.rejects(
       service.ensureConversationForSource({
@@ -88,10 +92,12 @@ describe("ConversationCapabilityService workspace source contract", () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       { manager: membershipManager } as never,
       {} as never,
       {} as never,
       { current: () => ({ workspaceId: "workspace-a" }) } as never,
+      {} as never,
     );
 
     const ids = await service.resolveMentionedUserIdsForSource({

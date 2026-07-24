@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   Account,
+  FileObject,
   IntegrationToken,
   Role,
   WorkspaceMembership,
@@ -23,6 +24,7 @@ import type {
 import { WorkspaceContextService } from "../../common/database/workspace-context.service.js";
 import { hashPassword, verifyPassword } from "../../common/security/password-hash.js";
 import { AuthSessionService } from "../auth/auth-session.service.js";
+import { FileObjectService } from "../files/file-object.service.js";
 import { toAccountDto, toWorkspaceMemberDto } from "./user-dto.js";
 
 @Injectable()
@@ -30,6 +32,7 @@ export class UsersService {
   constructor(
     private readonly workspaceContext: WorkspaceContextService,
     private readonly authSessionService: AuthSessionService,
+    private readonly fileObjects: FileObjectService,
     private readonly dataSource: DataSource,
     @InjectRepository(Account)
     private readonly accountRepository: Repository<Account>,
@@ -176,21 +179,55 @@ export class UsersService {
     payload: UpdateSelfProfilePayload,
   ) {
     const session = await this.requireWorkspaceSession(authorization);
-    const account = await this.getGlobalAccountOrThrow(session.accountId);
-    if (payload.displayName !== undefined) {
-      account.displayName = requireText(payload.displayName, "显示名称");
-      account.nickname = account.displayName;
-    }
-    if (payload.firstName !== undefined) account.firstName = normalizeNullableText(payload.firstName);
-    if (payload.lastName !== undefined) account.lastName = normalizeNullableText(payload.lastName);
-    if (payload.imageUrl !== undefined) {
-      account.imageUrl = normalizeNullableText(payload.imageUrl);
-      account.avatarUrl = account.imageUrl;
-    }
-    if (payload.mobile !== undefined) account.mobile = normalizeNullableText(payload.mobile);
-    if (payload.username !== undefined) account.username = normalizeNullableText(payload.username);
-    account.updatedAt = new Date();
-    return toAccountDto(await this.accountRepository.save(account));
+    return this.dataSource.transaction(async (manager) => {
+      const account = await manager.findOne(Account, {
+        lock: { mode: "pessimistic_write" },
+        where: { id: session.accountId, status: "active" },
+      });
+      if (!account) throw new NotFoundException("账号不存在");
+      const previousAvatarFileObjectId = account.avatarFileObjectId;
+      if (payload.displayName !== undefined) {
+        account.displayName = requireText(payload.displayName, "显示名称");
+        account.nickname = account.displayName;
+      }
+      if (payload.firstName !== undefined) account.firstName = normalizeNullableText(payload.firstName);
+      if (payload.lastName !== undefined) account.lastName = normalizeNullableText(payload.lastName);
+      if (payload.imageFileId !== undefined) {
+        if (payload.imageFileId === null) {
+          account.avatarFileObjectId = null;
+          account.imageUrl = null;
+          account.avatarUrl = null;
+        } else {
+          const avatar = await this.fileObjects.claimAvatar(
+            manager,
+            payload.imageFileId,
+            account.id,
+          );
+          account.avatarFileObjectId = avatar.id;
+          account.imageUrl = `/api/admin/files/objects/${avatar.id}/content`;
+          account.avatarUrl = account.imageUrl;
+        }
+      }
+      if (payload.mobile !== undefined) account.mobile = normalizeNullableText(payload.mobile);
+      if (payload.username !== undefined) account.username = normalizeNullableText(payload.username);
+      account.updatedAt = new Date();
+      const saved = await manager.save(Account, account);
+      if (
+        previousAvatarFileObjectId &&
+        previousAvatarFileObjectId !== saved.avatarFileObjectId
+      ) {
+        await manager.update(
+          FileObject,
+          { id: previousAvatarFileObjectId },
+          {
+            expiresAt: new Date(),
+            retention: "temporary",
+            updatedAt: new Date(),
+          },
+        );
+      }
+      return toAccountDto(saved);
+    });
   }
 
   async updatePassword(

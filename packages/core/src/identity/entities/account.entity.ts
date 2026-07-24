@@ -1,4 +1,12 @@
-import { Column, DeleteDateColumn, Entity, Index } from "typeorm";
+import {
+  Column,
+  DeleteDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+} from "typeorm";
+import type { FileObject } from "../../files/entities/file-object.entity.js";
 import { BaseEntity } from "./base.entity.js";
 
 export type AccountStatus = "active" | "disabled";
@@ -47,6 +55,13 @@ export class Account extends BaseEntity {
 
   @Column({ name: "avatar_url", type: "varchar", length: 500, nullable: true })
   avatarUrl!: string | null;
+
+  @Column({ name: "avatar_file_object_id", type: "uuid", nullable: true })
+  avatarFileObjectId!: string | null;
+
+  @ManyToOne("FileObject", { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "avatar_file_object_id" })
+  avatarFileObject!: FileObject | null;
 
   @Column({ name: "preferred_language", type: "varchar", length: 16, nullable: true })
   preferredLanguage!: PreferredLanguage | null;

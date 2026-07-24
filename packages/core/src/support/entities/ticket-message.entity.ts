@@ -6,6 +6,7 @@ import type { Ticket } from "./ticket.entity.js";
 export type TicketMessageKind = "message" | "system";
 
 export type TicketMessageAttachment = {
+  fileId?: string | null;
   mimeType?: string;
   name: string;
   size?: number;

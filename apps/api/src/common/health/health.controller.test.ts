@@ -5,20 +5,37 @@ import { HealthController } from "./health.controller.js";
 
 describe("HealthController", () => {
   it("reports liveness without probing dependencies", () => {
-    const controller = new HealthController({} as any, {} as any);
+    const controller = new HealthController({} as any, {} as any, {} as any);
     assert.deepEqual(controller.live(), { status: "ok" });
   });
 
-  it("reports readiness when PostgreSQL and Redis are reachable", async () => {
+  it("reports readiness with storage disabled", async () => {
     const controller = new HealthController(
       { query: async () => [{ "?column?": 1 }] } as any,
       { ping: async () => "PONG" } as any,
+      { healthStatus: async () => "disabled" } as any,
     );
 
     assert.deepEqual(await controller.ready(), {
       db: "connected",
       redis: "connected",
       status: "ok",
+      storage: "disabled",
+    });
+  });
+
+  it("reports readiness when enabled storage is connected", async () => {
+    const controller = new HealthController(
+      { query: async () => [{ "?column?": 1 }] } as any,
+      { ping: async () => "PONG" } as any,
+      { healthStatus: async () => "connected" } as any,
+    );
+
+    assert.deepEqual(await controller.ready(), {
+      db: "connected",
+      redis: "connected",
+      status: "ok",
+      storage: "connected",
     });
   });
 
@@ -26,6 +43,17 @@ describe("HealthController", () => {
     const controller = new HealthController(
       { query: async () => undefined } as any,
       { ping: async () => { throw new Error("redis unavailable"); } } as any,
+      { healthStatus: async () => "connected" } as any,
+    );
+
+    await assert.rejects(() => controller.ready(), ServiceUnavailableException);
+  });
+
+  it("returns 503 when enabled object storage is unavailable", async () => {
+    const controller = new HealthController(
+      { query: async () => undefined } as any,
+      { ping: async () => "PONG" } as any,
+      { healthStatus: async () => { throw new Error("storage unavailable"); } } as any,
     );
 
     await assert.rejects(() => controller.ready(), ServiceUnavailableException);

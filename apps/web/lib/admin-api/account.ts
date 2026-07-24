@@ -90,7 +90,7 @@ export function updateUser(
     displayName?: string;
     email?: string;
     firstName?: string | null;
-    imageUrl?: string | null;
+    imageFileId?: string | null;
     lastName?: string | null;
     mobile?: string | null;
     username?: string | null;

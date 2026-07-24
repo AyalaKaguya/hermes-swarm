@@ -151,6 +151,7 @@ describe("admin API browser client", () => {
     const result = await uploadAdminFile(
       "web-session",
       new File(["image"], "ticket.png", { type: "image/png" }),
+      "ticket_attachment",
     );
 
     assert.equal(uploads.length, 1);
@@ -162,6 +163,7 @@ describe("admin API browser client", () => {
     const uploadedFile = (upload.body as FormData).get("file");
     assert.ok(uploadedFile instanceof File);
     assert.equal(uploadedFile.name, "ticket.png");
+    assert.equal((upload.body as FormData).get("purpose"), "ticket_attachment");
     assert.equal(result.url, "/files/ticket.png");
   });
 

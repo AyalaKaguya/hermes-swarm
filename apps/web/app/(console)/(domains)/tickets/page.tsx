@@ -965,9 +965,10 @@ async function uploadFile(
   if (file.size > MAX_TICKET_IMAGE_SIZE) {
     throw new Error(tr("图片附件过大"));
   }
-  const result = await uploadAdminFile(session, file);
-  if (!result.url) throw new Error(tr("图片上传失败"));
+  const result = await uploadAdminFile(session, file, "ticket_attachment");
+  if (!result.url || !result.fileId) throw new Error(tr("图片上传失败"));
   return {
+    fileId: result.fileId,
     mimeType: result.mimeType,
     name: result.originalName ?? result.name ?? file.name,
     size: result.size,

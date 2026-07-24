@@ -14,6 +14,14 @@
       "types": "./dist/identity/index.d.ts",
       "import": "./dist/identity/index.js"
     },
+    "./files": {
+      "types": "./dist/files/index.d.ts",
+      "import": "./dist/files/index.js"
+    },
+    "./files/entities": {
+      "types": "./dist/files/entities/index.d.ts",
+      "import": "./dist/files/entities/index.js"
+    },
     "./identity/permissions": {
       "types": "./dist/identity/permissions.d.ts",
       "import": "./dist/identity/permissions.js"

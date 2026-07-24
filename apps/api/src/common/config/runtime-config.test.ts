@@ -5,6 +5,7 @@ import {
   databaseRuntimeConfig,
   redisRuntimeConfig,
   settingsRuntimeConfig,
+  storageRuntimeConfig,
   validateRuntimeConfig,
 } from "./runtime-config.js";
 
@@ -12,6 +13,17 @@ const originalEnvironment = {
   DATABASE_SYNCHRONIZE: process.env.DATABASE_SYNCHRONIZE,
   DATABASE_STRICT_RLS: process.env.DATABASE_STRICT_RLS,
   NODE_ENV: process.env.NODE_ENV,
+  OBJECT_STORAGE_ACCESS_KEY_ID: process.env.OBJECT_STORAGE_ACCESS_KEY_ID,
+  OBJECT_STORAGE_BUCKET: process.env.OBJECT_STORAGE_BUCKET,
+  OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS: process.env.OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS,
+  OBJECT_STORAGE_ENABLED: process.env.OBJECT_STORAGE_ENABLED,
+  OBJECT_STORAGE_ENDPOINT: process.env.OBJECT_STORAGE_ENDPOINT,
+  OBJECT_STORAGE_FORCE_PATH_STYLE: process.env.OBJECT_STORAGE_FORCE_PATH_STYLE,
+  OBJECT_STORAGE_MAX_UPLOAD_BYTES: process.env.OBJECT_STORAGE_MAX_UPLOAD_BYTES,
+  OBJECT_STORAGE_PENDING_TTL_SECONDS: process.env.OBJECT_STORAGE_PENDING_TTL_SECONDS,
+  OBJECT_STORAGE_REGION: process.env.OBJECT_STORAGE_REGION,
+  OBJECT_STORAGE_SECRET_ACCESS_KEY: process.env.OBJECT_STORAGE_SECRET_ACCESS_KEY,
+  OBJECT_STORAGE_UPLOAD_URL_TTL_SECONDS: process.env.OBJECT_STORAGE_UPLOAD_URL_TTL_SECONDS,
   POSTGRES_PLATFORM_URL: process.env.POSTGRES_PLATFORM_URL,
   POSTGRES_TEST_URL: process.env.POSTGRES_TEST_URL,
   POSTGRES_URL: process.env.POSTGRES_URL,
@@ -126,6 +138,85 @@ describe("database runtime configuration", () => {
     assert.equal(
       redisRuntimeConfig().url,
       "redis://:password%20with%20spaces@cache.example:6380",
+    );
+  });
+
+  it("keeps object storage disabled without requiring MinIO settings", () => {
+    delete process.env.OBJECT_STORAGE_ENABLED;
+    delete process.env.OBJECT_STORAGE_ENDPOINT;
+    assert.equal(storageRuntimeConfig().enabled, false);
+    assert.doesNotThrow(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "development",
+        OBJECT_STORAGE_ENABLED: "false",
+        POSTGRES_URL: "postgresql://app.example/hermes",
+      }),
+    );
+  });
+
+  it("accepts complete object storage settings and rejects missing credentials", () => {
+    const complete = {
+      NODE_ENV: "development",
+      OBJECT_STORAGE_ACCESS_KEY_ID: "app-key",
+      OBJECT_STORAGE_BUCKET: "hermes-files",
+      OBJECT_STORAGE_ENABLED: "true",
+      OBJECT_STORAGE_ENDPOINT: "http://minio.example:9000",
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "app-secret",
+      POSTGRES_URL: "postgresql://app.example/hermes",
+    };
+    assert.doesNotThrow(() => validateRuntimeConfig(complete));
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          ...complete,
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: undefined,
+        }),
+      /OBJECT_STORAGE_SECRET_ACCESS_KEY is required/,
+    );
+  });
+
+  it("rejects insecure production storage and invalid size or TTL settings", () => {
+    const base = {
+      NODE_ENV: "development",
+      OBJECT_STORAGE_ACCESS_KEY_ID: "app-key",
+      OBJECT_STORAGE_BUCKET: "hermes-files",
+      OBJECT_STORAGE_ENABLED: "true",
+      OBJECT_STORAGE_ENDPOINT: "https://minio.example",
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "app-secret",
+      POSTGRES_URL: "postgresql://app.example/hermes",
+    };
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          ...base,
+          NODE_ENV: "production",
+          OBJECT_STORAGE_ENDPOINT: "http://minio.example",
+        }),
+      /must use https/,
+    );
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          ...base,
+          OBJECT_STORAGE_ENDPOINT: "not-a-url",
+        }),
+      /must be a valid URL/,
+    );
+    assert.throws(
+      () => validateRuntimeConfig({ ...base, OBJECT_STORAGE_MAX_UPLOAD_BYTES: "0" }),
+      /integer between/,
+    );
+    assert.throws(
+      () => validateRuntimeConfig({ ...base, OBJECT_STORAGE_BUCKET: "Invalid_Bucket" }),
+      /valid S3 bucket name/,
+    );
+    assert.throws(
+      () => validateRuntimeConfig({ ...base, OBJECT_STORAGE_UPLOAD_URL_TTL_SECONDS: "-1" }),
+      /integer between/,
+    );
+    assert.throws(
+      () => validateRuntimeConfig({ ...base, OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS: "604801" }),
+      /integer between/,
     );
   });
 

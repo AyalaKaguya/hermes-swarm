@@ -71,6 +71,17 @@ describe("UsersService workspace membership contract", () => {
     assert.equal(account.preferredLanguage, "zh-Hant");
     assert.equal(account.timeZone, "Asia/Tokyo");
   });
+
+  it("binds an owned avatar FileObject instead of accepting an arbitrary URL", async () => {
+    const state = createState();
+    const avatarId = "33333333-3333-4333-8333-333333333333";
+    const account = await state.service.updateAccount(TOKEN, {
+      imageFileId: avatarId,
+    });
+    assert.deepEqual(state.claimedAvatars, [`${ACCOUNT_ID}:${avatarId}`]);
+    assert.equal(account.imageUrl, `/api/admin/files/objects/${avatarId}/content`);
+    assert.equal(state.account.avatarFileObjectId, avatarId);
+  });
 });
 
 function createState(options: { roleName?: string } = {}) {
@@ -99,10 +110,12 @@ function createState(options: { roleName?: string } = {}) {
   const revokedWorkspaceSessions: string[] = [];
   const revokedAccountSessions: string[] = [];
   const tokenUpdates: any[] = [];
+  const claimedAvatars: string[] = [];
   let membershipFindOptions: any;
   const manager = {
     find: async (target: unknown) => target === WorkspaceMembership ? [membership] : [],
     findOne: async (target: unknown, { where }: any) => {
+      if (target === Account) return where.id === account.id ? account : null;
       if (target === WorkspaceMembership) {
         return where.id === membership.id ? membership : null;
       }
@@ -154,6 +167,12 @@ function createState(options: { roleName?: string } = {}) {
   const service = new UsersService(
     { current: () => ({ scopeLevel: "workspace", workspaceId: WORKSPACE_ID }) } as never,
     authSessionService as never,
+    {
+      claimAvatar: async (_manager: unknown, fileId: string, accountId: string) => {
+        claimedAvatars.push(`${accountId}:${fileId}`);
+        return { id: fileId };
+      },
+    } as never,
     dataSource as never,
     accountRepository as never,
     roleRepository as never,
@@ -161,6 +180,7 @@ function createState(options: { roleName?: string } = {}) {
   );
   return {
     account,
+    claimedAvatars,
     membership,
     get membershipFindOptions() {
       return membershipFindOptions;

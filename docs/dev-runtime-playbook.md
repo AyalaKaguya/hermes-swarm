@@ -22,6 +22,13 @@ development setup.
 - Old `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` settings remain only as
   a startup fallback when `REDIS_URL` is absent. Do not add them to new
   deployments.
+- `OBJECT_STORAGE_ENABLED=false` keeps S3/MinIO disconnected and leaves
+  non-file API surfaces available. File uploads return
+  `OBJECT_STORAGE_DISABLED` with HTTP 503 until storage is enabled.
+- When enabled, `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`,
+  `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY` are
+  required. Production endpoints must use HTTPS. The bucket must already exist
+  and credentials must be limited to that private bucket.
 
 Local Docker is optional and never starts as part of an Nx app command:
 
@@ -33,6 +40,17 @@ docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
 When using local Docker, update root `.env` so `POSTGRES_URL` and `REDIS_URL`
 point to those containers. Keep container credentials and port mappings only in
 `docker/.env`.
+
+The optional local MinIO does not start with the ordinary Compose command. Its
+server and one-shot idempotent initializer are behind the `storage` profile:
+
+```powershell
+docker compose --profile storage --env-file docker/.env -f docker/docker-compose.yml up -d minio minio-init
+```
+
+Copy the corresponding local endpoint, bucket, and application credentials to
+root `.env`; never copy `MINIO_ROOT_*` into application settings. Remote MinIO
+is provisioned by operations and does not use this initializer.
 
 ## Debug runtime logs
 
@@ -185,6 +203,20 @@ pnpm nx run @hermes-swarm/api:coverage --skipNxCache
 pnpm nx run @hermes-swarm/web:coverage --skipNxCache
 pnpm nx run @hermes-swarm/api:openapi:generate
 ```
+
+File lifecycle operations are explicit Nx targets:
+
+```powershell
+# Deletes expired temporary objects in bounded batches.
+pnpm nx run @hermes-swarm/api:files:gc
+
+# One-time, repeatable migration of legacy uploads/avatars references.
+pnpm nx run @hermes-swarm/api:files:migrate-local
+```
+
+`files:migrate-local` reports missing source files and keeps legacy opaque URLs
+readable. New writes never return to local disk. Run real upload/download/delete
+smoke tests only after the configured remote test bucket is available.
 
 ## Browser validation
 

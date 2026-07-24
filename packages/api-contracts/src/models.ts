@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const IsoDateTimeSchema = z.iso.datetime({ offset: true });
 export const IdentifierSchema = z.string().trim().min(1);
+export const UuidSchema = z.uuid();
 // Kept non-recursive so the OpenAPI 3.0 generator can materialize the schema.
 // Nested array/object values remain JSON-serializable at the HTTP boundary.
 export const JsonValueSchema = z.union([
@@ -244,7 +245,7 @@ export const PlatformTicketSchema = TicketSchema.extend({
 export type PlatformTicket = z.infer<typeof PlatformTicketSchema>;
 
 export const TicketMessageAttachmentSchema = z.strictObject({
-  mimeType: z.string().optional(), name: z.string(), size: z.number().nonnegative().optional(),
+  fileId: UuidSchema.nullable().optional(), mimeType: z.string().optional(), name: z.string(), size: z.number().nonnegative().optional(),
   type: z.literal("image"), url: z.string(),
 });
 export type TicketMessageAttachment = z.infer<typeof TicketMessageAttachmentSchema>;
@@ -281,10 +282,33 @@ export type EmailLogDto = z.infer<typeof EmailLogSchema>;
 
 export const FileUploadResponseSchema = z.strictObject({
   destinations: z.array(z.strictObject({ kind: z.string(), status: z.enum(["failed", "success"]), url: z.string().optional() })),
-  mimeType: z.string().optional(), name: z.string().optional(), originalName: z.string().optional(),
+  fileId: UuidSchema.optional(), mimeType: z.string().optional(), name: z.string().optional(), originalName: z.string().optional(),
   size: z.number().nonnegative().optional(), status: z.enum(["failed", "partial_success", "success"]), url: z.string().optional(),
 });
 export type FileUploadResponse = z.infer<typeof FileUploadResponseSchema>;
+
+export const FileObjectScopeSchema = z.enum(["account", "platform", "workspace"]);
+export const FileObjectStatusSchema = z.enum(["deleted", "failed", "pending", "ready"]);
+export const FileObjectRetentionSchema = z.enum(["persistent", "temporary"]);
+export const FileObjectPurposeSchema = z.enum([
+  "artifact", "avatar", "dashboard_asset", "document", "generic", "ticket_attachment",
+]);
+export const FileObjectSchema = z.strictObject({
+  byteSize: z.number().int().nonnegative(), createdAt: IsoDateTimeSchema,
+  createdByAccountId: UuidSchema.nullable(), deletedAt: IsoDateTimeSchema.nullable(),
+  expiresAt: IsoDateTimeSchema.nullable(), id: UuidSchema, mimeType: z.string(),
+  originalName: z.string(), purpose: FileObjectPurposeSchema, retention: FileObjectRetentionSchema,
+  scope: FileObjectScopeSchema, sha256: z.string().length(64).nullable(), status: FileObjectStatusSchema,
+  updatedAt: IsoDateTimeSchema, workspaceId: UuidSchema.nullable(),
+});
+export type FileObjectDto = z.infer<typeof FileObjectSchema>;
+export const FileUploadIntentSchema = z.strictObject({
+  file: FileObjectSchema,
+  requiredHeaders: z.record(z.string(), z.string()),
+  uploadUrl: z.url(),
+  uploadUrlExpiresAt: IsoDateTimeSchema,
+});
+export type FileUploadIntent = z.infer<typeof FileUploadIntentSchema>;
 
 export const ApiErrorSchema = z.object({
   code: z.string().optional(), message: z.union([z.string(), z.array(z.string())]), statusCode: z.number().int().optional(),

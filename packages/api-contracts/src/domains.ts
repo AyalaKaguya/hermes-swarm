@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  IdentifierSchema, InviteSchema, IsoDateTimeSchema, JsonValueSchema, RoleSchema, UserReferenceSchema,
+  FileObjectPurposeSchema, FileObjectScopeSchema, IdentifierSchema, InviteSchema, IsoDateTimeSchema, JsonValueSchema, RoleSchema, UserReferenceSchema, UuidSchema,
   SystemSettingSchema, UserSchema, WorkspaceApplicationSchema, WorkspaceSchema,
 } from "./models.js";
 
@@ -161,9 +161,7 @@ export const UserNotificationRequestSchema = z.strictObject({
   title: z.string().min(1),
 });
 
-export const TicketAttachmentRequestSchema = z.strictObject({
-  mimeType: z.string().optional(), name: z.string(), size: z.number().nonnegative().optional(), type: z.literal("image"), url: z.string(),
-});
+export const TicketAttachmentRequestSchema = z.strictObject({ fileId: UuidSchema });
 export const CreateTicketRequestSchema = z.strictObject({
   attachments: z.array(TicketAttachmentRequestSchema).nullable().optional(), body: z.string().min(1), subject: z.string().min(1),
 });
@@ -201,7 +199,7 @@ export const ValidateInviteRequestSchema = z.strictObject({ email: z.email().nul
 
 export const UpdateUserRequestSchema = z.strictObject({
   displayName: z.string().optional(), email: z.email().optional(), firstName: z.string().nullable().optional(),
-  imageUrl: z.string().nullable().optional(), lastName: z.string().nullable().optional(), mobile: z.string().nullable().optional(),
+  imageFileId: UuidSchema.nullable().optional(), lastName: z.string().nullable().optional(), mobile: z.string().nullable().optional(),
   username: z.string().nullable().optional(),
 });
 export type UpdateSelfProfilePayload = z.input<typeof UpdateUserRequestSchema>;
@@ -209,6 +207,19 @@ export const UpdateRuntimePreferencesRequestSchema = z.strictObject({
   preferredLanguage: z.string().nullable().optional(), timeZone: z.string().nullable().optional(),
 });
 export type UpdateRuntimePreferencesPayload = z.input<typeof UpdateRuntimePreferencesRequestSchema>;
+
+export const CreateFileObjectRequestSchema = z.strictObject({
+  byteSize: z.number().int().positive(),
+  mimeType: z.string().trim().min(1).max(160),
+  originalName: z.string().trim().min(1).max(240),
+  purpose: FileObjectPurposeSchema,
+  scope: FileObjectScopeSchema.optional(),
+});
+export type CreateFileObjectPayload = z.input<typeof CreateFileObjectRequestSchema>;
+export const CompleteFileObjectRequestSchema = z.strictObject({
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+});
+export type CompleteFileObjectPayload = z.input<typeof CompleteFileObjectRequestSchema>;
 
 export const SearchUsersQuerySchema = z.strictObject({ search: z.string().optional() });
 export type SearchUsersQuery = z.input<typeof SearchUsersQuerySchema>;

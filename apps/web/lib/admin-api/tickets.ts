@@ -51,7 +51,7 @@ export function sendPlatformTicketMessage(
   payload: { attachments?: TicketMessageAttachment[] | null; body: string },
 ) {
   return fetchAdmin<TicketMessage>(`/platform/tickets/${ticketId}/messages`, {
-    body: payload,
+    body: { ...payload, attachments: toFileReferences(payload.attachments) },
     method: "POST",
   });
 }
@@ -84,7 +84,7 @@ export function createTicket(
 ) {
   return fetchAdmin<Ticket & { firstMessage: TicketMessage }>(
     "/tickets",
-    { body: payload, method: "POST" },
+    { body: { ...payload, attachments: toFileReferences(payload.attachments) }, method: "POST" },
   );
 }
 
@@ -102,7 +102,7 @@ export function sendTicketMessage(
   payload: { attachments?: TicketMessageAttachment[] | null; body: string },
 ) {
   return fetchAdmin<TicketMessage>(`/tickets/${ticketId}/messages`, {
-    body: payload,
+    body: { ...payload, attachments: toFileReferences(payload.attachments) },
     method: "POST",
   });
 }
@@ -116,5 +116,17 @@ export function closeTicket(session: AuthenticatedAdminSessionMarker, ticketId: 
 export function markTicketRead(session: AuthenticatedAdminSessionMarker, ticketId: string) {
   return fetchAdmin<{ ok: boolean }>(`/tickets/${ticketId}/read`, {
     method: "PATCH",
+  });
+}
+
+function toFileReferences(
+  attachments: TicketMessageAttachment[] | null | undefined,
+) {
+  if (attachments === undefined || attachments === null) return attachments;
+  return attachments.map((attachment) => {
+    if (!attachment.fileId) {
+      throw new Error("附件尚未完成对象存储上传");
+    }
+    return { fileId: attachment.fileId };
   });
 }

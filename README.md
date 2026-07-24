@@ -1,6 +1,6 @@
 # Hermes Swarm
 
-A distributed computing swarm built with **pnpm + NX Monorepo**, **NestJS**, **TypeORM**, **PostgreSQL**, and **Redis**.
+A distributed computing swarm built with **pnpm + NX Monorepo**, **NestJS**, **TypeORM**, **PostgreSQL**, **Redis**, and optional S3-compatible object storage.
 
 ## Architecture
 
@@ -13,8 +13,8 @@ hermes-swarm/
 │   ├── core/                 # Shared persistence models and settings definitions
 │   ├── rbac-api/             # Client-safe permission contracts
 │   └── rbac/                 # NestJS access-control runtime
-├── docker/                   # Optional local PostgreSQL + Redis
-│   ├── docker-compose.yml    # PostgreSQL 17 + Redis 7
+├── docker/                   # Optional local PostgreSQL, Redis, and MinIO profile
+│   ├── docker-compose.yml    # PostgreSQL 17 + Redis 7; MinIO is opt-in
 │   └── init/                 # Infrastructure initialization assets
 ├── docs/architecture/        # Architecture boundaries and review records
 ├── tsconfig.base.json        # Shared TypeScript configuration
@@ -44,7 +44,8 @@ Copy-Item .env.example .env
 
 Set `POSTGRES_URL` and `REDIS_URL` in `.env` to the managed or remote services
 for your environment. The API uses one PostgreSQL URL and one Redis URL; it
-does not start Docker services automatically.
+does not start Docker services automatically. Object storage remains disabled
+until `OBJECT_STORAGE_ENABLED=true` and a private bucket is configured.
 
 ### 3. Start the app servers
 
@@ -60,7 +61,7 @@ The API runs on `http://localhost:3200/api` (configurable via `API_PORT`).
 
 ```bash
 curl http://localhost:3200/api/health
-# { "status": "ok", "db": "connected", "redis": "connected" }
+# { "status": "ok", "db": "connected", "redis": "connected", "storage": "disabled" }
 ```
 
 ### Optional: local Docker infrastructure
@@ -76,6 +77,17 @@ docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
 Then point root `.env` at the local containers using `POSTGRES_URL` and
 `REDIS_URL`. Docker credentials and ports stay in `docker/.env`; application
 URLs and secrets stay in root `.env`.
+
+MinIO is a separate `storage` profile and is never started by the command
+above. To opt in explicitly, use:
+
+```powershell
+docker compose --profile storage --env-file docker/.env -f docker/docker-compose.yml up -d minio minio-init
+```
+
+Remote deployments must provision a private bucket and bucket-scoped
+application credentials before enabling object storage. Hermes never uses
+MinIO root credentials to create a remote bucket.
 
 ## Commands
 
@@ -97,6 +109,8 @@ pnpm nx run @hermes-swarm/web:dev
 For local ports, server logs, browser checks, and screenshots, see
 [docs/dev-runtime-playbook.md](docs/dev-runtime-playbook.md). Architecture
 review records are kept under [docs/architecture](docs/architecture).
+The object lifecycle and security boundary are documented in
+[docs/architecture/object-storage-and-file-objects.md](docs/architecture/object-storage-and-file-objects.md).
 
 ## Optional Local Development Services
 
@@ -104,6 +118,7 @@ review records are kept under [docs/architecture](docs/architecture).
 |---------|-------|------|
 | PostgreSQL 17 | `postgres:17-alpine` | 5432 |
 | Redis 7 | `redis:7-alpine` | 6379 |
+| MinIO (optional `storage` profile) | pinned `quay.io/minio/minio` release | 9000 / 9001 |
 
 Docker infrastructure is configured through `docker/.env`; the application is
 configured through root `.env` (see their respective `.env.example` files).

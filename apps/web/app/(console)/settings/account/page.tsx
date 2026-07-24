@@ -219,17 +219,12 @@ export default function AccountPage() {
     setError(null);
     try {
       const token = await requireAuthenticatedAdminSessionMarker();
-      const uploaded = await uploadAdminFile(token, file);
-      const imageUrl =
-        uploaded.url ??
-        uploaded.destinations.find(
-          (item) => item.status === "success" && item.url,
-        )?.url;
-      if (!imageUrl) {
-        throw new Error(tr("上传成功但未返回图片地址"));
+      const uploaded = await uploadAdminFile(token, file, "avatar");
+      if (!uploaded.fileId) {
+        throw new Error(tr("上传成功但未返回文件标识"));
       }
       const updated = await updateUser(token, {
-        imageUrl,
+        imageFileId: uploaded.fileId,
       });
       setUser(updated);
       notifications.success(tr("头像已上传"));

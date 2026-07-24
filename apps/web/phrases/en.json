@@ -51,6 +51,7 @@
   "上传中...": "Uploading...",
   "上传头像": "Upload avatar",
   "上传成功但未返回图片地址": "Upload succeeded but did not return an image URL",
+  "上传成功但未返回文件标识": "Upload succeeded but did not return a file ID",
   "上传失败": "Upload failed",
   "下一步": "Next",
   "业务": "Business",

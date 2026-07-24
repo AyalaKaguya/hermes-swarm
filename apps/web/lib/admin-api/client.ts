@@ -291,8 +291,12 @@ function maskSecretSettingPayload(value: unknown): unknown {
   return item;
 }
 
-export async function uploadAdminFile(session: AuthenticatedAdminSessionMarker, file: File) {
-  return uploadFile(session, "/files/upload", "files.upload", file);
+export async function uploadAdminFile(
+  session: AuthenticatedAdminSessionMarker,
+  file: File,
+  purpose: "avatar" | "ticket_attachment",
+) {
+  return uploadFile(session, "/files/upload", "files.upload", file, purpose);
 }
 
 export async function uploadPlatformFile(
@@ -307,9 +311,11 @@ async function uploadFile(
   path: string,
   contractId: string,
   file: File,
+  purpose?: "avatar" | "ticket_attachment",
 ) {
   const body = new FormData();
   body.append("file", file);
+  if (purpose) body.append("purpose", purpose);
 
   const response = await sendAdminRequest(path, {
     body,

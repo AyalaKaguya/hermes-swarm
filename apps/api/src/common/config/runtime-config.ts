@@ -48,6 +48,39 @@ export const redisRuntimeConfig = registerAs("redis", () => {
   };
 });
 
+export const storageRuntimeConfig = registerAs("storage", () => {
+  const enabled = parseBoolean(process.env.OBJECT_STORAGE_ENABLED, false);
+  return {
+    accessKeyId: process.env.OBJECT_STORAGE_ACCESS_KEY_ID?.trim() ?? "",
+    bucket: process.env.OBJECT_STORAGE_BUCKET?.trim() ?? "",
+    downloadUrlTtlSeconds: parseInteger(
+      process.env.OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS,
+      300,
+    ),
+    enabled,
+    endpoint: process.env.OBJECT_STORAGE_ENDPOINT?.trim() ?? "",
+    forcePathStyle: parseBoolean(
+      process.env.OBJECT_STORAGE_FORCE_PATH_STYLE,
+      true,
+    ),
+    maxUploadBytes: parseInteger(
+      process.env.OBJECT_STORAGE_MAX_UPLOAD_BYTES,
+      100 * 1024 * 1024,
+    ),
+    pendingTtlSeconds: parseInteger(
+      process.env.OBJECT_STORAGE_PENDING_TTL_SECONDS,
+      24 * 60 * 60,
+    ),
+    region: process.env.OBJECT_STORAGE_REGION?.trim() || "us-east-1",
+    secretAccessKey:
+      process.env.OBJECT_STORAGE_SECRET_ACCESS_KEY?.trim() ?? "",
+    uploadUrlTtlSeconds: parseInteger(
+      process.env.OBJECT_STORAGE_UPLOAD_URL_TTL_SECONDS,
+      900,
+    ),
+  };
+});
+
 export const authRuntimeConfig = registerAs("auth", () => ({
   accessTokenTtlSeconds: parseInteger(
     process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS,
@@ -113,6 +146,7 @@ export function validateRuntimeConfig(
   if (environment !== "test" && !config.POSTGRES_URL) {
     throw new Error("POSTGRES_URL is required unless NODE_ENV=test");
   }
+  validateStorageConfiguration(config, environment);
   const redisUrl = readOptionalText(config.REDIS_URL);
   if (redisUrl) {
     validateUrl("REDIS_URL", redisUrl, ["redis:", "rediss:"]);
@@ -170,6 +204,93 @@ export function validateRuntimeConfig(
     validateProductionSecrets(config);
   }
   return config;
+}
+
+function validateStorageConfiguration(
+  config: Record<string, unknown>,
+  environment: string,
+) {
+  validateBoolean("OBJECT_STORAGE_ENABLED", config.OBJECT_STORAGE_ENABLED);
+  validateBoolean(
+    "OBJECT_STORAGE_FORCE_PATH_STYLE",
+    config.OBJECT_STORAGE_FORCE_PATH_STYLE,
+  );
+  validateIntegerRange(
+    "OBJECT_STORAGE_MAX_UPLOAD_BYTES",
+    config.OBJECT_STORAGE_MAX_UPLOAD_BYTES,
+    100 * 1024 * 1024,
+    1,
+    2_147_483_647,
+  );
+  validateIntegerRange(
+    "OBJECT_STORAGE_UPLOAD_URL_TTL_SECONDS",
+    config.OBJECT_STORAGE_UPLOAD_URL_TTL_SECONDS,
+    900,
+    1,
+    7 * 24 * 60 * 60,
+  );
+  validateIntegerRange(
+    "OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS",
+    config.OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS,
+    300,
+    1,
+    7 * 24 * 60 * 60,
+  );
+  validateIntegerRange(
+    "OBJECT_STORAGE_PENDING_TTL_SECONDS",
+    config.OBJECT_STORAGE_PENDING_TTL_SECONDS,
+    24 * 60 * 60,
+    60,
+    31 * 24 * 60 * 60,
+  );
+
+  const enabled = parseBoolean(
+    config.OBJECT_STORAGE_ENABLED === undefined
+      ? undefined
+      : String(config.OBJECT_STORAGE_ENABLED),
+    false,
+  );
+  if (!enabled) return;
+
+  for (const name of [
+    "OBJECT_STORAGE_ENDPOINT",
+    "OBJECT_STORAGE_BUCKET",
+    "OBJECT_STORAGE_ACCESS_KEY_ID",
+    "OBJECT_STORAGE_SECRET_ACCESS_KEY",
+  ] as const) {
+    requireConfiguredText(name, config[name]);
+  }
+  validateText(
+    "OBJECT_STORAGE_REGION",
+    config.OBJECT_STORAGE_REGION,
+    "us-east-1",
+  );
+  validateStorageBucket(String(config.OBJECT_STORAGE_BUCKET));
+  validateUrl("OBJECT_STORAGE_ENDPOINT", config.OBJECT_STORAGE_ENDPOINT, [
+    "http:",
+    "https:",
+  ]);
+  if (
+    environment === "production" &&
+    new URL(String(config.OBJECT_STORAGE_ENDPOINT)).protocol !== "https:"
+  ) {
+    throw new Error("OBJECT_STORAGE_ENDPOINT must use https:// in production");
+  }
+}
+
+function validateStorageBucket(value: string) {
+  const bucket = value.trim();
+  if (
+    bucket.length < 3 ||
+    bucket.length > 63 ||
+    !/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/.test(bucket) ||
+    bucket.includes("..") ||
+    bucket.includes(".-") ||
+    bucket.includes("-.") ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(bucket)
+  ) {
+    throw new Error("OBJECT_STORAGE_BUCKET must be a valid S3 bucket name");
+  }
 }
 
 export function parseBoolean(
@@ -248,12 +369,36 @@ function validatePositiveInteger(
   }
 }
 
+function validateIntegerRange(
+  name: string,
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+) {
+  const parsed = parseInteger(
+    value === undefined || value === null || value === ""
+      ? undefined
+      : String(value),
+    fallback,
+  );
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+}
+
 function validateText(name: string, value: unknown, fallback: string) {
   const text =
     value === undefined || value === null || value === ""
       ? fallback
       : String(value);
   if (!text.trim()) throw new Error(`${name} cannot be empty`);
+}
+
+function requireConfiguredText(name: string, value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${name} is required when OBJECT_STORAGE_ENABLED=true`);
+  }
 }
 
 function validateUrl(

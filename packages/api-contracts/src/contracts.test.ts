@@ -14,11 +14,14 @@ import {
 } from "./contracts.js";
 import {
   AuditLogQuerySchema,
+  CreateFileObjectRequestSchema,
+  CreateTicketRequestSchema,
   OnboardingRequestSchema,
   PlatformMemberInvitationSchema,
   PublicBootstrapSchema,
   ResumeOnboardingRequestSchema,
   SaveSettingsRequestSchema,
+  UpdateUserRequestSchema,
 } from "./domains.js";
 import { IsoDateTimeSchema } from "./models.js";
 
@@ -104,6 +107,41 @@ describe("admin API contracts", () => {
   it("requires timezone-aware ISO timestamps", () => {
     assert.equal(IsoDateTimeSchema.safeParse("2026-07-21T10:00:00.000Z").success, true);
     assert.equal(IsoDateTimeSchema.safeParse("2026-07-21 10:00:00").success, false);
+  });
+
+  it("accepts only server-owned file references in avatar and ticket writes", () => {
+    const fileId = "11111111-1111-4111-8111-111111111111";
+    assert.equal(
+      CreateTicketRequestSchema.safeParse({
+        attachments: [{ fileId }],
+        body: "Please review the attachment",
+        subject: "Attachment",
+      }).success,
+      true,
+    );
+    assert.equal(
+      CreateTicketRequestSchema.safeParse({
+        attachments: [{ name: "remote.png", type: "image", url: "https://example.com/file" }],
+        body: "Please review the attachment",
+        subject: "Attachment",
+      }).success,
+      false,
+    );
+    assert.equal(UpdateUserRequestSchema.safeParse({ imageFileId: fileId }).success, true);
+    assert.equal(
+      UpdateUserRequestSchema.safeParse({ imageUrl: "https://example.com/avatar.png" }).success,
+      false,
+    );
+    assert.equal(
+      CreateFileObjectRequestSchema.safeParse({
+        byteSize: 5,
+        mimeType: "text/plain",
+        originalName: "note.txt",
+        purpose: "document",
+        workspaceId: fileId,
+      }).success,
+      false,
+    );
   });
 
   it("requires exact API status codes while allowing browser 2xx normalization", () => {

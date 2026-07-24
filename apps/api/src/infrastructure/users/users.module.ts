@@ -10,11 +10,13 @@ import { AuthModule } from "../auth/auth.module.js";
 import { AccountController, UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
 import { DatabaseModule } from "../../common/database/database.module.js";
+import { FilesModule } from "../files/files.module.js";
 
 @Module({
   imports: [
     AuthModule,
     DatabaseModule,
+    FilesModule,
     TypeOrmModule.forFeature([IntegrationToken, Account, Role, WorkspaceMembership]),
   ],
   controllers: [AccountController, UsersController],

@@ -543,8 +543,9 @@ async function uploadTicketImage(
   tr: (value: string) => string,
 ): Promise<TicketMessageAttachment> {
   const result = await uploadPlatformFile(session, file);
-  if (!result.url) throw new Error(tr("图片上传失败"));
+  if (!result.url || !result.fileId) throw new Error(tr("图片上传失败"));
   return {
+    fileId: result.fileId,
     mimeType: result.mimeType,
     name: result.originalName ?? result.name ?? file.name,
     size: result.size,

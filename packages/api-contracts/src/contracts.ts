@@ -7,7 +7,7 @@ import {
 } from "./auth.js";
 import {
   AcceptInviteRequestSchema, AuditLogPageSchema, AuditLogQuerySchema, CreatedIntegrationTokenSchema,
-  CreateTicketRequestSchema, EmailTemplateRequestSchema, IntegrationTokenCapabilitiesSchema,
+  CompleteFileObjectRequestSchema, CreateFileObjectRequestSchema, CreateTicketRequestSchema, EmailTemplateRequestSchema, IntegrationTokenCapabilitiesSchema,
   IntegrationTokenSchema, InviteRequestSchema, LoginAuditLogItemSchema, OnboardingRequestSchema,
   OperationAuditLogItemSchema, PlatformMemberInvitationSchema, PlatformMemberRequestSchema, RealtimeTicketResponseSchema,
   PublicBootstrapSchema, ResumeOnboardingRequestSchema,
@@ -19,7 +19,7 @@ import {
 } from "./domains.js";
 import {
   AllowedSchema, EffectiveWorkspaceSettingSchema, EmailLogSchema, EmailTemplateSchema, FileUploadResponseSchema,
-  IdentifierSchema, InviteSchema, OkSchema, PermissionCatalogSchema, PlatformMemberSchema,
+  FileObjectSchema, FileUploadIntentSchema, IdentifierSchema, InviteSchema, OkSchema, PermissionCatalogSchema, PlatformMemberSchema, UuidSchema,
   PlatformTicketSchema, RolePermissionSchema, RoleSchema, SmtpConfigSchema, SuccessSchema, SystemSettingSchema,
   TicketMessageSchema, TicketSchema, TicketStatusSchema, UserNotificationSchema,
   UserNotificationStatusSchema, UserSchema, WorkspaceApplicationSchema, WorkspaceMemberSchema,
@@ -193,7 +193,12 @@ export const adminContracts = {
 
   fileUpload: defineContract({ id: "files.upload", method: "POST", path: "/files/upload", multipart: true, responses: { 201: FileUploadResponseSchema } }),
   platformFileUpload: defineContract({ id: "platform.files.upload", method: "POST", path: "/files/platform/upload", multipart: true, responses: { 201: FileUploadResponseSchema } }),
-  fileDownload: defineContract({ id: "files.download", method: "GET", path: "/files/:filename", params: idParams("filename"), binary: true, responses: { 200: null } }),
+  fileObjectCreate: defineContract({ id: "files.objects.create", method: "POST", path: "/files/objects", body: CreateFileObjectRequestSchema, responses: { 201: FileUploadIntentSchema } }),
+  fileObjectComplete: defineContract({ id: "files.objects.complete", method: "POST", path: "/files/objects/:fileId/complete", params: z.strictObject({ fileId: UuidSchema }), body: CompleteFileObjectRequestSchema, responses: { 201: FileObjectSchema } }),
+  fileObjectGet: defineContract({ id: "files.objects.get", method: "GET", path: "/files/objects/:fileId", params: z.strictObject({ fileId: UuidSchema }), responses: { 200: FileObjectSchema } }),
+  fileObjectContent: defineContract({ id: "files.objects.content", method: "GET", path: "/files/objects/:fileId/content", params: z.strictObject({ fileId: UuidSchema }), binary: true, responses: { 302: null } }),
+  fileObjectDelete: defineContract({ id: "files.objects.delete", method: "DELETE", path: "/files/objects/:fileId", params: z.strictObject({ fileId: UuidSchema }), responses: noContent }),
+  fileDownload: defineContract({ id: "files.download", method: "GET", path: "/files/:filename", params: z.strictObject({ filename: z.string().min(1).max(260) }), binary: true, responses: { 200: null } }),
 } as const;
 
 export const adminContractList = Object.freeze(Object.values(adminContracts));

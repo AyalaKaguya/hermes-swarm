@@ -6,6 +6,7 @@ import type { Conversation } from "./conversation.entity.js";
 export type ConversationMessageKind = "message" | "system";
 
 export type ConversationMessageAttachment = {
+  fileId?: string | null;
   mimeType?: string;
   name: string;
   size?: number;
@@ -14,6 +15,9 @@ export type ConversationMessageAttachment = {
 };
 
 @Entity({ name: "conversation_messages" })
+@Index("UQ_conversation_messages_workspace_id_id", ["workspaceId", "id"], {
+  unique: true,
+})
 @Index(["workspaceId", "conversationId", "createdAt"])
 export class ConversationMessage extends WorkspaceOwnedBaseEntity {
   @Column({ name: "conversation_id", type: "uuid" })
