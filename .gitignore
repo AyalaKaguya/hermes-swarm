@@ -17,3 +17,6 @@ docker/data/
 .claude/settings.local.json
 
 *.tsbuildinfo
+
+# Local research notes that are intentionally not published
+/.local/reference-research/

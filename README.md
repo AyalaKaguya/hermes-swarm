@@ -94,6 +94,10 @@ pnpm nx run @hermes-swarm/api:dev
 pnpm nx run @hermes-swarm/web:dev
 ```
 
+For local ports, server logs, browser checks, and screenshots, see
+[docs/dev-runtime-playbook.md](docs/dev-runtime-playbook.md). Architecture
+review records are kept under [docs/architecture](docs/architecture).
+
 ## Optional Local Development Services
 
 | Service | Image | Port |
@@ -104,6 +108,16 @@ pnpm nx run @hermes-swarm/web:dev
 Docker infrastructure is configured through `docker/.env`; the application is
 configured through root `.env` (see their respective `.env.example` files).
 
+## Related Project
+
+[Xpert](https://github.com/xpert-ai/xpert) is an open-source AI platform
+distributed under the GNU Affero General Public License v3.0. Its public
+product behavior and documentation have been consulted during Hermes Swarm
+research. The Xpert repository is not bundled with Hermes Swarm; its source
+code, copyright, trademarks, and licensing remain governed by the official
+Xpert project.
+
 ## License
 
-MIT
+Hermes Swarm is licensed under the
+[GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
