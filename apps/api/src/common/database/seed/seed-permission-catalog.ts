@@ -11,6 +11,8 @@ import {
 import { PAGE_ACCESS_DEFINITIONS } from "@hermes-swarm/rbac-api";
 import { In, type EntityManager } from "typeorm";
 import { FilesController } from "../../../infrastructure/files/files.controller.js";
+import { AnalysisViewController } from "../../../domains/analytics/analysis-view.controller.js";
+import { AnalyticsController } from "../../../domains/analytics/analytics.controller.js";
 import {
   PlatformModelProviderCatalogController,
   WorkspaceModelProviderCatalogController,
@@ -38,6 +40,8 @@ import { UsersController } from "../../../infrastructure/users/users.controller.
 
 const ACCESS_CONTROLLERS = [
   FilesController,
+  AnalyticsController,
+  AnalysisViewController,
   PlatformModelProviderCatalogController,
   WorkspaceModelProviderCatalogController,
   PlatformToolCatalogController,

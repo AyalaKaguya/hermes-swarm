@@ -53,6 +53,39 @@ describe("AnalyticsQueryGateway", () => {
     );
   });
 
+  it("validates saved-view queries against the live schema without executing them", async () => {
+    const base = new DeterministicFakeAnalyticsAdapter();
+    let executeCalls = 0;
+    const adapter: AnalyticsSourceAdapter = {
+      kind: "validation-only",
+      describe: (...args) => base.describe(...args),
+      async execute(...args) {
+        executeCalls += 1;
+        return base.execute(...args);
+      },
+    };
+    const state = createState({ adapter });
+    const validated = await state.validate("workspace-a", {
+      ...BASE_QUERY,
+      groupBy: ["status"],
+      measures: [{ aggregation: "count", as: "ticketCount" }],
+      select: ["status"],
+    });
+
+    assert.deepEqual(
+      validated.resultSchema.map((field) => field.key),
+      ["status", "ticketCount"],
+    );
+    assert.equal(executeCalls, 0);
+    await rejectsWithCode(
+      state.validate("workspace-a", {
+        ...BASE_QUERY,
+        sourceRevision: "stale-revision",
+      }),
+      "ANALYTICS_SOURCE_REVISION_MISMATCH",
+    );
+  });
+
   it("isolates deterministic results by trusted WorkspaceContext", async () => {
     const state = createState();
     const workspaceA = await state.execute("workspace-a", BASE_QUERY);
@@ -350,6 +383,16 @@ function createState(options: {
       return workspaceContext.run(
         { scopeLevel: "workspace", workspaceId },
         () => gateway.execute(query, authorization),
+      );
+    },
+    validate(
+      workspaceId: string,
+      query: unknown,
+      authorization: AnalyticsAuthorizationContext = AUTHORIZATION,
+    ) {
+      return workspaceContext.run(
+        { scopeLevel: "workspace", workspaceId },
+        () => gateway.validate(query, authorization),
       );
     },
   };

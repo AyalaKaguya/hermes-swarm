@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { AnalyticsVisualization } from "@/components/analytics/analytics-visualization";
 import { useI18n } from "@/components/i18n-provider";
 import { InlineNotice } from "@/components/inline-notice";
 import { Badge } from "@/components/ui/badge";
@@ -32,27 +33,25 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useTextTranslation } from "@/hooks/use-text-translation";
 import {
+  createAnalysisView,
+  deleteAnalysisView,
   getSupportTicketsAnalyticsSchema,
+  listAnalysisViews,
   runAnalyticsQuery,
+  updateAnalysisView,
   type AnalysisFilter,
   type AnalysisFilterOperator,
   type AnalysisMeasure,
   type AnalysisQuery,
   type AnalysisSort,
+  type AnalysisView,
   type DatasetFieldDescriptor,
   type DatasetResult,
   type DatasetResultField,
   type DatasetSchema,
+  type VisualizationSpec,
 } from "@/lib/admin-api/analytics";
 import { requireAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 import {
@@ -60,7 +59,10 @@ import {
   formatRuntimeDateTime,
   runtimeFormattingLocale,
 } from "@/lib/runtime-format";
-import { ANALYTICS_QUERY_VERSION } from "@hermes-swarm/api-contracts/analytics";
+import {
+  ANALYTICS_QUERY_VERSION,
+  ANALYTICS_VISUALIZATION_VERSION,
+} from "@hermes-swarm/api-contracts/analytics";
 
 type FilterDraft = {
   field: string;
@@ -104,6 +106,16 @@ export function AnalyticsExplorer() {
   const [draft, setDraft] = useState<QueryDraft | null>(null);
   const [result, setResult] = useState<DatasetResult | null>(null);
   const [executedQuery, setExecutedQuery] = useState<AnalysisQuery | null>(null);
+  const [visualization, setVisualization] = useState<VisualizationSpec>({
+    schemaVersion: ANALYTICS_VISUALIZATION_VERSION,
+    type: "table",
+  });
+  const [views, setViews] = useState<AnalysisView[]>([]);
+  const [selectedViewId, setSelectedViewId] = useState<string>("new");
+  const [viewName, setViewName] = useState("");
+  const [viewsLoading, setViewsLoading] = useState(true);
+  const [viewSaving, setViewSaving] = useState(false);
+  const [viewError, setViewError] = useState<string | null>(null);
   const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>([
     undefined,
   ]);
@@ -154,6 +166,7 @@ export function AnalyticsExplorer() {
       setSchema(nextSchema);
       setDraft(initialDraft);
       setExecutedQuery(initialQuery);
+      setVisualization(defaultVisualization(initialQuery, null, "table"));
       setCursorHistory([undefined]);
       setPageIndex(0);
       setValidationError(null);
@@ -167,9 +180,25 @@ export function AnalyticsExplorer() {
     }
   }, [runQuery, tr]);
 
+  const loadViews = useCallback(async () => {
+    setViewsLoading(true);
+    setViewError(null);
+    try {
+      const session = await requireAuthenticatedAdminSessionMarker();
+      setViews(await listAnalysisViews(session));
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? tr(error.message) : tr("分析视图加载失败"),
+      );
+    } finally {
+      setViewsLoading(false);
+    }
+  }, [tr]);
+
   useEffect(() => {
     void loadSchema();
-  }, [loadSchema]);
+    void loadViews();
+  }, [loadSchema, loadViews]);
 
   const resolvedMeasures = useMemo(
     () => resolveMeasures(draft?.measures ?? [], schema, tr),
@@ -198,6 +227,9 @@ export function AnalyticsExplorer() {
       const query = buildQuery(schema, draft, tr);
       setValidationError(null);
       setExecutedQuery(query);
+      setVisualization((current) =>
+        defaultVisualization(query, null, current.type)
+      );
       setCursorHistory([undefined]);
       setPageIndex(0);
       await runQuery(query);
@@ -206,6 +238,100 @@ export function AnalyticsExplorer() {
         error instanceof Error ? error.message : tr("查询条件无效"),
       );
     }
+  }
+
+  async function selectSavedView(value: string) {
+    setViewError(null);
+    if (value === "new") {
+      setSelectedViewId("new");
+      setViewName("");
+      return;
+    }
+    const view = views.find((item) => item.id === value);
+    if (!view) return;
+    setSelectedViewId(view.id);
+    setViewName(view.name);
+    setDraft(queryToDraft(view.query, nextId));
+    setExecutedQuery(view.query);
+    setVisualization(view.visualization);
+    setCursorHistory([undefined]);
+    setPageIndex(0);
+    await runQuery(view.query);
+  }
+
+  async function saveCurrentView() {
+    if (!schema || !executedQuery || !result) return;
+    const name = viewName.trim();
+    if (!name) {
+      setViewError(tr("请输入分析视图名称"));
+      return;
+    }
+    setViewSaving(true);
+    setViewError(null);
+    try {
+      const session = await requireAuthenticatedAdminSessionMarker();
+      const resolvedVisualization = defaultVisualization(
+        executedQuery,
+        result,
+        visualization.type,
+      );
+      const selected = views.find((item) => item.id === selectedViewId);
+      const saved = selected
+        ? await updateAnalysisView(session, selected.id, {
+            datasetId: schema.sourceKey,
+            expectedRevision: selected.revision,
+            name,
+            query: executedQuery,
+            visualization: resolvedVisualization,
+          })
+        : await createAnalysisView(session, {
+            datasetId: schema.sourceKey,
+            name,
+            query: executedQuery,
+            visualization: resolvedVisualization,
+          });
+      setViews((current) => [
+        saved,
+        ...current.filter((item) => item.id !== saved.id),
+      ]);
+      setSelectedViewId(saved.id);
+      setViewName(saved.name);
+      setVisualization(saved.visualization);
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? tr(error.message) : tr("分析视图保存失败"),
+      );
+    } finally {
+      setViewSaving(false);
+    }
+  }
+
+  async function removeSelectedView() {
+    const selected = views.find((item) => item.id === selectedViewId);
+    if (!selected) return;
+    if (!window.confirm(tr("确定删除此分析视图吗？"))) return;
+    setViewSaving(true);
+    setViewError(null);
+    try {
+      const session = await requireAuthenticatedAdminSessionMarker();
+      await deleteAnalysisView(session, selected.id, {
+        expectedRevision: selected.revision,
+      });
+      setViews((current) => current.filter((item) => item.id !== selected.id));
+      setSelectedViewId("new");
+      setViewName("");
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? tr(error.message) : tr("分析视图删除失败"),
+      );
+    } finally {
+      setViewSaving(false);
+    }
+  }
+
+  function selectVisualizationType(type: VisualizationSpec["type"]) {
+    if (!executedQuery) return;
+    setVisualization(defaultVisualization(executedQuery, result, type));
   }
 
   async function goToPage(nextIndex: number, cursor: string | undefined) {
@@ -249,10 +375,76 @@ export function AnalyticsExplorer() {
   }
 
   const fieldMap = new Map(schema.fields.map((field) => [field.key, field]));
+  const visualizationTypes = availableVisualizationTypes(result);
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-4">
       <PageHeading />
+
+      <Card size="sm">
+        <CardContent className="flex flex-wrap items-end gap-2">
+          <div className="grid min-w-52 flex-1 gap-1.5">
+            <Label>{tr("分析视图")}</Label>
+            <Select
+              disabled={viewsLoading || viewSaving}
+              onValueChange={(value) => void selectSavedView(value)}
+              value={selectedViewId}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={tr("选择分析视图")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">{tr("新分析视图")}</SelectItem>
+                {views.map((view) => (
+                  <SelectItem key={view.id} value={view.id}>
+                    {view.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid min-w-52 flex-[1.2] gap-1.5">
+            <Label htmlFor="analysis-view-name">{tr("视图名称")}</Label>
+            <Input
+              disabled={viewSaving}
+              id="analysis-view-name"
+              onChange={(event) => setViewName(event.target.value)}
+              placeholder={tr("例如：工单状态概览")}
+              value={viewName}
+            />
+          </div>
+          <Button
+            disabled={viewSaving || !result}
+            onClick={() => void saveCurrentView()}
+            type="button"
+          >
+            {viewSaving ? <Spinner /> : <AppIcon name="check" />}
+            {selectedViewId === "new" ? tr("保存视图") : tr("更新视图")}
+          </Button>
+          <Button
+            aria-label={tr("删除分析视图")}
+            disabled={viewSaving || selectedViewId === "new"}
+            onClick={() => void removeSelectedView()}
+            title={tr("删除分析视图")}
+            type="button"
+            variant="outline"
+          >
+            <AppIcon name="trash" />
+            {tr("删除")}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {viewError && (
+        <InlineNotice title={tr("分析视图操作失败")} tone="error">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>{viewError}</span>
+            <Button onClick={() => void loadViews()} size="sm" variant="outline">
+              {tr("刷新视图")}
+            </Button>
+          </div>
+        </InlineNotice>
+      )}
 
       {schemaError && (
         <InlineNotice title={tr("数据集刷新失败")} tone="error">
@@ -441,8 +633,27 @@ export function AnalyticsExplorer() {
                     : tr("设置查询条件后开始分析")}
                 </CardDescription>
               </div>
-              {result && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  disabled={!result || queryRunning}
+                  onValueChange={(value) =>
+                    selectVisualizationType(value as VisualizationSpec["type"])
+                  }
+                  value={visualization.type}
+                >
+                  <SelectTrigger className="w-32" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visualizationTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {visualizationTypeLabel(type, tr)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {result && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Badge variant="outline">
                     {tr("第 {page} 页").replace("{page}", String(pageIndex + 1))}
                   </Badge>
@@ -454,8 +665,9 @@ export function AnalyticsExplorer() {
                   </span>
                   <span>·</span>
                   <span>{result.summary.durationMs} ms</span>
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
@@ -500,11 +712,19 @@ export function AnalyticsExplorer() {
               {queryRunning && !result ? (
                 <ResultsLoading />
               ) : result && result.rows.length > 0 ? (
-                <ResultsTable
-                  fieldMap={fieldMap}
+                <AnalyticsVisualization
+                  formatValue={(value, field) => (
+                    <ResultValue
+                      descriptor={fieldMap.get(field.key)}
+                      field={field}
+                      preferences={runtimePreferences}
+                      value={value}
+                    />
+                  )}
                   labels={resultLabels}
-                  preferences={runtimePreferences}
+                  locale={runtimeFormattingLocale(runtimePreferences)}
                   result={result}
+                  spec={visualization}
                 />
               ) : (
                 <EmptyResults hasRun={Boolean(result)} />
@@ -985,57 +1205,6 @@ function SmallEmpty({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ResultsTable({
-  fieldMap,
-  labels,
-  preferences,
-  result,
-}: {
-  fieldMap: ReadonlyMap<string, DatasetFieldDescriptor>;
-  labels: ReadonlyMap<string, string>;
-  preferences: ReturnType<typeof useI18n>["runtimePreferences"];
-  result: DatasetResult;
-}) {
-  const tr = useTextTranslation();
-  return (
-    <div className="h-full overflow-auto">
-      <Table>
-        <TableHeader className="sticky top-0 z-[1] bg-background">
-          <TableRow>
-            {result.schema.map((field) => (
-              <TableHead
-                className={field.scalarType === "number" ? "text-right" : undefined}
-                key={field.key}
-              >
-                {labels.get(field.key) ?? tr(field.label)}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {result.rows.map((row, rowIndex) => (
-            <TableRow key={`${result.lineage.queryDigest}-${rowIndex}`}>
-              {result.schema.map((field) => (
-                <TableCell
-                  className={field.scalarType === "number" ? "text-right tabular-nums" : undefined}
-                  key={field.key}
-                >
-                  <ResultValue
-                    descriptor={fieldMap.get(field.key)}
-                    field={field}
-                    preferences={preferences}
-                    value={row[field.key]}
-                  />
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
 function ResultValue({
   descriptor,
   field,
@@ -1090,6 +1259,137 @@ function defaultDraft(schema: DatasetSchema): QueryDraft {
     ),
     sorts: [{ direction: "desc", field: "ticketCount", id: "sort-1" }],
   };
+}
+
+function queryToDraft(
+  query: AnalysisQuery,
+  nextId: (prefix: string) => string,
+): QueryDraft {
+  return {
+    filters: query.filters.map((filter) => ({
+      field: filter.field,
+      id: nextId("filter"),
+      operator: filter.operator,
+      value: "value" in filter
+        ? Array.isArray(filter.value)
+          ? filter.value.join(", ")
+          : String(filter.value)
+        : "",
+    })),
+    groupBy: [...query.groupBy],
+    measures: query.measures.flatMap((measure) => {
+      if (
+        measure.aggregation !== "count" &&
+        measure.aggregation !== "min" &&
+        measure.aggregation !== "max"
+      ) {
+        return [];
+      }
+      return [{
+        aggregation: measure.aggregation,
+        field: measure.field ?? "",
+        id: nextId("measure"),
+      }];
+    }),
+    pageSize: query.page.size,
+    selectedFields: [...query.select],
+    sorts: query.sort.map((sort) => ({
+      direction: sort.direction,
+      field: sort.field,
+      id: nextId("sort"),
+    })),
+  };
+}
+
+function defaultVisualization(
+  query: AnalysisQuery,
+  result: DatasetResult | null,
+  requestedType: VisualizationSpec["type"],
+): VisualizationSpec {
+  const numericFields = result
+    ? result.schema
+        .filter((field) => field.scalarType === "number")
+        .map((field) => field.key)
+    : query.measures
+        .filter((measure) =>
+          measure.aggregation === "count" ||
+          measure.aggregation === "countDistinct" ||
+          measure.aggregation === "sum" ||
+          measure.aggregation === "avg"
+        )
+        .map((measure) => measure.as);
+  const numeric = new Set(numericFields);
+  const dimensionFields = result
+    ? result.schema
+        .filter((field) => !numeric.has(field.key))
+        .map((field) => field.key)
+    : unique([...query.groupBy, ...query.select]).filter(
+        (field) => !numeric.has(field),
+      );
+  const measure = numericFields[0];
+  const dimension = dimensionFields[0];
+  const schemaVersion = ANALYTICS_VISUALIZATION_VERSION;
+
+  if (requestedType === "kpi" && measure && dimensionFields.length === 0) {
+    return { measure, schemaVersion, type: "kpi" };
+  }
+  if (
+    (requestedType === "bar" ||
+      requestedType === "line" ||
+      requestedType === "area") &&
+    dimension &&
+    numericFields.length > 0
+  ) {
+    return {
+      schemaVersion,
+      series: numericFields.map((field) => ({ field })),
+      type: requestedType,
+      x: dimension,
+    };
+  }
+  if (requestedType === "pie" && dimension && measure) {
+    return {
+      dimension,
+      measure,
+      schemaVersion,
+      showLegend: true,
+      showTotal: true,
+      type: "pie",
+    };
+  }
+  return { schemaVersion, type: "table" };
+}
+
+function availableVisualizationTypes(
+  result: DatasetResult | null,
+): VisualizationSpec["type"][] {
+  if (!result) return ["table"];
+  const numeric = result.schema.filter((field) => field.scalarType === "number");
+  const dimensions = result.schema.filter((field) => field.scalarType !== "number");
+  return [
+    "table",
+    ...(numeric.length > 0 && dimensions.length === 0
+      ? ["kpi" as const]
+      : []),
+    ...(numeric.length > 0 && dimensions.length > 0
+      ? (["bar", "line", "area", "pie"] as const)
+      : []),
+  ];
+}
+
+function visualizationTypeLabel(
+  type: VisualizationSpec["type"],
+  tr: (value: string) => string,
+) {
+  const labels: Record<VisualizationSpec["type"], string> = {
+    area: "面积图",
+    bar: "柱状图",
+    kpi: "指标卡",
+    line: "折线图",
+    pie: "饼图",
+    table: "表格",
+  };
+  return tr(labels[type]);
 }
 
 function buildQuery(

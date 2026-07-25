@@ -1,8 +1,14 @@
 import { z, type ZodType } from "zod";
 import {
+  AnalysisViewListSchema,
+  AnalysisViewParamsSchema,
+  AnalysisViewSchema,
   AnalysisQuerySchema,
+  CreateAnalysisViewRequestSchema,
   DatasetResultSchema,
   DatasetSchema as AnalyticsDatasetSchema,
+  DeleteAnalysisViewRequestSchema,
+  UpdateAnalysisViewRequestSchema,
 } from "./analytics/index.js";
 import {
   BindWorkspaceToolGrantConnectionRequestSchema,
@@ -172,6 +178,11 @@ export const adminContracts = {
   platformTicketRead: defineContract({ id: "platform.tickets.read", method: "PATCH", path: "/platform/tickets/:ticketId/read", params: idParams("ticketId"), responses: { 200: OkSchema } }),
   analyticsSupportTicketsSchema: defineContract({ id: "analytics.supportTickets.schema", method: "GET", path: "/analytics/sources/support.tickets/schema", responses: { 200: AnalyticsDatasetSchema } }),
   analyticsQuery: defineContract({ id: "analytics.query", method: "POST", path: "/analytics/query", body: AnalysisQuerySchema, responses: { 200: DatasetResultSchema } }),
+  analyticsViews: defineContract({ id: "analytics.views.list", method: "GET", path: "/analytics/views", responses: { 200: AnalysisViewListSchema } }),
+  analyticsViewGet: defineContract({ id: "analytics.views.get", method: "GET", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, responses: { 200: AnalysisViewSchema } }),
+  analyticsViewCreate: defineContract({ id: "analytics.views.create", method: "POST", path: "/analytics/views", body: CreateAnalysisViewRequestSchema, responses: { 201: AnalysisViewSchema } }),
+  analyticsViewUpdate: defineContract({ id: "analytics.views.update", method: "PATCH", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: UpdateAnalysisViewRequestSchema, responses: { 200: AnalysisViewSchema } }),
+  analyticsViewDelete: defineContract({ id: "analytics.views.delete", method: "DELETE", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: DeleteAnalysisViewRequestSchema, responses: noContent }),
   platformAiProviders: defineContract({ id: "platform.ai.providers.list", method: "GET", path: "/platform/ai/providers", responses: { 200: z.array(PlatformModelProviderSchema) } }),
   platformAiProviderCreate: defineContract({ id: "platform.ai.providers.create", method: "POST", path: "/platform/ai/providers", body: CreatePlatformModelProviderRequestSchema, responses: { 201: PlatformModelProviderSchema } }),
   platformAiProviderUpdate: defineContract({ id: "platform.ai.providers.update", method: "PATCH", path: "/platform/ai/providers/:providerId", params: z.strictObject({ providerId: UuidSchema }), body: UpdatePlatformModelProviderRequestSchema, responses: { 200: PlatformModelProviderSchema } }),

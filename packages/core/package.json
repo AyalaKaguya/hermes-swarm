@@ -18,6 +18,14 @@
       "types": "./dist/ai/entities/index.d.ts",
       "import": "./dist/ai/entities/index.js"
     },
+    "./analytics": {
+      "types": "./dist/analytics/index.d.ts",
+      "import": "./dist/analytics/index.js"
+    },
+    "./analytics/entities": {
+      "types": "./dist/analytics/entities/index.d.ts",
+      "import": "./dist/analytics/entities/index.js"
+    },
     "./identity": {
       "types": "./dist/identity/index.d.ts",
       "import": "./dist/identity/index.js"

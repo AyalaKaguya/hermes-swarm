@@ -1,5 +1,6 @@
 import {
   AccessAuditLog,
+  AnalysisView,
   Conversation,
   ConversationMessage,
   ConversationMessageFile,
@@ -44,6 +45,7 @@ import {
 
 export const DATABASE_ENTITIES = [
   AccessAuditLog,
+  AnalysisView,
   Conversation,
   ConversationMessage,
   ConversationMessageFile,

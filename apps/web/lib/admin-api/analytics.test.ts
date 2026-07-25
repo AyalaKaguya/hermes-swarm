@@ -4,10 +4,16 @@ import {
   ANALYTICS_DATASET_VERSION,
   ANALYTICS_QUERY_VERSION,
   ANALYTICS_RESULT_VERSION,
+  ANALYTICS_VISUALIZATION_VERSION,
 } from "@hermes-swarm/api-contracts/analytics";
 import {
+  createAnalysisView,
+  deleteAnalysisView,
+  getAnalysisView,
   getSupportTicketsAnalyticsSchema,
+  listAnalysisViews,
   runAnalyticsQuery,
+  updateAnalysisView,
 } from "./analytics";
 
 const originalFetch = globalThis.fetch;
@@ -89,6 +95,66 @@ describe("analytics admin API", () => {
     assert.equal(JSON.stringify(requests).includes("workspaceId"), false);
     assert.equal(JSON.stringify(requests).includes("rawSql"), false);
   });
+
+  it("uses revision-checked saved-view routes without client-selected workspace input", async () => {
+    const requests: Array<{ body: unknown; method: string; url: string }> = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url === "/api/admin/auth/csrf") {
+        return Response.json({ csrfToken: "csrf-token" });
+      }
+      requests.push({
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+        method: init?.method ?? "GET",
+        url,
+      });
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      return Response.json(
+        url.endsWith("/views") && (init?.method ?? "GET") === "GET"
+          ? [analysisView()]
+          : analysisView(),
+        { status: init?.method === "POST" ? 201 : 200 },
+      );
+    };
+
+    const payload = {
+      datasetId: "support.tickets",
+      name: "Tickets by status",
+      query: analysisView().query,
+      visualization: analysisView().visualization,
+    };
+    await listAnalysisViews("web-session");
+    const created = await createAnalysisView("web-session", payload);
+    await getAnalysisView("web-session", created.id);
+    await updateAnalysisView("web-session", created.id, {
+      expectedRevision: created.revision,
+      name: "Ticket status overview",
+    });
+    await deleteAnalysisView("web-session", created.id, {
+      expectedRevision: created.revision,
+    });
+
+    assert.deepEqual(requests, [
+      { body: null, method: "GET", url: "/api/admin/analytics/views" },
+      { body: payload, method: "POST", url: "/api/admin/analytics/views" },
+      {
+        body: null,
+        method: "GET",
+        url: `/api/admin/analytics/views/${created.id}`,
+      },
+      {
+        body: { expectedRevision: 1, name: "Ticket status overview" },
+        method: "PATCH",
+        url: `/api/admin/analytics/views/${created.id}`,
+      },
+      {
+        body: { expectedRevision: 1 },
+        method: "DELETE",
+        url: `/api/admin/analytics/views/${created.id}`,
+      },
+    ]);
+    assert.equal(JSON.stringify(requests).includes("workspaceId"), false);
+  });
 });
 
 function schema() {
@@ -148,5 +214,34 @@ function result() {
     ],
     schemaVersion: ANALYTICS_RESULT_VERSION,
     summary: { durationMs: 7, returnedRows: 1, truncated: false },
+  };
+}
+
+function analysisView() {
+  return {
+    createdAt: "2026-07-25T00:00:00.000Z",
+    datasetId: "support.tickets",
+    id: "11111111-1111-4111-8111-111111111111",
+    name: "Tickets by status",
+    query: {
+      filters: [],
+      groupBy: ["status"],
+      measures: [{ aggregation: "count" as const, as: "ticketCount" }],
+      page: { size: 50 },
+      schemaVersion: ANALYTICS_QUERY_VERSION,
+      select: ["status"],
+      sort: [{ direction: "desc" as const, field: "ticketCount" }],
+      sourceKey: "support.tickets",
+      sourceRevision: "support.tickets/v1",
+    },
+    revision: 1,
+    updatedAt: "2026-07-25T00:00:00.000Z",
+    visualization: {
+      schemaVersion: ANALYTICS_VISUALIZATION_VERSION,
+      series: [{ field: "ticketCount" }],
+      type: "bar" as const,
+      x: "status",
+    },
+    workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   };
 }

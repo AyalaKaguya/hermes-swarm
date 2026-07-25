@@ -36,6 +36,12 @@ export type AnalyticsQueryGatewayOptions = Partial<{
   timeoutMs: number;
 }>;
 
+export type ValidatedAnalysisQuery = Readonly<{
+  query: AnalysisQuery;
+  resultSchema: readonly DatasetResultField[];
+  schema: DatasetSchema;
+}>;
+
 const FORBIDDEN_QUERY_KEYS = new Set([
   "connectionString",
   "credentials",
@@ -65,6 +71,32 @@ export class AnalyticsQueryGateway {
       options?.timeoutMs,
       ANALYTICS_QUERY_BUDGET.timeoutMs,
     );
+  }
+
+  /**
+   * Validates a query against the currently authorized dataset without
+   * executing it. Saved views use this boundary so persistence cannot bypass
+   * the same source revision and field-capability checks as an ordinary query.
+   */
+  async validate(
+    rawQuery: unknown,
+    authorization: AnalyticsAuthorizationContext,
+  ): Promise<ValidatedAnalysisQuery> {
+    rejectForbiddenQueryKeys(rawQuery);
+    const query = parseQuery(rawQuery);
+    const schema = await this.describe(query.sourceKey, authorization);
+    if (query.sourceRevision !== schema.sourceRevision) {
+      throw new AnalyticsQueryError(
+        "ANALYTICS_SOURCE_REVISION_MISMATCH",
+        "Analytics source revision has changed.",
+      );
+    }
+    validateQueryAgainstSchema(query, schema);
+    return Object.freeze({
+      query,
+      resultSchema: Object.freeze(expectedResultSchema(query, schema)),
+      schema,
+    });
   }
 
   async execute(

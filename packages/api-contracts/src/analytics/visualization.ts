@@ -26,6 +26,9 @@ export const TableVisualizationSpecSchema = z.strictObject({
   columns: z.array(TableVisualizationColumnSchema).min(1).optional(),
   type: z.literal("table"),
 });
+export type TableVisualizationSpec = z.infer<
+  typeof TableVisualizationSpecSchema
+>;
 
 export const KpiVisualizationSpecSchema = z.strictObject({
   ...visualizationCommonShape,
@@ -34,6 +37,7 @@ export const KpiVisualizationSpecSchema = z.strictObject({
   measure: DatasetFieldKeySchema,
   type: z.literal("kpi"),
 });
+export type KpiVisualizationSpec = z.infer<typeof KpiVisualizationSpecSchema>;
 
 function cartesianSpec(type: "bar" | "line" | "area") {
   return z.strictObject({
@@ -48,6 +52,9 @@ function cartesianSpec(type: "bar" | "line" | "area") {
 export const BarVisualizationSpecSchema = cartesianSpec("bar");
 export const LineVisualizationSpecSchema = cartesianSpec("line");
 export const AreaVisualizationSpecSchema = cartesianSpec("area");
+export type BarVisualizationSpec = z.infer<typeof BarVisualizationSpecSchema>;
+export type LineVisualizationSpec = z.infer<typeof LineVisualizationSpecSchema>;
+export type AreaVisualizationSpec = z.infer<typeof AreaVisualizationSpecSchema>;
 
 export const PieVisualizationSpecSchema = z.strictObject({
   ...visualizationCommonShape,
@@ -57,6 +64,7 @@ export const PieVisualizationSpecSchema = z.strictObject({
   showTotal: z.boolean().optional(),
   type: z.literal("pie"),
 });
+export type PieVisualizationSpec = z.infer<typeof PieVisualizationSpecSchema>;
 
 export const VisualizationSpecSchema = z.discriminatedUnion("type", [
   TableVisualizationSpecSchema,
