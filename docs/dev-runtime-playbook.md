@@ -7,6 +7,8 @@
 | Web | `http://localhost:3100` |
 | API | `http://localhost:3200/api` |
 | API health | `http://localhost:3200/api/health` |
+| Worker liveness | `http://localhost:3210/health/live` |
+| Worker readiness | `http://localhost:3210/health/ready` |
 
 Web proxies `/api/**` to API. Root `.env` provides the configured PostgreSQL and
 Redis application URLs plus API overrides; remote services are the normal
@@ -17,8 +19,18 @@ development setup.
 - `POSTGRES_URL` is the only non-test PostgreSQL application endpoint.
 - `POSTGRES_TEST_URL` is used only when `NODE_ENV=test`.
 - `REDIS_URL` is the single canonical Redis endpoint for sessions, rate limits,
-  realtime events, job locks, and caches. Both `redis://` and TLS `rediss://`
-  URLs are supported.
+  realtime events, job locks, caches, and the BullMQ runtime queue. Both
+  `redis://` and TLS `rediss://` URLs are supported.
+- `@hermes-swarm/worker` uses the same `POSTGRES_URL` and `REDIS_URL` as the
+  API but opens its own bounded connection pool. It does not run migrations;
+  apply API migrations before starting a new Worker release.
+- `RUNTIME_QUEUE_NAME` and `RUNTIME_QUEUE_PREFIX` isolate BullMQ keys.
+  `OUTBOX_BATCH_SIZE`, `OUTBOX_LEASE_MS`, `OUTBOX_POLL_MS`,
+  `OUTBOX_RECONCILE_MS`, `WORKER_CONCURRENCY`, and
+  `WORKER_SHUTDOWN_GRACE_MS` are bounded operational controls. The reconcile
+  window lets PostgreSQL republish work after Redis loss or an expired Worker
+  lease. Queue payloads contain only `dispatchId`, `runId`, and a schema version;
+  trusted Workspace ownership is reloaded from PostgreSQL.
 - Old `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` settings remain only as
   a startup fallback when `REDIS_URL` is absent. Do not add them to new
   deployments.
@@ -125,9 +137,11 @@ Get-NetTCPConnection -LocalPort 3100,3200 -State Listen -ErrorAction SilentlyCon
 pnpm nx show projects --json
 pnpm nx show project @hermes-swarm/api --json
 pnpm nx show project @hermes-swarm/web --json
+pnpm nx show project @hermes-swarm/worker --json
 
 pnpm nx run @hermes-swarm/api:dev
 pnpm nx run @hermes-swarm/web:dev
+pnpm nx run @hermes-swarm/worker:dev
 ```
 
 If project graph state is stale:
@@ -166,6 +180,14 @@ pnpm nx show projects --json
   from the deployment environment, then make the sole `POSTGRES_URL` the
   schema-owner/migration connection. The migration datasource validates this
   configuration before connecting and intentionally rejects stale RLS values.
+- Runtime submissions write `runtime_runs` and `runtime_outbox_messages` in
+  the caller's PostgreSQL transaction. The Worker leases Outbox and Run rows
+  with `FOR UPDATE SKIP LOCKED`, publishes a stable BullMQ job ID, and fences
+  every completion by Workspace, lease token, and lease generation. PostgreSQL
+  remains authoritative across duplicate queue delivery, Redis loss, and Worker
+  restarts. Published dispatches for ready or expired-lease Runs are reconciled
+  after `OUTBOX_RECONCILE_MS`; exhausted Outbox delivery atomically terminates
+  its Run instead of leaving a non-terminal orphan.
 - The cleanup migration revokes this database's public-schema/table/sequence ACL
   from `hermes_workspace_app`, but deliberately does not drop the PostgreSQL
   role. After every Hermes database has migrated, a DBA must first check

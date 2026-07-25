@@ -1,0 +1,108 @@
+import {
+  Agent,
+  AgentDraft,
+  AgentVersion,
+  PlatformModelDeployment,
+  PlatformModelProvider,
+  ToolDefinition,
+  ToolDefinitionNetworkPolicy,
+  ToolDefinitionVersion,
+  ToolNetworkPolicy,
+  WorkspaceModelDefault,
+  WorkspaceModelDeployment,
+  WorkspaceModelGrant,
+  WorkspaceModelProvider,
+  WorkspaceToolConnection,
+  WorkspaceToolGrant,
+} from "./ai/index.js";
+import { AnalysisView } from "./analytics/index.js";
+import { FileObject } from "./files/index.js";
+import {
+  AccessAuditLog,
+  Account,
+  EmailVerification,
+  IntegrationToken,
+  Invite,
+  LoginAuditLog,
+  PasswordReset,
+  Permission,
+  PlatformMembership,
+  Role,
+  RolePermission,
+  Workspace,
+  WorkspaceApplication,
+  WorkspaceMembership,
+} from "./identity/index.js";
+import {
+  CustomSmtp,
+  EmailLog,
+  EmailTemplate,
+  PlatformEmailTemplate,
+  PlatformSmtp,
+} from "./mail/index.js";
+import { UserNotification } from "./notifications/index.js";
+import { RuntimeOutboxMessage, RuntimeRun } from "./runtime/index.js";
+import { PlatformSetting, WorkspaceSetting } from "./settings/index.js";
+import {
+  Conversation,
+  ConversationMessage,
+  ConversationMessageFile,
+  ConversationParticipant,
+  Ticket,
+  TicketMessage,
+} from "./support/index.js";
+
+/**
+ * Canonical TypeORM metadata registry shared by every Hermes process.
+ * Keeping the full relation graph together prevents partial runtimes from
+ * silently omitting the target metadata of string-based entity relations.
+ */
+export const CORE_DATABASE_ENTITIES = [
+  AccessAuditLog,
+  Account,
+  Agent,
+  AgentDraft,
+  AgentVersion,
+  AnalysisView,
+  Conversation,
+  ConversationMessage,
+  ConversationMessageFile,
+  ConversationParticipant,
+  CustomSmtp,
+  EmailLog,
+  EmailTemplate,
+  EmailVerification,
+  FileObject,
+  IntegrationToken,
+  Invite,
+  LoginAuditLog,
+  PasswordReset,
+  Permission,
+  PlatformEmailTemplate,
+  PlatformMembership,
+  PlatformModelDeployment,
+  PlatformModelProvider,
+  PlatformSetting,
+  PlatformSmtp,
+  Role,
+  RolePermission,
+  RuntimeOutboxMessage,
+  RuntimeRun,
+  Ticket,
+  TicketMessage,
+  ToolDefinition,
+  ToolDefinitionNetworkPolicy,
+  ToolDefinitionVersion,
+  ToolNetworkPolicy,
+  UserNotification,
+  Workspace,
+  WorkspaceApplication,
+  WorkspaceMembership,
+  WorkspaceModelDefault,
+  WorkspaceModelDeployment,
+  WorkspaceModelGrant,
+  WorkspaceModelProvider,
+  WorkspaceSetting,
+  WorkspaceToolConnection,
+  WorkspaceToolGrant,
+] as const;

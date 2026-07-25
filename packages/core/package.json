@@ -26,6 +26,10 @@
       "types": "./dist/analytics/entities/index.d.ts",
       "import": "./dist/analytics/entities/index.js"
     },
+    "./database-entities": {
+      "types": "./dist/database-entities.d.ts",
+      "import": "./dist/database-entities.js"
+    },
     "./identity": {
       "types": "./dist/identity/index.d.ts",
       "import": "./dist/identity/index.js"
@@ -53,6 +57,14 @@
     "./mail/entities": {
       "types": "./dist/mail/entities/index.d.ts",
       "import": "./dist/mail/entities/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    },
+    "./runtime/entities": {
+      "types": "./dist/runtime/entities/index.d.ts",
+      "import": "./dist/runtime/entities/index.js"
     },
     "./support": {
       "types": "./dist/support/index.d.ts",

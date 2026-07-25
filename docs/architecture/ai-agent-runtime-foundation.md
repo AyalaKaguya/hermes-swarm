@@ -186,6 +186,15 @@ Outbox 并投递 BullMQ，成功后记录投递状态。BullMQ 采用至少一�
 必须以 Run/step/idempotency key 抢占执行权并安全处理重复、过期租约与 Worker 崩溃。
 Queue 丢失时可以从未完成 Outbox 重新构建；Redis 不保存唯一业务事实。
 
+首个运行时切片使用 `runtime_runs` 与 `runtime_outbox_messages`。API 只能在调用方已有
+事务中同时创建 Run 与 Outbox；Worker 以 `FOR UPDATE SKIP LOCKED` 批量租约派发，
+BullMQ 的稳定 `jobId` 等于持久化 `dispatchId`。队列信封严格限制为
+`schemaVersion`、`dispatchId`、`runId`，不携带 Workspace、ExecutionScope、Secret、
+图或业务参数。消费端通过 Outbox 与 Run 的复合 Workspace 关系恢复可信上下文，并以
+租约 token 和递增 generation fencing 拒绝过期 Worker 写入。已发布但在 Redis 中
+丢失的任务会依据 PostgreSQL 中的 Run 状态与租约期限重新发布；Outbox 尝试耗尽时，
+必须在同一事务中终结对应 Run，禁止出现 `dead Outbox + non-terminal Run`。
+
 取消操作先持久化到 PostgreSQL，再通知 Worker。Worker 在节点边界、模型流和工具调用
 前后检查取消与截止时间。超时或进程退出后，租约允许另一个 Worker 从最近有效
 Checkpoint 恢复；外部副作用只有在工具声明提供幂等保障时才允许自动重试。
