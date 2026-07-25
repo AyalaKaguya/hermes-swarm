@@ -238,7 +238,7 @@ export class ModelProviderCatalogService {
   ) {
     const provider = await this.requirePlatformProvider(providerId);
     this.assertDriverCapability(provider.driver, payload.capability);
-    if (payload.status === "enabled") assertProviderReady(provider);
+    if (payload.status === "enabled") this.assertProviderReady(provider);
     const deployment = this.platformDeploymentRepository.create({
       capability: payload.capability,
       config: {},
@@ -264,7 +264,7 @@ export class ModelProviderCatalogService {
       if (payload.capability !== undefined) {
         this.assertDriverCapability(provider.driver, payload.capability);
       }
-      if (payload.status === "enabled") assertProviderReady(provider);
+      if (payload.status === "enabled") this.assertProviderReady(provider);
     }
     const patch = deploymentPatch(payload);
     await updateOrConflict(
@@ -317,7 +317,7 @@ export class ModelProviderCatalogService {
     const workspaceId = this.currentWorkspaceId();
     const provider = await this.requireWorkspaceProvider(workspaceId, providerId);
     this.assertDriverCapability(provider.driver, payload.capability);
-    if (payload.status === "enabled") assertProviderReady(provider);
+    if (payload.status === "enabled") this.assertProviderReady(provider);
     const deployment = this.workspaceDeploymentRepository.create({
       capability: payload.capability,
       config: {},
@@ -348,7 +348,7 @@ export class ModelProviderCatalogService {
       if (payload.capability !== undefined) {
         this.assertDriverCapability(provider.driver, payload.capability);
       }
-      if (payload.status === "enabled") assertProviderReady(provider);
+      if (payload.status === "enabled") this.assertProviderReady(provider);
     }
     await updateOrConflict(
       this.workspaceDeploymentRepository,
@@ -501,7 +501,7 @@ export class ModelProviderCatalogService {
         throw unavailable("Default model capability no longer matches");
       }
       assertDeploymentReady(deployment);
-      assertProviderReady(
+      this.assertProviderReady(
         await this.requireWorkspaceProvider(workspaceId, deployment.providerId),
       );
       return {
@@ -523,7 +523,9 @@ export class ModelProviderCatalogService {
       throw unavailable("Default model capability no longer matches");
     }
     assertDeploymentReady(deployment);
-    assertProviderReady(await this.requirePlatformProvider(deployment.providerId));
+    this.assertProviderReady(
+      await this.requirePlatformProvider(deployment.providerId),
+    );
     const grant = await this.workspaceGrantRepository.findOne({
       where: {
         platformDeploymentId: deployment.id,
@@ -553,7 +555,7 @@ export class ModelProviderCatalogService {
         throw new BadRequestException("Default model capability does not match");
       }
       assertDeploymentReady(deployment);
-      assertProviderReady(
+      this.assertProviderReady(
         await this.requireWorkspaceProvider(workspaceId, deployment.providerId),
       );
       return;
@@ -575,7 +577,9 @@ export class ModelProviderCatalogService {
     expiresAt: Date | null,
   ) {
     assertDeploymentReady(deployment);
-    assertProviderReady(await this.requirePlatformProvider(deployment.providerId));
+    this.assertProviderReady(
+      await this.requirePlatformProvider(deployment.providerId),
+    );
     assertFutureExpiry(expiresAt);
   }
 
@@ -604,6 +608,12 @@ export class ModelProviderCatalogService {
     if (payload.name !== undefined) patch.name = payload.name.trim();
     if (payload.status !== undefined) {
       assertProviderCanUseStatus(payload.status, provider.secretId);
+      if (payload.status === "enabled") {
+        this.normalizeProvider(
+          provider.driver,
+          typeof patch.baseUrl === "string" ? patch.baseUrl : provider.baseUrl,
+        );
+      }
       patch.status = payload.status;
     }
     return patch;
@@ -638,6 +648,20 @@ export class ModelProviderCatalogService {
     return { baseUrl: normalized.baseUrl };
   }
 
+  private assertProviderReady(provider: ProviderEntity) {
+    assertProviderCredentialReady(provider);
+    // Endpoint policy is live configuration. Revalidate it on every enable or
+    // resolution so a tightened host/HTTPS allowlist takes effect immediately.
+    try {
+      this.normalizeProvider(provider.driver, provider.baseUrl);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw unavailable("Model provider endpoint no longer satisfies policy");
+      }
+      throw error;
+    }
+  }
+
   private assertDriverCapability(driver: string, capability: ModelCapability) {
     if (!this.driverRegistry.resolve(driver).descriptor.capabilities.includes(capability)) {
       throw new BadRequestException(
@@ -648,7 +672,7 @@ export class ModelProviderCatalogService {
 
   private createSecretColumns(payload: ProviderSecretWriteRequest) {
     return {
-      secretEnvelope: this.providerSecrets.encrypt(payload.apiKey),
+      secretEnvelope: this.encryptProviderSecret(payload.apiKey),
       secretId: randomUUID(),
       secretRevision: 1,
       secretUpdatedAt: new Date(),
@@ -667,13 +691,24 @@ export class ModelProviderCatalogService {
       criteria,
       {
         revision: () => "revision + 1",
-        secretEnvelope: this.providerSecrets.encrypt(payload.apiKey),
+        secretEnvelope: this.encryptProviderSecret(payload.apiKey),
         secretId: provider.secretId ?? randomUUID(),
         secretRevision: () => "secret_revision + 1",
         secretUpdatedAt: now,
       },
       "Model provider changed before the secret was replaced",
     );
+  }
+
+  private encryptProviderSecret(value: string) {
+    try {
+      return this.providerSecrets.encrypt(value);
+    } catch {
+      throw new BadRequestException({
+        code: "AI_PROVIDER_SECRET_INVALID",
+        message: "Provider secret is invalid",
+      });
+    }
   }
 
   private providerSecretMetadata(provider: ProviderEntity) {
@@ -786,7 +821,7 @@ function assertProviderCanUseStatus(status: string, secretId: string | null) {
   }
 }
 
-function assertProviderReady(provider: ProviderEntity) {
+function assertProviderCredentialReady(provider: ProviderEntity) {
   if (
     provider.status !== "enabled" ||
     !provider.secretId ||

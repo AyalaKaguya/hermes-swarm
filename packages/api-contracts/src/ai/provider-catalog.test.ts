@@ -164,6 +164,24 @@ describe("provider catalog write contracts", () => {
     }).success, false);
   });
 
+  it("rejects secrets that the encryption boundary cannot safely store", () => {
+    for (const apiKey of [
+      "   ",
+      "line-one\nline-two",
+      "密".repeat(3_000),
+    ]) {
+      assert.equal(
+        RotateProviderSecretRequestSchema.safeParse({ apiKey }).success,
+        false,
+      );
+    }
+    assert.equal(
+      RotateProviderSecretRequestSchema.safeParse({ apiKey: "valid-secret" })
+        .success,
+      true,
+    );
+  });
+
   it("does not accept a client supplied workspace in Workspace bodies", () => {
     const workspaceProvider = {
       baseUrl: "https://models.example.com/v1",

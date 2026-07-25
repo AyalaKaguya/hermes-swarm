@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ModelProviderCatalogService } from "./model-provider-catalog.service.js";
+import { ModelProviderConfigurationError } from "./model-provider-driver.js";
 import { ModelProviderDriverRegistry } from "./model-provider-driver.registry.js";
 import { ProviderSecretService } from "./provider-secret.service.js";
 
@@ -60,6 +61,13 @@ describe("ModelProviderCatalogService", () => {
     assert.equal(enabled.revision, 3);
     assert.equal(state.workspaceProviders[0]?.secretRevision, 1);
     assert.match(String(state.workspaceProviders[0]?.secretEnvelope), /^enc:v2:current:/);
+
+    await assert.rejects(
+      () => state.service.rotateWorkspaceProviderSecret(provider.id, {
+        apiKey: "invalid\nsecret",
+      }),
+      BadRequestException,
+    );
   });
 
   it("resolves an enabled Workspace default without leaking provider details", async () => {
@@ -92,6 +100,12 @@ describe("ModelProviderCatalogService", () => {
       modelId: "chat-primary",
       providerScope: "workspace",
     });
+
+    state.providerPolicyEnabled = false;
+    await assert.rejects(
+      () => state.service.resolveWorkspaceDefault("chat"),
+      ConflictException,
+    );
   });
 
   it("requires a live explicit grant before resolving a platform default", async () => {
@@ -197,6 +211,7 @@ function createState() {
   const workspaceGrants: AnyRow[] = [];
   const workspaceDefaults: AnyRow[] = [];
   const state = {
+    providerPolicyEnabled: true,
     workspaceId: WORKSPACE_A,
     platformProviders,
     workspaceProviders,
@@ -212,6 +227,11 @@ function createState() {
       driver: "openai-compatible",
     },
     normalizeConfiguration(input) {
+      if (!state.providerPolicyEnabled) {
+        throw new ModelProviderConfigurationError(
+          "Provider endpoint is no longer allowed",
+        );
+      }
       const baseUrl = (input as { baseUrl: string }).baseUrl.replace(/\/+$/, "");
       return { baseUrl };
     },
@@ -245,6 +265,12 @@ function createState() {
     workspaceDeployments,
     workspaceGrants,
     workspaceProviders,
+    get providerPolicyEnabled() {
+      return state.providerPolicyEnabled;
+    },
+    set providerPolicyEnabled(value: boolean) {
+      state.providerPolicyEnabled = value;
+    },
     get workspaceId() {
       return state.workspaceId;
     },

@@ -12,8 +12,22 @@ export const ModelProviderDriverSchema = z.enum([
 
 export const ModelProviderStatusSchema = z.enum(["disabled", "enabled"]);
 
+const PROVIDER_SECRET_MAX_BYTES = 8_192;
+const PROVIDER_SECRET_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
 export const ProviderSecretWriteRequestSchema = z.strictObject({
-  apiKey: z.string().min(1).max(8_192),
+  apiKey: z.string().max(PROVIDER_SECRET_MAX_BYTES).superRefine((value, context) => {
+    if (
+      !value.trim() ||
+      new TextEncoder().encode(value).byteLength > PROVIDER_SECRET_MAX_BYTES ||
+      PROVIDER_SECRET_CONTROL_CHARACTERS.test(value)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Provider secret is invalid",
+      });
+    }
+  }),
 });
 
 const MissingProviderSecretMetadataSchema = z.strictObject({
