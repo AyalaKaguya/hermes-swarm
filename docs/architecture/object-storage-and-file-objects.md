@@ -98,7 +98,7 @@ FileObject/domain associations, and keeps the old opaque read route during the
 compatibility window. All new writes use object storage.
 
 The optional Compose MinIO and initializer live under the explicit `storage`
-profile. The initializer creates a private local bucket, applies browser CORS,
-and attaches a bucket-only policy to a separate application user. It is local
-development infrastructure only and is never started by Nx or normal Compose
-startup.
+profile. MinIO applies browser CORS from `MINIO_API_CORS_ALLOW_ORIGIN`; the
+initializer creates a private local bucket and attaches a bucket-only policy to
+a separate application user. It is local development infrastructure only and
+is never started by Nx or normal Compose startup.

@@ -48,6 +48,11 @@ server and one-shot idempotent initializer are behind the `storage` profile:
 docker compose --profile storage --env-file docker/.env -f docker/docker-compose.yml up -d minio minio-init
 ```
 
+`MINIO_API_CORS_ALLOW_ORIGIN` configures browser access on the MinIO server;
+recent MinIO releases no longer accept bucket-level CORS through the S3 API.
+Keep the local default at `http://localhost:3100` and set the deployed Web
+origin explicitly for other environments.
+
 Copy the corresponding local endpoint, bucket, and application credentials to
 root `.env`; never copy `MINIO_ROOT_*` into application settings. Remote MinIO
 is provisioned by operations and does not use this initializer.
