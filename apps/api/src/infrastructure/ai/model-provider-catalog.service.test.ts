@@ -108,6 +108,51 @@ describe("ModelProviderCatalogService", () => {
     );
   });
 
+  it("validates pinned model references in the trusted Workspace", async () => {
+    const state = createState();
+    const provider = await state.service.createWorkspaceProvider({
+      baseUrl: "https://models.example.com/v1",
+      driver: "openai-compatible",
+      name: "Pinned models",
+      secret: { apiKey: "private-provider-key" },
+      status: "enabled",
+    });
+    const deployment = await state.service.createWorkspaceDeployment(
+      provider.id,
+      {
+        capability: "chat",
+        modelId: "chat-pinned",
+        name: "Pinned chat",
+        status: "enabled",
+      },
+    );
+    const reference = {
+      apiVersion: "hermes.ai/v1" as const,
+      capability: "chat" as const,
+      deploymentId: deployment.id,
+      modelId: "chat-pinned",
+      providerScope: "workspace" as const,
+    };
+
+    assert.deepEqual(
+      await state.service.resolveWorkspaceModelReference(reference),
+      reference,
+    );
+    await assert.rejects(
+      () => state.service.resolveWorkspaceModelReference({
+        ...reference,
+        modelId: "different-model",
+      }),
+      ConflictException,
+    );
+
+    state.workspaceId = WORKSPACE_B;
+    await assert.rejects(
+      () => state.service.resolveWorkspaceModelReference(reference),
+      NotFoundException,
+    );
+  });
+
   it("requires a live explicit grant before resolving a platform default", async () => {
     const state = createState();
     const provider = await state.service.createPlatformProvider({
@@ -157,6 +202,46 @@ describe("ModelProviderCatalogService", () => {
     await assert.rejects(
       () => state.service.resolveWorkspaceDefault("chat"),
       ConflictException,
+    );
+  });
+
+  it("requires a live Workspace grant for a pinned platform model", async () => {
+    const state = createState();
+    const provider = await state.service.createPlatformProvider({
+      baseUrl: "https://models.example.com/v1",
+      driver: "openai-compatible",
+      name: "Pinned platform models",
+      secret: { apiKey: "private-provider-key" },
+      status: "enabled",
+    });
+    const deployment = await state.service.createPlatformDeployment(
+      provider.id,
+      {
+        capability: "chat",
+        modelId: "chat-platform-pinned",
+        name: "Pinned platform chat",
+        status: "enabled",
+      },
+    );
+    const reference = {
+      apiVersion: "hermes.ai/v1" as const,
+      capability: "chat" as const,
+      deploymentId: deployment.id,
+      modelId: "chat-platform-pinned",
+      providerScope: "platform" as const,
+    };
+
+    await assert.rejects(
+      () => state.service.resolveWorkspaceModelReference(reference),
+      ConflictException,
+    );
+    await state.service.createWorkspaceGrant(state.workspaceId, {
+      enabled: true,
+      platformDeploymentId: deployment.id,
+    });
+    assert.deepEqual(
+      await state.service.resolveWorkspaceModelReference(reference),
+      reference,
     );
   });
 

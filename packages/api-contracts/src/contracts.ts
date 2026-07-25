@@ -11,7 +11,15 @@ import {
   UpdateAnalysisViewRequestSchema,
 } from "./analytics/index.js";
 import {
+  AgentCatalogBadRequestErrorSchema,
+  AgentCatalogConflictErrorSchema,
+  AgentCatalogNotFoundErrorSchema,
+  AgentDraftSchema,
+  AgentSchema,
+  AgentVersionSchema,
+  AgentVersionSummarySchema,
   BindWorkspaceToolGrantConnectionRequestSchema,
+  CreateAgentRequestSchema,
   CreatePlatformToolDefinitionRequestSchema,
   CreatePlatformToolNetworkPolicyRequestSchema,
   CreatePlatformToolVersionRequestSchema,
@@ -28,6 +36,8 @@ import {
   PlatformModelDeploymentSchema,
   PlatformModelProviderSchema,
   ProviderSecretMutationResponseSchema,
+  PublishAgentDraftRequestSchema,
+  ReplaceAgentDraftRequestSchema,
   RotateProviderSecretRequestSchema,
   SemanticVersionSchema,
   SetWorkspaceDefaultModelRequestSchema,
@@ -38,6 +48,7 @@ import {
   UpdatePlatformToolVersionStatusRequestSchema,
   UpdatePlatformModelDeploymentRequestSchema,
   UpdatePlatformModelProviderRequestSchema,
+  UpdateAgentRequestSchema,
   UpdateWorkspaceToolConnectionRequestSchema,
   UpdateWorkspaceToolGrantRequestSchema,
   UpdateWorkspaceModelDeploymentRequestSchema,
@@ -139,6 +150,11 @@ const toolGatewayMutationErrors = {
   ...toolGatewayLookupErrors,
   409: ToolGatewayConflictErrorSchema,
 } as const;
+const agentCatalogErrors = {
+  400: AgentCatalogBadRequestErrorSchema,
+  404: AgentCatalogNotFoundErrorSchema,
+  409: AgentCatalogConflictErrorSchema,
+} as const;
 
 export const adminContracts = {
   bootstrap: defineContract({ id: "bootstrap.get", method: "GET", path: "/bootstrap", responses: { 200: PublicBootstrapSchema } }),
@@ -183,6 +199,15 @@ export const adminContracts = {
   analyticsViewCreate: defineContract({ id: "analytics.views.create", method: "POST", path: "/analytics/views", body: CreateAnalysisViewRequestSchema, responses: { 201: AnalysisViewSchema } }),
   analyticsViewUpdate: defineContract({ id: "analytics.views.update", method: "PATCH", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: UpdateAnalysisViewRequestSchema, responses: { 200: AnalysisViewSchema } }),
   analyticsViewDelete: defineContract({ id: "analytics.views.delete", method: "DELETE", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: DeleteAnalysisViewRequestSchema, responses: noContent }),
+  agents: defineContract({ id: "agents.list", method: "GET", path: "/agents", responses: { 200: z.array(AgentSchema) }, errorResponses: agentCatalogErrors }),
+  agentCreate: defineContract({ id: "agents.create", method: "POST", path: "/agents", body: CreateAgentRequestSchema, responses: { 201: AgentSchema }, errorResponses: agentCatalogErrors }),
+  agentGet: defineContract({ id: "agents.get", method: "GET", path: "/agents/:agentId", params: z.strictObject({ agentId: UuidSchema }), responses: { 200: AgentSchema }, errorResponses: agentCatalogErrors }),
+  agentUpdate: defineContract({ id: "agents.update", method: "PATCH", path: "/agents/:agentId", params: z.strictObject({ agentId: UuidSchema }), body: UpdateAgentRequestSchema, responses: { 200: AgentSchema }, errorResponses: agentCatalogErrors }),
+  agentDraftGet: defineContract({ id: "agents.draft.get", method: "GET", path: "/agents/:agentId/draft", params: z.strictObject({ agentId: UuidSchema }), responses: { 200: AgentDraftSchema }, errorResponses: agentCatalogErrors }),
+  agentDraftReplace: defineContract({ id: "agents.draft.replace", method: "PUT", path: "/agents/:agentId/draft", params: z.strictObject({ agentId: UuidSchema }), body: ReplaceAgentDraftRequestSchema, responses: { 200: AgentDraftSchema }, errorResponses: agentCatalogErrors }),
+  agentVersions: defineContract({ id: "agents.versions.list", method: "GET", path: "/agents/:agentId/versions", params: z.strictObject({ agentId: UuidSchema }), responses: { 200: z.array(AgentVersionSummarySchema) }, errorResponses: agentCatalogErrors }),
+  agentVersionPublish: defineContract({ id: "agents.versions.publish", method: "POST", path: "/agents/:agentId/versions", params: z.strictObject({ agentId: UuidSchema }), body: PublishAgentDraftRequestSchema, responses: { 201: AgentVersionSchema }, errorResponses: agentCatalogErrors }),
+  agentVersionGet: defineContract({ id: "agents.versions.get", method: "GET", path: "/agents/:agentId/versions/:version", params: z.strictObject({ agentId: UuidSchema, version: z.coerce.number().int().min(1) }), responses: { 200: AgentVersionSchema }, errorResponses: agentCatalogErrors }),
   platformAiProviders: defineContract({ id: "platform.ai.providers.list", method: "GET", path: "/platform/ai/providers", responses: { 200: z.array(PlatformModelProviderSchema) } }),
   platformAiProviderCreate: defineContract({ id: "platform.ai.providers.create", method: "POST", path: "/platform/ai/providers", body: CreatePlatformModelProviderRequestSchema, responses: { 201: PlatformModelProviderSchema } }),
   platformAiProviderUpdate: defineContract({ id: "platform.ai.providers.update", method: "PATCH", path: "/platform/ai/providers/:providerId", params: z.strictObject({ providerId: UuidSchema }), body: UpdatePlatformModelProviderRequestSchema, responses: { 200: PlatformModelProviderSchema } }),

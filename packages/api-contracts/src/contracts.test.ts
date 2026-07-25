@@ -244,6 +244,27 @@ describe("admin API contracts", () => {
     });
   });
 
+  it("registers Agent Draft and immutable Version routes", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const draft = findAdminContract(
+      "PUT",
+      `/api/admin/agents/${agentId}/draft`,
+    );
+    const version = findAdminContract(
+      "GET",
+      `/api/admin/agents/${agentId}/versions/7`,
+    );
+
+    assert.equal(draft?.contract.id, "agents.draft.replace");
+    assert.deepEqual(draft?.params, { agentId });
+    assert.equal(version?.contract.id, "agents.versions.get");
+    assert.deepEqual(version?.params, { agentId, version: "7" });
+    assert.equal(
+      version?.contract.params?.safeParse(version.params).success,
+      true,
+    );
+  });
+
   it("documents the invitation result when adding a new platform member", () => {
     const response = {
       invite: {

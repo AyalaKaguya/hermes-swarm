@@ -56,6 +56,18 @@ describe("page access definitions", () => {
     ]);
   });
 
+  it("exposes Agent Studio only to workspace owners and administrators", () => {
+    const definition = getPageAccessDefinition("agents");
+
+    assert.equal(definition?.href, "/agents");
+    assert.equal(definition?.permission, "page.agents.access:workspace");
+    assert.equal(definition?.section, "business");
+    assert.deepEqual(definition?.defaultRoles, [
+      "workspace-owner",
+      "workspace-admin",
+    ]);
+  });
+
   it("hydrates workspace member management with its permission id", () => {
     const definition = getPageAccessDefinition("settings.workspace.members");
 

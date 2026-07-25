@@ -28,6 +28,7 @@ import {
   type Snapshot,
 } from "@/lib/admin-api";
 import { isAnalyticsNavigationEnabled } from "@/lib/analytics-navigation";
+import { isAiNavigationEnabled } from "@/lib/ai-navigation";
 import { requireAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/session";
 import { hasPageAccess } from "@/lib/access-control";
@@ -418,6 +419,9 @@ function buildMainNavSections(
   for (const page of PAGE_ACCESS_DEFINITIONS) {
     if (page.section !== "business") continue;
     if (page.key === "analytics" && !analyticsNavigationEnabled) continue;
+    if (page.key === "agents" && !isAiNavigationEnabled(snapshot.systemSettings)) {
+      continue;
+    }
     if (!hasPageAccess(resolvedSession, page.key)) continue;
     const section = sections.get(page.section) ?? {
       items: [],

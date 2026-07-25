@@ -1,5 +1,8 @@
 import {
   AccessAuditLog,
+  Agent,
+  AgentDraft,
+  AgentVersion,
   AnalysisView,
   Conversation,
   ConversationMessage,
@@ -45,6 +48,9 @@ import {
 
 export const DATABASE_ENTITIES = [
   AccessAuditLog,
+  Agent,
+  AgentDraft,
+  AgentVersion,
   AnalysisView,
   Conversation,
   ConversationMessage,

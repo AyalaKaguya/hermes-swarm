@@ -542,6 +542,39 @@ export class ModelProviderCatalogService {
     };
   }
 
+  /**
+   * Validates a credential-free pinned Model reference against the current
+   * trusted Workspace. Provider endpoints and secrets never cross this
+   * catalog boundary.
+   */
+  async resolveWorkspaceModelReference(
+    reference: ModelReference,
+  ): Promise<ModelReference> {
+    const workspaceId = this.currentWorkspaceId();
+    if (reference.providerScope === "workspace") {
+      const deployment = await this.requireWorkspaceDeployment(
+        workspaceId,
+        reference.deploymentId,
+      );
+      assertReferenceMatchesDeployment(reference, deployment);
+      assertDeploymentReady(deployment);
+      this.assertProviderReady(
+        await this.requireWorkspaceProvider(workspaceId, deployment.providerId),
+      );
+      return toModelReference(deployment, "workspace");
+    }
+
+    const deployment = await this.requirePlatformDeployment(
+      reference.deploymentId,
+    );
+    assertReferenceMatchesDeployment(reference, deployment);
+    await this.assertPlatformDeploymentAvailableForWorkspace(
+      workspaceId,
+      deployment,
+    );
+    return toModelReference(deployment, "platform");
+  }
+
   private async assertDefaultDeploymentAvailable(
     workspaceId: string,
     payload: SetWorkspaceDefaultModelRequest,
@@ -836,6 +869,31 @@ function assertDeploymentReady(deployment: DeploymentEntity) {
   if (deployment.status !== "enabled") {
     throw unavailable("Model deployment is disabled");
   }
+}
+
+function assertReferenceMatchesDeployment(
+  reference: ModelReference,
+  deployment: DeploymentEntity,
+) {
+  if (
+    reference.capability !== deployment.capability ||
+    reference.modelId !== deployment.modelId
+  ) {
+    throw unavailable("Pinned model reference no longer matches its deployment");
+  }
+}
+
+function toModelReference(
+  deployment: DeploymentEntity,
+  providerScope: ModelReference["providerScope"],
+): ModelReference {
+  return {
+    apiVersion: AI_API_VERSION,
+    capability: deployment.capability,
+    deploymentId: deployment.id,
+    modelId: deployment.modelId,
+    providerScope,
+  };
 }
 
 function assertGrantActive(grant: WorkspaceModelGrantEntity | null) {

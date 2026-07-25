@@ -1,6 +1,9 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  Agent,
+  AgentDraft,
+  AgentVersion,
   PlatformModelDeployment,
   PlatformModelProvider,
   ToolDefinition,
@@ -15,6 +18,8 @@ import {
   WorkspaceToolGrant,
 } from "@hermes-swarm/core";
 import { DatabaseModule } from "../../common/database/database.module.js";
+import { AgentCatalogController } from "./agent-catalog.controller.js";
+import { AgentCatalogService } from "./agent-catalog.service.js";
 import {
   PlatformModelProviderCatalogController,
   WorkspaceModelProviderCatalogController,
@@ -34,6 +39,9 @@ import { ToolConnectionSecretService } from "./tool-connection-secret.service.js
   imports: [
     DatabaseModule,
     TypeOrmModule.forFeature([
+      Agent,
+      AgentDraft,
+      AgentVersion,
       PlatformModelDeployment,
       PlatformModelProvider,
       ToolDefinition,
@@ -49,12 +57,14 @@ import { ToolConnectionSecretService } from "./tool-connection-secret.service.js
     ]),
   ],
   controllers: [
+    AgentCatalogController,
     PlatformModelProviderCatalogController,
     WorkspaceModelProviderCatalogController,
     PlatformToolCatalogController,
     WorkspaceToolCatalogController,
   ],
   providers: [
+    AgentCatalogService,
     OpenAiCompatibleProviderDriver,
     ProviderSecretService,
     ModelProviderCatalogService,
@@ -68,6 +78,7 @@ import { ToolConnectionSecretService } from "./tool-connection-secret.service.js
     },
   ],
   exports: [
+    AgentCatalogService,
     ModelProviderCatalogService,
     ModelProviderDriverRegistry,
     ProviderSecretService,
