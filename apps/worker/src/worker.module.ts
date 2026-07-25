@@ -28,6 +28,7 @@ import { RUNTIME_JOB_PROCESSOR } from "./queue/runtime-job-processor.js";
 import { RuntimeRunConsumerService } from "./queue/runtime-run-consumer.service.js";
 import { RUNTIME_RUN_STORE } from "./runtime/runtime-run.types.js";
 import { TrustedRunContextService } from "./runtime/trusted-run-context.service.js";
+import { TypeOrmRuntimeCheckpointStore } from "./runtime/typeorm-runtime-checkpoint.store.js";
 import { TypeOrmRuntimeRunStore } from "./runtime/typeorm-runtime-run.store.js";
 import { WorkerIdentityService } from "./runtime/worker-identity.service.js";
 
@@ -57,6 +58,7 @@ import { WorkerIdentityService } from "./runtime/worker-identity.service.js";
   providers: [
     WorkerIdentityService,
     TypeOrmOutboxStore,
+    TypeOrmRuntimeCheckpointStore,
     TypeOrmRuntimeRunStore,
     TrustedRunContextService,
     RuntimeRunConsumerService,
@@ -80,6 +82,10 @@ import { WorkerIdentityService } from "./runtime/worker-identity.service.js";
       useExisting: WorkerDependenciesHealthProbeService,
     },
   ],
-  exports: [RuntimeRunHandlerRegistry, TrustedRunContextService],
+  exports: [
+    RuntimeRunHandlerRegistry,
+    TrustedRunContextService,
+    TypeOrmRuntimeCheckpointStore,
+  ],
 })
 export class WorkerModule {}

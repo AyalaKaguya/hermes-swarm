@@ -1,4 +1,9 @@
 export {
+  RUNTIME_CHECKPOINT_SCHEMA_VERSION,
+  RuntimeCheckpoint,
+} from "./runtime-checkpoint.entity.js";
+export { RuntimeCheckpointWrite } from "./runtime-checkpoint-write.entity.js";
+export {
   RUNTIME_RUN_EVENT_SCHEMA_VERSION,
   RUNTIME_RUN_EVENT_TYPES,
   RuntimeRunEvent,

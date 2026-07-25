@@ -42,6 +42,8 @@ import {
 } from "./mail/index.js";
 import { UserNotification } from "./notifications/index.js";
 import {
+  RuntimeCheckpoint,
+  RuntimeCheckpointWrite,
   RuntimeOutboxMessage,
   RuntimeRun,
   RuntimeRunEvent,
@@ -90,6 +92,8 @@ export const CORE_DATABASE_ENTITIES = [
   PlatformSmtp,
   Role,
   RolePermission,
+  RuntimeCheckpoint,
+  RuntimeCheckpointWrite,
   RuntimeOutboxMessage,
   RuntimeRun,
   RuntimeRunEvent,

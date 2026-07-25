@@ -15,10 +15,13 @@ describe("TrustedRunContextService", () => {
         workspaceId: claim.workspaceId,
       });
       assert.deepEqual(service.current(), {
+        attempt: claim.attempt,
         dispatchId: claim.dispatchId,
         lease: context.lease,
+        leaseToken: claim.leaseToken,
         runKind: claim.runKind,
       });
+      assert.equal("leaseToken" in context, false);
       assert.equal(Object.isFrozen(context), true);
       assert.equal(Object.isFrozen(context.lease), true);
     });

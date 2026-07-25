@@ -4,8 +4,10 @@ import type { RunHandlerContext, RunLease } from "@hermes-swarm/agent-sdk";
 import type { ClaimedRuntimeRun } from "./runtime-run.types.js";
 
 export type TrustedRunContext = Readonly<{
+  attempt: number;
   dispatchId: string;
   lease: RunLease;
+  leaseToken: string;
   runKind: string;
 }>;
 
@@ -32,8 +34,10 @@ export class TrustedRunContextService {
       workspaceId: claimed.workspaceId,
     });
     const trusted = Object.freeze({
+      attempt: claimed.attempt,
       dispatchId: claimed.dispatchId,
       lease,
+      leaseToken: claimed.leaseToken,
       runKind: claimed.runKind,
     });
     const handlerContext = Object.freeze({ lease, signal });

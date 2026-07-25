@@ -223,6 +223,25 @@ LangGraph 仅在 Worker 中实现图执行 adapter。它可以产生或读取 ad
 `AgentGraph`、Run 状态、公共事件和 API 不导入 LangGraph 类型。替换执行器时保留
 Hermes 的版本、授权、事件与恢复语义，不要求迁移上层领域模型。
 
+首个 Checkpoint 切片使用 `runtime_checkpoints` 和
+`runtime_checkpoint_writes`：Checkpoint 以 Run 级单调序号、namespace、稳定的 adapter
+checkpoint key 和父链只追加保存；pending write 以 task/index 幂等记录。每次创建
+Checkpoint 都在活动 Workspace/Run 租约的 token 与 generation fencing 下完成，并与
+`checkpoint.created` RunEvent 在同一 PostgreSQL 事务提交。Worker 中的 LangGraph
+checkpointer 使用官方 serializer，将 type tag 和原始 bytes 编码进 Hermes adapter
+state；非负索引 pending write 保持不可变，LangGraph 保留的负索引仅可在相同 task、
+index、channel 与有效租约下替换序列化 type/value。PostgreSQL 仍是唯一事实源，不采用
+LangGraph 自带数据库表或 Redis checkpoint。
+
+LangGraph 顶层 Run 固定从根 checkpoint namespace 执行；子图 namespace 只由已编译图
+内部产生并按 namespace 独立跟踪。外部执行信封不能把子图 namespace 当作顶层恢复点，
+避免 LangGraph 将其静默重置后恢复到错误的根 checkpoint。
+
+这一切片只提供可恢复的执行端口与真实 `StateGraph` adapter，还没有注册可公开提交的
+`agent.graph` Handler。不可变 AgentVersion 与执行输入必须先作为 Run 专属请求持久化，
+Worker 才能只凭队列中的 `dispatchId/runId` 重建图；该请求模型随首个 Agent 执行入口
+一并交付。当前也不开放人工中断/恢复 API。
+
 ## Workspace 隔离与授权
 
 系统继续使用单 PostgreSQL DataSource 和应用层显式隔离，不恢复 RLS：
