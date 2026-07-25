@@ -12,6 +12,8 @@ import {
 
 const originalEnvironment = {
   AI_PROVIDER_ALLOWED_HOSTS: process.env.AI_PROVIDER_ALLOWED_HOSTS,
+  AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT:
+    process.env.AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT,
   DATABASE_SYNCHRONIZE: process.env.DATABASE_SYNCHRONIZE,
   DATABASE_STRICT_RLS: process.env.DATABASE_STRICT_RLS,
   NODE_ENV: process.env.NODE_ENV,
@@ -45,14 +47,24 @@ afterEach(() => {
   }
 });
 
-describe("database runtime configuration", () => {
+describe("runtime configuration", () => {
   it("normalizes the model provider host allowlist and fails closed by default", () => {
     delete process.env.AI_PROVIDER_ALLOWED_HOSTS;
+    delete process.env.AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT;
     process.env.NODE_ENV = "development";
     assert.deepEqual(aiRuntimeConfig(), {
+      allowHttpInDevelopment: false,
       allowedProviderHosts: [],
       requireHttps: false,
     });
+
+    process.env.AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT = "true";
+    assert.equal(aiRuntimeConfig().allowHttpInDevelopment, true);
+
+    process.env.NODE_ENV = "test";
+    assert.equal(aiRuntimeConfig().allowHttpInDevelopment, false);
+
+    process.env.NODE_ENV = "development";
 
     process.env.AI_PROVIDER_ALLOWED_HOSTS =
       "Models.Example.com:8443,api.openai.com,api.openai.com";
@@ -69,8 +81,18 @@ describe("database runtime configuration", () => {
         }),
       /must contain host names/,
     );
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT: "sometimes",
+          NODE_ENV: "test",
+          POSTGRES_TEST_URL: "postgresql://test.example/hermes-test",
+        }),
+      /Invalid boolean value/,
+    );
 
     process.env.NODE_ENV = "production";
+    assert.equal(aiRuntimeConfig().allowHttpInDevelopment, false);
     assert.equal(aiRuntimeConfig().requireHttps, true);
   });
 

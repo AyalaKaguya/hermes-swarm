@@ -24,11 +24,25 @@ describe("admin contract OpenAPI generation", () => {
       for (const status of Object.keys(contract.responses)) {
         assert.ok(operation.responses[status], `${contract.id} is missing response ${status}`);
       }
+      for (const status of Object.keys(contract.errorResponses ?? {})) {
+        assert.ok(
+          operation.responses[status],
+          `${contract.id} is missing error response ${status}`,
+        );
+      }
     }
 
     assert.ok(Object.keys(document.components?.schemas ?? {}).length > 0);
     const login = document.paths["/api/admin/auth/login"]?.post;
     assert.ok(login?.requestBody);
     assert.ok(login?.responses[201]);
+
+    const toolCreate = document.paths["/api/admin/platform/ai/tools"]?.post;
+    assert.ok(toolCreate?.responses[400]);
+    assert.ok(toolCreate?.responses[401]);
+    assert.ok(toolCreate?.responses[403]);
+    assert.ok(toolCreate?.responses[404]);
+    assert.ok(toolCreate?.responses[409]);
+    assert.ok(toolCreate?.responses[500]);
   });
 });

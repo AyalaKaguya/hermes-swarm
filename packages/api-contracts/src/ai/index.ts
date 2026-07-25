@@ -5,5 +5,6 @@ export * from "./execution-scope.js";
 export * from "./model-reference.js";
 export * from "./provider-catalog.js";
 export * from "./run-events.js";
+export * from "./tool-catalog.js";
 export * from "./tool-definition.js";
 export * from "./versions.js";

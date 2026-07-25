@@ -27,6 +27,10 @@ import {
   WorkspaceSetting,
   Ticket,
   TicketMessage,
+  ToolDefinition,
+  ToolDefinitionNetworkPolicy,
+  ToolDefinitionVersion,
+  ToolNetworkPolicy,
   Account,
   UserNotification,
   WorkspaceMembership,
@@ -34,6 +38,8 @@ import {
   WorkspaceModelDeployment,
   WorkspaceModelGrant,
   WorkspaceModelProvider,
+  WorkspaceToolConnection,
+  WorkspaceToolGrant,
 } from "@hermes-swarm/core";
 
 export const DATABASE_ENTITIES = [
@@ -65,6 +71,10 @@ export const DATABASE_ENTITIES = [
   WorkspaceSetting,
   Ticket,
   TicketMessage,
+  ToolDefinition,
+  ToolDefinitionNetworkPolicy,
+  ToolDefinitionVersion,
+  ToolNetworkPolicy,
   Account,
   UserNotification,
   WorkspaceMembership,
@@ -72,4 +82,6 @@ export const DATABASE_ENTITIES = [
   WorkspaceModelDeployment,
   WorkspaceModelGrant,
   WorkspaceModelProvider,
+  WorkspaceToolConnection,
+  WorkspaceToolGrant,
 ] as const;

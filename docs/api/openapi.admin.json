@@ -2896,6 +2896,1631 @@
         }
       }
     },
+    "/api/admin/platform/ai/tools": {
+      "get": {
+        "operationId": "platform_ai_tools_list",
+        "summary": "platform.ai.tools.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_tools_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "platform_ai_tools_create",
+        "summary": "platform.ai.tools.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_tools_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_tools_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/tools/{toolDefinitionId}": {
+      "patch": {
+        "operationId": "platform_ai_tools_update",
+        "summary": "platform.ai.tools.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "toolDefinitionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_tools_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_tools_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/tools/{toolDefinitionId}/versions": {
+      "get": {
+        "operationId": "platform_ai_toolVersions_list",
+        "summary": "platform.ai.toolVersions.list",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "toolDefinitionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_toolVersions_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "platform_ai_toolVersions_create",
+        "summary": "platform.ai.toolVersions.create",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "toolDefinitionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_toolVersions_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_toolVersions_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/tools/{toolDefinitionId}/versions/{version}": {
+      "patch": {
+        "operationId": "platform_ai_toolVersions_status_update",
+        "summary": "platform.ai.toolVersions.status.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "toolDefinitionId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_toolVersions_status_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_toolVersions_status_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/tools/network-policies": {
+      "get": {
+        "operationId": "platform_ai_toolNetworkPolicies_list",
+        "summary": "platform.ai.toolNetworkPolicies.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_toolNetworkPolicies_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "platform_ai_toolNetworkPolicies_create",
+        "summary": "platform.ai.toolNetworkPolicies.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_toolNetworkPolicies_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_toolNetworkPolicies_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/tools/network-policies/{networkPolicyId}": {
+      "patch": {
+        "operationId": "platform_ai_toolNetworkPolicies_update",
+        "summary": "platform.ai.toolNetworkPolicies.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "networkPolicyId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_toolNetworkPolicies_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_toolNetworkPolicies_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/tools/connections": {
+      "get": {
+        "operationId": "workspace_ai_toolConnections_list",
+        "summary": "workspace.ai.toolConnections.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolConnections_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "workspace_ai_toolConnections_create",
+        "summary": "workspace.ai.toolConnections.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_toolConnections_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolConnections_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/tools/connections/{connectionId}": {
+      "patch": {
+        "operationId": "workspace_ai_toolConnections_update",
+        "summary": "workspace.ai.toolConnections.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "connectionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_toolConnections_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolConnections_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/tools/connections/{connectionId}/secret": {
+      "post": {
+        "operationId": "workspace_ai_toolConnections_secret_rotate",
+        "summary": "workspace.ai.toolConnections.secret.rotate",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "connectionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_toolConnections_secret_rotate_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolConnections_secret_rotate_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/tools/grants": {
+      "get": {
+        "operationId": "workspace_ai_toolGrants_list",
+        "summary": "workspace.ai.toolGrants.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolGrants_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "workspace_ai_toolGrants_create",
+        "summary": "workspace.ai.toolGrants.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_toolGrants_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolGrants_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/tools/grants/{grantId}": {
+      "patch": {
+        "operationId": "workspace_ai_toolGrants_update",
+        "summary": "workspace.ai.toolGrants.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "grantId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_toolGrants_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolGrants_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/tools/grants/{grantId}/connection": {
+      "put": {
+        "operationId": "workspace_ai_toolGrants_connection_bind",
+        "summary": "workspace.ai.toolGrants.connection.bind",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "grantId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_toolGrants_connection_bind_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_toolGrants_connection_bind_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError401"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError403"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError409"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError429"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/account": {
       "get": {
         "operationId": "account_get",
@@ -18684,7 +20309,6 @@
             "properties": {
               "apiKey": {
                 "type": "string",
-                "minLength": 1,
                 "maxLength": 8192
               }
             },
@@ -19013,7 +20637,6 @@
         "properties": {
           "apiKey": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 8192
           }
         },
@@ -19767,7 +21390,6 @@
             "properties": {
               "apiKey": {
                 "type": "string",
-                "minLength": 1,
                 "maxLength": 8192
               }
             },
@@ -20106,7 +21728,6 @@
         "properties": {
           "apiKey": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 8192
           }
         },
@@ -20704,6 +22325,3318 @@
           "platformDeploymentId",
           "updatedAt",
           "workspaceDeploymentId",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_tools_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "displayName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "enabled"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "createdAt",
+            "description",
+            "displayName",
+            "id",
+            "name",
+            "revision",
+            "status",
+            "updatedAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "ContractError401": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_TOOL_AUTHENTICATION_REQUIRED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              401
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError403": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_TOOL_AUTHORIZATION_DENIED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              403
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError429": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_TOOL_RATE_LIMITED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              429
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError500": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_TOOL_INTERNAL_ERROR"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              500
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_tools_create_Request": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "default": "disabled"
+          }
+        },
+        "required": [
+          "description",
+          "displayName",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_tools_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "createdAt",
+          "description",
+          "displayName",
+          "id",
+          "name",
+          "revision",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError400": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_TOOL_CONNECTION_AUTH_DISABLED",
+              "AI_TOOL_CONNECTION_INVALID",
+              "AI_TOOL_CONNECTION_SECRET_INVALID",
+              "AI_TOOL_INVALID_REQUEST",
+              "TOOL_ENDPOINT_COMPONENT_FORBIDDEN",
+              "TOOL_ENDPOINT_HOST_FORBIDDEN",
+              "TOOL_ENDPOINT_INVALID",
+              "TOOL_ENDPOINT_NOT_APPROVED",
+              "TOOL_ENDPOINT_SCHEME_FORBIDDEN",
+              "TOOL_HEADER_FORBIDDEN",
+              "TOOL_HEADER_INVALID",
+              "TOOL_NETWORK_ADDRESS_FORBIDDEN",
+              "TOOL_NETWORK_ADDRESS_INVALID"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              400
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError404": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_TOOL_NOT_FOUND"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              404
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError409": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_TOOL_CONFLICT",
+              "AI_TOOL_UNAVAILABLE"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              409
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_tools_update_Request": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_tools_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "createdAt",
+          "description",
+          "displayName",
+          "id",
+          "name",
+          "revision",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolVersions_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "contentDigest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "disabled"
+              ]
+            },
+            "toolDefinitionId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "allowsArtifact": {
+              "type": "boolean"
+            },
+            "driverConfig": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "handlerKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    }
+                  },
+                  "required": [
+                    "handlerKey"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE"
+                      ]
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "required": [
+                    "method",
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaDigest": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "toolName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "schemaDigest",
+                    "toolName"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "driverType": {
+              "type": "string",
+              "enum": [
+                "internal",
+                "http",
+                "mcpStreamableHttp"
+              ]
+            },
+            "idempotency": {
+              "type": "string",
+              "enum": [
+                "notRequired",
+                "required",
+                "unsupported"
+              ]
+            },
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "additionalProperties": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                },
+                "properties": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "nullable": true
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "nullable": true
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": {
+                          "nullable": true
+                        }
+                      }
+                    ]
+                  }
+                },
+                "required": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "maxItems": 100
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "object"
+                  ]
+                }
+              },
+              "required": [
+                "additionalProperties",
+                "properties",
+                "required",
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            "maxResponseBytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 10485760
+            },
+            "networkPolicyIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "maxItems": 20
+            },
+            "outputRedactionPaths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "maxItems": 100
+            },
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "additionalProperties": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                },
+                "properties": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "nullable": true
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "nullable": true
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": {
+                          "nullable": true
+                        }
+                      }
+                    ]
+                  }
+                },
+                "required": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "maxItems": 100
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "object"
+                  ]
+                }
+              },
+              "required": [
+                "additionalProperties",
+                "properties",
+                "required",
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            "requiredPermissions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "maxItems": 100
+            },
+            "retry": {
+              "type": "object",
+              "properties": {
+                "backoffMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 60000
+                },
+                "maxAttempts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5
+                },
+                "strategy": {
+                  "type": "string",
+                  "enum": [
+                    "fixed",
+                    "exponential"
+                  ]
+                }
+              },
+              "required": [
+                "backoffMs",
+                "maxAttempts",
+                "strategy"
+              ],
+              "additionalProperties": false
+            },
+            "schemaVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.tool-definition/v1"
+              ]
+            },
+            "sideEffect": {
+              "type": "string",
+              "enum": [
+                "none",
+                "reversible",
+                "irreversible"
+              ]
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 120000
+            },
+            "version": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "contentDigest",
+            "createdAt",
+            "revision",
+            "status",
+            "toolDefinitionId",
+            "updatedAt",
+            "allowsArtifact",
+            "driverConfig",
+            "driverType",
+            "idempotency",
+            "inputSchema",
+            "maxResponseBytes",
+            "networkPolicyIds",
+            "outputRedactionPaths",
+            "outputSchema",
+            "requiredPermissions",
+            "retry",
+            "schemaVersion",
+            "sideEffect",
+            "timeoutMs",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "platform_ai_toolVersions_create_Request": {
+        "type": "object",
+        "properties": {
+          "allowsArtifact": {
+            "type": "boolean"
+          },
+          "driverConfig": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "handlerKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                  }
+                },
+                "required": [
+                  "handlerKey"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ]
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "method",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "schemaDigest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "toolName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "schemaDigest",
+                  "toolName"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "driverType": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "http",
+              "mcpStreamableHttp"
+            ]
+          },
+          "idempotency": {
+            "type": "string",
+            "enum": [
+              "notRequired",
+              "required",
+              "unsupported"
+            ]
+          },
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "additionalProperties": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "nullable": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "nullable": true
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxItems": 100
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "object"
+                ]
+              }
+            },
+            "required": [
+              "additionalProperties",
+              "properties",
+              "required",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "maxResponseBytes": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 10485760
+          },
+          "networkPolicyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 20
+          },
+          "outputRedactionPaths": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "maxItems": 100
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "additionalProperties": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "nullable": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "nullable": true
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxItems": 100
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "object"
+                ]
+              }
+            },
+            "required": [
+              "additionalProperties",
+              "properties",
+              "required",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "requiredPermissions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+            },
+            "maxItems": 100
+          },
+          "retry": {
+            "type": "object",
+            "properties": {
+              "backoffMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "maxAttempts": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "exponential"
+                ]
+              }
+            },
+            "required": [
+              "backoffMs",
+              "maxAttempts",
+              "strategy"
+            ],
+            "additionalProperties": false
+          },
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.tool-definition/v1"
+            ]
+          },
+          "sideEffect": {
+            "type": "string",
+            "enum": [
+              "none",
+              "reversible",
+              "irreversible"
+            ]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 120000
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "disabled"
+            ],
+            "default": "draft"
+          }
+        },
+        "required": [
+          "allowsArtifact",
+          "driverConfig",
+          "driverType",
+          "idempotency",
+          "inputSchema",
+          "maxResponseBytes",
+          "networkPolicyIds",
+          "outputRedactionPaths",
+          "outputSchema",
+          "requiredPermissions",
+          "retry",
+          "schemaVersion",
+          "sideEffect",
+          "timeoutMs",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolVersions_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "contentDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "disabled"
+            ]
+          },
+          "toolDefinitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "allowsArtifact": {
+            "type": "boolean"
+          },
+          "driverConfig": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "handlerKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                  }
+                },
+                "required": [
+                  "handlerKey"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ]
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "method",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "schemaDigest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "toolName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "schemaDigest",
+                  "toolName"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "driverType": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "http",
+              "mcpStreamableHttp"
+            ]
+          },
+          "idempotency": {
+            "type": "string",
+            "enum": [
+              "notRequired",
+              "required",
+              "unsupported"
+            ]
+          },
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "additionalProperties": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "nullable": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "nullable": true
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxItems": 100
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "object"
+                ]
+              }
+            },
+            "required": [
+              "additionalProperties",
+              "properties",
+              "required",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "maxResponseBytes": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 10485760
+          },
+          "networkPolicyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 20
+          },
+          "outputRedactionPaths": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "maxItems": 100
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "additionalProperties": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "nullable": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "nullable": true
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxItems": 100
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "object"
+                ]
+              }
+            },
+            "required": [
+              "additionalProperties",
+              "properties",
+              "required",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "requiredPermissions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+            },
+            "maxItems": 100
+          },
+          "retry": {
+            "type": "object",
+            "properties": {
+              "backoffMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "maxAttempts": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "exponential"
+                ]
+              }
+            },
+            "required": [
+              "backoffMs",
+              "maxAttempts",
+              "strategy"
+            ],
+            "additionalProperties": false
+          },
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.tool-definition/v1"
+            ]
+          },
+          "sideEffect": {
+            "type": "string",
+            "enum": [
+              "none",
+              "reversible",
+              "irreversible"
+            ]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 120000
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "contentDigest",
+          "createdAt",
+          "revision",
+          "status",
+          "toolDefinitionId",
+          "updatedAt",
+          "allowsArtifact",
+          "driverConfig",
+          "driverType",
+          "idempotency",
+          "inputSchema",
+          "maxResponseBytes",
+          "networkPolicyIds",
+          "outputRedactionPaths",
+          "outputSchema",
+          "requiredPermissions",
+          "retry",
+          "schemaVersion",
+          "sideEffect",
+          "timeoutMs",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolVersions_status_update_Request": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "disabled"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolVersions_status_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "contentDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "disabled"
+            ]
+          },
+          "toolDefinitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "allowsArtifact": {
+            "type": "boolean"
+          },
+          "driverConfig": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "handlerKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                  }
+                },
+                "required": [
+                  "handlerKey"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ]
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "method",
+                  "path"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "schemaDigest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "toolName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "schemaDigest",
+                  "toolName"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "driverType": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "http",
+              "mcpStreamableHttp"
+            ]
+          },
+          "idempotency": {
+            "type": "string",
+            "enum": [
+              "notRequired",
+              "required",
+              "unsupported"
+            ]
+          },
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "additionalProperties": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "nullable": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "nullable": true
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxItems": 100
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "object"
+                ]
+              }
+            },
+            "required": [
+              "additionalProperties",
+              "properties",
+              "required",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "maxResponseBytes": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 10485760
+          },
+          "networkPolicyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 20
+          },
+          "outputRedactionPaths": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "maxItems": 100
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "additionalProperties": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "nullable": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "nullable": true
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxItems": 100
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "object"
+                ]
+              }
+            },
+            "required": [
+              "additionalProperties",
+              "properties",
+              "required",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "requiredPermissions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+            },
+            "maxItems": 100
+          },
+          "retry": {
+            "type": "object",
+            "properties": {
+              "backoffMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "maxAttempts": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "exponential"
+                ]
+              }
+            },
+            "required": [
+              "backoffMs",
+              "maxAttempts",
+              "strategy"
+            ],
+            "additionalProperties": false
+          },
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.tool-definition/v1"
+            ]
+          },
+          "sideEffect": {
+            "type": "string",
+            "enum": [
+              "none",
+              "reversible",
+              "irreversible"
+            ]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 120000
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "contentDigest",
+          "createdAt",
+          "revision",
+          "status",
+          "toolDefinitionId",
+          "updatedAt",
+          "allowsArtifact",
+          "driverConfig",
+          "driverType",
+          "idempotency",
+          "inputSchema",
+          "maxResponseBytes",
+          "networkPolicyIds",
+          "outputRedactionPaths",
+          "outputSchema",
+          "requiredPermissions",
+          "retry",
+          "schemaVersion",
+          "sideEffect",
+          "timeoutMs",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolNetworkPolicies_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "pathPrefix": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "scheme": {
+              "type": "string",
+              "enum": [
+                "http",
+                "https"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "enabled"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "createdAt",
+            "host",
+            "id",
+            "name",
+            "pathPrefix",
+            "port",
+            "revision",
+            "scheme",
+            "status",
+            "updatedAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "platform_ai_toolNetworkPolicies_create_Request": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pathPrefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "default": "/"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "scheme": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "default": "disabled"
+          }
+        },
+        "required": [
+          "host",
+          "name",
+          "port",
+          "scheme"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolNetworkPolicies_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pathPrefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "scheme": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "createdAt",
+          "host",
+          "id",
+          "name",
+          "pathPrefix",
+          "port",
+          "revision",
+          "scheme",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolNetworkPolicies_update_Request": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pathPrefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "scheme": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_toolNetworkPolicies_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pathPrefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "scheme": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "createdAt",
+          "host",
+          "id",
+          "name",
+          "pathPrefix",
+          "port",
+          "revision",
+          "scheme",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolConnections_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "authHeaderName": {
+              "type": "string",
+              "nullable": true,
+              "minLength": 1,
+              "maxLength": 120,
+              "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+            },
+            "authType": {
+              "type": "string",
+              "enum": [
+                "none",
+                "bearer",
+                "header"
+              ]
+            },
+            "baseUrl": {
+              "type": "string",
+              "maxLength": 500,
+              "format": "uri"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "driverType": {
+              "type": "string",
+              "enum": [
+                "http",
+                "mcpStreamableHttp"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "networkPolicyId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "secret": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "id": {
+                      "nullable": true
+                    },
+                    "mask": {
+                      "nullable": true
+                    },
+                    "revision": {
+                      "type": "number",
+                      "enum": [
+                        0
+                      ]
+                    },
+                    "updatedAt": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "configured",
+                    "id",
+                    "mask",
+                    "revision",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "mask": {
+                      "type": "string",
+                      "enum": [
+                        "••••••••"
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "configured",
+                    "id",
+                    "mask",
+                    "revision",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "enabled"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "authHeaderName",
+            "authType",
+            "baseUrl",
+            "createdAt",
+            "driverType",
+            "id",
+            "name",
+            "networkPolicyId",
+            "revision",
+            "secret",
+            "status",
+            "updatedAt",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "workspace_ai_toolConnections_create_Request": {
+        "type": "object",
+        "properties": {
+          "authHeaderName": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+          },
+          "authType": {
+            "type": "string",
+            "enum": [
+              "none",
+              "bearer",
+              "header"
+            ],
+            "default": "none"
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "driverType": {
+            "type": "string",
+            "enum": [
+              "http",
+              "mcpStreamableHttp"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "networkPolicyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "secret": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192,
+                "pattern": "^[\\x20-\\x7e]+$"
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "default": "disabled"
+          }
+        },
+        "required": [
+          "baseUrl",
+          "driverType",
+          "name",
+          "networkPolicyId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolConnections_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "authHeaderName": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+          },
+          "authType": {
+            "type": "string",
+            "enum": [
+              "none",
+              "bearer",
+              "header"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "driverType": {
+            "type": "string",
+            "enum": [
+              "http",
+              "mcpStreamableHttp"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "networkPolicyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "authHeaderName",
+          "authType",
+          "baseUrl",
+          "createdAt",
+          "driverType",
+          "id",
+          "name",
+          "networkPolicyId",
+          "revision",
+          "secret",
+          "status",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolConnections_update_Request": {
+        "type": "object",
+        "properties": {
+          "authHeaderName": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+          },
+          "authType": {
+            "type": "string",
+            "enum": [
+              "none",
+              "bearer",
+              "header"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "networkPolicyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolConnections_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "authHeaderName": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+          },
+          "authType": {
+            "type": "string",
+            "enum": [
+              "none",
+              "bearer",
+              "header"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "driverType": {
+            "type": "string",
+            "enum": [
+              "http",
+              "mcpStreamableHttp"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "networkPolicyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "authHeaderName",
+          "authType",
+          "baseUrl",
+          "createdAt",
+          "driverType",
+          "id",
+          "name",
+          "networkPolicyId",
+          "revision",
+          "secret",
+          "status",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolConnections_secret_rotate_Request": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "pattern": "^[\\x20-\\x7e]+$"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolConnections_secret_rotate_Response200": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolGrants_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "configured": {
+              "type": "boolean"
+            },
+            "connectionId": {
+              "type": "string",
+              "nullable": true,
+              "format": "uuid"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "expiresAt": {
+              "type": "string",
+              "nullable": true,
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "toolDefinitionId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "toolVersion": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "configured",
+            "connectionId",
+            "createdAt",
+            "enabled",
+            "expiresAt",
+            "id",
+            "revision",
+            "toolDefinitionId",
+            "toolVersion",
+            "updatedAt",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "workspace_ai_toolGrants_create_Request": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "toolDefinitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toolVersion": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          }
+        },
+        "required": [
+          "toolDefinitionId",
+          "toolVersion"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolGrants_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "connectionId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "toolDefinitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toolVersion": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "configured",
+          "connectionId",
+          "createdAt",
+          "enabled",
+          "expiresAt",
+          "id",
+          "revision",
+          "toolDefinitionId",
+          "toolVersion",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolGrants_update_Request": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolGrants_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "connectionId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "toolDefinitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toolVersion": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "configured",
+          "connectionId",
+          "createdAt",
+          "enabled",
+          "expiresAt",
+          "id",
+          "revision",
+          "toolDefinitionId",
+          "toolVersion",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolGrants_connection_bind_Request": {
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": [
+          "connectionId",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_toolGrants_connection_bind_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "connectionId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "toolDefinitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toolVersion": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "configured",
+          "connectionId",
+          "createdAt",
+          "enabled",
+          "expiresAt",
+          "id",
+          "revision",
+          "toolDefinitionId",
+          "toolVersion",
+          "updatedAt",
           "workspaceId"
         ],
         "additionalProperties": false

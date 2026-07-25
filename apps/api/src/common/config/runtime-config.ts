@@ -11,12 +11,18 @@ export const appRuntimeConfig = registerAs("app", () => ({
   trustedProxyCidrs: readTrustedProxyCidrs(process.env),
 }));
 
-export const aiRuntimeConfig = registerAs("ai", () => ({
-  allowedProviderHosts: parseProviderHostAllowlist(
-    process.env.AI_PROVIDER_ALLOWED_HOSTS,
-  ),
-  requireHttps: (process.env.NODE_ENV ?? "development") === "production",
-}));
+export const aiRuntimeConfig = registerAs("ai", () => {
+  const environment = process.env.NODE_ENV ?? "development";
+  return {
+    allowHttpInDevelopment:
+      environment === "development" &&
+      parseBoolean(process.env.AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT, false),
+    allowedProviderHosts: parseProviderHostAllowlist(
+      process.env.AI_PROVIDER_ALLOWED_HOSTS,
+    ),
+    requireHttps: environment === "production",
+  };
+});
 
 export const databaseRuntimeConfig = registerAs("database", () => {
   validateLegacyRlsConfiguration(process.env);
@@ -139,6 +145,10 @@ export function validateRuntimeConfig(
     config.AI_PROVIDER_ALLOWED_HOSTS === undefined
       ? undefined
       : String(config.AI_PROVIDER_ALLOWED_HOSTS),
+  );
+  validateBoolean(
+    "AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT",
+    config.AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT,
   );
   validateLegacyRlsConfiguration(config);
   validateUrl("POSTGRES_TEST_URL", config.POSTGRES_TEST_URL, "postgresql:");

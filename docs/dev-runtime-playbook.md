@@ -66,6 +66,11 @@ comma-separated host list, not a list of URLs. An empty list fails closed.
 Production Provider endpoints must use HTTPS; credentials, query strings,
 fragments, localhost, IP literals, and private host suffixes are rejected.
 
+Controlled Tool Connections also require HTTPS. A local HTTP endpoint can be
+used only when both `NODE_ENV=development` and
+`AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT=true` are set explicitly. Test, staging, and
+production environments ignore that escape hatch and continue to reject HTTP.
+
 ## Debug runtime logs
 
 Store ad-hoc local API, web, worker, and test-process logs only in the

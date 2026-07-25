@@ -198,6 +198,52 @@ describe("admin API contracts", () => {
     );
   });
 
+  it("registers controlled Tool Gateway routes without client-selected Workspace scope", () => {
+    const platformVersion = findAdminContract(
+      "PATCH",
+      "/api/admin/platform/ai/tools/11111111-1111-4111-8111-111111111111/versions/1.2.3",
+    );
+    const connectionCreate = findAdminContract(
+      "POST",
+      "/api/admin/workspace/ai/tools/connections",
+    )?.contract;
+    const grantBind = findAdminContract(
+      "PUT",
+      "/api/admin/workspace/ai/tools/grants/22222222-2222-4222-8222-222222222222/connection",
+    );
+
+    assert.equal(
+      platformVersion?.contract.id,
+      "platform.ai.toolVersions.status.update",
+    );
+    assert.deepEqual(platformVersion?.params, {
+      toolDefinitionId: "11111111-1111-4111-8111-111111111111",
+      version: "1.2.3",
+    });
+    assert.equal(
+      connectionCreate?.id,
+      "workspace.ai.toolConnections.create",
+    );
+    assert.equal(
+      connectionCreate?.body?.safeParse({
+        authType: "none",
+        baseUrl: "https://tools.example.com/hermes",
+        driverType: "http",
+        name: "Support tools",
+        networkPolicyId: "33333333-3333-4333-8333-333333333333",
+        workspaceId: "44444444-4444-4444-8444-444444444444",
+      }).success,
+      false,
+    );
+    assert.equal(
+      grantBind?.contract.id,
+      "workspace.ai.toolGrants.connection.bind",
+    );
+    assert.deepEqual(grantBind?.params, {
+      grantId: "22222222-2222-4222-8222-222222222222",
+    });
+  });
+
   it("documents the invitation result when adding a new platform member", () => {
     const response = {
       invite: {

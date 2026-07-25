@@ -17,9 +17,19 @@ export function mergeAdminContractOpenApi(nestDocument: OpenAPIObject): OpenAPIO
   assertUniqueAdminContracts();
   const registry = new OpenAPIRegistry();
   const errorSchema = registry.register("ApiError", ApiErrorSchema);
+  const sharedErrorSchemas = new Map<ZodType, ZodType>();
+  const errorSchemaCounts = new Map<string, number>();
 
   for (const contract of adminContractList) {
-    registry.registerPath(toRouteConfig(registry, contract, errorSchema));
+    registry.registerPath(
+      toRouteConfig(
+        registry,
+        contract,
+        errorSchema,
+        sharedErrorSchemas,
+        errorSchemaCounts,
+      ),
+    );
   }
 
   const generated = new OpenApiGeneratorV3(registry.definitions).generateDocument({
@@ -56,6 +66,8 @@ function toRouteConfig(
   registry: OpenAPIRegistry,
   contract: ApiContract,
   errorSchema: ZodType,
+  sharedErrorSchemas: Map<ZodType, ZodType>,
+  errorSchemaCounts: Map<string, number>,
 ): RouteConfig {
   const request: NonNullable<RouteConfig["request"]> = {};
   if (contract.params) request.params = contract.params as never;
@@ -104,6 +116,26 @@ function toRouteConfig(
         },
       };
     }
+  }
+  for (const [status, schema] of Object.entries(contract.errorResponses ?? {})) {
+    let registeredSchema = sharedErrorSchemas.get(schema);
+    if (!registeredSchema) {
+      const count = (errorSchemaCounts.get(status) ?? 0) + 1;
+      errorSchemaCounts.set(status, count);
+      registeredSchema = registry.register(
+        `ContractError${status}${count === 1 ? "" : `_${count}`}`,
+        schema,
+      );
+      sharedErrorSchemas.set(schema, registeredSchema);
+    }
+    responses[status] = {
+      description: "Error response",
+      content: {
+        "application/json": {
+          schema: registeredSchema,
+        },
+      },
+    };
   }
   responses["400"] ??= {
     description: "Request validation failed",

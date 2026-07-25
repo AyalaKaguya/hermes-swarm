@@ -4,11 +4,15 @@ import { JsonValueSchema } from "../models.js";
 export const RuntimeIdentifierSchema = z.string().trim().min(1).max(128)
   .regex(/^[A-Za-z][A-Za-z0-9._:-]*$/, "Expected a stable runtime identifier");
 
-export const SemanticVersionSchema = z.string()
+export const SemanticVersionSchema = z.string().max(64)
   .regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
 
 export const JsonPointerSchema = z.string().max(512)
-  .refine((value) => value === "" || value.startsWith("/"), "Expected an RFC 6901 JSON pointer");
+  .refine(
+    (value) =>
+      (value === "" || value.startsWith("/")) && !/~(?:[^01]|$)/.test(value),
+    "Expected an RFC 6901 JSON pointer",
+  );
 
 /**
  * A deliberately shallow JSON-schema envelope. Property definitions remain
