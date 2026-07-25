@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
+  aiRuntimeConfig,
   appRuntimeConfig,
   databaseRuntimeConfig,
   redisRuntimeConfig,
@@ -10,6 +11,7 @@ import {
 } from "./runtime-config.js";
 
 const originalEnvironment = {
+  AI_PROVIDER_ALLOWED_HOSTS: process.env.AI_PROVIDER_ALLOWED_HOSTS,
   DATABASE_SYNCHRONIZE: process.env.DATABASE_SYNCHRONIZE,
   DATABASE_STRICT_RLS: process.env.DATABASE_STRICT_RLS,
   NODE_ENV: process.env.NODE_ENV,
@@ -44,6 +46,34 @@ afterEach(() => {
 });
 
 describe("database runtime configuration", () => {
+  it("normalizes the model provider host allowlist and fails closed by default", () => {
+    delete process.env.AI_PROVIDER_ALLOWED_HOSTS;
+    process.env.NODE_ENV = "development";
+    assert.deepEqual(aiRuntimeConfig(), {
+      allowedProviderHosts: [],
+      requireHttps: false,
+    });
+
+    process.env.AI_PROVIDER_ALLOWED_HOSTS =
+      "Models.Example.com:8443,api.openai.com,api.openai.com";
+    assert.deepEqual(aiRuntimeConfig().allowedProviderHosts, [
+      "api.openai.com",
+      "models.example.com:8443",
+    ]);
+    assert.throws(
+      () =>
+        validateRuntimeConfig({
+          AI_PROVIDER_ALLOWED_HOSTS: "https://models.example.com/path",
+          NODE_ENV: "test",
+          POSTGRES_TEST_URL: "postgresql://test.example/hermes-test",
+        }),
+      /must contain host names/,
+    );
+
+    process.env.NODE_ENV = "production";
+    assert.equal(aiRuntimeConfig().requireHttps, true);
+  });
+
   it("uses a dedicated settings encryption key when configured", () => {
     process.env.SETTINGS_ENCRYPTION_KEY = "dedicated-settings-key";
     assert.equal(

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module.js";
+import { AiModule } from "./ai/ai.module.js";
 import { AuditModule } from "./audit/audit.module.js";
 import { FeatureAccessModule } from "./feature-access/feature-access.module.js";
 import { FilesModule } from "./files/files.module.js";
@@ -19,6 +20,7 @@ import { OnboardingService } from "./onboarding/onboarding.service.js";
 
 @Module({
   imports: [
+    AiModule,
     AuthModule,
     AuditModule,
     FeatureAccessModule,

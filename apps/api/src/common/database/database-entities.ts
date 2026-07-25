@@ -14,6 +14,8 @@ import {
   LoginAuditLog,
   PasswordReset,
   Permission,
+  PlatformModelDeployment,
+  PlatformModelProvider,
   PlatformEmailTemplate,
   PlatformMembership,
   PlatformSetting,
@@ -28,6 +30,10 @@ import {
   Account,
   UserNotification,
   WorkspaceMembership,
+  WorkspaceModelDefault,
+  WorkspaceModelDeployment,
+  WorkspaceModelGrant,
+  WorkspaceModelProvider,
 } from "@hermes-swarm/core";
 
 export const DATABASE_ENTITIES = [
@@ -46,6 +52,8 @@ export const DATABASE_ENTITIES = [
   LoginAuditLog,
   PasswordReset,
   Permission,
+  PlatformModelDeployment,
+  PlatformModelProvider,
   PlatformEmailTemplate,
   PlatformMembership,
   PlatformSetting,
@@ -60,4 +68,8 @@ export const DATABASE_ENTITIES = [
   Account,
   UserNotification,
   WorkspaceMembership,
+  WorkspaceModelDefault,
+  WorkspaceModelDeployment,
+  WorkspaceModelGrant,
+  WorkspaceModelProvider,
 ] as const;

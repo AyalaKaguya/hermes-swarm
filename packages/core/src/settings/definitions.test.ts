@@ -97,4 +97,12 @@ describe("setting definitions", () => {
       "true",
     );
   });
+
+  it("keeps AI disabled behind a platform feature gate by default", () => {
+    const definition = getSettingDefinitionByKey(FEATURE_SETTING_KEYS.ai);
+
+    assert.equal(definition?.scope, "platform");
+    assert.equal(definition?.defaultValue, "false");
+  });
+
 });

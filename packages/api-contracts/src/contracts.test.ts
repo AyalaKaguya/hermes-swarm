@@ -150,6 +150,39 @@ describe("admin API contracts", () => {
     assert.ok(responseSchemaFor(adminContracts.authLogin, 201));
   });
 
+  it("registers scope-specific provider catalog routes with write-only secrets", () => {
+    const platformCreate = findAdminContract(
+      "POST",
+      "/api/admin/platform/ai/providers",
+    )?.contract;
+    const workspaceCreate = findAdminContract(
+      "POST",
+      "/api/admin/workspace/ai/providers",
+    )?.contract;
+    const grant = findAdminContract(
+      "PATCH",
+      "/api/admin/platform/ai/workspaces/11111111-1111-4111-8111-111111111111/grants/22222222-2222-4222-8222-222222222222",
+    );
+
+    assert.equal(platformCreate?.id, "platform.ai.providers.create");
+    assert.equal(workspaceCreate?.id, "workspace.ai.providers.create");
+    assert.equal(grant?.contract.id, "platform.ai.workspaceGrants.update");
+    assert.deepEqual(grant?.params, {
+      grantId: "22222222-2222-4222-8222-222222222222",
+      workspaceId: "11111111-1111-4111-8111-111111111111",
+    });
+    assert.equal(
+      workspaceCreate?.body?.safeParse({
+        baseUrl: "https://models.example.com/v1",
+        driver: "openai-compatible",
+        name: "Workspace model",
+        secret: { apiKey: "write-only" },
+        workspaceId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+      false,
+    );
+  });
+
   it("documents the invitation result when adding a new platform member", () => {
     const response = {
       invite: {

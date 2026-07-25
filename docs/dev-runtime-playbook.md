@@ -57,6 +57,15 @@ Copy the corresponding local endpoint, bucket, and application credentials to
 root `.env`; never copy `MINIO_ROOT_*` into application settings. Remote MinIO
 is provisioned by operations and does not use this initializer.
 
+## Model provider network allowlist
+
+AI model Providers are disabled by feature gate until configured. Before a
+Provider can be saved, add its exact host (and non-default port, when present)
+to `AI_PROVIDER_ALLOWED_HOSTS` in the API environment. The value is a
+comma-separated host list, not a list of URLs. An empty list fails closed.
+Production Provider endpoints must use HTTPS; credentials, query strings,
+fragments, localhost, IP literals, and private host suffixes are rejected.
+
 ## Debug runtime logs
 
 Store ad-hoc local API, web, worker, and test-process logs only in the

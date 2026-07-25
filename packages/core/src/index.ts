@@ -1,3 +1,4 @@
+export * from "./ai/index.js";
 export * from "./files/index.js";
 export * from "./mail/index.js";
 export * from "./notifications/index.js";

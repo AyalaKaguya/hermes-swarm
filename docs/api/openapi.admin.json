@@ -1866,6 +1866,1036 @@
         }
       }
     },
+    "/api/admin/platform/ai/providers": {
+      "get": {
+        "operationId": "platform_ai_providers_list",
+        "summary": "platform.ai.providers.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_providers_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "platform_ai_providers_create",
+        "summary": "platform.ai.providers.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_providers_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_providers_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/providers/{providerId}": {
+      "patch": {
+        "operationId": "platform_ai_providers_update",
+        "summary": "platform.ai.providers.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_providers_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_providers_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/providers/{providerId}/secret": {
+      "post": {
+        "operationId": "platform_ai_providers_secret_rotate",
+        "summary": "platform.ai.providers.secret.rotate",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_providers_secret_rotate_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_providers_secret_rotate_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/providers/{providerId}/deployments": {
+      "get": {
+        "operationId": "platform_ai_deployments_list",
+        "summary": "platform.ai.deployments.list",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_deployments_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "platform_ai_deployments_create",
+        "summary": "platform.ai.deployments.create",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_deployments_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_deployments_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/deployments/{deploymentId}": {
+      "patch": {
+        "operationId": "platform_ai_deployments_update",
+        "summary": "platform.ai.deployments.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "deploymentId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_deployments_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_deployments_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/workspaces/{workspaceId}/grants": {
+      "get": {
+        "operationId": "platform_ai_workspaceGrants_list",
+        "summary": "platform.ai.workspaceGrants.list",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "workspaceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_workspaceGrants_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "platform_ai_workspaceGrants_create",
+        "summary": "platform.ai.workspaceGrants.create",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "workspaceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_workspaceGrants_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_workspaceGrants_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform/ai/workspaces/{workspaceId}/grants/{grantId}": {
+      "patch": {
+        "operationId": "platform_ai_workspaceGrants_update",
+        "summary": "platform.ai.workspaceGrants.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "workspaceId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "grantId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/platform_ai_workspaceGrants_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/platform_ai_workspaceGrants_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/providers": {
+      "get": {
+        "operationId": "workspace_ai_providers_list",
+        "summary": "workspace.ai.providers.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_providers_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "workspace_ai_providers_create",
+        "summary": "workspace.ai.providers.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_providers_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_providers_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/providers/{providerId}": {
+      "patch": {
+        "operationId": "workspace_ai_providers_update",
+        "summary": "workspace.ai.providers.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_providers_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_providers_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/providers/{providerId}/secret": {
+      "post": {
+        "operationId": "workspace_ai_providers_secret_rotate",
+        "summary": "workspace.ai.providers.secret.rotate",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_providers_secret_rotate_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_providers_secret_rotate_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/providers/{providerId}/deployments": {
+      "get": {
+        "operationId": "workspace_ai_deployments_list",
+        "summary": "workspace.ai.deployments.list",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_deployments_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "workspace_ai_deployments_create",
+        "summary": "workspace.ai.deployments.create",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_deployments_create_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_deployments_create_Response201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/deployments/{deploymentId}": {
+      "patch": {
+        "operationId": "workspace_ai_deployments_update",
+        "summary": "workspace.ai.deployments.update",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "deploymentId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_deployments_update_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_deployments_update_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/grants": {
+      "get": {
+        "operationId": "workspace_ai_grants_list",
+        "summary": "workspace.ai.grants.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_grants_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace/ai/defaults": {
+      "get": {
+        "operationId": "workspace_ai_defaults_list",
+        "summary": "workspace.ai.defaults.list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_defaults_list_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "workspace_ai_defaults_set",
+        "summary": "workspace.ai.defaults.set",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/workspace_ai_defaults_set_Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/workspace_ai_defaults_set_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/account": {
       "get": {
         "operationId": "account_get",
@@ -16033,6 +17063,2195 @@
         },
         "required": [
           "ok"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_providers_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "baseUrl": {
+              "type": "string",
+              "maxLength": 500,
+              "format": "uri"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "driver": {
+              "type": "string",
+              "enum": [
+                "openai-compatible"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "secret": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "id": {
+                      "nullable": true
+                    },
+                    "mask": {
+                      "nullable": true
+                    },
+                    "revision": {
+                      "type": "number",
+                      "enum": [
+                        0
+                      ]
+                    },
+                    "updatedAt": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "configured",
+                    "id",
+                    "mask",
+                    "revision",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "mask": {
+                      "type": "string",
+                      "enum": [
+                        "••••••••"
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "configured",
+                    "id",
+                    "mask",
+                    "revision",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "enabled"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "baseUrl",
+            "createdAt",
+            "driver",
+            "id",
+            "name",
+            "revision",
+            "secret",
+            "status",
+            "updatedAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "platform_ai_providers_create_Request": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "secret": {
+            "type": "object",
+            "properties": {
+              "apiKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              }
+            },
+            "required": [
+              "apiKey"
+            ],
+            "additionalProperties": false
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "default": "disabled"
+          }
+        },
+        "required": [
+          "baseUrl",
+          "driver",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_providers_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "baseUrl",
+          "createdAt",
+          "driver",
+          "id",
+          "name",
+          "revision",
+          "secret",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_providers_update_Request": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "platform_ai_providers_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "baseUrl",
+          "createdAt",
+          "driver",
+          "id",
+          "name",
+          "revision",
+          "secret",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_providers_secret_rotate_Request": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          }
+        },
+        "required": [
+          "apiKey"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_providers_secret_rotate_Response200": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_deployments_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "capability": {
+              "type": "string",
+              "enum": [
+                "chat",
+                "embedding",
+                "rerank",
+                "speechToText",
+                "textToSpeech"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "modelId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "providerId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "enabled"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "capability",
+            "createdAt",
+            "id",
+            "modelId",
+            "name",
+            "providerId",
+            "revision",
+            "status",
+            "updatedAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "platform_ai_deployments_create_Request": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "default": "disabled"
+          }
+        },
+        "required": [
+          "capability",
+          "modelId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_deployments_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "capability",
+          "createdAt",
+          "id",
+          "modelId",
+          "name",
+          "providerId",
+          "revision",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_deployments_update_Request": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "platform_ai_deployments_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "capability",
+          "createdAt",
+          "id",
+          "modelId",
+          "name",
+          "providerId",
+          "revision",
+          "status",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_workspaceGrants_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "expiresAt": {
+              "type": "string",
+              "nullable": true,
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "platformDeploymentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "createdAt",
+            "enabled",
+            "expiresAt",
+            "id",
+            "platformDeploymentId",
+            "revision",
+            "updatedAt",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "platform_ai_workspaceGrants_create_Request": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "platformDeploymentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "platformDeploymentId"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_workspaceGrants_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platformDeploymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "createdAt",
+          "enabled",
+          "expiresAt",
+          "id",
+          "platformDeploymentId",
+          "revision",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "platform_ai_workspaceGrants_update_Request": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "platform_ai_workspaceGrants_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platformDeploymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "createdAt",
+          "enabled",
+          "expiresAt",
+          "id",
+          "platformDeploymentId",
+          "revision",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_providers_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "baseUrl": {
+              "type": "string",
+              "maxLength": 500,
+              "format": "uri"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "driver": {
+              "type": "string",
+              "enum": [
+                "openai-compatible"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "secret": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "id": {
+                      "nullable": true
+                    },
+                    "mask": {
+                      "nullable": true
+                    },
+                    "revision": {
+                      "type": "number",
+                      "enum": [
+                        0
+                      ]
+                    },
+                    "updatedAt": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "configured",
+                    "id",
+                    "mask",
+                    "revision",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "mask": {
+                      "type": "string",
+                      "enum": [
+                        "••••••••"
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "configured",
+                    "id",
+                    "mask",
+                    "revision",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "enabled"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "baseUrl",
+            "createdAt",
+            "driver",
+            "id",
+            "name",
+            "revision",
+            "secret",
+            "status",
+            "updatedAt",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "workspace_ai_providers_create_Request": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "secret": {
+            "type": "object",
+            "properties": {
+              "apiKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              }
+            },
+            "required": [
+              "apiKey"
+            ],
+            "additionalProperties": false
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "default": "disabled"
+          }
+        },
+        "required": [
+          "baseUrl",
+          "driver",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_providers_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "baseUrl",
+          "createdAt",
+          "driver",
+          "id",
+          "name",
+          "revision",
+          "secret",
+          "status",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_providers_update_Request": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "workspace_ai_providers_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 500,
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "baseUrl",
+          "createdAt",
+          "driver",
+          "id",
+          "name",
+          "revision",
+          "secret",
+          "status",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_providers_secret_rotate_Request": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          }
+        },
+        "required": [
+          "apiKey"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_providers_secret_rotate_Response200": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "id": {
+                    "nullable": true
+                  },
+                  "mask": {
+                    "nullable": true
+                  },
+                  "revision": {
+                    "type": "number",
+                    "enum": [
+                      0
+                    ]
+                  },
+                  "updatedAt": {
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "configured": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "mask": {
+                    "type": "string",
+                    "enum": [
+                      "••••••••"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "configured",
+                  "id",
+                  "mask",
+                  "revision",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_deployments_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "capability": {
+              "type": "string",
+              "enum": [
+                "chat",
+                "embedding",
+                "rerank",
+                "speechToText",
+                "textToSpeech"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "modelId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "providerId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "enabled"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "capability",
+            "createdAt",
+            "id",
+            "modelId",
+            "name",
+            "providerId",
+            "revision",
+            "status",
+            "updatedAt",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "workspace_ai_deployments_create_Request": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "default": "disabled"
+          }
+        },
+        "required": [
+          "capability",
+          "modelId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_deployments_create_Response201": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "capability",
+          "createdAt",
+          "id",
+          "modelId",
+          "name",
+          "providerId",
+          "revision",
+          "status",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_deployments_update_Request": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "workspace_ai_deployments_update_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "capability",
+          "createdAt",
+          "id",
+          "modelId",
+          "name",
+          "providerId",
+          "revision",
+          "status",
+          "updatedAt",
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_grants_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "expiresAt": {
+              "type": "string",
+              "nullable": true,
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "platformDeploymentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "createdAt",
+            "enabled",
+            "expiresAt",
+            "id",
+            "platformDeploymentId",
+            "revision",
+            "updatedAt",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "workspace_ai_defaults_list_Response200": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "hermes.ai/v1"
+              ]
+            },
+            "capability": {
+              "type": "string",
+              "enum": [
+                "chat",
+                "embedding",
+                "rerank",
+                "speechToText",
+                "textToSpeech"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "platformDeploymentId": {
+              "type": "string",
+              "nullable": true,
+              "format": "uuid"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "workspaceDeploymentId": {
+              "type": "string",
+              "nullable": true,
+              "format": "uuid"
+            },
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "capability",
+            "createdAt",
+            "id",
+            "platformDeploymentId",
+            "updatedAt",
+            "workspaceDeploymentId",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "workspace_ai_defaults_set_Request": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "platformDeploymentId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "workspaceDeploymentId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "capability"
+        ],
+        "additionalProperties": false
+      },
+      "workspace_ai_defaults_set_Response200": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "enum": [
+              "hermes.ai/v1"
+            ]
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "embedding",
+              "rerank",
+              "speechToText",
+              "textToSpeech"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platformDeploymentId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspaceDeploymentId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "capability",
+          "createdAt",
+          "id",
+          "platformDeploymentId",
+          "updatedAt",
+          "workspaceDeploymentId",
+          "workspaceId"
         ],
         "additionalProperties": false
       },

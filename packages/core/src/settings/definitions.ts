@@ -81,6 +81,7 @@ export type FeatureSettingDefinition = {
 };
 
 export const FEATURE_SETTING_KEYS = {
+  ai: "feature:ai:enabled",
   email: "feature:email:enabled",
   invite: "feature:invite:enabled",
   passwordReset: "feature:password-reset:enabled",
@@ -341,6 +342,14 @@ export const FEATURE_SETTING_DEFINITIONS = [
     label: "密码重置",
     description: "允许用户通过邮件重置密码",
     scope: "workspace",
+    valueType: "boolean",
+  },
+  {
+    defaultValue: "false",
+    key: FEATURE_SETTING_KEYS.ai,
+    label: "AI 与 Agent",
+    description: "启用平台模型目录、Agent 与 AI 对话能力",
+    scope: "platform",
     valueType: "boolean",
   },
   {
