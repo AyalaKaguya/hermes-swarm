@@ -1886,7 +1886,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -1896,7 +1896,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -1952,7 +1952,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -1962,7 +1962,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -2021,7 +2021,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -2031,7 +2031,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -2098,7 +2098,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -2108,7 +2108,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -2167,7 +2167,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -2177,7 +2177,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -2244,7 +2244,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -2254,7 +2254,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -2313,7 +2313,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -2323,7 +2323,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -2390,7 +2390,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -2400,7 +2400,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -2468,7 +2468,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400"
+                  "$ref": "#/components/schemas/ContractError400_2"
                 }
               }
             }
@@ -2478,7 +2478,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404"
+                  "$ref": "#/components/schemas/ContractError404_2"
                 }
               }
             }
@@ -3632,7 +3632,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -3662,7 +3662,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -3741,7 +3741,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -3771,7 +3771,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -3870,7 +3870,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -3937,7 +3937,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -3967,7 +3967,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4056,7 +4056,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -4086,7 +4086,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4220,7 +4220,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -4250,7 +4250,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4329,7 +4329,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -4359,7 +4359,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4493,7 +4493,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -4523,7 +4523,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4602,7 +4602,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -4632,7 +4632,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4711,7 +4711,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -4741,7 +4741,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4875,7 +4875,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -4905,7 +4905,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -4984,7 +4984,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -5014,7 +5014,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -5093,7 +5093,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError400_2"
+                  "$ref": "#/components/schemas/ContractError400_3"
                 }
               }
             }
@@ -5123,7 +5123,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractError404_2"
+                  "$ref": "#/components/schemas/ContractError404_3"
                 }
               }
             }
@@ -7511,6 +7511,166 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/ai/runs/{runId}/events": {
+      "get": {
+        "operationId": "ai_runs_events_history",
+        "summary": "ai.runs.events.history",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0,
+              "maximum": 2147483647,
+              "default": 0
+            },
+            "required": false,
+            "name": "afterSequence",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ai_runs_events_history_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response contract mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/ai/runs/{runId}/events/stream": {
+      "get": {
+        "operationId": "ai_runs_events_stream",
+        "summary": "ai.runs.events.stream",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "afterSequence",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "Last-Event-ID",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ai_runs_events_stream_Response200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError400"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractError404"
                 }
               }
             }
@@ -28515,6 +28675,3054 @@
         ],
         "additionalProperties": false
       },
+      "ai_runs_events_history_Response200": {
+        "type": "object",
+        "properties": {
+          "eventSequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "agentVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "running"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "agentVersionId",
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "run.started"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "nullable": true
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "nullable": true
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string",
+                          "enum": [
+                            "cancelled",
+                            "cancelling",
+                            "failed",
+                            "queued",
+                            "running",
+                            "succeeded",
+                            "timedOut",
+                            "waiting"
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string",
+                          "nullable": true,
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                        },
+                        "to": {
+                          "type": "string",
+                          "enum": [
+                            "cancelled",
+                            "cancelling",
+                            "failed",
+                            "queued",
+                            "running",
+                            "succeeded",
+                            "timedOut",
+                            "waiting"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "reasonCode",
+                        "to"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "run.status.changed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "attempt": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "nodeType": {
+                          "type": "string",
+                          "enum": [
+                            "condition",
+                            "end",
+                            "model",
+                            "tool"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "attempt",
+                        "nodeType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "node.started"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "attempt": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "durationMs": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "attempt",
+                        "durationMs"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "node.completed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "attempt": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "category": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100,
+                              "pattern": "^[a-z][a-zA-Z0-9_.-]*$"
+                            },
+                            "code": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 160,
+                              "pattern": "^AI_[A-Z0-9][A-Z0-9_.-]*$"
+                            },
+                            "correlationId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "publicMessage": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            },
+                            "retryAfterMs": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true,
+                              "maximum": 86400000
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "schemaVersion": {
+                              "type": "string",
+                              "enum": [
+                                "hermes.ai-error/v1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "category",
+                            "code",
+                            "correlationId",
+                            "publicMessage",
+                            "retryable",
+                            "schemaVersion"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "attempt",
+                        "error"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "node.failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "finishReason": {
+                          "type": "string",
+                          "nullable": true,
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                        },
+                        "index": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "finishReason",
+                        "index",
+                        "text"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "model.output.delta"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "toolDefinitionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "toolVersion": {
+                          "type": "string",
+                          "maxLength": 64,
+                          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+                        }
+                      },
+                      "required": [
+                        "toolDefinitionId",
+                        "toolVersion"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "tool.call.started"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "durationMs": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "failed",
+                            "succeeded"
+                          ]
+                        },
+                        "toolDefinitionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "durationMs",
+                        "outcome",
+                        "toolDefinitionId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "tool.call.completed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "artifactId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "artifactType": {
+                          "type": "string",
+                          "enum": [
+                            "chart",
+                            "file",
+                            "json",
+                            "table",
+                            "text"
+                          ]
+                        },
+                        "fileObjectId": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "artifactId",
+                        "artifactType",
+                        "fileObjectId",
+                        "title"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "artifact.created"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "checkpointId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "checkpointSequence": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        }
+                      },
+                      "required": [
+                        "checkpointId",
+                        "checkpointSequence"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "checkpoint.created"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "capability": {
+                          "type": "string",
+                          "enum": [
+                            "chat",
+                            "embedding",
+                            "rerank",
+                            "speechToText",
+                            "textToSpeech"
+                          ]
+                        },
+                        "costMicros": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "currency": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 3
+                        },
+                        "deploymentId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "deploymentRevision": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "inputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "latencyMs": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "modelId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "outputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "providerId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "capability",
+                        "costMicros",
+                        "currency",
+                        "deploymentId",
+                        "deploymentRevision",
+                        "inputTokens",
+                        "latencyMs",
+                        "modelId",
+                        "outputTokens",
+                        "providerId",
+                        "totalTokens"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "usage.recorded"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "deadline",
+                            "featureDisabled",
+                            "user"
+                          ]
+                        },
+                        "requestedByAccountId": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "reason",
+                        "requestedByAccountId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "run.cancellation.requested"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "category": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100,
+                              "pattern": "^[a-z][a-zA-Z0-9_.-]*$"
+                            },
+                            "code": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 160,
+                              "pattern": "^AI_[A-Z0-9][A-Z0-9_.-]*$"
+                            },
+                            "correlationId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "publicMessage": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            },
+                            "retryAfterMs": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true,
+                              "maximum": 86400000
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "schemaVersion": {
+                              "type": "string",
+                              "enum": [
+                                "hermes.ai-error/v1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "category",
+                            "code",
+                            "correlationId",
+                            "publicMessage",
+                            "retryable",
+                            "schemaVersion"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "failed",
+                            "timedOut"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "run.failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "callId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "eventKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "nodeId": {
+                      "type": "string",
+                      "nullable": true,
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                    },
+                    "occurredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "string",
+                      "enum": [
+                        "hermes.run-event/v1"
+                      ]
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647,
+                      "exclusiveMinimum": true
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "artifactIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "maxItems": 1000
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "cancelled",
+                            "succeeded"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "artifactIds",
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "run.completed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "callId",
+                    "eventKey",
+                    "id",
+                    "nodeId",
+                    "occurredAt",
+                    "runId",
+                    "schemaVersion",
+                    "sequence",
+                    "workspaceId",
+                    "payload",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "maxItems": 200
+          },
+          "nextAfterSequence": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "runStatus": {
+            "type": "string",
+            "enum": [
+              "cancelled",
+              "cancelling",
+              "failed",
+              "queued",
+              "running",
+              "succeeded",
+              "timedOut",
+              "waiting"
+            ]
+          }
+        },
+        "required": [
+          "eventSequence",
+          "hasMore",
+          "items",
+          "nextAfterSequence",
+          "runStatus"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError400": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_RUN_EVENT_CURSOR_INVALID"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              400
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "ContractError404": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "AI_RUN_UNAVAILABLE"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              404
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "statusCode"
+        ],
+        "additionalProperties": false
+      },
+      "ai_runs_events_stream_Response200": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "agentVersionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "running"
+                    ]
+                  }
+                },
+                "required": [
+                  "agentVersionId",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "run.started"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "nullable": true
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "nullable": true
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "enum": [
+                      "cancelled",
+                      "cancelling",
+                      "failed",
+                      "queued",
+                      "running",
+                      "succeeded",
+                      "timedOut",
+                      "waiting"
+                    ]
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "nullable": true,
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "enum": [
+                      "cancelled",
+                      "cancelling",
+                      "failed",
+                      "queued",
+                      "running",
+                      "succeeded",
+                      "timedOut",
+                      "waiting"
+                    ]
+                  }
+                },
+                "required": [
+                  "from",
+                  "reasonCode",
+                  "to"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "run.status.changed"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "nodeType": {
+                    "type": "string",
+                    "enum": [
+                      "condition",
+                      "end",
+                      "model",
+                      "tool"
+                    ]
+                  }
+                },
+                "required": [
+                  "attempt",
+                  "nodeType"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "node.started"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "attempt",
+                  "durationMs"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "node.completed"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "error": {
+                    "type": "object",
+                    "properties": {
+                      "category": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[a-z][a-zA-Z0-9_.-]*$"
+                      },
+                      "code": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^AI_[A-Z0-9][A-Z0-9_.-]*$"
+                      },
+                      "correlationId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "publicMessage": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "retryAfterMs": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": true,
+                        "maximum": 86400000
+                      },
+                      "retryable": {
+                        "type": "boolean"
+                      },
+                      "schemaVersion": {
+                        "type": "string",
+                        "enum": [
+                          "hermes.ai-error/v1"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "category",
+                      "code",
+                      "correlationId",
+                      "publicMessage",
+                      "retryable",
+                      "schemaVersion"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "attempt",
+                  "error"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "node.failed"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "finishReason": {
+                    "type": "string",
+                    "nullable": true,
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "finishReason",
+                  "index",
+                  "text"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "model.output.delta"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "toolDefinitionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "toolVersion": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+                  }
+                },
+                "required": [
+                  "toolDefinitionId",
+                  "toolVersion"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool.call.started"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "failed",
+                      "succeeded"
+                    ]
+                  },
+                  "toolDefinitionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "durationMs",
+                  "outcome",
+                  "toolDefinitionId"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool.call.completed"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "artifactId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "artifactType": {
+                    "type": "string",
+                    "enum": [
+                      "chart",
+                      "file",
+                      "json",
+                      "table",
+                      "text"
+                    ]
+                  },
+                  "fileObjectId": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "uuid"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "artifactId",
+                  "artifactType",
+                  "fileObjectId",
+                  "title"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "artifact.created"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "checkpointId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "checkpointSequence": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  }
+                },
+                "required": [
+                  "checkpointId",
+                  "checkpointSequence"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "checkpoint.created"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "enum": [
+                      "chat",
+                      "embedding",
+                      "rerank",
+                      "speechToText",
+                      "textToSpeech"
+                    ]
+                  },
+                  "costMicros": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "currency": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3
+                  },
+                  "deploymentId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "deploymentRevision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "inputTokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "latencyMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "modelId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outputTokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "providerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "totalTokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "capability",
+                  "costMicros",
+                  "currency",
+                  "deploymentId",
+                  "deploymentRevision",
+                  "inputTokens",
+                  "latencyMs",
+                  "modelId",
+                  "outputTokens",
+                  "providerId",
+                  "totalTokens"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "usage.recorded"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "deadline",
+                      "featureDisabled",
+                      "user"
+                    ]
+                  },
+                  "requestedByAccountId": {
+                    "type": "string",
+                    "nullable": true,
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "reason",
+                  "requestedByAccountId"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "run.cancellation.requested"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "error": {
+                    "type": "object",
+                    "properties": {
+                      "category": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[a-z][a-zA-Z0-9_.-]*$"
+                      },
+                      "code": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^AI_[A-Z0-9][A-Z0-9_.-]*$"
+                      },
+                      "correlationId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "publicMessage": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "retryAfterMs": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": true,
+                        "maximum": 86400000
+                      },
+                      "retryable": {
+                        "type": "boolean"
+                      },
+                      "schemaVersion": {
+                        "type": "string",
+                        "enum": [
+                          "hermes.ai-error/v1"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "category",
+                      "code",
+                      "correlationId",
+                      "publicMessage",
+                      "retryable",
+                      "schemaVersion"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "failed",
+                      "timedOut"
+                    ]
+                  }
+                },
+                "required": [
+                  "error",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "run.failed"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "callId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid"
+              },
+              "eventKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "nodeId": {
+                "type": "string",
+                "nullable": true,
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "hermes.run-event/v1"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "exclusiveMinimum": true
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "artifactIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "maxItems": 1000
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "cancelled",
+                      "succeeded"
+                    ]
+                  }
+                },
+                "required": [
+                  "artifactIds",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "run.completed"
+                ]
+              }
+            },
+            "required": [
+              "callId",
+              "eventKey",
+              "id",
+              "nodeId",
+              "occurredAt",
+              "runId",
+              "schemaVersion",
+              "sequence",
+              "workspaceId",
+              "payload",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
       "agents_list_Response200": {
         "type": "array",
         "items": {
@@ -28577,7 +31785,7 @@
           "additionalProperties": false
         }
       },
-      "ContractError400": {
+      "ContractError400_2": {
         "type": "object",
         "properties": {
           "code": {
@@ -28606,7 +31814,7 @@
         ],
         "additionalProperties": false
       },
-      "ContractError404": {
+      "ContractError404_2": {
         "type": "object",
         "properties": {
           "code": {
@@ -40456,7 +43664,7 @@
         ],
         "additionalProperties": false
       },
-      "ContractError400_2": {
+      "ContractError400_3": {
         "type": "object",
         "properties": {
           "code": {
@@ -40496,7 +43704,7 @@
         ],
         "additionalProperties": false
       },
-      "ContractError404_2": {
+      "ContractError404_3": {
         "type": "object",
         "properties": {
           "code": {

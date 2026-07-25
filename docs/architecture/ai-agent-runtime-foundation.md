@@ -207,6 +207,13 @@ Checkpoint 恢复；外部副作用只有在工具声明提供幂等保障时才
 | RunEvent | 审计、流式投影和重连 | 只追加、严格排序、可脱敏、可从游标续传 |
 | Artifact | 表格、图表、文件和结构化结果 | 小结果存 PostgreSQL；大结果引用 FileObject |
 
+首个事件切片将 `runtime_runs.event_sequence` 作为每个 Run 的单调计数器，并把
+`run.status.changed` 只追加到 `runtime_run_events`。状态更新、序号推进和事件插入必须
+位于同一 PostgreSQL 事务；API 只按可信 Workspace 与复合 Run 条件读取。历史接口使用
+`sequence` 分页，SSE 使用相同序号作为 `Last-Event-ID`，因此断线后从 PostgreSQL 回放，
+而不是依赖 Redis 保存事件真相。Run 进入终态后，SSE 仍会先发送完已持久化 backlog，
+再关闭连接。
+
 Checkpoint 保存领域中立的执行状态与 adapter state envelope，而不是直接暴露
 LangGraph 内部表结构。Artifact 具有明确类型、Schema 版本、创建 Run、Workspace、
 可见性和保留策略；大型结果先写私有对象存储，再在同一业务完成流程中持久化引用。

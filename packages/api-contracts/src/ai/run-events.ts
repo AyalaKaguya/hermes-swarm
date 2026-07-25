@@ -16,6 +16,46 @@ export const RunStatusSchema = z.enum([
   "waiting",
 ]);
 
+export const RUN_EVENT_ERROR_CODES = {
+  invalidCursor: "AI_RUN_EVENT_CURSOR_INVALID",
+  runUnavailable: "AI_RUN_UNAVAILABLE",
+} as const;
+
+const MAX_RUN_EVENT_SEQUENCE = 2_147_483_647;
+
+export const RunEventSequenceSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(MAX_RUN_EVENT_SEQUENCE);
+
+export const RunEventParamsSchema = z.strictObject({
+  runId: UuidSchema,
+});
+
+export const RunEventHistoryQuerySchema = z.strictObject({
+  afterSequence: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .max(MAX_RUN_EVENT_SEQUENCE)
+    .default(0),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const RunEventStreamQuerySchema = z.strictObject({
+  afterSequence: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .max(MAX_RUN_EVENT_SEQUENCE)
+    .optional(),
+});
+
+export const RunEventStreamHeadersSchema = z.strictObject({
+  "Last-Event-ID": z.string().optional(),
+});
+
 const eventEnvelope = {
   callId: UuidSchema.nullable(),
   eventKey: RuntimeIdentifierSchema,
@@ -24,7 +64,7 @@ const eventEnvelope = {
   occurredAt: IsoDateTimeSchema,
   runId: UuidSchema,
   schemaVersion: RunEventSchemaVersionSchema,
-  sequence: z.number().int().positive(),
+  sequence: RunEventSequenceSchema.positive(),
   workspaceId: UuidSchema,
 };
 
@@ -34,9 +74,20 @@ const RunStartedEventSchema = z.strictObject({
   type: z.literal("run.started"),
 });
 
-const RunStatusChangedEventSchema = z.strictObject({
+export const RunStatusChangedEventSchema = z.strictObject({
   ...eventEnvelope,
-  payload: z.strictObject({ from: RunStatusSchema, reasonCode: RuntimeIdentifierSchema.nullable(), to: RunStatusSchema }),
+  callId: z.null(),
+  nodeId: z.null(),
+  payload: z
+    .strictObject({
+      from: RunStatusSchema,
+      reasonCode: RuntimeIdentifierSchema.nullable(),
+      to: RunStatusSchema,
+    })
+    .refine((status) => status.from !== status.to, {
+      message: "Run status transition must change status",
+      path: ["to"],
+    }),
   type: z.literal("run.status.changed"),
 });
 
@@ -150,5 +201,28 @@ export const RunEventSchema = z.discriminatedUnion("type", [
   RunCompletedEventSchema,
 ]);
 
+export const RunEventHistoryPageSchema = z.strictObject({
+  eventSequence: RunEventSequenceSchema,
+  hasMore: z.boolean(),
+  items: z.array(RunEventSchema).max(200),
+  nextAfterSequence: RunEventSequenceSchema.nullable(),
+  runStatus: RunStatusSchema,
+});
+
+export const RunEventCursorBadRequestErrorSchema = z.strictObject({
+  code: z.literal(RUN_EVENT_ERROR_CODES.invalidCursor),
+  message: z.string().trim().min(1).max(2_000),
+  statusCode: z.literal(400),
+});
+
+export const RunUnavailableNotFoundErrorSchema = z.strictObject({
+  code: z.literal(RUN_EVENT_ERROR_CODES.runUnavailable),
+  message: z.string().trim().min(1).max(2_000),
+  statusCode: z.literal(404),
+});
+
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 export type RunEvent = z.infer<typeof RunEventSchema>;
+export type RunEventHistoryPage = z.infer<typeof RunEventHistoryPageSchema>;
+export type RunEventHistoryQuery = z.infer<typeof RunEventHistoryQuerySchema>;
+export type RunEventStreamQuery = z.infer<typeof RunEventStreamQuerySchema>;

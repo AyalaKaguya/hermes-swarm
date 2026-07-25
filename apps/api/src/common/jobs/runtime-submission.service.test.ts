@@ -200,6 +200,16 @@ describe("RuntimeSubmissionService", () => {
       assert.equal(cancelled.leaseOwner, null);
       assert.equal(cancelled.leaseExpiresAt, null);
       assert.equal(cancelled.heartbeatAt, null);
+      assert.equal(cancelled.eventSequence, 1);
+      assert.deepEqual(state.statusChanges, [
+        {
+          from: initialStatus,
+          reasonCode: "user",
+          runId: submitted.run.id,
+          to: "cancelled",
+          workspaceId: WORKSPACE_A,
+        },
+      ]);
       assert.deepEqual(state.runLocks, [{ mode: "pessimistic_write" }]);
     }
   });
@@ -236,6 +246,16 @@ describe("RuntimeSubmissionService", () => {
     assert.strictEqual(cancelling.leaseExpiresAt, lease.leaseExpiresAt);
     assert.equal(cancelling.leaseOwner, lease.leaseOwner);
     assert.equal(cancelling.leaseToken, lease.leaseToken);
+    assert.equal(cancelling.eventSequence, 1);
+    assert.deepEqual(state.statusChanges, [
+      {
+        from: "running",
+        reasonCode: "user",
+        runId: submitted.run.id,
+        to: "cancelling",
+        workspaceId: WORKSPACE_A,
+      },
+    ]);
 
     const saveCount = state.runSaveCalls.length;
     const requestedAt = cancelling.cancellationRequestedAt;
@@ -366,6 +386,13 @@ function createState(
   const queries: string[] = [];
   const runLocks: unknown[] = [];
   const runSaveCalls: RuntimeRun[] = [];
+  const statusChanges: Array<{
+    from: string;
+    reasonCode: string | null;
+    runId: string;
+    to: string;
+    workspaceId: string;
+  }> = [];
   const transactionActive = { value: true };
 
   const runRepository = {
@@ -428,6 +455,39 @@ function createState(
         advisoryLocks.push(parameters);
         return [];
       }
+      if (sql.includes('INSERT INTO "runtime_run_events"')) {
+        const [workspaceId, runId, from, to, reasonCode, schemaVersion, type] =
+          parameters as [string, string, string, string, string | null, string, string];
+        const run = runs.find(
+          (candidate) =>
+            candidate.id === runId && candidate.workspaceId === workspaceId,
+        );
+        if (!run || run.status !== to) return [];
+        run.eventSequence = (run.eventSequence ?? 0) + 1;
+        const now = new Date(
+          (options.databaseNow ?? CANCELLATION_AT).getTime(),
+        );
+        statusChanges.push({ from, reasonCode, runId, to, workspaceId });
+        return [
+          {
+            callId: null,
+            createdAt: now,
+            eventKey: `${type}:${run.eventSequence}`,
+            id: `99999999-9999-4999-8999-${run.eventSequence
+              .toString()
+              .padStart(12, "0")}`,
+            nodeId: null,
+            occurredAt: now,
+            payload: { from, reasonCode, to },
+            runId,
+            schemaVersion,
+            sequence: run.eventSequence,
+            type,
+            updatedAt: now,
+            workspaceId,
+          },
+        ];
+      }
       if (sql.includes("clock_timestamp()")) {
         return [
           {
@@ -451,6 +511,7 @@ function createState(
     runSaveCalls,
     runs,
     service: new RuntimeSubmissionService(context),
+    statusChanges,
     transactionActive,
     async transaction<T>(work: () => Promise<T>) {
       const runCount = runs.length;

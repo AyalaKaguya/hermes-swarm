@@ -265,6 +265,79 @@ describe("admin API contracts", () => {
     );
   });
 
+  it("registers strict Run event history and SSE routes", () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const history = findAdminContract(
+      "GET",
+      `/api/admin/ai/runs/${runId}/events`,
+    );
+    const stream = findAdminContract(
+      "GET",
+      `/api/admin/ai/runs/${runId}/events/stream`,
+    );
+
+    assert.equal(history?.contract.id, "ai.runs.events.history");
+    assert.deepEqual(history?.params, { runId });
+    assert.equal(history?.contract.params?.safeParse(history.params).success, true);
+    assert.equal(
+      history?.contract.params?.safeParse({ runId: "not-a-uuid" }).success,
+      false,
+    );
+    assert.deepEqual(history?.contract.query?.parse({}), {
+      afterSequence: 0,
+      limit: 50,
+    });
+    assert.deepEqual(
+      history?.contract.query?.parse({ afterSequence: "9", limit: "200" }),
+      { afterSequence: 9, limit: 200 },
+    );
+    assert.equal(
+      history?.contract.query?.safeParse({ afterSequence: 0, limit: 201 }).success,
+      false,
+    );
+    assert.equal(
+      history?.contract.query?.safeParse({
+        afterSequence: 2_147_483_648,
+        limit: 50,
+      }).success,
+      false,
+    );
+
+    assert.equal(stream?.contract.id, "ai.runs.events.stream");
+    assert.deepEqual(stream?.params, { runId });
+    assert.equal(stream?.contract.params?.safeParse(stream.params).success, true);
+    assert.deepEqual(stream?.contract.query?.parse({}), {});
+    assert.deepEqual(
+      stream?.contract.query?.parse({ afterSequence: "9" }),
+      { afterSequence: 9 },
+    );
+    assert.deepEqual(
+      stream?.contract.headers?.parse({ "Last-Event-ID": "9" }),
+      { "Last-Event-ID": "9" },
+    );
+    assert.equal(stream?.contract.eventStream, true);
+
+    for (const contract of [history?.contract, stream?.contract]) {
+      assert.ok(contract);
+      assert.equal(
+        contract.errorResponses?.[400]?.safeParse({
+          code: "AI_RUN_EVENT_CURSOR_INVALID",
+          message: "The run event cursor is invalid.",
+          statusCode: 400,
+        }).success,
+        true,
+      );
+      assert.equal(
+        contract.errorResponses?.[404]?.safeParse({
+          code: "AI_RUN_UNAVAILABLE",
+          message: "The run is unavailable.",
+          statusCode: 404,
+        }).success,
+        true,
+      );
+    }
+  });
+
   it("documents the invitation result when adding a new platform member", () => {
     const response = {
       invite: {

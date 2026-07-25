@@ -8,29 +8,27 @@ import {
 describe("TypeOrmOutboxStore", () => {
   it("reconciles stale deliveries through SKIP LOCKED and resets successful attempts", async () => {
     const calls: Array<{ parameters: unknown[]; sql: string }> = [];
+    const manager = testManager(calls, (sql, parameters) => {
+      if (sql.includes("RETURNING\n            message")) {
+        return [
+          {
+            attempt_count: 2,
+            id: "018f80c0-0000-7000-8000-000000000001",
+            lease_token: parameters[1],
+            run_id: "018f80c0-0000-7000-8000-000000000002",
+            workspace_id: "018f80c0-0000-7000-8000-000000000003",
+          },
+        ];
+      }
+      return [];
+    });
     const dataSource = {
       query: async (sql: string, parameters: unknown[]) => {
         calls.push({ parameters, sql });
         return [{ id: parameters[0] }];
       },
       transaction: async (work: (manager: unknown) => Promise<unknown>) =>
-        work({
-          query: async (sql: string, parameters: unknown[]) => {
-            calls.push({ parameters, sql });
-            if (sql.includes("RETURNING\n            message")) {
-              return [
-                {
-                  attempt_count: 2,
-                  id: "018f80c0-0000-7000-8000-000000000001",
-                  lease_token: parameters[1],
-                  run_id: "018f80c0-0000-7000-8000-000000000002",
-                  workspace_id: "018f80c0-0000-7000-8000-000000000003",
-                },
-              ];
-            }
-            return [];
-          },
-        }),
+        work(manager),
     };
     const store = new TypeOrmOutboxStore(dataSource as never, {
       id: "worker-a",
@@ -101,15 +99,11 @@ describe("TypeOrmOutboxStore", () => {
   it("recovers crash-after-enqueue-before-ack when an active Run proves delivery", async () => {
     const calls: Array<{ parameters: unknown[]; sql: string }> = [];
     let transactions = 0;
+    const manager = testManager(calls, () => []);
     const dataSource = {
       transaction: async (work: (manager: unknown) => Promise<unknown>) => {
         transactions += 1;
-        return work({
-          query: async (sql: string, parameters: unknown[]) => {
-            calls.push({ parameters, sql });
-            return [];
-          },
-        });
+        return work(manager);
       },
     };
     const store = new TypeOrmOutboxStore(dataSource as never, {
@@ -161,31 +155,76 @@ describe("TypeOrmOutboxStore", () => {
       exhausted.parameters[2],
       OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE,
     );
+    assertStatusChanges(calls, []);
+  });
+
+  it("persists exhausted Outbox Run failures in the claim transaction", async () => {
+    const calls: QueryCall[] = [];
+    const message = claimed();
+    const manager = testManager(calls, (sql) => {
+      if (sql.includes("WITH exhausted AS")) {
+        return [
+          {
+            from_status: "queued",
+            run_id: message.runId,
+            to_status: "failed",
+            workspace_id: message.workspaceId,
+          },
+        ];
+      }
+      return [];
+    });
+    const store = new TypeOrmOutboxStore(
+      {
+        transaction: async (work: (manager: unknown) => Promise<unknown>) =>
+          work(manager),
+      } as never,
+      { id: "worker-a" },
+    );
+
+    const claims = await store.claimBatch({
+      batchSize: 5,
+      leaseMs: 10_000,
+      reconcileMs: 60_000,
+    });
+
+    assert.deepEqual(claims, []);
+    assert.match(calls[0]!.sql, /runtime_run\."status" AS "run_status"/);
+    assert.match(calls[0]!.sql, /resolved_messages\."from_status"/);
+    assertStatusChanges(calls, [
+      {
+        from: "queued",
+        reasonCode: OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE,
+        to: "failed",
+      },
+    ]);
   });
 
   it("fails the Run in the retry transaction when the publish attempt reaches its limit", async () => {
     const calls: Array<{ parameters: unknown[]; sql: string }> = [];
     let transactions = 0;
     const message = claimed();
+    const manager = testManager(calls, (sql) => {
+      if (sql.includes('UPDATE "runtime_outbox_messages"')) {
+        return [
+          {
+            id: message.dispatchId,
+            run_id: message.runId,
+            run_status: "queued",
+            status: "dead",
+            workspace_id: message.workspaceId,
+          },
+        ];
+      }
+      if (sql.includes('UPDATE "runtime_runs"')) {
+        return [{ id: message.runId, status: "failed" }];
+      }
+      return [];
+    });
     const dataSource = {
       transaction: async (work: (manager: unknown) => Promise<unknown>) => {
         transactions += 1;
-        return work({
-          query: async (sql: string, parameters: unknown[]) => {
-            calls.push({ parameters, sql });
-            if (sql.includes('UPDATE "runtime_outbox_messages"')) {
-              return [
-                {
-                  id: message.dispatchId,
-                  run_id: message.runId,
-                  status: "dead",
-                  workspace_id: message.workspaceId,
-                },
-              ];
-            }
-            return [];
-          },
-        });
+        return work(manager);
       },
     };
     const store = new TypeOrmOutboxStore(dataSource as never, {
@@ -199,7 +238,7 @@ describe("TypeOrmOutboxStore", () => {
 
     assert.equal(released, true);
     assert.equal(transactions, 1);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
     assert.match(
       calls[0]!.sql,
       /FOR UPDATE OF message, runtime_run/,
@@ -232,26 +271,65 @@ describe("TypeOrmOutboxStore", () => {
       message.workspaceId,
       OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE,
     ]);
+    assertStatusChanges(calls, [
+      {
+        from: "queued",
+        reasonCode: OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE,
+        to: "failed",
+      },
+    ]);
+  });
+
+  it("does not append a second failure when the associated Run is terminal", async () => {
+    const calls: QueryCall[] = [];
+    const message = claimed();
+    const manager = testManager(calls, (sql) => {
+      if (sql.includes('UPDATE "runtime_outbox_messages"')) {
+        return [
+          {
+            id: message.dispatchId,
+            run_id: message.runId,
+            run_status: "failed",
+            status: "dead",
+            workspace_id: message.workspaceId,
+          },
+        ];
+      }
+      return [];
+    });
+    const store = new TypeOrmOutboxStore(
+      {
+        transaction: async (work: (manager: unknown) => Promise<unknown>) =>
+          work(manager),
+      } as never,
+      { id: "worker-a" },
+    );
+
+    const released = await store.releaseForRetry(message, {
+      errorCode: "RUNTIME_OUTBOX_PUBLISH_FAILED",
+      retryBackoffMs: 10_000,
+    });
+
+    assert.equal(released, true);
+    assert.equal(calls.length, 2);
+    assertStatusChanges(calls, []);
   });
 
   it("treats a valid Run lease as publish evidence after an ambiguous enqueue error", async () => {
     const calls: Array<{ parameters: unknown[]; sql: string }> = [];
     const message = claimed();
+    const manager = testManager(calls, () => [
+      {
+        id: message.dispatchId,
+        run_id: message.runId,
+        run_status: "running",
+        status: "published",
+        workspace_id: message.workspaceId,
+      },
+    ]);
     const dataSource = {
       transaction: async (work: (manager: unknown) => Promise<unknown>) =>
-        work({
-          query: async (sql: string, parameters: unknown[]) => {
-            calls.push({ parameters, sql });
-            return [
-              {
-                id: message.dispatchId,
-                run_id: message.runId,
-                status: "published",
-                workspace_id: message.workspaceId,
-              },
-            ];
-          },
-        }),
+        work(manager),
     };
     const store = new TypeOrmOutboxStore(dataSource as never, {
       id: "worker-a",
@@ -281,8 +359,69 @@ describe("TypeOrmOutboxStore", () => {
       calls[0]!.sql,
       /WHEN candidate\."has_active_run_lease" THEN 0/,
     );
+    assertStatusChanges(calls, []);
   });
 });
+
+type QueryCall = { parameters: unknown[]; sql: string };
+
+function testManager(
+  calls: QueryCall[],
+  resultFor: (sql: string, parameters: unknown[]) => unknown,
+) {
+  return {
+    queryRunner: { isTransactionActive: true },
+    query: async (sql: string, parameters: unknown[]) => {
+      calls.push({ parameters, sql });
+      const eventRows = runtimeEventRows(sql, parameters);
+      return eventRows ?? resultFor(sql, parameters);
+    },
+  };
+}
+
+function assertStatusChanges(
+  calls: QueryCall[],
+  expected: Array<{ from: string; reasonCode: string | null; to: string }>,
+) {
+  assert.deepEqual(
+    calls
+      .filter((call) => call.sql.includes('INSERT INTO "runtime_run_events"'))
+      .map((call) => ({
+        from: call.parameters[2],
+        reasonCode: call.parameters[4],
+        to: call.parameters[3],
+      })),
+    expected,
+  );
+}
+
+function runtimeEventRows(sql: string, parameters: unknown[]) {
+  if (!sql.includes('INSERT INTO "runtime_run_events"')) return null;
+  const sequence = 1;
+  const type = parameters[6];
+  const now = new Date(1_000);
+  return [
+    {
+      callId: null,
+      createdAt: now,
+      eventKey: `${String(type)}:${sequence}`,
+      id: "018f80c0-0000-7000-8000-000000000009",
+      nodeId: null,
+      occurredAt: now,
+      payload: {
+        from: parameters[2],
+        reasonCode: parameters[4],
+        to: parameters[3],
+      },
+      runId: parameters[1],
+      schemaVersion: parameters[5],
+      sequence,
+      type,
+      updatedAt: now,
+      workspaceId: parameters[0],
+    },
+  ];
+}
 
 function claimed() {
   return {

@@ -72,6 +72,7 @@ function toRouteConfig(
   const request: NonNullable<RouteConfig["request"]> = {};
   if (contract.params) request.params = contract.params as never;
   if (contract.query) request.query = contract.query as never;
+  if (contract.headers) request.headers = contract.headers as never;
   if (contract.body) {
     request.body = {
       required: true,
@@ -99,7 +100,16 @@ function toRouteConfig(
 
   const responses: RouteConfig["responses"] = {};
   for (const [status, schema] of Object.entries(contract.responses)) {
-    if (contract.binary) {
+    if (contract.eventStream && schema !== null) {
+      responses[status] = {
+        description: "Event stream",
+        content: {
+          "text/event-stream": {
+            schema: registry.register(componentName(contract, `Response${status}`), schema),
+          },
+        },
+      };
+    } else if (contract.binary) {
       responses[status] = {
         description: "Binary file",
         content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },

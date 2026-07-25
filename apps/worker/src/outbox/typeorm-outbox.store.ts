@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
+import {
+  appendRuntimeRunStatusChanges,
+  type RuntimeRunStatus,
+} from "@hermes-swarm/core";
 import { DataSource, type EntityManager } from "typeorm";
 import { WorkerIdentityService } from "../runtime/worker-identity.service.js";
 import type {
@@ -18,9 +22,28 @@ type ClaimedRow = {
 type ReleasedRow = {
   id: string;
   run_id: string;
+  run_status: string;
   status: string;
   workspace_id: string;
 };
+
+type RunStatusTransitionRow = {
+  from_status: string;
+  run_id: string;
+  to_status: string;
+  workspace_id: string;
+};
+
+const RUNTIME_RUN_STATUSES = new Set<RuntimeRunStatus>([
+  "cancelled",
+  "cancelling",
+  "failed",
+  "queued",
+  "running",
+  "succeeded",
+  "timedOut",
+  "waiting",
+]);
 
 export const OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE =
   "RUNTIME_OUTBOX_ATTEMPTS_EXHAUSTED";
@@ -38,13 +61,14 @@ export class TypeOrmOutboxStore implements OutboxStore {
     reconcileMs: number;
   }): Promise<ClaimedOutboxMessage[]> {
     return this.dataSource.transaction(async (manager) => {
-      await manager.query(
+      const exhaustedRunTransitions = (await manager.query(
         `
           WITH exhausted AS (
             SELECT
               message."id",
               message."run_id",
               message."workspace_id",
+              runtime_run."status" AS "run_status",
               (
                 runtime_run."status" IN ('running', 'cancelling')
                 AND runtime_run."lease_expires_at" > clock_timestamp()
@@ -111,6 +135,7 @@ export class TypeOrmOutboxStore implements OutboxStore {
             WHERE message."id" = exhausted."id"
               AND message."workspace_id" = exhausted."workspace_id"
             RETURNING
+              exhausted."run_status" AS "from_status",
               message."run_id",
               message."status",
               message."workspace_id"
@@ -132,12 +157,22 @@ export class TypeOrmOutboxStore implements OutboxStore {
             AND runtime_run."status" NOT IN (
               'cancelled', 'failed', 'succeeded', 'timedOut'
             )
+          RETURNING
+            resolved_messages."from_status",
+            runtime_run."id" AS "run_id",
+            runtime_run."status" AS "to_status",
+            runtime_run."workspace_id"
         `,
         [
           input.batchSize,
           input.reconcileMs,
           OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE,
         ],
+      )) as RunStatusTransitionRow[];
+      await appendRunStatusTransitions(
+        manager,
+        exhaustedRunTransitions,
+        OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE,
       );
 
       const leaseToken = randomUUID();
@@ -260,6 +295,7 @@ export class TypeOrmOutboxStore implements OutboxStore {
             SELECT
               message."id",
               message."workspace_id",
+              runtime_run."status" AS "run_status",
               (
                 runtime_run."status" IN ('running', 'cancelling')
                 AND runtime_run."lease_expires_at" > clock_timestamp()
@@ -307,6 +343,7 @@ export class TypeOrmOutboxStore implements OutboxStore {
           RETURNING
             message."id",
             message."run_id",
+            candidate."run_status",
             message."workspace_id",
             message."status"
         `,
@@ -329,6 +366,7 @@ export class TypeOrmOutboxStore implements OutboxStore {
           manager,
           released.workspace_id,
           released.run_id,
+          runtimeRunStatus(released.run_status),
         );
       } else if (
         released.status !== "pending" &&
@@ -344,8 +382,9 @@ export class TypeOrmOutboxStore implements OutboxStore {
     manager: EntityManager,
     workspaceId: string,
     runId: string,
+    fromStatus: RuntimeRunStatus,
   ) {
-    await manager.query(
+    const rows = (await manager.query(
       `
         UPDATE "runtime_runs"
         SET
@@ -366,10 +405,52 @@ export class TypeOrmOutboxStore implements OutboxStore {
             "status" IN ('running', 'cancelling')
             AND "lease_expires_at" > clock_timestamp()
           )
+        RETURNING "id", "status"
       `,
       [runId, workspaceId, OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE],
-    );
+    )) as Array<{ id: string; status: string }>;
+    if (rows.length === 0) return false;
+    if (rows.length !== 1) throw storageInvariantError();
+    const [updated] = rows;
+    if (!updated) throw storageInvariantError();
+    await appendRuntimeRunStatusChanges(manager, [
+      {
+        from: fromStatus,
+        reasonCode: OUTBOX_ATTEMPTS_EXHAUSTED_ERROR_CODE,
+        runId,
+        to: runtimeRunStatus(updated.status),
+        workspaceId,
+      },
+    ]);
+    return true;
   }
+}
+
+async function appendRunStatusTransitions(
+  manager: EntityManager,
+  rows: readonly RunStatusTransitionRow[],
+  reasonCode: string,
+) {
+  await appendRuntimeRunStatusChanges(
+    manager,
+    rows.map((row) => ({
+      from: runtimeRunStatus(row.from_status),
+      reasonCode,
+      runId: row.run_id,
+      to: runtimeRunStatus(row.to_status),
+      workspaceId: row.workspace_id,
+    })),
+  );
+}
+
+function runtimeRunStatus(value: unknown): RuntimeRunStatus {
+  if (
+    typeof value !== "string" ||
+    !RUNTIME_RUN_STATUSES.has(value as RuntimeRunStatus)
+  ) {
+    throw storageInvariantError();
+  }
+  return value as RuntimeRunStatus;
 }
 
 function readPositiveInteger(value: number | string, name: string) {

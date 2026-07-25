@@ -39,6 +39,14 @@ import {
   PublishAgentDraftRequestSchema,
   ReplaceAgentDraftRequestSchema,
   RotateProviderSecretRequestSchema,
+  RunEventCursorBadRequestErrorSchema,
+  RunEventHistoryPageSchema,
+  RunEventHistoryQuerySchema,
+  RunEventParamsSchema,
+  RunEventSchema,
+  RunEventStreamHeadersSchema,
+  RunEventStreamQuerySchema,
+  RunUnavailableNotFoundErrorSchema,
   SemanticVersionSchema,
   SetWorkspaceDefaultModelRequestSchema,
   ToolConnectionSecretMutationResponseSchema,
@@ -102,11 +110,13 @@ export type ApiContract = {
   path: string;
   params?: ZodType;
   query?: ZodType;
+  headers?: ZodType;
   body?: ZodType;
   responses: Readonly<Record<number, ZodType | null>>;
   errorResponses?: Readonly<Record<number, ZodType>>;
   browserResponses?: Readonly<Record<number, ZodType | null>>;
   binary?: boolean;
+  eventStream?: boolean;
   multipart?: boolean;
 };
 
@@ -119,6 +129,7 @@ type ResponseSchemas<C extends ApiContract> = C["browserResponses"] extends Read
 
 export type ContractRequest<C extends ApiContract> = {
   body?: SchemaInput<C["body"]>;
+  headers?: SchemaInput<C["headers"]>;
   params?: SchemaInput<C["params"]>;
   query?: SchemaInput<C["query"]>;
 };
@@ -154,6 +165,10 @@ const agentCatalogErrors = {
   400: AgentCatalogBadRequestErrorSchema,
   404: AgentCatalogNotFoundErrorSchema,
   409: AgentCatalogConflictErrorSchema,
+} as const;
+const runEventErrors = {
+  400: RunEventCursorBadRequestErrorSchema,
+  404: RunUnavailableNotFoundErrorSchema,
 } as const;
 
 export const adminContracts = {
@@ -199,6 +214,8 @@ export const adminContracts = {
   analyticsViewCreate: defineContract({ id: "analytics.views.create", method: "POST", path: "/analytics/views", body: CreateAnalysisViewRequestSchema, responses: { 201: AnalysisViewSchema } }),
   analyticsViewUpdate: defineContract({ id: "analytics.views.update", method: "PATCH", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: UpdateAnalysisViewRequestSchema, responses: { 200: AnalysisViewSchema } }),
   analyticsViewDelete: defineContract({ id: "analytics.views.delete", method: "DELETE", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: DeleteAnalysisViewRequestSchema, responses: noContent }),
+  aiRunEvents: defineContract({ id: "ai.runs.events.history", method: "GET", path: "/ai/runs/:runId/events", params: RunEventParamsSchema, query: RunEventHistoryQuerySchema, responses: { 200: RunEventHistoryPageSchema }, errorResponses: runEventErrors }),
+  aiRunEventStream: defineContract({ id: "ai.runs.events.stream", method: "GET", path: "/ai/runs/:runId/events/stream", params: RunEventParamsSchema, query: RunEventStreamQuerySchema, headers: RunEventStreamHeadersSchema, responses: { 200: RunEventSchema }, errorResponses: runEventErrors, eventStream: true }),
   agents: defineContract({ id: "agents.list", method: "GET", path: "/agents", responses: { 200: z.array(AgentSchema) }, errorResponses: agentCatalogErrors }),
   agentCreate: defineContract({ id: "agents.create", method: "POST", path: "/agents", body: CreateAgentRequestSchema, responses: { 201: AgentSchema }, errorResponses: agentCatalogErrors }),
   agentGet: defineContract({ id: "agents.get", method: "GET", path: "/agents/:agentId", params: z.strictObject({ agentId: UuidSchema }), responses: { 200: AgentSchema }, errorResponses: agentCatalogErrors }),

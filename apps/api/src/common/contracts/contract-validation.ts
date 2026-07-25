@@ -62,7 +62,7 @@ export class AdminContractInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       map((value) => {
-        if (contract.binary) return value;
+        if (contract.binary || contract.eventStream) return value;
         const status = response.statusCode ?? 200;
         const schema = responseSchemaFor(contract, status);
         if (schema === undefined) return value;

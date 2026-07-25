@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import type { RunOutcome } from "@hermes-swarm/agent-sdk";
-import { RUNTIME_DISPATCH_TOPIC } from "@hermes-swarm/core";
+import {
+  appendRuntimeRunStatusChanges,
+  RUNTIME_DISPATCH_TOPIC,
+  type RuntimeRunStatus,
+  type RuntimeRunStatusChange,
+} from "@hermes-swarm/core";
 import { DataSource, type EntityManager } from "typeorm";
 import { WorkerIdentityService } from "./worker-identity.service.js";
 import {
@@ -14,7 +19,17 @@ import {
   type RuntimeRunStore,
 } from "./runtime-run.types.js";
 
-const TERMINAL_STATUSES = new Set([
+const RUNTIME_RUN_STATUSES = new Set<RuntimeRunStatus>([
+  "cancelled",
+  "cancelling",
+  "failed",
+  "queued",
+  "running",
+  "succeeded",
+  "timedOut",
+  "waiting",
+]);
+const TERMINAL_STATUSES = new Set<RuntimeRunStatus>([
   "cancelled",
   "failed",
   "succeeded",
@@ -46,6 +61,14 @@ type RequeueRow = {
   deadline_at: Date | string | null;
   max_attempts: number | string;
   status: string;
+};
+
+type StatusTransitionRow = {
+  from_status: string;
+  reason_code?: string | null;
+  run_id: string;
+  to_status: string;
+  workspace_id: string;
 };
 
 type StaleDeliveryRow = {
@@ -127,16 +150,25 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
           return { kind: "ignored", reason: "cancelled" };
         }
         if (row.status !== "cancelling") {
-          await manager.query(
+          const updated = (await manager.query(
             `
               UPDATE "runtime_runs"
               SET "status" = 'cancelling', "updated_at" = $3
               WHERE "id" = $1
                 AND "workspace_id" = $2
                 AND "status" = 'running'
+              RETURNING "id"
             `,
             [row.runId, row.workspaceId, databaseNow],
-          );
+          )) as Array<{ id: string }>;
+          if (updated.length !== 1) throw invariantError();
+          await appendStatusChange(manager, {
+            from: row.status,
+            reasonCode: null,
+            runId: row.runId,
+            to: "cancelling",
+            workspaceId: row.workspaceId,
+          });
         }
         return this.deferLocked(
           manager,
@@ -229,6 +261,13 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
         ],
       )) as Array<{ id: string }>;
       if (updated.length !== 1) throw invariantError();
+      await appendStatusChange(manager, {
+        from: row.status,
+        reasonCode: null,
+        runId: row.runId,
+        to: "running",
+        workspaceId: row.workspaceId,
+      });
 
       return {
         kind: "claimed",
@@ -254,89 +293,115 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
     run: ClaimedRuntimeRun,
     input: { leaseMs: number },
   ): Promise<RuntimeHeartbeatResult> {
-    const rows = (await this.dataSource.query(
-      `
-        WITH database_clock AS MATERIALIZED (
-          SELECT clock_timestamp() AS "now"
-        )
-        UPDATE "runtime_runs" AS runtime_run
-        SET
-          "status" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NOT NULL
-              THEN 'cancelling'
-            WHEN runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN 'timedOut'
-            ELSE runtime_run."status"
-          END,
-          "finished_at" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NULL
-              AND runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN database_clock."now"
-            ELSE runtime_run."finished_at"
-          END,
-          "last_error_code" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NULL
-              AND runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN $6
-            ELSE runtime_run."last_error_code"
-          END,
-          "lease_token" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NULL
-              AND runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN NULL
-            ELSE runtime_run."lease_token"
-          END,
-          "lease_owner" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NULL
-              AND runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN NULL
-            ELSE runtime_run."lease_owner"
-          END,
-          "lease_expires_at" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NULL
-              AND runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN NULL
-            ELSE database_clock."now" +
-              ($5::bigint * INTERVAL '1 millisecond')
-          END,
-          "heartbeat_at" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NULL
-              AND runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN NULL
-            ELSE database_clock."now"
-          END,
-          "updated_at" = database_clock."now"
-        FROM database_clock
-        WHERE runtime_run."id" = $1
-          AND runtime_run."workspace_id" = $2
-          AND runtime_run."lease_token" = $3
-          AND runtime_run."lease_generation" = $4
-          AND runtime_run."status" IN ('running', 'cancelling')
-          AND runtime_run."lease_expires_at" > database_clock."now"
-        RETURNING runtime_run."status"
-      `,
-      [
-        run.runId,
-        run.workspaceId,
-        run.leaseToken,
-        run.fencingGeneration,
-        input.leaseMs,
-        RUNTIME_RUN_ERROR_CODES.deadlineExceeded,
-      ],
-    )) as Array<{ status: string }>;
-    if (rows.length === 0) return "stale";
-    if (rows.length !== 1) throw invariantError();
-    if (rows[0].status === "timedOut") return "timed-out";
-    if (rows[0].status === "cancelling") return "cancelling";
-    if (rows[0].status !== "running") throw invariantError();
-    return "active";
+    return this.dataSource.transaction(async (manager) => {
+      const rows = (await manager.query(
+        `
+          WITH database_clock AS MATERIALIZED (
+            SELECT clock_timestamp() AS "now"
+          ),
+          candidate AS MATERIALIZED (
+            SELECT
+              runtime_run."id",
+              runtime_run."workspace_id",
+              runtime_run."status" AS "from_status",
+              database_clock."now" AS "occurred_at"
+            FROM "runtime_runs" AS runtime_run
+            CROSS JOIN database_clock
+            WHERE runtime_run."id" = $1
+              AND runtime_run."workspace_id" = $2
+              AND runtime_run."lease_token" = $3
+              AND runtime_run."lease_generation" = $4
+              AND runtime_run."status" IN ('running', 'cancelling')
+              AND runtime_run."lease_expires_at" > database_clock."now"
+            FOR UPDATE OF runtime_run
+          )
+          UPDATE "runtime_runs" AS runtime_run
+          SET
+            "status" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NOT NULL
+                THEN 'cancelling'
+              WHEN runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN 'timedOut'
+              ELSE runtime_run."status"
+            END,
+            "finished_at" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NULL
+                AND runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN candidate."occurred_at"
+              ELSE runtime_run."finished_at"
+            END,
+            "last_error_code" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NULL
+                AND runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN $6
+              ELSE runtime_run."last_error_code"
+            END,
+            "lease_token" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NULL
+                AND runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN NULL
+              ELSE runtime_run."lease_token"
+            END,
+            "lease_owner" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NULL
+                AND runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN NULL
+              ELSE runtime_run."lease_owner"
+            END,
+            "lease_expires_at" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NULL
+                AND runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN NULL
+              ELSE candidate."occurred_at" +
+                ($5::bigint * INTERVAL '1 millisecond')
+            END,
+            "heartbeat_at" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NULL
+                AND runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN NULL
+              ELSE candidate."occurred_at"
+            END,
+            "updated_at" = candidate."occurred_at"
+          FROM candidate
+          WHERE runtime_run."id" = candidate."id"
+            AND runtime_run."workspace_id" = candidate."workspace_id"
+          RETURNING
+            candidate."from_status",
+            runtime_run."id" AS "run_id",
+            runtime_run."status" AS "to_status",
+            runtime_run."workspace_id"
+        `,
+        [
+          run.runId,
+          run.workspaceId,
+          run.leaseToken,
+          run.fencingGeneration,
+          input.leaseMs,
+          RUNTIME_RUN_ERROR_CODES.deadlineExceeded,
+        ],
+      )) as StatusTransitionRow[];
+      if (rows.length === 0) return "stale";
+      if (rows.length !== 1) throw invariantError();
+      const transition = readStatusTransition(rows[0]);
+      await appendStatusChange(manager, {
+        ...transition,
+        reasonCode:
+          transition.to === "timedOut"
+            ? RUNTIME_RUN_ERROR_CODES.deadlineExceeded
+            : null,
+      });
+      if (transition.to === "timedOut") return "timed-out";
+      if (transition.to === "cancelling") return "cancelling";
+      if (transition.to !== "running") throw invariantError();
+      return "active";
+    });
   }
 
   async finish(
@@ -348,55 +413,84 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
       outcome.status === "failed" || outcome.status === "timedOut"
         ? normalizeErrorCode(outcome.failure.code)
         : null;
-    const rows = (await this.dataSource.query(
-      `
-        WITH database_clock AS MATERIALIZED (
-          SELECT clock_timestamp() AS "now"
-        )
-        UPDATE "runtime_runs" AS runtime_run
-        SET
-          "status" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NOT NULL
-              THEN 'cancelled'
-            WHEN runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN 'timedOut'
-            ELSE $5
-          END,
-          "finished_at" = database_clock."now",
-          "last_error_code" = CASE
-            WHEN runtime_run."cancellation_requested_at" IS NOT NULL THEN NULL
-            WHEN runtime_run."deadline_at" IS NOT NULL
-              AND runtime_run."deadline_at" <= database_clock."now"
-              THEN $7
-            WHEN $5 IN ('failed', 'timedOut') THEN $6
-            ELSE NULL
-          END,
-          "lease_token" = NULL,
-          "lease_owner" = NULL,
-          "lease_expires_at" = NULL,
-          "heartbeat_at" = NULL,
-          "updated_at" = database_clock."now"
-        FROM database_clock
-        WHERE runtime_run."id" = $1
-          AND runtime_run."workspace_id" = $2
-          AND runtime_run."lease_token" = $3
-          AND runtime_run."lease_generation" = $4
-          AND runtime_run."status" IN ('running', 'cancelling')
-          AND runtime_run."lease_expires_at" > database_clock."now"
-        RETURNING runtime_run."id"
-      `,
-      [
-        run.runId,
-        run.workspaceId,
-        run.leaseToken,
-        run.fencingGeneration,
-        requestedStatus,
-        errorCode,
-        RUNTIME_RUN_ERROR_CODES.deadlineExceeded,
-      ],
-    )) as Array<{ id: string }>;
-    return rows.length === 1;
+    return this.dataSource.transaction(async (manager) => {
+      const rows = (await manager.query(
+        `
+          WITH database_clock AS MATERIALIZED (
+            SELECT clock_timestamp() AS "now"
+          ),
+          candidate AS MATERIALIZED (
+            SELECT
+              runtime_run."id",
+              runtime_run."workspace_id",
+              runtime_run."status" AS "from_status",
+              database_clock."now" AS "occurred_at"
+            FROM "runtime_runs" AS runtime_run
+            CROSS JOIN database_clock
+            WHERE runtime_run."id" = $1
+              AND runtime_run."workspace_id" = $2
+              AND runtime_run."lease_token" = $3
+              AND runtime_run."lease_generation" = $4
+              AND runtime_run."status" IN ('running', 'cancelling')
+              AND runtime_run."lease_expires_at" > database_clock."now"
+            FOR UPDATE OF runtime_run
+          )
+          UPDATE "runtime_runs" AS runtime_run
+          SET
+            "status" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NOT NULL
+                THEN 'cancelled'
+              WHEN runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN 'timedOut'
+              ELSE $5
+            END,
+            "finished_at" = candidate."occurred_at",
+            "last_error_code" = CASE
+              WHEN runtime_run."cancellation_requested_at" IS NOT NULL THEN NULL
+              WHEN runtime_run."deadline_at" IS NOT NULL
+                AND runtime_run."deadline_at" <= candidate."occurred_at"
+                THEN $7
+              WHEN $5 IN ('failed', 'timedOut') THEN $6
+              ELSE NULL
+            END,
+            "lease_token" = NULL,
+            "lease_owner" = NULL,
+            "lease_expires_at" = NULL,
+            "heartbeat_at" = NULL,
+            "updated_at" = candidate."occurred_at"
+          FROM candidate
+          WHERE runtime_run."id" = candidate."id"
+            AND runtime_run."workspace_id" = candidate."workspace_id"
+          RETURNING
+            candidate."from_status",
+            runtime_run."id" AS "run_id",
+            runtime_run."last_error_code" AS "reason_code",
+            runtime_run."status" AS "to_status",
+            runtime_run."workspace_id"
+        `,
+        [
+          run.runId,
+          run.workspaceId,
+          run.leaseToken,
+          run.fencingGeneration,
+          requestedStatus,
+          errorCode,
+          RUNTIME_RUN_ERROR_CODES.deadlineExceeded,
+        ],
+      )) as StatusTransitionRow[];
+      if (rows.length === 0) return false;
+      if (rows.length !== 1) throw invariantError();
+      const transition = readStatusTransition(rows[0]);
+      await appendStatusChange(manager, {
+        ...transition,
+        reasonCode:
+          transition.to === "failed" || transition.to === "timedOut"
+            ? persistedReasonCode(rows[0].reason_code)
+            : null,
+      });
+      return true;
+    });
   }
 
   async recoverStaleDelivery(
@@ -560,6 +654,7 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
         await this.finishClaimLocked(
           manager,
           run,
+          row.status,
           databaseNow,
           "cancelled",
           null,
@@ -570,6 +665,7 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
         await this.finishClaimLocked(
           manager,
           run,
+          row.status,
           databaseNow,
           "timedOut",
           RUNTIME_RUN_ERROR_CODES.deadlineExceeded,
@@ -580,6 +676,7 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
         await this.finishClaimLocked(
           manager,
           run,
+          row.status,
           databaseNow,
           "failed",
           errorCode,
@@ -618,6 +715,13 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
         ],
       )) as Array<{ available_at: Date | string; id: string }>;
       if (updated.length !== 1) throw invariantError();
+      await appendStatusChange(manager, {
+        from: row.status,
+        reasonCode: errorCode,
+        runId: run.runId,
+        to: "queued",
+        workspaceId: run.workspaceId,
+      });
       const availableAt = validDate(
         updated[0].available_at,
         "requeued_available_at",
@@ -633,7 +737,7 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
       );
       if (rearmed) return "requeued";
 
-      await manager.query(
+      const failed = (await manager.query(
         `
           UPDATE "runtime_runs"
           SET
@@ -644,6 +748,7 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
           WHERE "id" = $1
             AND "workspace_id" = $2
             AND "status" = 'queued'
+          RETURNING "id"
         `,
         [
           run.runId,
@@ -651,7 +756,15 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
           databaseNow,
           RUNTIME_RUN_ERROR_CODES.outboxMissing,
         ],
-      );
+      )) as Array<{ id: string }>;
+      if (failed.length !== 1) throw invariantError();
+      await appendStatusChange(manager, {
+        from: "queued",
+        reasonCode: RUNTIME_RUN_ERROR_CODES.outboxMissing,
+        runId: run.runId,
+        to: "failed",
+        workspaceId: run.workspaceId,
+      });
       return "finished";
     });
   }
@@ -752,11 +865,19 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
       ],
     )) as Array<{ id: string }>;
     if (rows.length !== 1) throw invariantError();
+    await appendStatusChange(manager, {
+      from: row.status,
+      reasonCode: input.errorCode,
+      runId: row.runId,
+      to: input.status,
+      workspaceId: row.workspaceId,
+    });
   }
 
   private async finishClaimLocked(
     manager: EntityManager,
     run: ClaimedRuntimeRun,
+    fromStatus: RuntimeRunStatus,
     finishedAt: Date,
     status: "cancelled" | "failed" | "timedOut",
     errorCode: string | null,
@@ -791,6 +912,13 @@ export class TypeOrmRuntimeRunStore implements RuntimeRunStore {
       ],
     )) as Array<{ id: string }>;
     if (rows.length !== 1) throw invariantError();
+    await appendStatusChange(manager, {
+      from: fromStatus,
+      reasonCode: errorCode,
+      runId: run.runId,
+      to: status,
+      workspaceId: run.workspaceId,
+    });
   }
 }
 
@@ -806,7 +934,7 @@ type ParsedRuntimeRunRow = Readonly<{
   maxAttempts: number;
   runId: string;
   runKind: string;
-  status: string;
+  status: RuntimeRunStatus;
   workspaceId: string;
 }>;
 
@@ -829,7 +957,7 @@ function readRuntimeRunRow(row: RuntimeRunRow): ParsedRuntimeRunRow {
     maxAttempts: positiveInteger(row.max_attempts, "max_attempts"),
     runId: uuid(row.run_id, "run_id"),
     runKind: boundedText(row.run_kind, "run_kind", 128),
-    status: boundedText(row.status, "status", 24),
+    status: runtimeRunStatus(row.status, "status"),
     workspaceId: uuid(row.workspace_id, "workspace_id"),
   };
 }
@@ -844,7 +972,7 @@ function readRequeueRow(row: RequeueRow) {
     databaseNow: validDate(row.database_now, "database_now"),
     deadlineAt: nullableDate(row.deadline_at, "deadline_at"),
     maxAttempts: positiveInteger(row.max_attempts, "max_attempts"),
-    status: boundedText(row.status, "status", 24),
+    status: runtimeRunStatus(row.status, "status"),
   };
 }
 
@@ -862,8 +990,25 @@ function readStaleDeliveryRow(row: StaleDeliveryRow) {
       "run_lease_generation",
     ),
     runLeaseToken: nullableUuid(row.run_lease_token, "run_lease_token"),
-    runStatus: boundedText(row.run_status, "run_status", 24),
+    runStatus: runtimeRunStatus(row.run_status, "run_status"),
   };
+}
+
+function readStatusTransition(row: StatusTransitionRow) {
+  return {
+    from: runtimeRunStatus(row.from_status, "from_status"),
+    runId: uuid(row.run_id, "run_id"),
+    to: runtimeRunStatus(row.to_status, "to_status"),
+    workspaceId: uuid(row.workspace_id, "workspace_id"),
+  };
+}
+
+async function appendStatusChange(
+  manager: EntityManager,
+  change: RuntimeRunStatusChange,
+) {
+  if (change.from === change.to) return;
+  await appendRuntimeRunStatusChanges(manager, [change]);
 }
 
 function validDate(value: unknown, name: string) {
@@ -906,6 +1051,16 @@ function boundedText(value: unknown, name: string, maximum: number) {
     throw invariantError(name);
   }
   return value;
+}
+
+function runtimeRunStatus(value: unknown, name: string): RuntimeRunStatus {
+  const status = boundedText(value, name, 24) as RuntimeRunStatus;
+  if (!RUNTIME_RUN_STATUSES.has(status)) throw invariantError(name);
+  return status;
+}
+
+function persistedReasonCode(value: unknown) {
+  return boundedText(value, "reason_code", 128);
 }
 
 function uuid(value: unknown, name: string) {

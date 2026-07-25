@@ -41,7 +41,11 @@ import {
   PlatformSmtp,
 } from "./mail/index.js";
 import { UserNotification } from "./notifications/index.js";
-import { RuntimeOutboxMessage, RuntimeRun } from "./runtime/index.js";
+import {
+  RuntimeOutboxMessage,
+  RuntimeRun,
+  RuntimeRunEvent,
+} from "./runtime/index.js";
 import { PlatformSetting, WorkspaceSetting } from "./settings/index.js";
 import {
   Conversation,
@@ -88,6 +92,7 @@ export const CORE_DATABASE_ENTITIES = [
   RolePermission,
   RuntimeOutboxMessage,
   RuntimeRun,
+  RuntimeRunEvent,
   Ticket,
   TicketMessage,
   ToolDefinition,

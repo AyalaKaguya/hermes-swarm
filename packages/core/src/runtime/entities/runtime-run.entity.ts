@@ -61,6 +61,10 @@ export type RuntimeRunStatus =
   `"lease_generation" >= 0`,
 )
 @Check(
+  "CHK_runtime_runs_event_sequence",
+  `"event_sequence" >= 0`,
+)
+@Check(
   "CHK_runtime_runs_lease_shape",
   `(
     "lease_token" IS NULL
@@ -112,6 +116,9 @@ export class RuntimeRun extends WorkspaceOwnedBaseEntity {
 
   @Column({ type: "varchar", length: 24, default: "queued" })
   status!: RuntimeRunStatus;
+
+  @Column({ name: "event_sequence", type: "integer", default: 0 })
+  eventSequence!: number;
 
   @Column({ name: "idempotency_key", type: "varchar", length: 200 })
   idempotencyKey!: string;

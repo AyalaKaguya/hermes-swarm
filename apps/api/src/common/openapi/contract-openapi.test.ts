@@ -44,5 +44,34 @@ describe("admin contract OpenAPI generation", () => {
     assert.ok(toolCreate?.responses[404]);
     assert.ok(toolCreate?.responses[409]);
     assert.ok(toolCreate?.responses[500]);
+
+    const stream = document.paths["/api/admin/ai/runs/{runId}/events/stream"]?.get;
+    assert.ok(stream);
+    const streamSuccessContent = responseContent(stream.responses[200]);
+    assert.ok(streamSuccessContent["text/event-stream"]);
+    assert.equal(streamSuccessContent["application/json"], undefined);
+    assert.ok(document.components?.schemas?.ai_runs_events_stream_Response200);
+    const lastEventId = stream.parameters?.find(
+      (parameter) =>
+        !("$ref" in parameter) &&
+        parameter.in === "header" &&
+        parameter.name === "Last-Event-ID",
+    );
+    assert.ok(lastEventId && !("$ref" in lastEventId));
+    assert.equal(lastEventId.required, false);
+    assert.equal((lastEventId.schema as { type?: string } | undefined)?.type, "string");
+    assert.ok(responseContent(stream.responses[400])["application/json"]);
+    assert.ok(responseContent(stream.responses[404])["application/json"]);
+
+    const history = document.paths["/api/admin/ai/runs/{runId}/events"]?.get;
+    assert.ok(history);
+    const historySuccessContent = responseContent(history.responses[200]);
+    assert.ok(historySuccessContent["application/json"]);
+    assert.equal(historySuccessContent["text/event-stream"], undefined);
   });
 });
+
+function responseContent(response: unknown): Record<string, unknown> {
+  assert.ok(response && typeof response === "object" && !("$ref" in response));
+  return (response as { content?: Record<string, unknown> }).content ?? {};
+}

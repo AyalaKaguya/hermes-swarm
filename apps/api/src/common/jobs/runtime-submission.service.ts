@@ -7,6 +7,7 @@ import {
   RUNTIME_RUN_SCHEMA_VERSION,
   RuntimeOutboxMessage,
   RuntimeRun,
+  appendRuntimeRunStatusChanges,
 } from "@hermes-swarm/core";
 import type { EntityManager } from "typeorm";
 import { WorkspaceContextService } from "../database/workspace-context.service.js";
@@ -101,6 +102,7 @@ export class RuntimeSubmissionService {
         cancellationRequestedAt: null,
         correlationId: submission.correlationId,
         deadlineAt: submission.deadlineAt,
+        eventSequence: 0,
         finishedAt: null,
         heartbeatAt: null,
         id: runId,
@@ -182,6 +184,7 @@ export class RuntimeSubmissionService {
     }
 
     const requestedAt = await readDatabaseClock(manager);
+    const previousStatus = run.status;
     run.cancellationRequestedAt ??= requestedAt;
     if (run.status === "queued" || run.status === "waiting") {
       run.status = "cancelled";
@@ -194,7 +197,19 @@ export class RuntimeSubmissionService {
     } else {
       run.status = "cancelling";
     }
-    return runRepository.save(run);
+    const savedRun = await runRepository.save(run);
+    const events = await appendRuntimeRunStatusChanges(manager, [
+      {
+        from: previousStatus,
+        reasonCode: "user",
+        runId: savedRun.id,
+        to: savedRun.status,
+        workspaceId,
+      },
+    ]);
+    const statusEvent = events[0];
+    if (statusEvent) savedRun.eventSequence = statusEvent.sequence;
+    return savedRun;
   }
 }
 

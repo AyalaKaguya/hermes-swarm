@@ -10,8 +10,16 @@ import {
   ExecutionScopeSchema,
   ModelBindingSchema,
   ModelReferenceSchema,
+  RUN_EVENT_ERROR_CODES,
   RUN_EVENT_SCHEMA_VERSION,
+  RunEventCursorBadRequestErrorSchema,
+  RunEventHistoryPageSchema,
+  RunEventHistoryQuerySchema,
   RunEventSchema,
+  RunEventStreamHeadersSchema,
+  RunEventStreamQuerySchema,
+  RunStatusChangedEventSchema,
+  RunUnavailableNotFoundErrorSchema,
   TOOL_DEFINITION_SCHEMA_VERSION,
   ToolDefinitionSchema,
   redactAiError,
@@ -231,6 +239,74 @@ describe("trusted execution scope", () => {
 });
 
 describe("run event contracts", () => {
+  it("coerces bounded history pagination and applies stable defaults", () => {
+    assert.deepEqual(RunEventHistoryQuerySchema.parse({}), {
+      afterSequence: 0,
+      limit: 50,
+    });
+    assert.deepEqual(
+      RunEventHistoryQuerySchema.parse({ afterSequence: "17", limit: "200" }),
+      { afterSequence: 17, limit: 200 },
+    );
+    assert.equal(
+      RunEventHistoryQuerySchema.safeParse({ afterSequence: -1, limit: 50 }).success,
+      false,
+    );
+    assert.equal(
+      RunEventHistoryQuerySchema.safeParse({ afterSequence: 0, limit: 0 }).success,
+      false,
+    );
+    assert.equal(
+      RunEventHistoryQuerySchema.safeParse({ afterSequence: 0, limit: 201 }).success,
+      false,
+    );
+    assert.equal(
+      RunEventHistoryQuerySchema.safeParse({
+        afterSequence: 2_147_483_648,
+        limit: 50,
+      }).success,
+      false,
+    );
+    assert.equal(
+      RunEventHistoryQuerySchema.safeParse({ extra: "cursor" }).success,
+      false,
+    );
+  });
+
+  it("accepts an optional bounded stream cursor without extra query keys", () => {
+    assert.deepEqual(RunEventStreamQuerySchema.parse({}), {});
+    assert.deepEqual(
+      RunEventStreamQuerySchema.parse({ afterSequence: "17" }),
+      { afterSequence: 17 },
+    );
+    assert.equal(
+      RunEventStreamQuerySchema.safeParse({ afterSequence: -1 }).success,
+      false,
+    );
+    assert.equal(
+      RunEventStreamQuerySchema.safeParse({ afterSequence: 1.5 }).success,
+      false,
+    );
+    assert.equal(
+      RunEventStreamQuerySchema.safeParse({ afterSequence: 2_147_483_648 })
+        .success,
+      false,
+    );
+    assert.equal(
+      RunEventStreamQuerySchema.safeParse({ afterSequence: 1, extra: true }).success,
+      false,
+    );
+    assert.deepEqual(RunEventStreamHeadersSchema.parse({}), {});
+    assert.deepEqual(
+      RunEventStreamHeadersSchema.parse({ "Last-Event-ID": "17" }),
+      { "Last-Event-ID": "17" },
+    );
+    assert.equal(
+      RunEventStreamHeadersSchema.safeParse({ "Last-Event-ID": 17 }).success,
+      false,
+    );
+  });
+
   it("accepts exact event payloads and rejects payload drift", () => {
     const started = {
       ...eventBase,
@@ -242,6 +318,95 @@ describe("run event contracts", () => {
     assert.equal(RunEventSchema.safeParse({ ...started, payload: { ...started.payload, debug: true } }).success, false);
     assert.equal(RunEventSchema.safeParse({ ...started, schemaVersion: "hermes.run-event/v2" }).success, false);
     assert.equal(RunEventSchema.safeParse({ ...started, type: "run.future-event" }).success, false);
+    assert.equal(RunEventSchema.safeParse({ ...started, sequence: 2_147_483_648 }).success, false);
+  });
+
+  it("requires run status events to describe a run-level state change", () => {
+    const statusChanged = {
+      ...eventBase,
+      payload: { from: "queued", reasonCode: "worker-claimed", to: "running" },
+      type: "run.status.changed",
+    } as const;
+
+    assert.equal(RunStatusChangedEventSchema.safeParse(statusChanged).success, true);
+    assert.equal(RunEventSchema.safeParse(statusChanged).success, true);
+    assert.equal(
+      RunStatusChangedEventSchema.safeParse({
+        ...statusChanged,
+        payload: { ...statusChanged.payload, to: "queued" },
+      }).success,
+      false,
+    );
+    assert.equal(
+      RunStatusChangedEventSchema.safeParse({ ...statusChanged, callId: ids.event }).success,
+      false,
+    );
+    assert.equal(
+      RunStatusChangedEventSchema.safeParse({ ...statusChanged, nodeId: "node-a" }).success,
+      false,
+    );
+  });
+
+  it("validates strict history pages and stable cursor errors", () => {
+    const started = {
+      ...eventBase,
+      payload: { agentVersionId: ids.agentVersion, status: "running" },
+      type: "run.started",
+    } as const;
+    const page = {
+      eventSequence: 1,
+      hasMore: false,
+      items: [started],
+      nextAfterSequence: null,
+      runStatus: "running",
+    } as const;
+
+    assert.deepEqual(RunEventHistoryPageSchema.parse(page), page);
+    assert.equal(
+      RunEventHistoryPageSchema.safeParse({ ...page, internalCursor: 1 }).success,
+      false,
+    );
+    assert.equal(
+      RunEventHistoryPageSchema.safeParse({ ...page, nextAfterSequence: -1 }).success,
+      false,
+    );
+    assert.equal(
+      RunEventHistoryPageSchema.safeParse({ ...page, eventSequence: 2_147_483_648 })
+        .success,
+      false,
+    );
+    assert.equal(
+      RunEventHistoryPageSchema.safeParse({
+        ...page,
+        items: Array.from({ length: 201 }, () => started),
+      }).success,
+      false,
+    );
+
+    const invalidCursor = {
+      code: RUN_EVENT_ERROR_CODES.invalidCursor,
+      message: "The run event cursor is invalid.",
+      statusCode: 400,
+    } as const;
+    const unavailable = {
+      code: RUN_EVENT_ERROR_CODES.runUnavailable,
+      message: "The run is unavailable.",
+      statusCode: 404,
+    } as const;
+    assert.deepEqual(RunEventCursorBadRequestErrorSchema.parse(invalidCursor), invalidCursor);
+    assert.deepEqual(RunUnavailableNotFoundErrorSchema.parse(unavailable), unavailable);
+    assert.equal(
+      RunEventCursorBadRequestErrorSchema.safeParse({
+        ...invalidCursor,
+        code: RUN_EVENT_ERROR_CODES.runUnavailable,
+      }).success,
+      false,
+    );
+    assert.equal(
+      RunUnavailableNotFoundErrorSchema.safeParse({ ...unavailable, detail: "private" })
+        .success,
+      false,
+    );
   });
 
   it("validates usage accounting and structured failure events", () => {
