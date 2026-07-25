@@ -22,10 +22,13 @@ import {
   fetchMe,
   isUnauthorizedApiError,
   listAccountContexts,
+  listWorkspaceSettings,
   switchAccountContext,
   type ContextSelectionOption,
   type Snapshot,
 } from "@/lib/admin-api";
+import { isAnalyticsNavigationEnabled } from "@/lib/analytics-navigation";
+import { requireAuthenticatedAdminSessionMarker } from "@/lib/authenticated-admin";
 import { clearStoredSession, resolveSession, type ResolvedSession } from "@/lib/session";
 import { hasPageAccess } from "@/lib/access-control";
 import {
@@ -58,6 +61,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [contextOptions, setContextOptions] = useState<ContextSelectionOption[]>([]);
+  const [analyticsNavigationEnabled, setAnalyticsNavigationEnabled] =
+    useState(false);
   const [switchingContext, setSwitchingContext] = useState(false);
   const [redirectingToLogin, setRedirectingToLogin] = useState(false);
 
@@ -75,7 +80,15 @@ export function AdminShell({ children }: { children: ReactNode }) {
       }
       try {
         const principal = await fetchMe();
-        setContextOptions(await listAccountContexts());
+        const [nextContextOptions, nextAnalyticsNavigationEnabled] =
+          await Promise.all([
+            listAccountContexts(),
+            principal.principalType === "workspace"
+              ? loadAnalyticsNavigationEnabled()
+              : Promise.resolve(false),
+          ]);
+        setContextOptions(nextContextOptions);
+        setAnalyticsNavigationEnabled(nextAnalyticsNavigationEnabled);
         setRuntimePreferences(principal.runtimePreferences);
         const data = createShellSnapshot(principal);
         setSnapshot(data);
@@ -167,7 +180,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
     resolvedSession.user.preferredLanguage,
   );
   const platformSlogan = resolvePlatformSlogan(snapshot);
-  const navSections = buildMainNavSections(resolvedSession, snapshot);
+  const navSections = buildMainNavSections(
+    resolvedSession,
+    snapshot,
+    analyticsNavigationEnabled,
+  );
   const ticketAccess = buildTicketAccess(resolvedSession, snapshot);
 
   async function switchContext(option: ContextSelectionOption) {
@@ -326,6 +343,7 @@ function hasPlatformManagementPermission(permissions: string[] | undefined) {
 function buildMainNavSections(
   resolvedSession: ResolvedSession,
   snapshot: Snapshot,
+  analyticsNavigationEnabled: boolean,
 ) {
   if (resolvedSession.principalType === "platform") {
     const sections = new Map<
@@ -399,6 +417,7 @@ function buildMainNavSections(
 
   for (const page of PAGE_ACCESS_DEFINITIONS) {
     if (page.section !== "business") continue;
+    if (page.key === "analytics" && !analyticsNavigationEnabled) continue;
     if (!hasPageAccess(resolvedSession, page.key)) continue;
     const section = sections.get(page.section) ?? {
       items: [],
@@ -424,6 +443,15 @@ function buildMainNavSections(
       key: section.key,
       label: section.label,
     }));
+}
+
+async function loadAnalyticsNavigationEnabled() {
+  try {
+    const session = await requireAuthenticatedAdminSessionMarker();
+    return isAnalyticsNavigationEnabled(await listWorkspaceSettings(session));
+  } catch {
+    return false;
+  }
 }
 
 function buildTicketAccess(

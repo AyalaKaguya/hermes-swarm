@@ -141,6 +141,53 @@ export class AnalyticsQueryGateway {
     }
   }
 
+  async describe(
+    sourceKey: string,
+    authorization: AnalyticsAuthorizationContext,
+  ): Promise<DatasetSchema> {
+    const context = this.executionContext(authorization);
+    const registration = this.authorizedSource(sourceKey, context);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(new Error("analytics describe deadline exceeded")),
+      this.timeoutMs,
+    );
+    timeout.unref?.();
+
+    try {
+      const described = await raceWithAbort(
+        registration.adapter.describe(
+          context,
+          registration.sourceKey,
+          controller.signal,
+        ),
+        controller.signal,
+      );
+      const schema = parseDatasetSchema(described);
+      if (schema.sourceKey !== registration.sourceKey) {
+        throw new AnalyticsQueryError(
+          "ANALYTICS_RESULT_INVALID",
+          "Analytics adapter returned a schema for a different source.",
+        );
+      }
+      return schema;
+    } catch (error) {
+      if (error instanceof AnalyticsQueryError) throw error;
+      if (controller.signal.aborted) {
+        throw new AnalyticsQueryError(
+          "ANALYTICS_QUERY_TIMEOUT",
+          "Analytics source description exceeded its execution deadline.",
+        );
+      }
+      throw new AnalyticsQueryError(
+        "ANALYTICS_ADAPTER_UNAVAILABLE",
+        "Analytics source is temporarily unavailable.",
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private executionContext(
     authorization: AnalyticsAuthorizationContext,
   ): AnalyticsExecutionContext {

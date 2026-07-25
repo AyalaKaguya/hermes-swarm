@@ -80,6 +80,7 @@ describe("setting definitions", () => {
     );
     assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.email));
     assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.invite));
+    assert.ok(workspaceFeatureKeys.includes(FEATURE_SETTING_KEYS.analytics));
     assert.deepEqual(
       [...new Set(FEATURE_SETTING_DEFINITIONS.map((definition) => definition.scope))],
       ["workspace", "platform"],
@@ -102,6 +103,13 @@ describe("setting definitions", () => {
     const definition = getSettingDefinitionByKey(FEATURE_SETTING_KEYS.ai);
 
     assert.equal(definition?.scope, "platform");
+    assert.equal(definition?.defaultValue, "false");
+  });
+
+  it("keeps analytics disabled behind a workspace feature gate by default", () => {
+    const definition = getSettingDefinitionByKey(FEATURE_SETTING_KEYS.analytics);
+
+    assert.equal(definition?.scope, "workspace");
     assert.equal(definition?.defaultValue, "false");
   });
 

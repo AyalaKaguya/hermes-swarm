@@ -150,6 +150,21 @@ describe("admin API contracts", () => {
     assert.ok(responseSchemaFor(adminContracts.authLogin, 201));
   });
 
+  it("registers analytics queries without a client-controlled workspace", () => {
+    const contract = findAdminContract("POST", "/api/admin/analytics/query")?.contract;
+    assert.equal(contract?.id, "analytics.query");
+    assert.equal(
+      contract?.body?.safeParse({
+        schemaVersion: "hermes.analytics.query/v1",
+        select: ["status"],
+        sourceKey: "support.tickets",
+        sourceRevision: "support.tickets/v1",
+        workspaceId: "workspace-a",
+      }).success,
+      false,
+    );
+  });
+
   it("registers scope-specific provider catalog routes with write-only secrets", () => {
     const platformCreate = findAdminContract(
       "POST",

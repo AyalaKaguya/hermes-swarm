@@ -1,5 +1,10 @@
 import { z, type ZodType } from "zod";
 import {
+  AnalysisQuerySchema,
+  DatasetResultSchema,
+  DatasetSchema as AnalyticsDatasetSchema,
+} from "./analytics/index.js";
+import {
   CreatePlatformModelDeploymentRequestSchema,
   CreatePlatformModelProviderRequestSchema,
   CreateWorkspaceModelDeploymentRequestSchema,
@@ -123,6 +128,8 @@ export const adminContracts = {
   platformTicketMessageSend: defineContract({ id: "platform.tickets.messages.send", method: "POST", path: "/platform/tickets/:ticketId/messages", params: idParams("ticketId"), body: SendTicketMessageRequestSchema, responses: { 201: TicketMessageSchema } }),
   platformTicketClose: defineContract({ id: "platform.tickets.close", method: "PATCH", path: "/platform/tickets/:ticketId/close", params: idParams("ticketId"), responses: { 200: PlatformTicketSchema } }),
   platformTicketRead: defineContract({ id: "platform.tickets.read", method: "PATCH", path: "/platform/tickets/:ticketId/read", params: idParams("ticketId"), responses: { 200: OkSchema } }),
+  analyticsSupportTicketsSchema: defineContract({ id: "analytics.supportTickets.schema", method: "GET", path: "/analytics/sources/support.tickets/schema", responses: { 200: AnalyticsDatasetSchema } }),
+  analyticsQuery: defineContract({ id: "analytics.query", method: "POST", path: "/analytics/query", body: AnalysisQuerySchema, responses: { 200: DatasetResultSchema } }),
   platformAiProviders: defineContract({ id: "platform.ai.providers.list", method: "GET", path: "/platform/ai/providers", responses: { 200: z.array(PlatformModelProviderSchema) } }),
   platformAiProviderCreate: defineContract({ id: "platform.ai.providers.create", method: "POST", path: "/platform/ai/providers", body: CreatePlatformModelProviderRequestSchema, responses: { 201: PlatformModelProviderSchema } }),
   platformAiProviderUpdate: defineContract({ id: "platform.ai.providers.update", method: "PATCH", path: "/platform/ai/providers/:providerId", params: z.strictObject({ providerId: UuidSchema }), body: UpdatePlatformModelProviderRequestSchema, responses: { 200: PlatformModelProviderSchema } }),

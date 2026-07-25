@@ -11,10 +11,14 @@ import {
 } from "@hermes-swarm/core";
 import { DATABASE_ENTITIES } from "../common/database/database-entities.js";
 import { WorkspaceModelBaseline2026071500001 } from "../common/database/migrations/202607150001-WorkspaceModelBaseline.js";
+import { CanonicalRuntimePreferences2026071700001 } from "../common/database/migrations/202607170001-CanonicalRuntimePreferences.js";
 import { AuditLogs2026071700002 } from "../common/database/migrations/202607170002-AuditLogs.js";
 import { CredentialVersion2026072000001 } from "../common/database/migrations/2026072000001-CredentialVersion.js";
 import { RemoveWorkspaceRls2026072200001 } from "../common/database/migrations/2026072200001-RemoveWorkspaceRls.js";
 import { PlatformTicketInboxPermissions2026072300001 } from "../common/database/migrations/2026072300001-PlatformTicketInboxPermissions.js";
+import { ObjectStorageFiles2026072400001 } from "../common/database/migrations/2026072400001-ObjectStorageFiles.js";
+import { ModelProviderCatalog2026072500001 } from "../common/database/migrations/2026072500001-ModelProviderCatalog.js";
+import { AnalyticsTicketExplorerPermissions2026072500002 } from "../common/database/migrations/2026072500002-AnalyticsTicketExplorerPermissions.js";
 
 const databaseUrl = process.env.POSTGRES_TEST_URL;
 
@@ -44,10 +48,14 @@ describe("workspace database baseline e2e", { concurrency: false }, () => {
       entities: [...DATABASE_ENTITIES],
       migrations: [
         WorkspaceModelBaseline2026071500001,
+        CanonicalRuntimePreferences2026071700001,
         AuditLogs2026071700002,
         CredentialVersion2026072000001,
         RemoveWorkspaceRls2026072200001,
         PlatformTicketInboxPermissions2026072300001,
+        ObjectStorageFiles2026072400001,
+        ModelProviderCatalog2026072500001,
+        AnalyticsTicketExplorerPermissions2026072500002,
       ],
       migrationsRun: false,
       synchronize: false,

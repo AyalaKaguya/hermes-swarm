@@ -38,6 +38,21 @@ const AUTHORIZATION: AnalyticsAuthorizationContext = {
 };
 
 describe("AnalyticsQueryGateway", () => {
+  it("describes a source only after applying the same trusted authorization", async () => {
+    const state = createState();
+    const schema = await state.describe("workspace-a");
+
+    assert.equal(schema.sourceKey, "support.tickets");
+    assert.equal(schema.sourceRevision, FAKE_SUPPORT_TICKETS_SCHEMA.sourceRevision);
+    await rejectsWithCode(
+      state.describe("workspace-a", {
+        ...AUTHORIZATION,
+        permissions: new Set(),
+      }),
+      "ANALYTICS_SOURCE_NOT_FOUND",
+    );
+  });
+
   it("isolates deterministic results by trusted WorkspaceContext", async () => {
     const state = createState();
     const workspaceA = await state.execute("workspace-a", BASE_QUERY);
@@ -318,6 +333,15 @@ function createState(options: {
   );
   return {
     gateway,
+    describe(
+      workspaceId: string,
+      authorization: AnalyticsAuthorizationContext = AUTHORIZATION,
+    ) {
+      return workspaceContext.run(
+        { scopeLevel: "workspace", workspaceId },
+        () => gateway.describe("support.tickets", authorization),
+      );
+    },
     execute(
       workspaceId: string,
       query: unknown,
