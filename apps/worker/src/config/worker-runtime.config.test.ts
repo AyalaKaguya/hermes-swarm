@@ -21,6 +21,17 @@ describe("worker runtime config", () => {
       outboxLeaseMs: 30_000,
       outboxPollMs: 1_000,
       outboxReconcileMs: 60_000,
+      objectStorage: {
+        accessKeyId: "",
+        bucket: "",
+        downloadUrlTtlSeconds: 300,
+        enabled: false,
+        endpoint: "",
+        forcePathStyle: true,
+        pendingTtlSeconds: 86_400,
+        region: "us-east-1",
+        secretAccessKey: "",
+      },
       postgresUrl: "postgresql://worker:secret@db.example/hermes",
       queueName: DEFAULT_RUNTIME_QUEUE_NAME,
       queuePrefix: DEFAULT_RUNTIME_QUEUE_PREFIX,
@@ -121,5 +132,53 @@ describe("worker runtime config", () => {
     });
 
     assert.equal(config.outboxReconcileMs, 120_000);
+  });
+
+  it("requires complete object storage settings only when enabled", () => {
+    assert.throws(
+      () =>
+        readWorkerRuntimeConfig({
+          ...required,
+          OBJECT_STORAGE_ENABLED: "true",
+        }),
+      /OBJECT_STORAGE_ENDPOINT is required/,
+    );
+
+    const config = readWorkerRuntimeConfig({
+      ...required,
+      OBJECT_STORAGE_ACCESS_KEY_ID: "worker-access",
+      OBJECT_STORAGE_BUCKET: "hermes-artifacts",
+      OBJECT_STORAGE_ENABLED: "true",
+      OBJECT_STORAGE_ENDPOINT: "https://storage.example",
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "worker-secret",
+    });
+
+    assert.deepEqual(config.objectStorage, {
+      accessKeyId: "worker-access",
+      bucket: "hermes-artifacts",
+      downloadUrlTtlSeconds: 300,
+      enabled: true,
+      endpoint: "https://storage.example/",
+      forcePathStyle: true,
+      pendingTtlSeconds: 86_400,
+      region: "us-east-1",
+      secretAccessKey: "worker-secret",
+    });
+  });
+
+  it("rejects insecure production object storage endpoints", () => {
+    assert.throws(
+      () =>
+        readWorkerRuntimeConfig({
+          ...required,
+          NODE_ENV: "production",
+          OBJECT_STORAGE_ACCESS_KEY_ID: "worker-access",
+          OBJECT_STORAGE_BUCKET: "hermes-artifacts",
+          OBJECT_STORAGE_ENABLED: "true",
+          OBJECT_STORAGE_ENDPOINT: "http://storage.example",
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: "worker-secret",
+        }),
+      /must use https:\/\//,
+    );
   });
 });

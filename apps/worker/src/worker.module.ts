@@ -3,6 +3,15 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { RuntimeRunHandlerRegistry } from "@hermes-swarm/agent-sdk";
 import { CORE_DATABASE_ENTITIES } from "@hermes-swarm/core/database-entities";
+import { AnalyticsQueryRunHandler } from "./analytics/analytics-query-run.handler.js";
+import {
+  ANALYTICS_QUERY_EXECUTOR,
+} from "./analytics/analytics-query-executor.js";
+import {
+  ANALYTICS_QUERY_RUN_STORE,
+} from "./analytics/analytics-query-run.types.js";
+import { SupportTicketsQueryExecutor } from "./analytics/support-tickets-query.executor.js";
+import { TypeOrmAnalyticsQueryRunStore } from "./analytics/typeorm-analytics-query-run.store.js";
 import {
   getWorkerEnvFilePaths,
   validateWorkerRuntimeEnvironment,
@@ -31,6 +40,10 @@ import { TrustedRunContextService } from "./runtime/trusted-run-context.service.
 import { TypeOrmRuntimeCheckpointStore } from "./runtime/typeorm-runtime-checkpoint.store.js";
 import { TypeOrmRuntimeRunStore } from "./runtime/typeorm-runtime-run.store.js";
 import { WorkerIdentityService } from "./runtime/worker-identity.service.js";
+import {
+  ANALYTICS_ARTIFACT_STORAGE,
+  S3AnalyticsArtifactStorage,
+} from "./storage/analytics-artifact-storage.js";
 
 @Module({
   imports: [
@@ -57,6 +70,10 @@ import { WorkerIdentityService } from "./runtime/worker-identity.service.js";
   ],
   providers: [
     WorkerIdentityService,
+    AnalyticsQueryRunHandler,
+    SupportTicketsQueryExecutor,
+    TypeOrmAnalyticsQueryRunStore,
+    S3AnalyticsArtifactStorage,
     TypeOrmOutboxStore,
     TypeOrmRuntimeCheckpointStore,
     TypeOrmRuntimeRunStore,
@@ -70,7 +87,21 @@ import { WorkerIdentityService } from "./runtime/worker-identity.service.js";
     WorkerLifecycleService,
     {
       provide: RuntimeRunHandlerRegistry,
-      useFactory: () => new RuntimeRunHandlerRegistry(Object.freeze([])),
+      inject: [AnalyticsQueryRunHandler],
+      useFactory: (analyticsQuery: AnalyticsQueryRunHandler) =>
+        new RuntimeRunHandlerRegistry(Object.freeze([analyticsQuery])),
+    },
+    {
+      provide: ANALYTICS_QUERY_EXECUTOR,
+      useExisting: SupportTicketsQueryExecutor,
+    },
+    {
+      provide: ANALYTICS_QUERY_RUN_STORE,
+      useExisting: TypeOrmAnalyticsQueryRunStore,
+    },
+    {
+      provide: ANALYTICS_ARTIFACT_STORAGE,
+      useExisting: S3AnalyticsArtifactStorage,
     },
     { provide: OUTBOX_STORE, useExisting: TypeOrmOutboxStore },
     { provide: RUNTIME_RUN_STORE, useExisting: TypeOrmRuntimeRunStore },

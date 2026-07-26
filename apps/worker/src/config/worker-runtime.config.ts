@@ -4,8 +4,21 @@ import { registerAs } from "@nestjs/config";
 export const DEFAULT_RUNTIME_QUEUE_NAME = "runtime";
 export const DEFAULT_RUNTIME_QUEUE_PREFIX = "hermes";
 
+export type WorkerObjectStorageConfig = Readonly<{
+  accessKeyId: string;
+  bucket: string;
+  downloadUrlTtlSeconds: number;
+  enabled: boolean;
+  endpoint: string;
+  forcePathStyle: boolean;
+  pendingTtlSeconds: number;
+  region: string;
+  secretAccessKey: string;
+}>;
+
 export type WorkerRuntimeConfig = Readonly<{
   healthPort: number;
+  objectStorage: WorkerObjectStorageConfig;
   outboxBatchSize: number;
   outboxLeaseMs: number;
   outboxPollMs: number;
@@ -25,7 +38,8 @@ export const workerRuntimeConfig = registerAs("worker", () =>
 export function readWorkerRuntimeConfig(
   env: NodeJS.ProcessEnv,
 ): WorkerRuntimeConfig {
-  const isTest = (env.NODE_ENV ?? "development") === "test";
+  const environment = env.NODE_ENV ?? "development";
+  const isTest = environment === "test";
   const postgresVariable = isTest ? "POSTGRES_TEST_URL" : "POSTGRES_URL";
   const postgresUrl = requireUrl(
     isTest ? env.POSTGRES_TEST_URL : env.POSTGRES_URL,
@@ -45,6 +59,7 @@ export function readWorkerRuntimeConfig(
     env.RUNTIME_QUEUE_PREFIX,
     DEFAULT_RUNTIME_QUEUE_PREFIX,
   );
+  const objectStorage = readObjectStorageConfig(env, environment);
 
   return Object.freeze({
     healthPort: parseIntegerInRange(
@@ -82,6 +97,7 @@ export function readWorkerRuntimeConfig(
       1_000,
       24 * 60 * 60_000,
     ),
+    objectStorage,
     postgresUrl,
     queueName,
     queuePrefix,
@@ -144,6 +160,99 @@ function requireUrl(
     );
   }
   return parsed.toString();
+}
+
+function readObjectStorageConfig(
+  env: NodeJS.ProcessEnv,
+  environment: string,
+): WorkerObjectStorageConfig {
+  const enabled = parseBoolean(
+    env.OBJECT_STORAGE_ENABLED,
+    "OBJECT_STORAGE_ENABLED",
+    false,
+  );
+  const forcePathStyle = parseBoolean(
+    env.OBJECT_STORAGE_FORCE_PATH_STYLE,
+    "OBJECT_STORAGE_FORCE_PATH_STYLE",
+    true,
+  );
+  const pendingTtlSeconds = parseIntegerInRange(
+    env.OBJECT_STORAGE_PENDING_TTL_SECONDS,
+    "OBJECT_STORAGE_PENDING_TTL_SECONDS",
+    24 * 60 * 60,
+    60,
+    31 * 24 * 60 * 60,
+  );
+  const downloadUrlTtlSeconds = parseIntegerInRange(
+    env.OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS,
+    "OBJECT_STORAGE_DOWNLOAD_URL_TTL_SECONDS",
+    300,
+    1,
+    7 * 24 * 60 * 60,
+  );
+
+  if (!enabled) {
+    return Object.freeze({
+      accessKeyId: "",
+      bucket: "",
+      downloadUrlTtlSeconds,
+      enabled: false,
+      endpoint: "",
+      forcePathStyle,
+      pendingTtlSeconds,
+      region: env.OBJECT_STORAGE_REGION?.trim() || "us-east-1",
+      secretAccessKey: "",
+    });
+  }
+
+  const endpoint = requireUrl(
+    requireText(env.OBJECT_STORAGE_ENDPOINT, "OBJECT_STORAGE_ENDPOINT"),
+    "OBJECT_STORAGE_ENDPOINT",
+    ["http:", "https:"],
+  );
+  if (environment === "production" && new URL(endpoint).protocol !== "https:") {
+    throw new Error("OBJECT_STORAGE_ENDPOINT must use https:// in production");
+  }
+  const bucket = requireText(env.OBJECT_STORAGE_BUCKET, "OBJECT_STORAGE_BUCKET");
+  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket)) {
+    throw new Error("OBJECT_STORAGE_BUCKET must be a valid S3 bucket name");
+  }
+
+  return Object.freeze({
+    accessKeyId: requireText(
+      env.OBJECT_STORAGE_ACCESS_KEY_ID,
+      "OBJECT_STORAGE_ACCESS_KEY_ID",
+    ),
+    bucket,
+    downloadUrlTtlSeconds,
+    enabled: true,
+    endpoint,
+    forcePathStyle,
+    pendingTtlSeconds,
+    region: env.OBJECT_STORAGE_REGION?.trim() || "us-east-1",
+    secretAccessKey: requireText(
+      env.OBJECT_STORAGE_SECRET_ACCESS_KEY,
+      "OBJECT_STORAGE_SECRET_ACCESS_KEY",
+    ),
+  });
+}
+
+function parseBoolean(
+  value: string | undefined,
+  name: string,
+  fallback: boolean,
+) {
+  const text = value?.trim().toLowerCase();
+  if (!text) return fallback;
+  if (text === "true") return true;
+  if (text === "false") return false;
+  throw new Error(`${name} must be true or false`);
+}
+
+function requireText(value: string | undefined, name: string) {
+  const text = value?.trim();
+  if (!text) throw new Error(`${name} is required when OBJECT_STORAGE_ENABLED=true`);
+  return text;
 }
 
 function parseIntegerInRange(

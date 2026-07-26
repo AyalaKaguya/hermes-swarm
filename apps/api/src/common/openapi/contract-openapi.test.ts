@@ -68,10 +68,30 @@ describe("admin contract OpenAPI generation", () => {
     const historySuccessContent = responseContent(history.responses[200]);
     assert.ok(historySuccessContent["application/json"]);
     assert.equal(historySuccessContent["text/event-stream"], undefined);
+
+    for (const path of [
+      "/api/admin/files/objects/{fileId}/content",
+      "/api/admin/analytics/artifacts/{artifactId}/content",
+    ]) {
+      const redirect = document.paths[path]?.get;
+      assert.ok(redirect, `${path} is missing`);
+      assert.deepEqual(responseContent(redirect.responses[302]), {});
+      const location = responseHeaders(redirect.responses[302]).Location;
+      assert.ok(location && typeof location === "object" && !("$ref" in location));
+      assert.equal(
+        (location.schema as { format?: string } | undefined)?.format,
+        "uri",
+      );
+    }
   });
 });
 
 function responseContent(response: unknown): Record<string, unknown> {
   assert.ok(response && typeof response === "object" && !("$ref" in response));
   return (response as { content?: Record<string, unknown> }).content ?? {};
+}
+
+function responseHeaders(response: unknown): Record<string, unknown> {
+  assert.ok(response && typeof response === "object" && !("$ref" in response));
+  return (response as { headers?: Record<string, unknown> }).headers ?? {};
 }

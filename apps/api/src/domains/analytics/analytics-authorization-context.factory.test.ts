@@ -30,6 +30,7 @@ describe("AnalyticsAuthorizationContextFactory", () => {
     );
 
     assert.equal(result.actorId, "account-a");
+    assert.equal(result.integrationTokenId, null);
     assert.equal(result.locale, "zh-Hant");
     assert.equal(result.timeZone, "Asia/Hong_Kong");
     assert.equal(result.requestId, "server-request-a");
@@ -46,6 +47,7 @@ describe("AnalyticsAuthorizationContextFactory", () => {
         requiredPermissions: [SUPPORT_TICKETS_QUERY_PERMISSION],
       }),
     );
+    assert.equal(deniedByRole.integrationTokenId, "token-a");
     assert.deepEqual([...deniedByRole.permissions], []);
 
     const tokenDenied = createState({ liveAllowed: true });
@@ -56,6 +58,7 @@ describe("AnalyticsAuthorizationContextFactory", () => {
         requiredPermissions: [SUPPORT_TICKETS_QUERY_PERMISSION],
       }),
     );
+    assert.equal(deniedByToken.integrationTokenId, "token-a");
     assert.deepEqual([...deniedByToken.permissions], []);
     assert.deepEqual(tokenDenied.checkedPermissions, []);
   });
@@ -84,6 +87,44 @@ describe("AnalyticsAuthorizationContextFactory", () => {
         return true;
       },
     );
+  });
+
+  it("requires an integration principal to carry its matching trusted token id", async () => {
+    const state = createState({ liveAllowed: true });
+    const request = integrationRequest([SUPPORT_TICKETS_QUERY_PERMISSION]);
+
+    for (const integrationToken of [
+      null,
+      {
+        id: "token-a",
+        permissions: [SUPPORT_TICKETS_QUERY_PERMISSION],
+        scope: "workspace" as const,
+        workspaceId: "workspace-b",
+      },
+    ]) {
+      await assert.rejects(
+        state.inWorkspace(() =>
+          state.factory.create(
+            {
+              ...request,
+              accessPrincipal: {
+                ...request.accessPrincipal!,
+                integrationToken,
+              },
+            },
+            {
+              operationPermission: SUPPORT_TICKETS_DESCRIBE_PERMISSION,
+              requiredPermissions: [SUPPORT_TICKETS_QUERY_PERMISSION],
+            },
+          )
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof AnalyticsQueryError);
+          assert.equal(error.code, "ANALYTICS_CONTEXT_REQUIRED");
+          return true;
+        },
+      );
+    }
   });
 });
 

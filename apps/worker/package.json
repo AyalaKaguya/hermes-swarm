@@ -14,7 +14,9 @@
     "clean": "node -e \"const {rmSync}=require('node:fs'); for (const path of ['dist','tsconfig.tsbuildinfo']) rmSync(path,{recursive:true,force:true})\""
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1093.0",
     "@hermes-swarm/agent-sdk": "workspace:*",
+    "@hermes-swarm/api-contracts": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@langchain/core": "1.1.48",
     "@langchain/langgraph": "1.4.8",

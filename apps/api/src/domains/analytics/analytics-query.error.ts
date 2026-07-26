@@ -5,7 +5,8 @@ export class AnalyticsQueryError extends HttpException {
   readonly code: AnalyticsErrorCode;
 
   constructor(code: AnalyticsErrorCode, message: string) {
-    super({ code, message }, statusForAnalyticsError(code));
+    const statusCode = statusForAnalyticsError(code);
+    super({ code, message, statusCode }, statusCode);
     this.code = code;
     this.name = "AnalyticsQueryError";
   }

@@ -30,6 +30,7 @@ const BASE_QUERY = {
 
 const AUTHORIZATION: AnalyticsAuthorizationContext = {
   actorId: "account-1",
+  integrationTokenId: null,
   locale: "zh-CN",
   permissions: new Set(["analytics.query:workspace", "ticket.list:workspace"]),
   principalType: "workspace",

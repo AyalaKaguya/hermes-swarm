@@ -131,6 +131,7 @@ export class AnalyticsQueryGateway {
       const queryDigest = analyticsDigest(query);
       const policyDigest = analyticsDigest({
         actorId: context.actorId,
+        integrationTokenId: context.integrationTokenId,
         locale: context.locale,
         permissions: [...context.permissions].sort(),
         policyRevision: registration.policyRevision,
@@ -146,7 +147,10 @@ export class AnalyticsQueryGateway {
         registration.adapter.execute(context, query, controller.signal),
         controller.signal,
       );
-      const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+      const durationMs = Math.min(
+        this.timeoutMs,
+        Math.max(0, Math.round(performance.now() - startedAt)),
+      );
 
       return this.validateResult({
         adapterResult,
@@ -705,6 +709,10 @@ function isAuthorizationContext(
       typeof value.timeZone === "string" &&
       value.timeZone.trim() &&
       (value.principalType === "workspace" || value.principalType === "integration") &&
+      ((value.principalType === "workspace" && value.integrationTokenId === null) ||
+        (value.principalType === "integration" &&
+          typeof value.integrationTokenId === "string" &&
+          Boolean(value.integrationTokenId.trim()))) &&
       value.permissions &&
       typeof value.permissions[Symbol.iterator] === "function",
   );

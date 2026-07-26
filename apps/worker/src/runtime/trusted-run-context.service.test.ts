@@ -19,6 +19,7 @@ describe("TrustedRunContextService", () => {
         dispatchId: claim.dispatchId,
         lease: context.lease,
         leaseToken: claim.leaseToken,
+        maxAttempts: claim.maxAttempts,
         runKind: claim.runKind,
       });
       assert.equal("leaseToken" in context, false);

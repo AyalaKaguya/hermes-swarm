@@ -48,6 +48,9 @@ export const DatasetResultLineageSchema = z.strictObject({
   sourceKey: AnalyticsSourceKeySchema,
   sourceRevision: AnalyticsSourceRevisionSchema,
 });
+export type DatasetResultLineage = z.infer<
+  typeof DatasetResultLineageSchema
+>;
 
 function valueMatchesScalarType(value: unknown, scalarType: DatasetScalarType) {
   if (value === null) return true;

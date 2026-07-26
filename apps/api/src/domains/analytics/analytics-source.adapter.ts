@@ -10,6 +10,7 @@ export type AnalyticsScalar = DatasetCellValue;
 
 export type AnalyticsAuthorizationContext = Readonly<{
   actorId: string;
+  integrationTokenId: string | null;
   locale: string;
   permissions: ReadonlySet<string>;
   principalType: "integration" | "workspace";

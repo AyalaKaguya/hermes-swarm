@@ -62,6 +62,10 @@ export class AnalyticsAuthorizationContextFactory {
       !principal.workspaceId?.trim() ||
       !workspace?.workspaceId.trim() ||
       principal.workspaceId !== workspace.workspaceId ||
+      (principal.principalType === "integration" &&
+        (!principal.integrationToken?.id.trim() ||
+          principal.integrationToken.scope !== "workspace" ||
+          principal.integrationToken.workspaceId !== workspace.workspaceId)) ||
       auditedWorkspaceId !== workspace.workspaceId ||
       auditedDefinition?.id !== input.operationPermission ||
       auditedDefinition.scope !== "workspace"
@@ -96,6 +100,10 @@ export class AnalyticsAuthorizationContextFactory {
 
     return Object.freeze({
       actorId: principal.userId,
+      integrationTokenId:
+        principal.principalType === "integration"
+          ? principal.integrationToken?.id ?? null
+          : null,
       locale: account.preferredLanguage ?? "zh-Hans",
       permissions,
       principalType: principal.principalType,

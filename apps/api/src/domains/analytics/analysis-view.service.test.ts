@@ -13,6 +13,7 @@ const WORKSPACE_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const WORKSPACE_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const AUTHORIZATION: AnalyticsAuthorizationContext = {
   actorId: "11111111-1111-4111-8111-111111111111",
+  integrationTokenId: null,
   locale: "en",
   permissions: new Set(["analytics.ticket_dataset.query:workspace"]),
   principalType: "workspace",

@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { pathToFileURL } from "node:url";
+import { AnalysisQueryArtifactGcService } from "../../domains/analytics/analysis-query-artifact-gc.service.js";
 import { FileObjectService } from "./file-object.service.js";
 
 export async function runFileGarbageCollection() {
@@ -11,8 +12,12 @@ export async function runFileGarbageCollection() {
   });
   try {
     const limit = parseLimit(process.env.FILES_GC_BATCH_SIZE);
+    const analytics = await app
+      .get(AnalysisQueryArtifactGcService)
+      .collectExpired(limit);
     const summary = await app.get(FileObjectService).collectGarbage(limit);
-    process.stdout.write(`${JSON.stringify(summary)}\n`);
+    const output = { ...summary, analytics };
+    process.stdout.write(`${JSON.stringify(output)}\n`);
     if (summary.failed > 0) process.exitCode = 1;
   } finally {
     await app.close();

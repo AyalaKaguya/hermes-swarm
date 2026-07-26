@@ -8,6 +8,7 @@ export type TrustedRunContext = Readonly<{
   dispatchId: string;
   lease: RunLease;
   leaseToken: string;
+  maxAttempts: number;
   runKind: string;
 }>;
 
@@ -38,6 +39,7 @@ export class TrustedRunContextService {
       dispatchId: claimed.dispatchId,
       lease,
       leaseToken: claimed.leaseToken,
+      maxAttempts: claimed.maxAttempts,
       runKind: claimed.runKind,
     });
     const handlerContext = Object.freeze({ lease, signal });

@@ -218,9 +218,15 @@ importers:
 
   apps/worker:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1093.0
+        version: 3.1093.0
       '@hermes-swarm/agent-sdk':
         specifier: workspace:*
         version: link:../../packages/agent-sdk
+      '@hermes-swarm/api-contracts':
+        specifier: workspace:*
+        version: link:../../packages/api-contracts
       '@hermes-swarm/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -280,6 +286,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@hermes-swarm/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
       typeorm:
         specifier: ^1.0.0
         version: 1.0.0(babel-plugin-macros@3.1.0)(ioredis@5.11.1)(pg@8.21.0)(redis@5.12.1)(ts-node@10.9.2(@swc/core@1.15.43(@swc/helpers@0.5.23))(@types/node@22.19.21)(typescript@6.0.3))

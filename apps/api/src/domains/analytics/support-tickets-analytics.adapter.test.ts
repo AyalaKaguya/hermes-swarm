@@ -5,8 +5,8 @@ import {
   AnalysisQuerySchema,
   type AnalysisQuery,
 } from "@hermes-swarm/api-contracts/analytics";
-import type { Ticket } from "@hermes-swarm/core";
-import type { Repository } from "typeorm";
+import { Ticket } from "@hermes-swarm/core";
+import type { DataSource, EntityManager, Repository } from "typeorm";
 import { AnalyticsQueryError } from "./analytics-query.error.js";
 import type { AnalyticsExecutionContext } from "./analytics-source.adapter.js";
 import { AnalyticsSourceRegistry } from "./analytics-source.registry.js";
@@ -18,6 +18,7 @@ import {
 
 const CONTEXT = {
   actorId: "account-a",
+  integrationTokenId: null,
   locale: "zh-Hans",
   permissions: new Set(["analytics.ticket_dataset.query:workspace"]),
   principalType: "workspace",
@@ -121,6 +122,9 @@ describe("SupportTicketsAnalyticsAdapter", () => {
       "createdAt",
       "updatedAt",
     ]);
+    assert.deepEqual(state.statements, [
+      "SET LOCAL statement_timeout = '10000ms'",
+    ]);
   });
 
   it("supports grouped count/min/max and normalizes PostgreSQL raw values", async () => {
@@ -205,6 +209,26 @@ describe("SupportTicketsAnalyticsAdapter", () => {
     );
     assert.equal(second.builders[0]?.getRawManyCalls, 0);
   });
+
+  it("maps PostgreSQL statement timeout to the stable analytics error", async () => {
+    const state = createState([], {
+      code: "57014",
+      message: "canceling statement due to statement timeout",
+    });
+
+    await assert.rejects(
+      state.adapter.execute(
+        CONTEXT,
+        parseQuery({ select: ["status"] }),
+        new AbortController().signal,
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof AnalyticsQueryError);
+        assert.equal(error.code, "ANALYTICS_QUERY_TIMEOUT");
+        return true;
+      },
+    );
+  });
 });
 
 function parseQuery(
@@ -218,8 +242,12 @@ function parseQuery(
   });
 }
 
-function createState(rows: readonly Readonly<Record<string, unknown>>[]) {
+function createState(
+  rows: readonly Readonly<Record<string, unknown>>[],
+  transactionError?: unknown,
+) {
   const builders: FakeTicketQueryBuilder[] = [];
+  const statements: string[] = [];
   const repository = {
     createQueryBuilder(alias: string) {
       assert.equal(alias, "ticket");
@@ -229,10 +257,29 @@ function createState(rows: readonly Readonly<Record<string, unknown>>[]) {
     },
   } as unknown as Repository<Ticket>;
   const registry = new AnalyticsSourceRegistry();
+  const manager = {
+    getRepository(target: unknown) {
+      assert.equal(target, Ticket);
+      return repository;
+    },
+    async query(statement: string) {
+      statements.push(statement);
+      if (transactionError) throw transactionError;
+      return [];
+    },
+  } as unknown as EntityManager;
+  const dataSource = {
+    transaction: async <T>(work: (value: EntityManager) => Promise<T>) =>
+      work(manager),
+  } as unknown as DataSource;
   return {
-    adapter: new SupportTicketsAnalyticsAdapter(repository, registry),
+    adapter: new SupportTicketsAnalyticsAdapter(
+      registry,
+      dataSource,
+    ),
     builders,
     registry,
+    statements,
   };
 }
 

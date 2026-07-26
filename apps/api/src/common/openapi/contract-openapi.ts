@@ -100,7 +100,17 @@ function toRouteConfig(
 
   const responses: RouteConfig["responses"] = {};
   for (const [status, schema] of Object.entries(contract.responses)) {
-    if (contract.eventStream && schema !== null) {
+    if (schema === null && isRedirectStatus(status)) {
+      responses[status] = {
+        description: "Temporary redirect to authorized content",
+        headers: {
+          Location: {
+            description: "Short-lived authorized content URL",
+            schema: { type: "string", format: "uri" },
+          },
+        },
+      };
+    } else if (contract.eventStream && schema !== null) {
       responses[status] = {
         description: "Event stream",
         content: {
@@ -168,4 +178,9 @@ function toRouteConfig(
 
 function componentName(contract: ApiContract, suffix: string) {
   return `${contract.id}_${suffix}`.replace(/[^A-Za-z0-9_]/g, "_");
+}
+
+function isRedirectStatus(status: string) {
+  const value = Number(status);
+  return Number.isInteger(value) && value >= 300 && value < 400;
 }

@@ -4,6 +4,9 @@ import { WorkspaceOwnedBaseEntity } from "./workspace-owned-base.entity.js";
 export type IntegrationTokenScope = "workspace";
 
 @Entity({ name: "integration_tokens" })
+@Index("UQ_integration_tokens_workspace_id", ["workspaceId", "id"], {
+  unique: true,
+})
 @Index("IDX_integration_tokens_owner", ["ownerUserId"])
 @Index("IDX_integration_tokens_hash", ["tokenHash"], { unique: true })
 export class IntegrationToken extends WorkspaceOwnedBaseEntity {

@@ -1,10 +1,21 @@
 import { z, type ZodType } from "zod";
 import {
+  AnalysisQueryResultSchema,
+  AnalysisQueryRunBadRequestErrorSchema,
+  AnalysisQueryRunConflictErrorSchema,
+  AnalysisQueryRunInternalErrorSchema,
+  AnalysisQueryRunNotFoundErrorSchema,
+  AnalysisQueryRunParamsSchema,
+  AnalysisQueryRunSchema,
+  AnalysisQueryRunTimeoutErrorSchema,
+  AnalysisQueryRunUnavailableErrorSchema,
   AnalysisViewListSchema,
   AnalysisViewParamsSchema,
   AnalysisViewSchema,
   AnalysisQuerySchema,
+  CreateAnalysisQueryRunRequestSchema,
   CreateAnalysisViewRequestSchema,
+  DatasetArtifactParamsSchema,
   DatasetResultSchema,
   DatasetSchema as AnalyticsDatasetSchema,
   DeleteAnalysisViewRequestSchema,
@@ -170,6 +181,23 @@ const runEventErrors = {
   400: RunEventCursorBadRequestErrorSchema,
   404: RunUnavailableNotFoundErrorSchema,
 } as const;
+const analyticsQueryRunSubmitErrors = {
+  400: AnalysisQueryRunBadRequestErrorSchema,
+  404: AnalysisQueryRunNotFoundErrorSchema,
+  409: AnalysisQueryRunConflictErrorSchema,
+  500: AnalysisQueryRunInternalErrorSchema,
+  503: AnalysisQueryRunUnavailableErrorSchema,
+  504: AnalysisQueryRunTimeoutErrorSchema,
+} as const;
+const analyticsQueryRunLookupErrors = {
+  404: AnalysisQueryRunNotFoundErrorSchema,
+  500: AnalysisQueryRunInternalErrorSchema,
+  503: AnalysisQueryRunUnavailableErrorSchema,
+} as const;
+const analyticsQueryRunResultErrors = {
+  ...analyticsQueryRunLookupErrors,
+  409: AnalysisQueryRunConflictErrorSchema,
+} as const;
 
 export const adminContracts = {
   bootstrap: defineContract({ id: "bootstrap.get", method: "GET", path: "/bootstrap", responses: { 200: PublicBootstrapSchema } }),
@@ -209,6 +237,11 @@ export const adminContracts = {
   platformTicketRead: defineContract({ id: "platform.tickets.read", method: "PATCH", path: "/platform/tickets/:ticketId/read", params: idParams("ticketId"), responses: { 200: OkSchema } }),
   analyticsSupportTicketsSchema: defineContract({ id: "analytics.supportTickets.schema", method: "GET", path: "/analytics/sources/support.tickets/schema", responses: { 200: AnalyticsDatasetSchema } }),
   analyticsQuery: defineContract({ id: "analytics.query", method: "POST", path: "/analytics/query", body: AnalysisQuerySchema, responses: { 200: DatasetResultSchema } }),
+  analyticsQueryRunCreate: defineContract({ id: "analytics.queryRuns.create", method: "POST", path: "/analytics/query-runs", body: CreateAnalysisQueryRunRequestSchema, responses: { 202: AnalysisQueryRunSchema }, errorResponses: analyticsQueryRunSubmitErrors }),
+  analyticsQueryRunGet: defineContract({ id: "analytics.queryRuns.get", method: "GET", path: "/analytics/query-runs/:runId", params: AnalysisQueryRunParamsSchema, responses: { 200: AnalysisQueryRunSchema }, errorResponses: analyticsQueryRunLookupErrors }),
+  analyticsQueryRunCancel: defineContract({ id: "analytics.queryRuns.cancel", method: "POST", path: "/analytics/query-runs/:runId/cancel", params: AnalysisQueryRunParamsSchema, responses: { 200: AnalysisQueryRunSchema }, errorResponses: analyticsQueryRunResultErrors }),
+  analyticsQueryRunResult: defineContract({ id: "analytics.queryRuns.result", method: "GET", path: "/analytics/query-runs/:runId/result", params: AnalysisQueryRunParamsSchema, responses: { 200: AnalysisQueryResultSchema }, errorResponses: analyticsQueryRunResultErrors }),
+  analyticsArtifactContent: defineContract({ id: "analytics.artifacts.content", method: "GET", path: "/analytics/artifacts/:artifactId/content", params: DatasetArtifactParamsSchema, responses: { 302: null }, errorResponses: analyticsQueryRunResultErrors, binary: true }),
   analyticsViews: defineContract({ id: "analytics.views.list", method: "GET", path: "/analytics/views", responses: { 200: AnalysisViewListSchema } }),
   analyticsViewGet: defineContract({ id: "analytics.views.get", method: "GET", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, responses: { 200: AnalysisViewSchema } }),
   analyticsViewCreate: defineContract({ id: "analytics.views.create", method: "POST", path: "/analytics/views", body: CreateAnalysisViewRequestSchema, responses: { 201: AnalysisViewSchema } }),

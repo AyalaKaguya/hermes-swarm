@@ -15,7 +15,11 @@ import {
   WorkspaceToolConnection,
   WorkspaceToolGrant,
 } from "./ai/index.js";
-import { AnalysisView } from "./analytics/index.js";
+import {
+  AnalysisQueryRun,
+  AnalysisView,
+  DatasetArtifact,
+} from "./analytics/index.js";
 import { FileObject } from "./files/index.js";
 import {
   AccessAuditLog,
@@ -69,12 +73,14 @@ export const CORE_DATABASE_ENTITIES = [
   Agent,
   AgentDraft,
   AgentVersion,
+  AnalysisQueryRun,
   AnalysisView,
   Conversation,
   ConversationMessage,
   ConversationMessageFile,
   ConversationParticipant,
   CustomSmtp,
+  DatasetArtifact,
   EmailLog,
   EmailTemplate,
   EmailVerification,
