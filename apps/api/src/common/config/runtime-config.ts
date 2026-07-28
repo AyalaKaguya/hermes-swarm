@@ -11,6 +11,19 @@ export const appRuntimeConfig = registerAs("app", () => ({
   trustedProxyCidrs: readTrustedProxyCidrs(process.env),
 }));
 
+export const aiRuntimeConfig = registerAs("ai", () => {
+  const environment = process.env.NODE_ENV ?? "development";
+  return {
+    allowHttpInDevelopment:
+      environment === "development" &&
+      parseBoolean(process.env.AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT, false),
+    allowedProviderHosts: parseProviderHostAllowlist(
+      process.env.AI_PROVIDER_ALLOWED_HOSTS,
+    ),
+    requireHttps: environment === "production",
+  };
+});
+
 export const databaseRuntimeConfig = registerAs("database", () => {
   validateLegacyRlsConfiguration(process.env);
   const environment = process.env.NODE_ENV ?? "development";
@@ -128,6 +141,15 @@ export function validateRuntimeConfig(
   const environment = String(config.NODE_ENV ?? "development");
   validatePort("API_PORT", config.API_PORT, { fallback: 3200 });
   validateTrustedProxyCidrs(config.TRUSTED_PROXY_CIDRS);
+  parseProviderHostAllowlist(
+    config.AI_PROVIDER_ALLOWED_HOSTS === undefined
+      ? undefined
+      : String(config.AI_PROVIDER_ALLOWED_HOSTS),
+  );
+  validateBoolean(
+    "AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT",
+    config.AI_TOOL_ALLOW_HTTP_IN_DEVELOPMENT,
+  );
   validateLegacyRlsConfiguration(config);
   validateUrl("POSTGRES_TEST_URL", config.POSTGRES_TEST_URL, "postgresql:");
   if (environment !== "test") {
@@ -330,6 +352,42 @@ function parseCorsOrigin(value: string | undefined) {
     .filter(Boolean);
   if (origins && origins.length > 0) return origins;
   return process.env.NODE_ENV === "production" ? false : true;
+}
+
+function parseProviderHostAllowlist(value: string | undefined) {
+  if (!value?.trim()) return [];
+  const hosts = value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .map((entry) => {
+      if (
+        entry.includes("://") ||
+        entry.includes("/") ||
+        entry.includes("?") ||
+        entry.includes("#") ||
+        entry.includes("@")
+      ) {
+        throw new Error(
+          "AI_PROVIDER_ALLOWED_HOSTS must contain host names with optional ports",
+        );
+      }
+      let url: URL;
+      try {
+        url = new URL(`https://${entry}`);
+      } catch {
+        throw new Error(
+          "AI_PROVIDER_ALLOWED_HOSTS contains an invalid host",
+        );
+      }
+      if (!url.hostname || url.pathname !== "/") {
+        throw new Error(
+          "AI_PROVIDER_ALLOWED_HOSTS contains an invalid host",
+        );
+      }
+      return url.host.toLowerCase();
+    });
+  return [...new Set(hosts)].sort();
 }
 
 function validateBoolean(name: string, value: unknown) {

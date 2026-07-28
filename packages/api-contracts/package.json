@@ -27,7 +27,9 @@
     "./errors": { "types": "./dist/errors.d.ts", "import": "./dist/errors.js" },
     "./pagination": { "types": "./dist/pagination.d.ts", "import": "./dist/pagination.js" },
     "./contracts": { "types": "./dist/contracts.d.ts", "import": "./dist/contracts.js" },
-    "./realtime": { "types": "./dist/realtime.d.ts", "import": "./dist/realtime.js" }
+    "./realtime": { "types": "./dist/realtime.d.ts", "import": "./dist/realtime.js" },
+    "./ai": { "types": "./dist/ai/index.d.ts", "import": "./dist/ai/index.js" },
+    "./analytics": { "types": "./dist/analytics/index.d.ts", "import": "./dist/analytics/index.js" }
   },
   "scripts": {
     "build": "tsc",

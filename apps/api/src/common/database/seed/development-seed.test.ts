@@ -132,6 +132,22 @@ describe("development seed contract", () => {
     }
   });
 
+  it("includes AI provider, Tool Gateway, and Agent permissions during onboarding", () => {
+    const catalog = buildSeedPermissionCatalog();
+    for (const [permission, role] of [
+      ["model_provider.ai_governance.list:platform", "platform-admin"],
+      ["model_provider.ai_configuration.list:workspace", "workspace-owner"],
+      ["tool_gateway.ai_governance.list_definitions:platform", "platform-admin"],
+      ["tool_configuration.ai_configuration.list_connections:workspace", "workspace-owner"],
+      ["agent.ai_configuration.publish:workspace", "workspace-owner"],
+      ["page.agents.access:workspace", "workspace-owner"],
+    ] as const) {
+      const definition = catalog.find((item) => item.id === permission);
+      assert.ok(definition, permission);
+      assert.ok(definition.defaultRoles.includes(role), permission);
+    }
+  });
+
   it("covers only workspace member and ticket business states", () => {
     assert.deepEqual(DEVELOPMENT_FIXTURE_SCENARIOS.ticketStatuses, [
       "open",

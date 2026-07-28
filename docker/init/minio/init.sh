@@ -23,4 +23,3 @@ else
   mc admin user add local "$MINIO_APP_ACCESS_KEY" "$MINIO_APP_SECRET_KEY"
 fi
 mc admin policy attach local hermes-app --user "$MINIO_APP_ACCESS_KEY"
-mc cors set "local/$MINIO_BUCKET" /config/cors.xml

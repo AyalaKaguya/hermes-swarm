@@ -17,9 +17,19 @@ export function mergeAdminContractOpenApi(nestDocument: OpenAPIObject): OpenAPIO
   assertUniqueAdminContracts();
   const registry = new OpenAPIRegistry();
   const errorSchema = registry.register("ApiError", ApiErrorSchema);
+  const sharedErrorSchemas = new Map<ZodType, ZodType>();
+  const errorSchemaCounts = new Map<string, number>();
 
   for (const contract of adminContractList) {
-    registry.registerPath(toRouteConfig(registry, contract, errorSchema));
+    registry.registerPath(
+      toRouteConfig(
+        registry,
+        contract,
+        errorSchema,
+        sharedErrorSchemas,
+        errorSchemaCounts,
+      ),
+    );
   }
 
   const generated = new OpenApiGeneratorV3(registry.definitions).generateDocument({
@@ -56,10 +66,13 @@ function toRouteConfig(
   registry: OpenAPIRegistry,
   contract: ApiContract,
   errorSchema: ZodType,
+  sharedErrorSchemas: Map<ZodType, ZodType>,
+  errorSchemaCounts: Map<string, number>,
 ): RouteConfig {
   const request: NonNullable<RouteConfig["request"]> = {};
   if (contract.params) request.params = contract.params as never;
   if (contract.query) request.query = contract.query as never;
+  if (contract.headers) request.headers = contract.headers as never;
   if (contract.body) {
     request.body = {
       required: true,
@@ -87,7 +100,26 @@ function toRouteConfig(
 
   const responses: RouteConfig["responses"] = {};
   for (const [status, schema] of Object.entries(contract.responses)) {
-    if (contract.binary) {
+    if (schema === null && isRedirectStatus(status)) {
+      responses[status] = {
+        description: "Temporary redirect to authorized content",
+        headers: {
+          Location: {
+            description: "Short-lived authorized content URL",
+            schema: { type: "string", format: "uri" },
+          },
+        },
+      };
+    } else if (contract.eventStream && schema !== null) {
+      responses[status] = {
+        description: "Event stream",
+        content: {
+          "text/event-stream": {
+            schema: registry.register(componentName(contract, `Response${status}`), schema),
+          },
+        },
+      };
+    } else if (contract.binary) {
       responses[status] = {
         description: "Binary file",
         content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },
@@ -104,6 +136,26 @@ function toRouteConfig(
         },
       };
     }
+  }
+  for (const [status, schema] of Object.entries(contract.errorResponses ?? {})) {
+    let registeredSchema = sharedErrorSchemas.get(schema);
+    if (!registeredSchema) {
+      const count = (errorSchemaCounts.get(status) ?? 0) + 1;
+      errorSchemaCounts.set(status, count);
+      registeredSchema = registry.register(
+        `ContractError${status}${count === 1 ? "" : `_${count}`}`,
+        schema,
+      );
+      sharedErrorSchemas.set(schema, registeredSchema);
+    }
+    responses[status] = {
+      description: "Error response",
+      content: {
+        "application/json": {
+          schema: registeredSchema,
+        },
+      },
+    };
   }
   responses["400"] ??= {
     description: "Request validation failed",
@@ -126,4 +178,9 @@ function toRouteConfig(
 
 function componentName(contract: ApiContract, suffix: string) {
   return `${contract.id}_${suffix}`.replace(/[^A-Za-z0-9_]/g, "_");
+}
+
+function isRedirectStatus(status: string) {
+  const value = Number(status);
+  return Number.isInteger(value) && value >= 300 && value < 400;
 }

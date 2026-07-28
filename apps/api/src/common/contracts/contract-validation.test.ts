@@ -116,6 +116,31 @@ describe("AdminContractInterceptor", () => {
       },
     );
   });
+
+  it("validates SSE cursors without treating a manually streamed response as JSON", async () => {
+    const interceptor = new AdminContractInterceptor(new Reflector());
+    const request: Record<string, unknown> = {
+      method: "GET",
+      originalUrl:
+        "/api/admin/ai/runs/33333333-3333-4333-8333-333333333333/events/stream?afterSequence=2",
+      params: { runId: "33333333-3333-4333-8333-333333333333" },
+      query: { afterSequence: "2" },
+      url: "/api/admin/ai/runs/33333333-3333-4333-8333-333333333333/events/stream?afterSequence=2",
+    };
+    const context = httpContext(request, 200);
+
+    const streamed = { manuallyWritten: true };
+    const value = await firstValueFrom(
+      interceptor.intercept(context, {
+        handle: () => {
+          assert.deepEqual(request.query, { afterSequence: 2 });
+          return of(streamed);
+        },
+      }),
+    );
+
+    assert.strictEqual(value, streamed);
+  });
 });
 
 function httpContext(request: Record<string, unknown>, statusCode: number) {

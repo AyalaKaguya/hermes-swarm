@@ -5,6 +5,7 @@ import { DatabaseModule } from "./common/database/database.module.js";
 import { DomainsModule } from "./domains/domains.module.js";
 import {
   appRuntimeConfig,
+  aiRuntimeConfig,
   authRuntimeConfig,
   databaseRuntimeConfig,
   getApiEnvFilePaths,
@@ -28,6 +29,7 @@ import { AdminContractInterceptor } from "./common/contracts/contract-validation
       envFilePath: getApiEnvFilePaths(),
       isGlobal: true,
       load: [
+        aiRuntimeConfig,
         appRuntimeConfig,
         authRuntimeConfig,
         databaseRuntimeConfig,

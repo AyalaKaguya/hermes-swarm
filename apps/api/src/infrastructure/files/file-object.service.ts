@@ -99,6 +99,13 @@ export class FileObjectService {
 
   async createUploadIntent(actor: FileActor, payload: CreateFileObjectPayload) {
     this.requireEnabled();
+    if (payload.purpose === "artifact") {
+      throw fileError(
+        BadRequestException,
+        "FILE_PURPOSE_SERVER_MANAGED",
+        "分析制品只能由受信任的运行时创建",
+      );
+    }
     const scope = this.resolveScope(actor, payload.scope, payload.purpose);
     const file = await this.createPendingFile(actor, {
       byteSize: payload.byteSize,
@@ -476,6 +483,14 @@ export class FileObjectService {
       .andWhere("file.expiresAt IS NOT NULL AND file.expiresAt <= :now", {
         now: new Date(),
       })
+      .andWhere(
+        `NOT EXISTS (
+          SELECT 1
+          FROM "dataset_artifacts" artifact
+          WHERE artifact."file_object_id" = file."id"
+            AND artifact."workspace_id" = file."workspace_id"
+        )`,
+      )
       .orderBy("file.expiresAt", "ASC")
       .take(Math.max(1, Math.min(limit, 1_000)))
       .getMany();
@@ -694,6 +709,7 @@ export class FileObjectService {
   private actorCanManage(actor: FileActor, file: FileObject) {
     if (
       file.status === "deleted" ||
+      file.purpose === "artifact" ||
       (file.retention === "persistent" && file.purpose !== "avatar")
     ) {
       return false;

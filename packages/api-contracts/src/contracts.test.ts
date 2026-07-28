@@ -150,6 +150,194 @@ describe("admin API contracts", () => {
     assert.ok(responseSchemaFor(adminContracts.authLogin, 201));
   });
 
+  it("registers analytics queries without a client-controlled workspace", () => {
+    const contract = findAdminContract("POST", "/api/admin/analytics/query")?.contract;
+    assert.equal(contract?.id, "analytics.query");
+    assert.equal(
+      contract?.body?.safeParse({
+        schemaVersion: "hermes.analytics.query/v1",
+        select: ["status"],
+        sourceKey: "support.tickets",
+        sourceRevision: "support.tickets/v1",
+        workspaceId: "workspace-a",
+      }).success,
+      false,
+    );
+  });
+
+  it("registers scope-specific provider catalog routes with write-only secrets", () => {
+    const platformCreate = findAdminContract(
+      "POST",
+      "/api/admin/platform/ai/providers",
+    )?.contract;
+    const workspaceCreate = findAdminContract(
+      "POST",
+      "/api/admin/workspace/ai/providers",
+    )?.contract;
+    const grant = findAdminContract(
+      "PATCH",
+      "/api/admin/platform/ai/workspaces/11111111-1111-4111-8111-111111111111/grants/22222222-2222-4222-8222-222222222222",
+    );
+
+    assert.equal(platformCreate?.id, "platform.ai.providers.create");
+    assert.equal(workspaceCreate?.id, "workspace.ai.providers.create");
+    assert.equal(grant?.contract.id, "platform.ai.workspaceGrants.update");
+    assert.deepEqual(grant?.params, {
+      grantId: "22222222-2222-4222-8222-222222222222",
+      workspaceId: "11111111-1111-4111-8111-111111111111",
+    });
+    assert.equal(
+      workspaceCreate?.body?.safeParse({
+        baseUrl: "https://models.example.com/v1",
+        driver: "openai-compatible",
+        name: "Workspace model",
+        secret: { apiKey: "write-only" },
+        workspaceId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+      false,
+    );
+  });
+
+  it("registers controlled Tool Gateway routes without client-selected Workspace scope", () => {
+    const platformVersion = findAdminContract(
+      "PATCH",
+      "/api/admin/platform/ai/tools/11111111-1111-4111-8111-111111111111/versions/1.2.3",
+    );
+    const connectionCreate = findAdminContract(
+      "POST",
+      "/api/admin/workspace/ai/tools/connections",
+    )?.contract;
+    const grantBind = findAdminContract(
+      "PUT",
+      "/api/admin/workspace/ai/tools/grants/22222222-2222-4222-8222-222222222222/connection",
+    );
+
+    assert.equal(
+      platformVersion?.contract.id,
+      "platform.ai.toolVersions.status.update",
+    );
+    assert.deepEqual(platformVersion?.params, {
+      toolDefinitionId: "11111111-1111-4111-8111-111111111111",
+      version: "1.2.3",
+    });
+    assert.equal(
+      connectionCreate?.id,
+      "workspace.ai.toolConnections.create",
+    );
+    assert.equal(
+      connectionCreate?.body?.safeParse({
+        authType: "none",
+        baseUrl: "https://tools.example.com/hermes",
+        driverType: "http",
+        name: "Support tools",
+        networkPolicyId: "33333333-3333-4333-8333-333333333333",
+        workspaceId: "44444444-4444-4444-8444-444444444444",
+      }).success,
+      false,
+    );
+    assert.equal(
+      grantBind?.contract.id,
+      "workspace.ai.toolGrants.connection.bind",
+    );
+    assert.deepEqual(grantBind?.params, {
+      grantId: "22222222-2222-4222-8222-222222222222",
+    });
+  });
+
+  it("registers Agent Draft and immutable Version routes", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const draft = findAdminContract(
+      "PUT",
+      `/api/admin/agents/${agentId}/draft`,
+    );
+    const version = findAdminContract(
+      "GET",
+      `/api/admin/agents/${agentId}/versions/7`,
+    );
+
+    assert.equal(draft?.contract.id, "agents.draft.replace");
+    assert.deepEqual(draft?.params, { agentId });
+    assert.equal(version?.contract.id, "agents.versions.get");
+    assert.deepEqual(version?.params, { agentId, version: "7" });
+    assert.equal(
+      version?.contract.params?.safeParse(version.params).success,
+      true,
+    );
+  });
+
+  it("registers strict Run event history and SSE routes", () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const history = findAdminContract(
+      "GET",
+      `/api/admin/ai/runs/${runId}/events`,
+    );
+    const stream = findAdminContract(
+      "GET",
+      `/api/admin/ai/runs/${runId}/events/stream`,
+    );
+
+    assert.equal(history?.contract.id, "ai.runs.events.history");
+    assert.deepEqual(history?.params, { runId });
+    assert.equal(history?.contract.params?.safeParse(history.params).success, true);
+    assert.equal(
+      history?.contract.params?.safeParse({ runId: "not-a-uuid" }).success,
+      false,
+    );
+    assert.deepEqual(history?.contract.query?.parse({}), {
+      afterSequence: 0,
+      limit: 50,
+    });
+    assert.deepEqual(
+      history?.contract.query?.parse({ afterSequence: "9", limit: "200" }),
+      { afterSequence: 9, limit: 200 },
+    );
+    assert.equal(
+      history?.contract.query?.safeParse({ afterSequence: 0, limit: 201 }).success,
+      false,
+    );
+    assert.equal(
+      history?.contract.query?.safeParse({
+        afterSequence: 2_147_483_648,
+        limit: 50,
+      }).success,
+      false,
+    );
+
+    assert.equal(stream?.contract.id, "ai.runs.events.stream");
+    assert.deepEqual(stream?.params, { runId });
+    assert.equal(stream?.contract.params?.safeParse(stream.params).success, true);
+    assert.deepEqual(stream?.contract.query?.parse({}), {});
+    assert.deepEqual(
+      stream?.contract.query?.parse({ afterSequence: "9" }),
+      { afterSequence: 9 },
+    );
+    assert.deepEqual(
+      stream?.contract.headers?.parse({ "Last-Event-ID": "9" }),
+      { "Last-Event-ID": "9" },
+    );
+    assert.equal(stream?.contract.eventStream, true);
+
+    for (const contract of [history?.contract, stream?.contract]) {
+      assert.ok(contract);
+      assert.equal(
+        contract.errorResponses?.[400]?.safeParse({
+          code: "AI_RUN_EVENT_CURSOR_INVALID",
+          message: "The run event cursor is invalid.",
+          statusCode: 400,
+        }).success,
+        true,
+      );
+      assert.equal(
+        contract.errorResponses?.[404]?.safeParse({
+          code: "AI_RUN_UNAVAILABLE",
+          message: "The run is unavailable.",
+          statusCode: 404,
+        }).success,
+        true,
+      );
+    }
+  });
+
   it("documents the invitation result when adding a new platform member", () => {
     const response = {
       invite: {

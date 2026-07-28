@@ -1,5 +1,93 @@
 import { z, type ZodType } from "zod";
 import {
+  AnalysisQueryResultSchema,
+  AnalysisQueryRunBadRequestErrorSchema,
+  AnalysisQueryRunConflictErrorSchema,
+  AnalysisQueryRunInternalErrorSchema,
+  AnalysisQueryRunNotFoundErrorSchema,
+  AnalysisQueryRunParamsSchema,
+  AnalysisQueryRunSchema,
+  AnalysisQueryRunTimeoutErrorSchema,
+  AnalysisQueryRunUnavailableErrorSchema,
+  AnalysisViewListSchema,
+  AnalysisViewParamsSchema,
+  AnalysisViewSchema,
+  AnalysisQuerySchema,
+  CreateAnalysisQueryRunRequestSchema,
+  CreateAnalysisViewRequestSchema,
+  DatasetArtifactParamsSchema,
+  DatasetResultSchema,
+  DatasetSchema as AnalyticsDatasetSchema,
+  DeleteAnalysisViewRequestSchema,
+  UpdateAnalysisViewRequestSchema,
+} from "./analytics/index.js";
+import {
+  AgentCatalogBadRequestErrorSchema,
+  AgentCatalogConflictErrorSchema,
+  AgentCatalogNotFoundErrorSchema,
+  AgentDraftSchema,
+  AgentSchema,
+  AgentVersionSchema,
+  AgentVersionSummarySchema,
+  BindWorkspaceToolGrantConnectionRequestSchema,
+  CreateAgentRequestSchema,
+  CreatePlatformToolDefinitionRequestSchema,
+  CreatePlatformToolNetworkPolicyRequestSchema,
+  CreatePlatformToolVersionRequestSchema,
+  CreatePlatformModelDeploymentRequestSchema,
+  CreatePlatformModelProviderRequestSchema,
+  CreateWorkspaceToolConnectionRequestSchema,
+  CreateWorkspaceToolGrantRequestSchema,
+  CreateWorkspaceModelDeploymentRequestSchema,
+  CreateWorkspaceModelGrantRequestSchema,
+  CreateWorkspaceModelProviderRequestSchema,
+  PlatformToolDefinitionSchema,
+  PlatformToolNetworkPolicySchema,
+  PlatformToolVersionSchema,
+  PlatformModelDeploymentSchema,
+  PlatformModelProviderSchema,
+  ProviderSecretMutationResponseSchema,
+  PublishAgentDraftRequestSchema,
+  ReplaceAgentDraftRequestSchema,
+  RotateProviderSecretRequestSchema,
+  RunEventCursorBadRequestErrorSchema,
+  RunEventHistoryPageSchema,
+  RunEventHistoryQuerySchema,
+  RunEventParamsSchema,
+  RunEventSchema,
+  RunEventStreamHeadersSchema,
+  RunEventStreamQuerySchema,
+  RunUnavailableNotFoundErrorSchema,
+  SemanticVersionSchema,
+  SetWorkspaceDefaultModelRequestSchema,
+  ToolConnectionSecretMutationResponseSchema,
+  ToolConnectionSecretWriteRequestSchema,
+  UpdatePlatformToolDefinitionRequestSchema,
+  UpdatePlatformToolNetworkPolicyRequestSchema,
+  UpdatePlatformToolVersionStatusRequestSchema,
+  UpdatePlatformModelDeploymentRequestSchema,
+  UpdatePlatformModelProviderRequestSchema,
+  UpdateAgentRequestSchema,
+  UpdateWorkspaceToolConnectionRequestSchema,
+  UpdateWorkspaceToolGrantRequestSchema,
+  UpdateWorkspaceModelDeploymentRequestSchema,
+  UpdateWorkspaceModelGrantRequestSchema,
+  UpdateWorkspaceModelProviderRequestSchema,
+  WorkspaceToolConnectionSchema,
+  WorkspaceToolGrantSchema,
+  ToolGatewayBadRequestErrorSchema,
+  ToolGatewayConflictErrorSchema,
+  ToolGatewayForbiddenErrorSchema,
+  ToolGatewayInternalErrorSchema,
+  ToolGatewayNotFoundErrorSchema,
+  ToolGatewayTooManyRequestsErrorSchema,
+  ToolGatewayUnauthorizedErrorSchema,
+  WorkspaceDefaultModelSchema,
+  WorkspaceModelDeploymentSchema,
+  WorkspaceModelGrantSchema,
+  WorkspaceModelProviderSchema,
+} from "./ai/index.js";
+import {
   AuthenticatedLoginInternalSchema, AuthenticatedLoginResponseSchema,
   AuthLoginInternalResponseSchema, AuthLoginResponseSchema, AuthSessionDeviceSchema,
   ContextSelectionOptionSchema, LoginRequestSchema, PrincipalSessionSchema,
@@ -33,10 +121,13 @@ export type ApiContract = {
   path: string;
   params?: ZodType;
   query?: ZodType;
+  headers?: ZodType;
   body?: ZodType;
   responses: Readonly<Record<number, ZodType | null>>;
+  errorResponses?: Readonly<Record<number, ZodType>>;
   browserResponses?: Readonly<Record<number, ZodType | null>>;
   binary?: boolean;
+  eventStream?: boolean;
   multipart?: boolean;
 };
 
@@ -49,6 +140,7 @@ type ResponseSchemas<C extends ApiContract> = C["browserResponses"] extends Read
 
 export type ContractRequest<C extends ApiContract> = {
   body?: SchemaInput<C["body"]>;
+  headers?: SchemaInput<C["headers"]>;
   params?: SchemaInput<C["params"]>;
   query?: SchemaInput<C["query"]>;
 };
@@ -65,6 +157,47 @@ const tokenBody = z.strictObject({ token: z.string().min(1) });
 const emptyBody = z.strictObject({});
 const previewResponse = z.strictObject({ html: z.string(), subject: z.string() });
 const noContent = { 204: null } as const;
+const toolGatewayAccessErrors = {
+  401: ToolGatewayUnauthorizedErrorSchema,
+  403: ToolGatewayForbiddenErrorSchema,
+  429: ToolGatewayTooManyRequestsErrorSchema,
+  500: ToolGatewayInternalErrorSchema,
+} as const;
+const toolGatewayLookupErrors = {
+  ...toolGatewayAccessErrors,
+  404: ToolGatewayNotFoundErrorSchema,
+} as const;
+const toolGatewayMutationErrors = {
+  400: ToolGatewayBadRequestErrorSchema,
+  ...toolGatewayLookupErrors,
+  409: ToolGatewayConflictErrorSchema,
+} as const;
+const agentCatalogErrors = {
+  400: AgentCatalogBadRequestErrorSchema,
+  404: AgentCatalogNotFoundErrorSchema,
+  409: AgentCatalogConflictErrorSchema,
+} as const;
+const runEventErrors = {
+  400: RunEventCursorBadRequestErrorSchema,
+  404: RunUnavailableNotFoundErrorSchema,
+} as const;
+const analyticsQueryRunSubmitErrors = {
+  400: AnalysisQueryRunBadRequestErrorSchema,
+  404: AnalysisQueryRunNotFoundErrorSchema,
+  409: AnalysisQueryRunConflictErrorSchema,
+  500: AnalysisQueryRunInternalErrorSchema,
+  503: AnalysisQueryRunUnavailableErrorSchema,
+  504: AnalysisQueryRunTimeoutErrorSchema,
+} as const;
+const analyticsQueryRunLookupErrors = {
+  404: AnalysisQueryRunNotFoundErrorSchema,
+  500: AnalysisQueryRunInternalErrorSchema,
+  503: AnalysisQueryRunUnavailableErrorSchema,
+} as const;
+const analyticsQueryRunResultErrors = {
+  ...analyticsQueryRunLookupErrors,
+  409: AnalysisQueryRunConflictErrorSchema,
+} as const;
 
 export const adminContracts = {
   bootstrap: defineContract({ id: "bootstrap.get", method: "GET", path: "/bootstrap", responses: { 200: PublicBootstrapSchema } }),
@@ -102,6 +235,66 @@ export const adminContracts = {
   platformTicketMessageSend: defineContract({ id: "platform.tickets.messages.send", method: "POST", path: "/platform/tickets/:ticketId/messages", params: idParams("ticketId"), body: SendTicketMessageRequestSchema, responses: { 201: TicketMessageSchema } }),
   platformTicketClose: defineContract({ id: "platform.tickets.close", method: "PATCH", path: "/platform/tickets/:ticketId/close", params: idParams("ticketId"), responses: { 200: PlatformTicketSchema } }),
   platformTicketRead: defineContract({ id: "platform.tickets.read", method: "PATCH", path: "/platform/tickets/:ticketId/read", params: idParams("ticketId"), responses: { 200: OkSchema } }),
+  analyticsSupportTicketsSchema: defineContract({ id: "analytics.supportTickets.schema", method: "GET", path: "/analytics/sources/support.tickets/schema", responses: { 200: AnalyticsDatasetSchema } }),
+  analyticsQuery: defineContract({ id: "analytics.query", method: "POST", path: "/analytics/query", body: AnalysisQuerySchema, responses: { 200: DatasetResultSchema } }),
+  analyticsQueryRunCreate: defineContract({ id: "analytics.queryRuns.create", method: "POST", path: "/analytics/query-runs", body: CreateAnalysisQueryRunRequestSchema, responses: { 202: AnalysisQueryRunSchema }, errorResponses: analyticsQueryRunSubmitErrors }),
+  analyticsQueryRunGet: defineContract({ id: "analytics.queryRuns.get", method: "GET", path: "/analytics/query-runs/:runId", params: AnalysisQueryRunParamsSchema, responses: { 200: AnalysisQueryRunSchema }, errorResponses: analyticsQueryRunLookupErrors }),
+  analyticsQueryRunCancel: defineContract({ id: "analytics.queryRuns.cancel", method: "POST", path: "/analytics/query-runs/:runId/cancel", params: AnalysisQueryRunParamsSchema, responses: { 200: AnalysisQueryRunSchema }, errorResponses: analyticsQueryRunResultErrors }),
+  analyticsQueryRunResult: defineContract({ id: "analytics.queryRuns.result", method: "GET", path: "/analytics/query-runs/:runId/result", params: AnalysisQueryRunParamsSchema, responses: { 200: AnalysisQueryResultSchema }, errorResponses: analyticsQueryRunResultErrors }),
+  analyticsArtifactContent: defineContract({ id: "analytics.artifacts.content", method: "GET", path: "/analytics/artifacts/:artifactId/content", params: DatasetArtifactParamsSchema, responses: { 302: null }, errorResponses: analyticsQueryRunResultErrors, binary: true }),
+  analyticsViews: defineContract({ id: "analytics.views.list", method: "GET", path: "/analytics/views", responses: { 200: AnalysisViewListSchema } }),
+  analyticsViewGet: defineContract({ id: "analytics.views.get", method: "GET", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, responses: { 200: AnalysisViewSchema } }),
+  analyticsViewCreate: defineContract({ id: "analytics.views.create", method: "POST", path: "/analytics/views", body: CreateAnalysisViewRequestSchema, responses: { 201: AnalysisViewSchema } }),
+  analyticsViewUpdate: defineContract({ id: "analytics.views.update", method: "PATCH", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: UpdateAnalysisViewRequestSchema, responses: { 200: AnalysisViewSchema } }),
+  analyticsViewDelete: defineContract({ id: "analytics.views.delete", method: "DELETE", path: "/analytics/views/:viewId", params: AnalysisViewParamsSchema, body: DeleteAnalysisViewRequestSchema, responses: noContent }),
+  aiRunEvents: defineContract({ id: "ai.runs.events.history", method: "GET", path: "/ai/runs/:runId/events", params: RunEventParamsSchema, query: RunEventHistoryQuerySchema, responses: { 200: RunEventHistoryPageSchema }, errorResponses: runEventErrors }),
+  aiRunEventStream: defineContract({ id: "ai.runs.events.stream", method: "GET", path: "/ai/runs/:runId/events/stream", params: RunEventParamsSchema, query: RunEventStreamQuerySchema, headers: RunEventStreamHeadersSchema, responses: { 200: RunEventSchema }, errorResponses: runEventErrors, eventStream: true }),
+  agents: defineContract({ id: "agents.list", method: "GET", path: "/agents", responses: { 200: z.array(AgentSchema) }, errorResponses: agentCatalogErrors }),
+  agentCreate: defineContract({ id: "agents.create", method: "POST", path: "/agents", body: CreateAgentRequestSchema, responses: { 201: AgentSchema }, errorResponses: agentCatalogErrors }),
+  agentGet: defineContract({ id: "agents.get", method: "GET", path: "/agents/:agentId", params: z.strictObject({ agentId: UuidSchema }), responses: { 200: AgentSchema }, errorResponses: agentCatalogErrors }),
+  agentUpdate: defineContract({ id: "agents.update", method: "PATCH", path: "/agents/:agentId", params: z.strictObject({ agentId: UuidSchema }), body: UpdateAgentRequestSchema, responses: { 200: AgentSchema }, errorResponses: agentCatalogErrors }),
+  agentDraftGet: defineContract({ id: "agents.draft.get", method: "GET", path: "/agents/:agentId/draft", params: z.strictObject({ agentId: UuidSchema }), responses: { 200: AgentDraftSchema }, errorResponses: agentCatalogErrors }),
+  agentDraftReplace: defineContract({ id: "agents.draft.replace", method: "PUT", path: "/agents/:agentId/draft", params: z.strictObject({ agentId: UuidSchema }), body: ReplaceAgentDraftRequestSchema, responses: { 200: AgentDraftSchema }, errorResponses: agentCatalogErrors }),
+  agentVersions: defineContract({ id: "agents.versions.list", method: "GET", path: "/agents/:agentId/versions", params: z.strictObject({ agentId: UuidSchema }), responses: { 200: z.array(AgentVersionSummarySchema) }, errorResponses: agentCatalogErrors }),
+  agentVersionPublish: defineContract({ id: "agents.versions.publish", method: "POST", path: "/agents/:agentId/versions", params: z.strictObject({ agentId: UuidSchema }), body: PublishAgentDraftRequestSchema, responses: { 201: AgentVersionSchema }, errorResponses: agentCatalogErrors }),
+  agentVersionGet: defineContract({ id: "agents.versions.get", method: "GET", path: "/agents/:agentId/versions/:version", params: z.strictObject({ agentId: UuidSchema, version: z.coerce.number().int().min(1) }), responses: { 200: AgentVersionSchema }, errorResponses: agentCatalogErrors }),
+  platformAiProviders: defineContract({ id: "platform.ai.providers.list", method: "GET", path: "/platform/ai/providers", responses: { 200: z.array(PlatformModelProviderSchema) } }),
+  platformAiProviderCreate: defineContract({ id: "platform.ai.providers.create", method: "POST", path: "/platform/ai/providers", body: CreatePlatformModelProviderRequestSchema, responses: { 201: PlatformModelProviderSchema } }),
+  platformAiProviderUpdate: defineContract({ id: "platform.ai.providers.update", method: "PATCH", path: "/platform/ai/providers/:providerId", params: z.strictObject({ providerId: UuidSchema }), body: UpdatePlatformModelProviderRequestSchema, responses: { 200: PlatformModelProviderSchema } }),
+  platformAiProviderSecret: defineContract({ id: "platform.ai.providers.secret.rotate", method: "POST", path: "/platform/ai/providers/:providerId/secret", params: z.strictObject({ providerId: UuidSchema }), body: RotateProviderSecretRequestSchema, responses: { 200: ProviderSecretMutationResponseSchema } }),
+  platformAiDeployments: defineContract({ id: "platform.ai.deployments.list", method: "GET", path: "/platform/ai/providers/:providerId/deployments", params: z.strictObject({ providerId: UuidSchema }), responses: { 200: z.array(PlatformModelDeploymentSchema) } }),
+  platformAiDeploymentCreate: defineContract({ id: "platform.ai.deployments.create", method: "POST", path: "/platform/ai/providers/:providerId/deployments", params: z.strictObject({ providerId: UuidSchema }), body: CreatePlatformModelDeploymentRequestSchema, responses: { 201: PlatformModelDeploymentSchema } }),
+  platformAiDeploymentUpdate: defineContract({ id: "platform.ai.deployments.update", method: "PATCH", path: "/platform/ai/deployments/:deploymentId", params: z.strictObject({ deploymentId: UuidSchema }), body: UpdatePlatformModelDeploymentRequestSchema, responses: { 200: PlatformModelDeploymentSchema } }),
+  platformAiWorkspaceGrants: defineContract({ id: "platform.ai.workspaceGrants.list", method: "GET", path: "/platform/ai/workspaces/:workspaceId/grants", params: z.strictObject({ workspaceId: UuidSchema }), responses: { 200: z.array(WorkspaceModelGrantSchema) } }),
+  platformAiWorkspaceGrantCreate: defineContract({ id: "platform.ai.workspaceGrants.create", method: "POST", path: "/platform/ai/workspaces/:workspaceId/grants", params: z.strictObject({ workspaceId: UuidSchema }), body: CreateWorkspaceModelGrantRequestSchema, responses: { 201: WorkspaceModelGrantSchema } }),
+  platformAiWorkspaceGrantUpdate: defineContract({ id: "platform.ai.workspaceGrants.update", method: "PATCH", path: "/platform/ai/workspaces/:workspaceId/grants/:grantId", params: z.strictObject({ workspaceId: UuidSchema, grantId: UuidSchema }), body: UpdateWorkspaceModelGrantRequestSchema, responses: { 200: WorkspaceModelGrantSchema } }),
+  workspaceAiProviders: defineContract({ id: "workspace.ai.providers.list", method: "GET", path: "/workspace/ai/providers", responses: { 200: z.array(WorkspaceModelProviderSchema) } }),
+  workspaceAiProviderCreate: defineContract({ id: "workspace.ai.providers.create", method: "POST", path: "/workspace/ai/providers", body: CreateWorkspaceModelProviderRequestSchema, responses: { 201: WorkspaceModelProviderSchema } }),
+  workspaceAiProviderUpdate: defineContract({ id: "workspace.ai.providers.update", method: "PATCH", path: "/workspace/ai/providers/:providerId", params: z.strictObject({ providerId: UuidSchema }), body: UpdateWorkspaceModelProviderRequestSchema, responses: { 200: WorkspaceModelProviderSchema } }),
+  workspaceAiProviderSecret: defineContract({ id: "workspace.ai.providers.secret.rotate", method: "POST", path: "/workspace/ai/providers/:providerId/secret", params: z.strictObject({ providerId: UuidSchema }), body: RotateProviderSecretRequestSchema, responses: { 200: ProviderSecretMutationResponseSchema } }),
+  workspaceAiDeployments: defineContract({ id: "workspace.ai.deployments.list", method: "GET", path: "/workspace/ai/providers/:providerId/deployments", params: z.strictObject({ providerId: UuidSchema }), responses: { 200: z.array(WorkspaceModelDeploymentSchema) } }),
+  workspaceAiDeploymentCreate: defineContract({ id: "workspace.ai.deployments.create", method: "POST", path: "/workspace/ai/providers/:providerId/deployments", params: z.strictObject({ providerId: UuidSchema }), body: CreateWorkspaceModelDeploymentRequestSchema, responses: { 201: WorkspaceModelDeploymentSchema } }),
+  workspaceAiDeploymentUpdate: defineContract({ id: "workspace.ai.deployments.update", method: "PATCH", path: "/workspace/ai/deployments/:deploymentId", params: z.strictObject({ deploymentId: UuidSchema }), body: UpdateWorkspaceModelDeploymentRequestSchema, responses: { 200: WorkspaceModelDeploymentSchema } }),
+  workspaceAiGrants: defineContract({ id: "workspace.ai.grants.list", method: "GET", path: "/workspace/ai/grants", responses: { 200: z.array(WorkspaceModelGrantSchema) } }),
+  workspaceAiDefaults: defineContract({ id: "workspace.ai.defaults.list", method: "GET", path: "/workspace/ai/defaults", responses: { 200: z.array(WorkspaceDefaultModelSchema) } }),
+  workspaceAiDefaultSet: defineContract({ id: "workspace.ai.defaults.set", method: "PUT", path: "/workspace/ai/defaults", body: SetWorkspaceDefaultModelRequestSchema, responses: { 200: WorkspaceDefaultModelSchema } }),
+  platformAiToolDefinitions: defineContract({ id: "platform.ai.tools.list", method: "GET", path: "/platform/ai/tools", responses: { 200: z.array(PlatformToolDefinitionSchema) }, errorResponses: toolGatewayAccessErrors }),
+  platformAiToolDefinitionCreate: defineContract({ id: "platform.ai.tools.create", method: "POST", path: "/platform/ai/tools", body: CreatePlatformToolDefinitionRequestSchema, responses: { 201: PlatformToolDefinitionSchema }, errorResponses: toolGatewayMutationErrors }),
+  platformAiToolDefinitionUpdate: defineContract({ id: "platform.ai.tools.update", method: "PATCH", path: "/platform/ai/tools/:toolDefinitionId", params: z.strictObject({ toolDefinitionId: UuidSchema }), body: UpdatePlatformToolDefinitionRequestSchema, responses: { 200: PlatformToolDefinitionSchema }, errorResponses: toolGatewayMutationErrors }),
+  platformAiToolVersions: defineContract({ id: "platform.ai.toolVersions.list", method: "GET", path: "/platform/ai/tools/:toolDefinitionId/versions", params: z.strictObject({ toolDefinitionId: UuidSchema }), responses: { 200: z.array(PlatformToolVersionSchema) }, errorResponses: toolGatewayLookupErrors }),
+  platformAiToolVersionCreate: defineContract({ id: "platform.ai.toolVersions.create", method: "POST", path: "/platform/ai/tools/:toolDefinitionId/versions", params: z.strictObject({ toolDefinitionId: UuidSchema }), body: CreatePlatformToolVersionRequestSchema, responses: { 201: PlatformToolVersionSchema }, errorResponses: toolGatewayMutationErrors }),
+  platformAiToolVersionStatusUpdate: defineContract({ id: "platform.ai.toolVersions.status.update", method: "PATCH", path: "/platform/ai/tools/:toolDefinitionId/versions/:version", params: z.strictObject({ toolDefinitionId: UuidSchema, version: SemanticVersionSchema }), body: UpdatePlatformToolVersionStatusRequestSchema, responses: { 200: PlatformToolVersionSchema }, errorResponses: toolGatewayMutationErrors }),
+  platformAiToolNetworkPolicies: defineContract({ id: "platform.ai.toolNetworkPolicies.list", method: "GET", path: "/platform/ai/tools/network-policies", responses: { 200: z.array(PlatformToolNetworkPolicySchema) }, errorResponses: toolGatewayAccessErrors }),
+  platformAiToolNetworkPolicyCreate: defineContract({ id: "platform.ai.toolNetworkPolicies.create", method: "POST", path: "/platform/ai/tools/network-policies", body: CreatePlatformToolNetworkPolicyRequestSchema, responses: { 201: PlatformToolNetworkPolicySchema }, errorResponses: toolGatewayMutationErrors }),
+  platformAiToolNetworkPolicyUpdate: defineContract({ id: "platform.ai.toolNetworkPolicies.update", method: "PATCH", path: "/platform/ai/tools/network-policies/:networkPolicyId", params: z.strictObject({ networkPolicyId: UuidSchema }), body: UpdatePlatformToolNetworkPolicyRequestSchema, responses: { 200: PlatformToolNetworkPolicySchema }, errorResponses: toolGatewayMutationErrors }),
+  workspaceAiToolConnections: defineContract({ id: "workspace.ai.toolConnections.list", method: "GET", path: "/workspace/ai/tools/connections", responses: { 200: z.array(WorkspaceToolConnectionSchema) }, errorResponses: toolGatewayAccessErrors }),
+  workspaceAiToolConnectionCreate: defineContract({ id: "workspace.ai.toolConnections.create", method: "POST", path: "/workspace/ai/tools/connections", body: CreateWorkspaceToolConnectionRequestSchema, responses: { 201: WorkspaceToolConnectionSchema }, errorResponses: toolGatewayMutationErrors }),
+  workspaceAiToolConnectionUpdate: defineContract({ id: "workspace.ai.toolConnections.update", method: "PATCH", path: "/workspace/ai/tools/connections/:connectionId", params: z.strictObject({ connectionId: UuidSchema }), body: UpdateWorkspaceToolConnectionRequestSchema, responses: { 200: WorkspaceToolConnectionSchema }, errorResponses: toolGatewayMutationErrors }),
+  workspaceAiToolConnectionSecret: defineContract({ id: "workspace.ai.toolConnections.secret.rotate", method: "POST", path: "/workspace/ai/tools/connections/:connectionId/secret", params: z.strictObject({ connectionId: UuidSchema }), body: ToolConnectionSecretWriteRequestSchema, responses: { 200: ToolConnectionSecretMutationResponseSchema }, errorResponses: toolGatewayMutationErrors }),
+  workspaceAiToolGrants: defineContract({ id: "workspace.ai.toolGrants.list", method: "GET", path: "/workspace/ai/tools/grants", responses: { 200: z.array(WorkspaceToolGrantSchema) }, errorResponses: toolGatewayAccessErrors }),
+  workspaceAiToolGrantCreate: defineContract({ id: "workspace.ai.toolGrants.create", method: "POST", path: "/workspace/ai/tools/grants", body: CreateWorkspaceToolGrantRequestSchema, responses: { 201: WorkspaceToolGrantSchema }, errorResponses: toolGatewayMutationErrors }),
+  workspaceAiToolGrantUpdate: defineContract({ id: "workspace.ai.toolGrants.update", method: "PATCH", path: "/workspace/ai/tools/grants/:grantId", params: z.strictObject({ grantId: UuidSchema }), body: UpdateWorkspaceToolGrantRequestSchema, responses: { 200: WorkspaceToolGrantSchema }, errorResponses: toolGatewayMutationErrors }),
+  workspaceAiToolGrantConnectionBind: defineContract({ id: "workspace.ai.toolGrants.connection.bind", method: "PUT", path: "/workspace/ai/tools/grants/:grantId/connection", params: z.strictObject({ grantId: UuidSchema }), body: BindWorkspaceToolGrantConnectionRequestSchema, responses: { 200: WorkspaceToolGrantSchema }, errorResponses: toolGatewayMutationErrors }),
   workspaceGet: defineContract({ id: "workspace.get", method: "GET", path: "/workspace", responses: { 200: WorkspaceSchema } }),
   workspaceConsole: defineContract({ id: "workspace.console", method: "GET", path: "/workspace/console-capability", responses: { 200: AllowedSchema } }),
   workspaceUpdate: defineContract({ id: "workspace.update", method: "PATCH", path: "/workspace", body: z.strictObject({ name: z.string().min(1).optional() }), responses: { 200: WorkspaceSchema } }),

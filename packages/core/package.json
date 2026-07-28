@@ -10,6 +10,26 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./ai": {
+      "types": "./dist/ai/index.d.ts",
+      "import": "./dist/ai/index.js"
+    },
+    "./ai/entities": {
+      "types": "./dist/ai/entities/index.d.ts",
+      "import": "./dist/ai/entities/index.js"
+    },
+    "./analytics": {
+      "types": "./dist/analytics/index.d.ts",
+      "import": "./dist/analytics/index.js"
+    },
+    "./analytics/entities": {
+      "types": "./dist/analytics/entities/index.d.ts",
+      "import": "./dist/analytics/entities/index.js"
+    },
+    "./database-entities": {
+      "types": "./dist/database-entities.d.ts",
+      "import": "./dist/database-entities.js"
+    },
     "./identity": {
       "types": "./dist/identity/index.d.ts",
       "import": "./dist/identity/index.js"
@@ -38,6 +58,14 @@
       "types": "./dist/mail/entities/index.d.ts",
       "import": "./dist/mail/entities/index.js"
     },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    },
+    "./runtime/entities": {
+      "types": "./dist/runtime/entities/index.d.ts",
+      "import": "./dist/runtime/entities/index.js"
+    },
     "./support": {
       "types": "./dist/support/index.d.ts",
       "import": "./dist/support/index.js"
@@ -62,6 +90,10 @@
       "types": "./dist/settings/runtime-preferences.d.ts",
       "import": "./dist/settings/runtime-preferences.js"
     },
+    "./settings/secret-codec": {
+      "types": "./dist/settings/secret-codec.d.ts",
+      "import": "./dist/settings/secret-codec.js"
+    },
     "./settings/entities": {
       "types": "./dist/settings/entities/index.d.ts",
       "import": "./dist/settings/entities/index.js"
@@ -75,6 +107,7 @@
     "clean": "node -e \"const {rmSync}=require('node:fs'); for (const path of ['dist','tsconfig.tsbuildinfo']) rmSync(path,{recursive:true,force:true})\""
   },
   "dependencies": {
+    "@hermes-swarm/api-contracts": "workspace:*",
     "typeorm": "^1.0.0"
   },
   "nx": {

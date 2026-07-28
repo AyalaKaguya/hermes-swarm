@@ -1,0 +1,33 @@
+{
+  "name": "@hermes-swarm/agent-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"const {rmSync}=require('node:fs'); for (const path of ['dist','tsconfig.tsbuildinfo']) rmSync(path,{recursive:true,force:true})\""
+  },
+  "nx": {
+    "projectType": "library",
+    "tags": ["type:lib", "scope:shared", "layer:runtime"],
+    "targets": {
+      "coverage": {
+        "command": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" \"src/**/*.test.ts\"",
+        "options": {
+          "cwd": "packages/agent-sdk"
+        }
+      }
+    }
+  }
+}

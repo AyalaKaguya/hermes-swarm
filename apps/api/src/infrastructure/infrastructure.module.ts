@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module.js";
+import { AiModule } from "./ai/ai.module.js";
 import { AuditModule } from "./audit/audit.module.js";
 import { FeatureAccessModule } from "./feature-access/feature-access.module.js";
 import { FilesModule } from "./files/files.module.js";
@@ -11,6 +12,7 @@ import { PasswordResetModule } from "./password-reset/password-reset.module.js";
 import { PlatformMembersModule } from "./platform-members/platform-members.module.js";
 import { PlatformRolesModule } from "./platform-roles/platform-roles.module.js";
 import { RealtimeModule } from "./realtime/realtime.module.js";
+import { RuntimeRunEventsModule } from "./runtime/runtime-run-events.module.js";
 import { SettingsModule } from "./settings/settings.module.js";
 import { WorkspacesModule } from "./workspaces/workspaces.module.js";
 import { UsersModule } from "./users/users.module.js";
@@ -19,6 +21,7 @@ import { OnboardingService } from "./onboarding/onboarding.service.js";
 
 @Module({
   imports: [
+    AiModule,
     AuthModule,
     AuditModule,
     FeatureAccessModule,
@@ -31,6 +34,7 @@ import { OnboardingService } from "./onboarding/onboarding.service.js";
     PlatformMembersModule,
     PlatformRolesModule,
     RealtimeModule,
+    RuntimeRunEventsModule,
     NotificationsModule,
     WorkspacesModule,
     PasswordResetModule,

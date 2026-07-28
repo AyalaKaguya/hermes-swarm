@@ -111,6 +111,9 @@ For local ports, server logs, browser checks, and screenshots, see
 review records are kept under [docs/architecture](docs/architecture).
 The object lifecycle and security boundary are documented in
 [docs/architecture/object-storage-and-file-objects.md](docs/architecture/object-storage-and-file-objects.md).
+The accepted foundations for the next product modules are documented in
+[Agent runtime](docs/architecture/ai-agent-runtime-foundation.md) and
+[Analytics query and visualization](docs/architecture/analytics-query-foundation.md).
 
 ## Optional Local Development Services
 

@@ -11,5 +11,6 @@ allowBuilds:
   '@scarf/scarf': false
   '@swc/core': true
   esbuild: false
+  msgpackr-extract: false
   nx: true
   sharp: true

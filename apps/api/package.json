@@ -29,6 +29,7 @@
     "@aws-sdk/client-s3": "^3.1093.0",
     "@aws-sdk/lib-storage": "^3.1093.0",
     "@aws-sdk/s3-request-presigner": "^3.1093.0",
+    "@hermes-swarm/agent-sdk": "workspace:*",
     "@hermes-swarm/api-contracts": "workspace:*",
     "@hermes-swarm/core": "workspace:*",
     "@hermes-swarm/rbac": "workspace:*",

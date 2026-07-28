@@ -199,6 +199,41 @@ describe("FileObjectService", () => {
     );
   });
 
+  it("keeps server-managed analytics artifacts outside generic file APIs", async () => {
+    const fixture = createFixture();
+    await assert.rejects(
+      () =>
+        fixture.service.createUploadIntent(actor, {
+          byteSize: 1,
+          mimeType: "application/json",
+          originalName: "result.json",
+          purpose: "artifact",
+          scope: "workspace",
+        }),
+      BadRequestException,
+    );
+
+    const artifact = fixture.repository.add({
+      expiresAt: new Date(Date.now() + 60_000),
+      mimeType: "application/json",
+      purpose: "artifact",
+      status: "ready",
+    });
+    await assert.rejects(
+      () => fixture.service.getMetadata(actor, artifact.id),
+      NotFoundException,
+    );
+    await assert.rejects(
+      () => fixture.service.getContentUrl(actor, artifact.id),
+      NotFoundException,
+    );
+    await assert.rejects(
+      () => fixture.service.deleteTemporary(actor, artifact.id),
+      NotFoundException,
+    );
+    assert.equal(artifact.status, "ready");
+  });
+
   it("collects expired temporary objects and retries failures", async () => {
     const fixture = createFixture();
     const first = fixture.repository.add({ expiresAt: new Date(0) });
@@ -211,6 +246,14 @@ describe("FileObjectService", () => {
     assert.equal(first.status, "deleted");
     assert.equal(second.failureCode, "DELETE_RETRY");
     assert.equal(second.status, "failed");
+    assert.ok(
+      fixture.repository.whereExpressions.some(
+        (expression) =>
+          /NOT EXISTS/.test(expression) &&
+          /"dataset_artifacts"/.test(expression) &&
+          /artifact\."workspace_id" = file\."workspace_id"/.test(expression),
+      ),
+    );
   });
 
   it("binds workspace files once and rebinds platform files only with explicit authority", async () => {
@@ -380,6 +423,7 @@ class FakeObjectStorage extends ObjectStorage {
 
 class FakeFileRepository {
   readonly rows: FileObject[] = [];
+  readonly whereExpressions: string[] = [];
 
   add(overrides: Partial<FileObject>) {
     return this.save(this.create({
@@ -422,7 +466,10 @@ class FakeFileRepository {
 
   createQueryBuilder() {
     const builder = {
-      andWhere: () => builder,
+      andWhere: (expression: string) => {
+        this.whereExpressions.push(expression);
+        return builder;
+      },
       getMany: async () =>
         this.rows.filter(
           (row) =>
@@ -433,7 +480,10 @@ class FakeFileRepository {
         ),
       orderBy: () => builder,
       take: () => builder,
-      where: () => builder,
+      where: (expression: string) => {
+        this.whereExpressions.push(expression);
+        return builder;
+      },
     };
     return builder;
   }
