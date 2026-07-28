@@ -90,6 +90,10 @@
       "types": "./dist/settings/runtime-preferences.d.ts",
       "import": "./dist/settings/runtime-preferences.js"
     },
+    "./settings/secret-codec": {
+      "types": "./dist/settings/secret-codec.d.ts",
+      "import": "./dist/settings/secret-codec.js"
+    },
     "./settings/entities": {
       "types": "./dist/settings/entities/index.d.ts",
       "import": "./dist/settings/entities/index.js"

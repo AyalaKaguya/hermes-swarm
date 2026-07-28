@@ -431,6 +431,40 @@ describe("run event contracts", () => {
       ...eventBase,
       payload: {
         capability: "chat",
+        costMicros: null,
+        currency: null,
+        deploymentId: ids.deployment,
+        deploymentRevision: 3,
+        inputTokens: 10,
+        latencyMs: 400,
+        modelId: "chat-primary",
+        outputTokens: 5,
+        providerId: ids.provider,
+        totalTokens: 15,
+      },
+      type: "usage.recorded",
+    }).success, true);
+    assert.equal(RunEventSchema.safeParse({
+      ...eventBase,
+      payload: {
+        capability: "chat",
+        costMicros: 0,
+        currency: null,
+        deploymentId: ids.deployment,
+        deploymentRevision: 3,
+        inputTokens: 10,
+        latencyMs: 400,
+        modelId: "chat-primary",
+        outputTokens: 5,
+        providerId: ids.provider,
+        totalTokens: 15,
+      },
+      type: "usage.recorded",
+    }).success, false);
+    assert.equal(RunEventSchema.safeParse({
+      ...eventBase,
+      payload: {
+        capability: "chat",
         costMicros: 25,
         currency: "USD",
         deploymentId: ids.deployment,

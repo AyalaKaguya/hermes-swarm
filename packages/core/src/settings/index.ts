@@ -6,3 +6,4 @@ export { WorkspaceSetting } from "./entities/workspace-setting.entity.js";
 export * from "./definitions.js";
 export * from "./effective-settings.js";
 export * from "./runtime-preferences.js";
+export * from "./secret-codec.js";

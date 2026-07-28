@@ -1,6 +1,7 @@
 export * from "./agent-graph.js";
 export * from "./agent-catalog.js";
 export * from "./common.js";
+export * from "./conversations.js";
 export * from "./errors.js";
 export * from "./execution-scope.js";
 export * from "./model-reference.js";

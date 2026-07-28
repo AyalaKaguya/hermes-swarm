@@ -16,6 +16,9 @@ import type {
 } from "./agent-entity.types.js";
 
 @Entity({ name: "agent_versions" })
+@Index("UQ_agent_versions_workspace_id", ["workspaceId", "id"], {
+  unique: true,
+})
 @Index(
   "UQ_agent_versions_workspace_agent_version",
   ["workspaceId", "agentId", "version"],

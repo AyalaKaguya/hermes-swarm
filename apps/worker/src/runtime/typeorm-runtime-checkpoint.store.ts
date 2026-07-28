@@ -497,6 +497,7 @@ export class TypeOrmRuntimeCheckpointStore implements GraphCheckpointStore {
          AND "status" = 'running'
          AND "cancellation_requested_at" IS NULL
          AND "lease_expires_at" > clock_timestamp()
+         AND ("deadline_at" IS NULL OR "deadline_at" > clock_timestamp())
        FOR UPDATE`,
       [
         lease.workspaceId,
@@ -715,6 +716,10 @@ async function appendCheckpointCreatedEvent(
          AND runtime_run."status" = 'running'
          AND runtime_run."cancellation_requested_at" IS NULL
          AND runtime_run."lease_expires_at" > database_clock."now"
+         AND (
+           runtime_run."deadline_at" IS NULL
+           OR runtime_run."deadline_at" > database_clock."now"
+         )
        RETURNING runtime_run."event_sequence"
      )
      INSERT INTO "runtime_run_events" (

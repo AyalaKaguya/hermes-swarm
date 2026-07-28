@@ -148,8 +148,12 @@ const UsageRecordedEventSchema = z.strictObject({
   ...eventEnvelope,
   payload: z.strictObject({
     capability: ModelCapabilitySchema,
-    costMicros: z.number().int().nonnegative(),
-    currency: z.string().length(3).transform((value) => value.toUpperCase()),
+    costMicros: z.number().int().nonnegative().nullable(),
+    currency: z
+      .string()
+      .length(3)
+      .transform((value) => value.toUpperCase())
+      .nullable(),
     deploymentId: UuidSchema,
     deploymentRevision: z.number().int().positive(),
     inputTokens: z.number().int().nonnegative(),
@@ -159,6 +163,13 @@ const UsageRecordedEventSchema = z.strictObject({
     providerId: UuidSchema,
     totalTokens: z.number().int().nonnegative(),
   }).superRefine((usage, context) => {
+    if ((usage.costMicros === null) !== (usage.currency === null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Cost and currency must either both be known or both be null",
+        path: ["costMicros"],
+      });
+    }
     if (usage.totalTokens !== usage.inputTokens + usage.outputTokens) {
       context.addIssue({ code: "custom", message: "Total tokens must equal input plus output tokens", path: ["totalTokens"] });
     }

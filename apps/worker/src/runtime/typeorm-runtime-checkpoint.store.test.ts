@@ -61,6 +61,10 @@ describe("TypeOrmRuntimeCheckpointStore", () => {
     assert.match(lock.sql, /"status" = 'running'/);
     assert.match(lock.sql, /"cancellation_requested_at" IS NULL/);
     assert.match(lock.sql, /"lease_expires_at" > clock_timestamp\(\)/);
+    assert.match(
+      lock.sql,
+      /"deadline_at" IS NULL OR "deadline_at" > clock_timestamp\(\)/,
+    );
     assert.equal(lock.parameters[2], LEASE_TOKEN);
 
     const event = harness.calls.find((call) =>
@@ -71,6 +75,10 @@ describe("TypeOrmRuntimeCheckpointStore", () => {
     assert.match(event.sql, /'checkpointSequence'/);
     assert.equal(event.parameters[4], RUNTIME_RUN_EVENT_SCHEMA_VERSION);
     assert.equal(event.parameters[6], "checkpoint.created");
+    assert.match(
+      event.sql,
+      /runtime_run\."deadline_at" IS NULL[\s\S]*runtime_run\."deadline_at" > database_clock\."now"/,
+    );
     assert.equal(event.parameters[8], 1);
   });
 
